@@ -1,0 +1,6 @@
+build*/
+DualSOUP
+*.bin
+.vscode
+*.exe
+*.o
