@@ -25,20 +25,15 @@ alignas(32) constexpr u16 CondLUT[16] =
     0x0A05, // GT - Zero clear && (Negative == Overflow)
     0xF5FA, // LE - Zero set && (Negative != Overflow)
     0xFFFF, // AL - Always passes
-    0x0000  // NV - Never passes (ARM4T?) | Unconditional instruction (ARMv5TE)
+    0x0000  // NV - Never passes (ARM4T and earlier?) | Unconditional instruction (ARMv5TE and onward)
 };
 
-inline bool ARM_ConditionLookup(u8 condition, u8 flags)
+bool ARM_ConditionLookup(u8 condition, u8 flags)
 {
     return CondLUT[condition] & (1<<flags);
 }
 
-inline void ARM_IncrPC(struct ARM* cpu, bool thumb)
+void ARM_IncrPC(struct ARM* cpu, bool thumb)
 {
     cpu->PC += (thumb ? 2 : 4);
 }
-
-/*inline void ARM_AddCycles(struct ARM* cpu, int cycles)
-{
-    cpu->CycleCount += cycles;
-}*/

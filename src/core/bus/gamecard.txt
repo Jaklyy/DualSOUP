@@ -1,0 +1,77 @@
+clock dividers: 8 5
+command submission: 10
+gap1 delay = 0x1FFF
+gap2 delay = 0x3F
+
+dataless command:
+(divider * (submission + gap1)) + 4;
+
+data command first:
+(divider * (submission + gap1 + gap2 + 3)) + 3;
+
+data command successive:
+(divider * 5) + 3;
+
+data command successive 2?????:
+(divider * (4 + (not quite 1 if the ?)))
+
+// rom chip id:
+byte 0: Manufacturer ID
+byte 1: Chip Size
+byte 2: Mystery byte, probably completely meaningless!
+byte 3: flag byte:
+    bit 0: ?
+    bit 1: ?
+    bit 2: ?
+    bit 3: nand
+    bit 4: 3ds
+    bit 5: mystery bit!
+    bit 6: dsi
+    bit 7: 1T-ROM/NAND
+
+chips i actually possess:
+BDRE78_00
+00003FC2: Macronix 64 MiB NTR MROM
+621600: Sanyo 256KiB (LE25FW203T?)
+
+B5VE4Q_00
+00003FC2: Macronix 64 MiB NTR MROM
+FFFFFF: unk. 512B
+
+C5SEWR_00
+80007FC2: Macronix 128 MiB NTR 1T-ROM
+FFFFFF: unk. 512B
+
+V2GE01_01
+40001FC2: Macronix 32 MiB TWL MROM
+204013: ST 512KiB (45PE40V6?)
+
+A2DE01_00
+00001FC2: Macronix 32MiB NTR MROM
+FFFFFF: unk. 8KiB
+
+VPFE4Q_00
+E0003FAE: OKI Semiconductor? 64MiB TWL 1T-ROM (B5/D6?)
+FFFFFF: unk. 8KiB
+
+B3RE01_00
+80007FC2: Macronix 128MiB NTR 1T-ROM
+621600: Sanyo 256KiB (LE25FW203T?)
+
+C2SE01_00
+80007FC2: Macronix 128MIB NTR 1T-ROM
+FFFFFF: unk. 128KiB
+
+ADAE01_05
+80003F80: SanDisk 64MiB NTR 1T-ROM
+204013: ST 512KiB (45PE40V6?)
+
+CPUE01_00
+80007FC2: Macronix 128MiB NTR 1T-ROM
+621100: Sanyo 512KiB
+
+IPGE01_00
+80007FC2: Macronix 128MiB NTR 1T-ROM (no IR?)
+621100: Sanyo 512KiB
+
+621100: 

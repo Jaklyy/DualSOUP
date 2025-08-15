@@ -1,0 +1,19 @@
+
+DMA seems to have a 1 cycle startup delay at least in "start immediately" mode.
+
+Key:
+SRC = Source Address
+DST = Destination Address
+NR = Nonsequential Read (from SRC)
+NW = Nonsequential Write (to DST)
+SR = Sequential Read (from SRC)
+SW = Sequential Write (to DST)
+
+Once DMA has started the timings are as follows:
+1. NR
+2. NW
+3. if NR takes < 2 cycles then it stalls for a cycle here for some reason? (this occurs at the same time as any write contention)
+5. SR (note: if the SRC is MainRAM then it appears to start prefetching the next word after this point? This allows further reads to be done in one cycle.)
+6. SW
+7. SR
+8. SW

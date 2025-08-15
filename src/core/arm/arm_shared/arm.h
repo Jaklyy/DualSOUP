@@ -38,14 +38,54 @@ enum ARM_Modes : u8
 
 enum ARM_Exception_Vector_Offsets : u8
 {
-    VECTOR_RST = 0x00,
-    VECTOR_UND = 0x04,
-    VECTOR_SWI = 0x08, VECTOR_SVC = 0x08,
-    VECTOR_PAB = 0x0C,
-    VECTOR_DAB = 0x10,
+    VECTOR_RST = 0x00, // Reset
+    VECTOR_UND = 0x04, // Undefined Instruction
+    VECTOR_SWI = 0x08, VECTOR_SVC = 0x08, // Software Interrupt / Supervisor Call
+    VECTOR_PAB = 0x0C, // Prefetch Abort (instruction)
+    VECTOR_DAB = 0x10, // Data Abort (data)
+    VECTOR_ADR = 0x14, // Address Exception (legacy 26 bit addressing thing, only here for funsies)
+    VECTOR_IRQ = 0x18, // Interrupt Request
+    VECTOR_FIQ = 0x1C, // Fast Interrupt Request
+};
 
-    VECTOR_IRQ = 0x18,
-    VECTOR_FIQ = 0x1C,
+union ARM_FlagsOut
+{
+    u8 Raw;
+    struct
+    {
+        bool Overflow : 1;
+        bool Carry : 1;
+        bool Zero : 1;
+        bool Negative : 1;
+    };
+};
+
+union PSR
+{
+    u32 Raw;
+    struct
+    {
+        u32 Mode : 4;
+        u32 ModeMSB : 1; // always set.
+        bool Thumb : 1;
+        bool FIQDisable : 1;
+        bool IRQDisable : 1;
+        u32 : 6;
+        u32 GE : 4; // v6
+        u32 : 4;
+        bool Jazelle : 1; // v5tej
+        u32 : 2;
+        bool QSticky : 1; // armv5te
+        bool Overflow : 1;
+        bool Carry : 1;
+        bool Zero : 1;
+        bool Negative : 1;
+    };
+    struct
+    {
+        u32 : 28;
+        u32 Flags : 4;
+    };
 };
 
 struct ARM
@@ -62,34 +102,13 @@ struct ARM
             union { u32 R15; u32 PC; };
         };
     };
-    union
-    {
-        u32 Data;
-        struct
-        {
-            u32 Mode : 4;
-            u32 : 1; // technically msb of mode; always set.
-            bool Thumb : 1;
-            bool FIQDisable : 1;
-            bool IRQDisable : 1;
-            u32 : 19;
-            bool QSticky : 1; // armv5te
-            bool Overflow : 1;
-            bool Carry : 1;
-            bool Zero : 1;
-            bool Negative : 1;
-        };
-        struct
-        {
-            u32 : 28;
-            u32 Flags : 4;
-        };
-    } CPSR;
+    union PSR CPSR;
+    u8 CPUID;
+    u32 Instr[3]; // prefetch pipeline
     u32* SPSR;
-    u64 CycleCount;
+    timestamp Timestamp;
     struct Console* Console;
 };
 
 bool ARM_ConditionLookup(u8 condition, u8 flags);
 void ARM_IncrPC(struct ARM* cpu, bool thumb);
-//void ARM_AddCycles(struct ARM* cpu, int cycles);

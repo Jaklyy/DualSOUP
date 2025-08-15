@@ -8,19 +8,22 @@ OBJDIR := /obj
 SRCDIR := src
 
 CC := clang
-CFLAGS := -MP -MMD -O3 -std=c23 -flto -fwrapv -Wimplicit-fallthrough -Wall -Wno-unused-variable -mavx2 -mlzcnt -mbmi2
+CFLAGS := -MP -MMD -O3 -std=gnu23 -flto -fwrapv -Wimplicit-fallthrough -Wall -Wno-unused-variable
 
-ifeq ($(DEBUG), 1)
+ifeq ($(DEB), 1) # debug build
 	BUILDDIR := $(DEBDIR)
 	CFLAGS += -g
+	CFLAGS += -march=x86-64-v3
 else
-ifeq ($(SANITIZE), 1)
+ifeq ($(SAN), 1) # debug w/ sanitizers
 	BUILDDIR := $(SANDIR)
 	CFLAGS += -g -fsanitize=undefined -fsanitize=address
+	CFLAGS += -march=x86-64-v3
 else
-ifeq ($(RELEASE), 1)
+ifeq ($(REL), 1) # release build
 	BUILDDIR := $(RELDIR)
-else #standard build
+	CFLAGS += -march=x86-64-v3
+else # standard build
 	BUILDDIR := $(MISCDIR)
 	CFLAGS += -march=native
 endif
@@ -34,7 +37,7 @@ $(BUILDDIR)$(OBJDIR)/%.o: $(SRCDIR)/%.c
 	@mkdir -p $(dir $@)
 	$(CC) -c -o $@ $< $(CFLAGS)
 
-$(BUILDDIR)/CycleDS: $(OBJS)
+$(BUILDDIR)/DualSOUP: $(OBJS)
 	$(CC) -o $@ $^ $(CFLAGS)
 
 .PHONY: clean

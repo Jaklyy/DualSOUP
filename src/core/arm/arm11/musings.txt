@@ -1,0 +1,67 @@
+dynamic branch predictor:
+
+    uses a "branch target address cache" aka BTAC
+
+    directly mapped cache w/ 128 entries
+
+    uses bits 9:3 of the virtual address
+        q: that's only 8 bytes of granularity?
+        q: how does that work when there's multiple branches in that range?
+        q: does that work the same with thumb and jazelle? (it says it supports all modes)
+
+    has 4 levels of odds:
+        1. strongly taken
+        2. weakly taken
+        3. weakly not taken
+        4. strongly not taken
+
+        q: what's the default? is it based on the initial branch result?
+        q: is it prng? does it use round robin? (unique counter??)
+        q: what are the exact odds for each level?
+
+    theory: it could be internally structured something like:
+        63:32 - target address (all bits?)
+        31:10 - addr msb (almost certainly required)
+        9:8 --- unused?
+        7:6 --- target mode (?)
+        5:4 --- current prediction level
+        3 ----- valid flag (probably needs one?)
+        2:0 --- addr lsb (surely it must distinguish them?)
+
+    q: what happens if you replace a cached branch?
+    q: what happens if you replace a cached branch with a branch type it can't predict?
+    q: what happens if you replace a cached branch with a different branch type?
+    q: what happens if you enter a cached branch and use a different target?
+
+static branch predictor:
+
+    I think only used as a fallback for the dynamic branch predictor?
+    literally just takes the branch if the msb of the branch offset is set.
+
+branch folding:
+
+    cannot:
+        1. update link register
+        2. have another branch in the first two instructions (how do they validate this?)
+        3. be breakpointed (probably not important?)
+        4. be aborted (?????)
+            q: how would they know there's a branch there if the fetch was aborted...?
+
+    note: all of the above imply some level of early decoding for branch instructions at least?
+
+l1 caches:
+    round robin only (thank god, the removal of direct cache tag reading would make the prng hell to unravel)
+        q: separate rr counters for instruction and data?
+        q: one rr counter for all cache lines like w/ arm9?
+
+    4 way set associative
+    8 word cache lines
+
+jazelle:
+    q: almost every single detail; why is 90% of the jazelle spec implementation specific?
+
+invalid modes:
+    q: allegedly they can put the processor in an unrecoverable state? ...how?
+
+prefetch unit:
+    q: how aggressively does it prefetch instructions? is it good at avoiding cache misses?

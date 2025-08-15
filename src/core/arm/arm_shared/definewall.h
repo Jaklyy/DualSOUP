@@ -40,7 +40,7 @@
     #define ADDCYCLES NAME2(ARM, AddCycles, CPUNUM)
 
     #if CPUNUM == 9
-        #define CAST ((struct ARM946E_S *)cpu)
+        #define CAST ((struct ARM946ES *)cpu)
     #elif CPUNUM == 7
         #define CAST ((struct ARM7TDMI *) cpu)
     #elif CPUNUM == 11
