@@ -1,67 +1,83 @@
-#include "arm.h"
-#include "../arm_shared/arm.h"
 #include "../../utils.h"
+#include "../shared/arm.h"
+#include "../shared/instr.h"
+#include "instr_il.h"
+#include "arm.h"
 
 
 
 
 #define cpu ((struct ARM*)ARM9)
 
-void ARM9_Init(struct ARM946ES* ARM9)
+// TEMP: debugging
+void ARM9_Log(struct ARM946ES* ARM9)
+{
+    LogPrint(LOG_ARM9, "DUMPING ARM9 STATE: ");
+    for (int i = 0; i < 16; i++)
+    {
+        LogPrint(LOG_ARM9, "R%2i: %08X ", i, cpu->R[i]);
+    }
+    LogPrint(LOG_ARM9, "CPSR:%08X\n", cpu->CPSR.Raw);
+    LogPrint(LOG_ARM9, "EXE:%li MEM:%li\n", cpu->Timestamp, ARM9->MemTimestamp);
+}
+
+void ARM9_Init(struct ARM946ES* ARM9, struct Console* sys)
 {
     cpu->CPUID = ARM9ID;
     // msb of mode is always set
     cpu->CPSR.ModeMSB = 1;
-
-    ARM9_Reset(ARM9); // raise reset exception
+    // these bits needs to be one. i dont make the rules.
+    ARM9->CP15.CR.FixedOnes = 0xF;
+    cpu->Sys = sys;
 }
 
-void ARM9_Reset(struct ARM946ES* ARM9)
+union PSR ARM9_ReadSPSR(struct ARM946ES* ARM9)
 {
-    // todo: how many cycles does this take?
-
-    // note: 
-
-    // note: arm docs explicitly state that R14_SVC and SPSR_SVC have an "unpredictable value" when reset is de-asserted
-    // which could mean literally anything
-    // it is entirely possible that the old pc and cpsr are banked by the processor
-    // or at least it tries to and instead puts some nonsense in them?
-    // ...or it could just mean that they aren't reset in any way......
-
-    // todo: does cache prng ever get reset? (does it ever get explicitly initialized?)
-
-    // reset cpsr bits
-    // flag bits dont seem to be mentioned anywhere?
-    cpu->CPSR.Mode = MODE_SWI;
-    cpu->CPSR.Thumb = false;
-    cpu->CPSR.IRQDisable = true;
-    cpu->CPSR.FIQDisable = true;
-
-    // reset control reg
-    ARM9->CP15.CR.ITCMLoadMode = false;
-    ARM9->CP15.CR.DTCMLoadMode = false;
-    ARM9->CP15.CR.DTCMEnable = false;
-    ARM9->CP15.CR.NoLoadTBit = false;
-    ARM9->CP15.CR.CacheRR = false;
-    ARM9->CP15.CR.ICacheEnable = false;
-    ARM9->CP15.CR.BigEndian = false;
-    ARM9->CP15.CR.DCacheEnable = false;
-    ARM9->CP15.CR.MPUEnable = false;
-
-    // these two are configurable via input pins.
-    // exception vector is obviously default set since that's where our bootcode is.
-    // itcm enable is less clear, it's probably not important since all relevant bootroms
-    // should explicitly set this before using it, but it'd be nice to know ig.
-    ARM9->CP15.CR.ITCMEnable = false;
-    ARM9->CP15.CR.HiVector = true;
-
-    // could technically hardcode this exception vector check, but eh.
-    cpu->PC = ARM9_GetExceptionBase(ARM9) + VECTOR_RST;
+    switch(cpu->CPSR.Mode)
+    {
+    case MODE_FIQ:
+        return cpu->FIQ_Bank.SPSR;
+    case MODE_IRQ:
+        return cpu->IRQ_Bank.SPSR;
+    case MODE_SWI:
+        return cpu->SWI_Bank.SPSR;
+    case MODE_SWI+1 ... MODE_ABT:
+        return cpu->ABT_Bank.SPSR;
+    case MODE_ABT+1 ... MODE_UND:
+        return cpu->UND_Bank.SPSR;
+    case MODE_USR:
+    case MODE_UND+1 ... MODE_SYS:
+        return cpu->CPSR;
+    default: unreachable();
+    }
 }
 
-u32 ARM9_GetExceptionBase(struct ARM946ES* ARM9)
+void ARM9_WriteSPSR(struct ARM946ES* ARM9, union PSR psr)
 {
-    return (ARM9->CP15.CR.HiVector ? 0xFFFF0000 : 0x00000000);
+    switch(cpu->CPSR.Mode)
+    {
+    case MODE_FIQ:
+        cpu->FIQ_Bank.SPSR = psr;
+        break;
+    case MODE_IRQ:
+        cpu->IRQ_Bank.SPSR = psr;
+        break;
+    case MODE_SWI:
+        cpu->SWI_Bank.SPSR = psr;
+        break;
+    case MODE_SWI+1 ... MODE_ABT:
+        cpu->ABT_Bank.SPSR = psr;
+        break;
+    case MODE_ABT+1 ... MODE_UND:
+        cpu->UND_Bank.SPSR = psr;
+        break;
+    case MODE_USR:
+    case MODE_UND+1 ... MODE_SYS:
+        // no spsr, no write
+        break;
+    default: unreachable();
+    }
+    return;
 }
 
 u32 ARM9_GetReg(struct ARM946ES* ARM9, const int reg)
@@ -71,30 +87,11 @@ u32 ARM9_GetReg(struct ARM946ES* ARM9, const int reg)
     return cpu->R[reg];
 }
 
-void ARM9_SetPC(struct ARM946ES* ARM9, const int reg, u32 val, const int iloffs)
-{
-    // arm9 enforces pc alignment properly for once.
-    val &= ~(cpu->CPSR.Thumb ? 0x1 : 0x3);
-    // r15 interlocks must be resolved immediately.
-    cpu->Timestamp = ARM9->MemTimestamp + iloffs;
-
-    // pipeline flush logic goes here.
-}
-
-void ARM9_SetReg(struct ARM946ES* ARM9, const int reg, u32 val, const int iloffs, const int iloffs_c)
-{
-    if (reg == 15) // PC must be handled specially
-    {
-        ARM9_SetPC(ARM9, reg, val, iloffs); // CHECKME: should this be the port C time?
-    }
-    else
-    {
-        // I pray that nothing makes it any more complex than this.
-        cpu->R[reg] = val;
-        ARM9->RegIL[reg][0] = iloffs;
-        ARM9->RegIL[reg][1] = iloffs_c;
-    }
-}
+// interlocks on ARM946E-S:
+// execute stage interlocks delay the fetch stage which delayes the execute stage
+// memory stage interlocks do... something?
+// base is memory stage end - 1
+// 
 
 void ARM9_UpdateInterlocks(struct ARM946ES* ARM9, const s8 diff)
 {
@@ -107,50 +104,163 @@ void ARM9_UpdateInterlocks(struct ARM946ES* ARM9, const s8 diff)
     }
 }
 
-void ARM9_CheckInterlocks(struct ARM946ES* ARM9, int* offset, const int reg, const int cycledelay, const bool portc)
+void ARM9_InterlockStall(struct ARM946ES* ARM9, const s8 stall)
+{
+    if (stall > 0)
+    {
+        cpu->Timestamp = ARM9->MemTimestamp + stall - 1;
+        ARM9_UpdateInterlocks(ARM9, stall);
+    }
+}
+
+void ARM9_SetPC(struct ARM946ES* ARM9, u32 addr, const s8 iloffs)
+{
+    // arm9 enforces pc alignment properly for once.
+    addr &= ~(cpu->CPSR.Thumb ? 0x1 : 0x3);
+    // r15 interlocks must be resolved immediately.
+    ARM9_InterlockStall(ARM9, iloffs);
+
+    // pipeline flush logic goes here.
+    // TODO: handle stalls if icache streaming is ongoing here?
+    if (cpu->CPSR.Thumb)
+    {
+        cpu->Instr[1] = ARM9_InstrRead16(ARM9, addr);
+        cpu->Instr[2] = ARM9_InstrRead16(ARM9, addr+2);
+        cpu->PC = addr + 4;
+    }
+    else
+    {
+        cpu->Instr[1] = ARM9_InstrRead32(ARM9, addr+2);
+        cpu->Instr[2] = ARM9_InstrRead32(ARM9, addr+4);
+        cpu->PC = addr + 8;
+    }
+}
+
+void ARM9_SetReg(struct ARM946ES* ARM9, const int reg, u32 val, const s8 iloffs, const s8 iloffs_c)
+{
+    if (reg == 15) // PC must be handled specially
+    {
+        ARM9_SetPC(ARM9, val, iloffs); // CHECKME: should this be the port C time?
+    }
+    else
+    {
+        // I pray that nothing makes it any more complex than this.
+        cpu->R[reg] = val;
+        ARM9->RegIL[reg][0] = iloffs;
+        ARM9->RegIL[reg][1] = iloffs_c;
+    }
+}
+
+void ARM9_CheckInterlocks(struct ARM946ES* ARM9, s8* stall, const int reg, const int cycledelay, const bool portc)
 {
     // the fact this always needs a branch really annoys me.
     // but i dont think this is possible to work around without losing accuracy.
     s8 diff = ARM9->RegIL[reg][portc] - cycledelay;
-    if (diff > 0)
-    {
-        cpu->Timestamp = ARM9->MemTimestamp + diff - 1;
-    }
+    if (*stall < diff) *stall = diff;
 }
 
-void ARM9_ExecuteCycles(struct ARM946ES* ARM9, const u32 Execute, const u32 Memory)
+void ARM9_ExecuteCycles(struct ARM946ES* ARM9, const int execute, const int memory)
 {
-    cpu->Timestamp += Execute;
+    if (cpu->Timestamp < (ARM9->MemTimestamp - 1))
+        cpu->Timestamp = (ARM9->MemTimestamp - 1);
 
-    s8 diff = ARM9->MemTimestamp - (cpu->Timestamp + Memory);
+    cpu->Timestamp += execute;
+
+    s8 diff = (cpu->Timestamp + memory) - ARM9->MemTimestamp;
     ARM9->MemTimestamp += diff;
 
     ARM9_UpdateInterlocks(ARM9, diff);
 }
 
-// original plan wont work
-// we need:
-// decode interlocks
-// fetch
-// execute
-// memory
-// in that order, otherwise we can't get interrupts cycle accurate.
-
-inline void ARM9_Step(struct ARM946ES* ARM9)
+bool ARM9_CheckInterrupts(struct ARM946ES* ARM9)
 {
-    //Decode
-    //if (!Fetch) return;
-
-    //Execute
-
-
+    if (cpu->WakeIRQ)
+    {
+        if (unlikely(cpu->FastInterruptRequest)) // jakly why are you implementing this...
+        {
+            ARM9_FastInterruptRequest(ARM9);
+            return true;
+        }
+        else
+        {
+            ARM9_InterruptRequest(ARM9);
+            return true;
+        }
+    }
+    else return false;
 }
 
-inline void ARM9_ResolveTimings(struct ARM946ES* ARM9)
-{
-    //if (interlocked)
-
-    // (memory - 1) + (fetch - 1) + execute
+#define ILCheck(x) \
+s8 stall = x (ARM9, instr); \
+if (stall) \
+{ \
+    ARM9_InterlockStall(ARM9, stall); \
 }
+
+#define FetchIRQExec(size, x) \
+cpu->Instr[2] = ARM9_InstrRead##size (ARM9, cpu->PC); \
+if (!ARM9_CheckInterrupts(ARM9)) \
+    x \
+    (cpu, instr);
+
+void ARM9_Step(struct ARM946ES* ARM9)
+{
+    // step pipeline forward.
+    cpu->Instr[0] = cpu->Instr[1];
+    cpu->Instr[1] = cpu->Instr[2];
+
+    if (cpu->CPSR.Thumb)
+    {
+        u16 instr = cpu->Instr[0];
+        u16 decode = (instr >> 10);
+
+        ILCheck(THUMB9_InterlockLUT[decode])
+        FetchIRQExec(16, THUMB9_InstructionLUT[decode])
+    }
+    else
+    {
+        u32 instr = cpu->Instr[0];
+        u8 condcode = instr >> 28;
+        u16 decode = ((instr >> 16) & 0x0FF0) | ((instr >> 8) & 0xF);
+
+        // TODO: DATA ABORTS?????
+        // first we need to check the condition code (should be part of decoding?)
+        if (ARM_ConditionLookup(condcode, cpu->CPSR.Flags))
+        {
+            // partial decode stage modelling in order to check for and handle interlocks.
+            // must be done before fetch stage for proper cycle accuracy.
+            ILCheck(ARM9_InterlockLUT[decode])
+            FetchIRQExec(32, ARM9_InstructionLUT[decode])
+        }
+        else if (unlikely(decode == 0x127)) // BKPT; needs special handling, it always passes condition codes
+        {
+            // TODO: consider doing this after the unconditional instruction handling?
+            // bkpt doesn't have interlocks
+            FetchIRQExec(32, ARM9_PrefetchAbort)
+        }
+        else if (condcode == COND_NV) // unconditional instructions
+        {
+            // list of instructions here:
+            // BLX (imm) - actually used
+            // PLD - valid and has unique timings (can interlock), doesn't seem to do anything useful though...
+            // STC2, LDC2, CDP2, MCR2, MRC2. - should all be undefined exceptions but might have unique timings?
+
+            ILCheck(ARM9_UNIMPL_Interlocks)
+            FetchIRQExec(32, ARM_UNIMPL)
+        }
+        else // actually an instruction that failed the condition check.
+        {
+            // CHECKME: skipped instructions shouldn't trigger interlocks right?
+
+            cpu->Instr[2] = ARM9_InstrRead32(ARM9, cpu->PC);
+
+            if (!ARM9_CheckInterrupts(ARM9))
+                ARM9_ExecuteCycles(ARM9, 1, 1);
+        }
+    }
+}
+
+#undef ILCheck
+#undef FetchIRQExec
 
 #undef cpu

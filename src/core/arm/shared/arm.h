@@ -5,6 +5,7 @@
 
 
 
+// lsb is technically a negation of the pass/fail
 enum ARM_Condition_Codes : u8
 {
     COND_EQ,
@@ -22,7 +23,7 @@ enum ARM_Condition_Codes : u8
     COND_GT,
     COND_LE,
     COND_AL,
-    COND_NV,
+    COND_NV, // legacy
 };
 
 enum ARM_Modes : u8
@@ -70,6 +71,8 @@ union PSR
         bool Thumb : 1;
         bool FIQDisable : 1;
         bool IRQDisable : 1;
+        bool IDABDisable : 1; // v6
+        bool DataEndian : 1; // v6
         u32 : 6;
         u32 GE : 4; // v6
         u32 : 4;
@@ -83,7 +86,8 @@ union PSR
     };
     struct
     {
-        u32 : 28;
+        u32 ModeFull : 5;
+        u32 : 23;
         u32 Flags : 4;
     };
 };
@@ -102,13 +106,61 @@ struct ARM
             union { u32 R15; u32 PC; };
         };
     };
+    union
+    {
+        u32 WakeEvent;
+        u16 WakeIRQ;
+        struct
+        {
+            bool InterruptRequest;
+            bool FastInterruptRequest;
+            bool EventSent; // ARMv6K
+        };
+    };
+    union
+    {
+        u16 CpuSleeping;
+        struct
+        {
+            bool WaitForInterrupt;
+            bool WaitForEvent; // ARMv6K
+        };
+    };
     union PSR CPSR;
+    struct
+    {
+        u32 R[7];
+        union PSR SPSR;
+    } FIQ_Bank;
+    struct
+    {
+        u32 R[2];
+        union PSR SPSR;
+    } IRQ_Bank;
+    struct
+    {
+        u32 R[2];
+        union PSR SPSR;
+    } SWI_Bank;
+    struct
+    {
+        u32 R[2];
+        union PSR SPSR;
+    } ABT_Bank;
+    struct
+    {
+        u32 R[2];
+        union PSR SPSR;
+    } UND_Bank;
     u8 CPUID;
+    bool Privileged; // permissions
     u32 Instr[3]; // prefetch pipeline
-    u32* SPSR;
     timestamp Timestamp;
-    struct Console* Console;
+    struct Console* Sys;
 };
 
 bool ARM_ConditionLookup(u8 condition, u8 flags);
 void ARM_IncrPC(struct ARM* cpu, bool thumb);
+void ARM_BankSwap(struct ARM* cpu, u8 newmode);
+void ARM_UpdatePerms(struct ARM* cpu, bool privileged);
+void ARM_UpdateMode(struct ARM* cpu, u8 mode);

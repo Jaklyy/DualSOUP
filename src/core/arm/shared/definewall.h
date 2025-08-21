@@ -1,4 +1,4 @@
-
+#if 0
 
 
 
@@ -49,3 +49,4 @@
         #error "THIS IS NOT A VALID CPUNUM!!! IM NOT EMULATING THAT!!!"
     #endif
 #endif
+#endif 

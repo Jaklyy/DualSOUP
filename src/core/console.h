@@ -30,24 +30,24 @@ constexpr long double VCountus  = 63.5555631677; // length of a scanline in us; 
 
 
 
-constexpr int MainRAM_Size      = 4   * 1024 * 1024; // 4   MiB
-constexpr int SharedWRAM_Size   = 32  * 1024;        // 32  KiB
-constexpr int ARM7WRAM_Size     = 64  * 1024;        // 64  KiB
-constexpr int NTRBios9_Size     = 4   * 1024;        // 4   KiB
-constexpr int NTRBios7_Size     = 16  * 1024;        // 16  KiB
-constexpr int VRAM_A_Size       = 128 * 1024;        // 128 KiB
-constexpr int VRAM_B_Size       = 128 * 1024;        // 128 KiB
-constexpr int VRAM_C_Size       = 128 * 1024;        // 128 KiB
-constexpr int VRAM_D_Size       = 128 * 1024;        // 128 KiB
-constexpr int VRAM_E_Size       = 64  * 1024;        // 64  KiB
-constexpr int VRAM_F_Size       = 16  * 1024;        // 16  KiB
-constexpr int VRAM_G_Size       = 16  * 1024;        // 16  KiB
-constexpr int VRAM_H_Size       = 32  * 1024;        // 32  KiB
-constexpr int VRAM_I_Size       = 16  * 1024;        // 16  KiB
+constexpr int MainRAM_Size      = MiB(4);
+constexpr int SharedWRAM_Size   = KiB(32);
+constexpr int ARM7WRAM_Size     = KiB(64);
+constexpr int NTRBios9_Size     = KiB(4);
+constexpr int NTRBios7_Size     = KiB(16);
+constexpr int VRAM_A_Size       = KiB(128);
+constexpr int VRAM_B_Size       = KiB(128);
+constexpr int VRAM_C_Size       = KiB(128);
+constexpr int VRAM_D_Size       = KiB(128);
+constexpr int VRAM_E_Size       = KiB(64);
+constexpr int VRAM_F_Size       = KiB(16);
+constexpr int VRAM_G_Size       = KiB(16);
+constexpr int VRAM_H_Size       = KiB(32);
+constexpr int VRAM_I_Size       = KiB(16);
 
 
 
-struct NDS
+struct Console
 {
     struct ARM946ES ARM9;
     struct ARM7TDMI ARM7;
@@ -57,19 +57,30 @@ struct NDS
         
     } IO;
 
-    alignas(64)
-    u8 MainRAM[MainRAM_Size]; // fcram
-    u8 SharedWRAM[SharedWRAM_Size];
-    u8 ARM7WRAM[ARM7WRAM_Size];
-    u8 VRAM_A[VRAM_A_Size];
-    u8 VRAM_B[VRAM_B_Size];
-    u8 VRAM_C[VRAM_C_Size];
-    u8 VRAM_D[VRAM_D_Size];
-    u8 VRAM_E[VRAM_E_Size];
-    u8 VRAM_F[VRAM_F_Size];
-    u8 VRAM_G[VRAM_G_Size];
-    u8 VRAM_H[VRAM_H_Size];
-    u8 VRAM_I[VRAM_I_Size];
-    u8 NTRBios9[NTRBios9_Size];
-    u8 NTRBios7[NTRBios7_Size];
+    alignas(HOST_CACHEALIGN)
+    // FCRAM
+    MEMORY(MainRAM,     MainRAM_Size);
+    // WRAM
+    MEMORY(SharedWRAM,  SharedWRAM_Size);
+    MEMORY(ARM7WRAM,    ARM7WRAM_Size);
+    // VRAM
+    MEMORY(VRAM_A,      VRAM_A_Size);
+    MEMORY(VRAM_B,      VRAM_B_Size);
+    MEMORY(VRAM_C,      VRAM_C_Size);
+    MEMORY(VRAM_D,      VRAM_D_Size);
+    MEMORY(VRAM_E,      VRAM_E_Size);
+    MEMORY(VRAM_F,      VRAM_F_Size);
+    MEMORY(VRAM_G,      VRAM_G_Size);
+    MEMORY(VRAM_H,      VRAM_H_Size);
+    MEMORY(VRAM_I,      VRAM_I_Size);
+    // BIOS
+    MEMORY(NTRBios9,    NTRBios9_Size);
+    MEMORY(NTRBios7,    NTRBios7_Size);
 };
+
+// reset the entire struct to 0 and init variables that need that.
+void Console_Init(struct Console* sys);
+// emulate a hardware reset.
+void Console_Reset(struct Console* sys);
+// actually run the emulation.
+void Console_MainLoop(struct Console* sys);

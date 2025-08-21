@@ -3,7 +3,7 @@
 #include <stddef.h>
 #include "../../utils.h"
 #include "arm.h"
-#include "arm_inc.h"
+#include "inc.h"
 
 
 
@@ -42,7 +42,7 @@ union DataProc_Decode
     };
 };
 
-u32 ARM_ADD(const u32 rn_val, const u32 shifter_out, union ARM_FlagsOut* flags_out)
+[[nodiscard]] u32 ARM_ADD(const u32 rn_val, const u32 shifter_out, union ARM_FlagsOut* flags_out)
 {
     u32 alu_out;
     flags_out->Carry    = ckd_add(&alu_out, (u32)rn_val, (u32)shifter_out);
@@ -50,7 +50,7 @@ u32 ARM_ADD(const u32 rn_val, const u32 shifter_out, union ARM_FlagsOut* flags_o
     return alu_out;
 }
 
-u32 ARM_ADC(const u32 rn_val, const u32 shifter_out, const bool carry_in, union ARM_FlagsOut* flags_out)
+[[nodiscard]] u32 ARM_ADC(const u32 rn_val, const u32 shifter_out, const bool carry_in, union ARM_FlagsOut* flags_out)
 {
     u32 alu_out;
     union ARM_FlagsOut flags[2];
@@ -60,7 +60,7 @@ u32 ARM_ADC(const u32 rn_val, const u32 shifter_out, const bool carry_in, union 
     return alu_out;
 }
 
-u32 ARM_SUB_RSB(const u32 a, const u32 b, union ARM_FlagsOut* flags_out)
+[[nodiscard]] u32 ARM_SUB_RSB(const u32 a, const u32 b, union ARM_FlagsOut* flags_out)
 {
     u32 alu_out;
     flags_out->Carry    = ckd_sub(&alu_out, (u32)a, (u32)b);
@@ -68,7 +68,7 @@ u32 ARM_SUB_RSB(const u32 a, const u32 b, union ARM_FlagsOut* flags_out)
     return alu_out;
 }
 
-u32 ARM_SBC_RSC(const u32 a, const u32 b, const bool carry_in, union ARM_FlagsOut* flags_out)
+[[nodiscard]] u32 ARM_SBC_RSC(const u32 a, const u32 b, const bool carry_in, union ARM_FlagsOut* flags_out)
 {
     u32 alu_out;
     union ARM_FlagsOut flags[2];
@@ -220,7 +220,6 @@ void ARM_DataProc(struct ARM* cpu, const u32 instr_data)
 
     // the actual ALU part of the ALU instruction
     u32 alu_out;
-    bool overflow_out;
     switch(instr.Opcode)
     {
     case 0:  // AND
@@ -231,18 +230,18 @@ void ARM_DataProc(struct ARM* cpu, const u32 instr_data)
         alu_out = rn_val ^ shifter_out; break;
     case 2:  // SUB
     case 10: // CMP
-        ARM_SUB_RSB(rn_val, shifter_out, &flags_out); break;
+        alu_out = ARM_SUB_RSB(rn_val, shifter_out, &flags_out); break;
     case 3:  // RSB
-        ARM_SUB_RSB(shifter_out, rn_val, &flags_out); break;
+        alu_out = ARM_SUB_RSB(shifter_out, rn_val, &flags_out); break;
     case 4:  // ADD
     case 11: // CMN
-        ARM_ADD(rn_val, shifter_out, &flags_out); break;
+        alu_out = ARM_ADD(rn_val, shifter_out, &flags_out); break;
     case 5:  // ADC
-        ARM_ADC(rn_val, shifter_out, cpu->CPSR.Carry, &flags_out); break;
+        alu_out = ARM_ADC(rn_val, shifter_out, cpu->CPSR.Carry, &flags_out); break;
     case 6:  // SBC
-        ARM_SBC_RSC(rn_val, shifter_out, cpu->CPSR.Carry, &flags_out); break;
+        alu_out = ARM_SBC_RSC(rn_val, shifter_out, cpu->CPSR.Carry, &flags_out); break;
     case 7:  // RSC
-        ARM_SBC_RSC(shifter_out, rn_val, cpu->CPSR.Carry, &flags_out); break;
+        alu_out = ARM_SBC_RSC(shifter_out, rn_val, cpu->CPSR.Carry, &flags_out); break;
     case 12: // ORR
         alu_out = rn_val | shifter_out; break;
     case 13: // MOV
@@ -293,34 +292,39 @@ void ARM_DataProc(struct ARM* cpu, const u32 instr_data)
             flags_out.Negative = (alu_out >> 31);
             flags_out.Zero = !alu_out;
             cpu->CPSR.Flags = flags_out.Raw;
+
+            if (instr.Rd == 15)
+            {
+                // restore spsr
+            }
         }
 
         SETREG(instr.Rd, alu_out, 0, 0);
     }
 }
 
-int ARM9_DataProc_Interlocks(struct ARM946ES* ARM9, u32 instr_data)
+s8 ARM9_DataProc_Interlocks(struct ARM946ES* ARM9, u32 instr_data)
 {
     const union DataProc_Decode instr = (union DataProc_Decode)(instr_data);
 
-    int offset = 0;
+    s8 stall = 0;
     if (!instr.Immediate)
     {
-        ARM9_CheckInterlocks(ARM9, &offset, instr.Rm, 0, false);
+        ARM9_CheckInterlocks(ARM9, &stall, instr.Rm, 0, false);
         if (instr.ShiftType & 0x1)
         {
-            ARM9_CheckInterlocks(ARM9, &offset, instr.Rs, 0, false);
+            ARM9_CheckInterlocks(ARM9, &stall, instr.Rs, 0, false);
             if ((instr.Opcode & 0b1101) != 0b1101) // NOT mov or mvn
             {
-                ARM9_CheckInterlocks(ARM9, &offset, instr.Rn, 1, false);
+                ARM9_CheckInterlocks(ARM9, &stall, instr.Rn, 1, false);
             }
         }
     }
     if ((instr.Opcode & 0b1101) != 0b1101) // NOT mov or mvn
     {
-        ARM9_CheckInterlocks(ARM9, &offset, instr.Rn, 0, false);
+        ARM9_CheckInterlocks(ARM9, &stall, instr.Rn, 0, false);
     }
-    return offset;
+    return stall;
 }
 
 union Multiply_Decode
@@ -345,7 +349,7 @@ union Multiply_Decode
     };
 };
 
-int ARM7_NumBoothIters(const u32 rs_val, const bool _unsigned)
+[[nodiscard]] int ARM7_NumBoothIters(const u32 rs_val, const bool _unsigned)
 {
     int iter = stdc_leading_zeros(rs_val);
     // signed 
@@ -356,6 +360,7 @@ int ARM7_NumBoothIters(const u32 rs_val, const bool _unsigned)
     return iter;
 }
 
+// MUL, MLA, SMULL, SMLAL, UMULL, UMLAL
 // UMAAL should probably be in here, but the encoding is weird...?
 void ARM_Mul(struct ARM* cpu, const u32 instr_data)
 {
@@ -440,21 +445,21 @@ void ARM_Mul(struct ARM* cpu, const u32 instr_data)
     }
 }
 
-int ARM9_Mul_Interlocks(struct ARM946ES* ARM9, const u32 instr_data)
+s8 ARM9_Mul_Interlocks(struct ARM946ES* ARM9, const u32 instr_data)
 {
     const union Multiply_Decode instr = {.Raw = instr_data};
 
-    int offset = 0;
-    ARM9_CheckInterlocks(ARM9, &offset, instr.Rm, 0, false);
-    ARM9_CheckInterlocks(ARM9, &offset, instr.Rs, 0, false);
+    s8 stall = 0;
+    ARM9_CheckInterlocks(ARM9, &stall, instr.Rm, 0, false);
+    ARM9_CheckInterlocks(ARM9, &stall, instr.Rs, 0, false);
 
     if (instr.Accumulate)
     {
-        ARM9_CheckInterlocks(ARM9, &offset, instr.Rn, 1, true);
+        ARM9_CheckInterlocks(ARM9, &stall, instr.Rn, 1, true);
         if (instr.Long)
-            ARM9_CheckInterlocks(ARM9, &offset, instr.Rd, 1, true);
+            ARM9_CheckInterlocks(ARM9, &stall, instr.Rd, 1, true);
     }
-    return offset;
+    return stall;
 }
 
 // WELCOME TO THE ARMv5+ ONLY CLUB!
@@ -477,22 +482,100 @@ void ARM_CLZ(struct ARM* cpu, const u32 instr_data)
     u32 rm_val = GETREG(instr.Rm);
     u32 alu_out = stdc_leading_zeros(rm_val);
 
+    ARM_IncrPC(cpu, false);
+
     EXECYCLES(0, 1, 1);
 
-    SETREG(instr.Rd, rm_val, 0, 0);
+    SETREG(instr.Rd, alu_out, 0, 0);
 }
 
-int ARM9_CLZ_Interlocks(struct ARM946ES* ARM9, const u32 instr_data)
+s8 ARM9_CLZ_Interlocks(struct ARM946ES* ARM9, const u32 instr_data)
 {
     const union CLZ_Decode instr = {.Raw = instr_data};
-    int offset = 0;
+    s8 stall = 0;
 
-    ARM9_CheckInterlocks(ARM9, &offset, instr.Rm, 0, false);
-    return offset;
+    ARM9_CheckInterlocks(ARM9, &stall, instr.Rm, 0, false);
+    return stall;
 }
 
-// QADD, QDADD, QSUB, QDSUB
-void ARM_Sat_Add_Sub(struct ARM* cpu, const u32 instr_data)
+union SatMath_Decode
 {
+    u32 Raw;
+    struct
+    {
+        u32 Rm : 4;
+        u32 : 8;
+        u32 Rd : 4;
+        u32 Rn : 4;
+        u32 : 1;
+        bool Sub : 1;
+        bool Double : 1;
+    };
+};
 
+// QADD, QDADD, QSUB, QDSUB
+void ARM_SatMath(struct ARM* cpu, const u32 instr_data)
+{
+    const union SatMath_Decode instr = {.Raw = instr_data};
+
+    s64 rm_val = (s32)GETREG(instr.Rm);
+    s64 rn_val = (s32)GETREG(instr.Rn);
+
+    ARM_IncrPC(cpu, false);
+
+    s64 alu_out;
+    if (instr.Double)
+    {
+        rn_val *= 2;
+
+        // saturate
+        if (rn_val > s32_max)
+        {
+            rn_val = s32_max;
+            cpu->CPSR.QSticky = true;
+        }
+        else if (rn_val < s32_min)
+        {
+            rn_val = s32_min;
+            cpu->CPSR.QSticky = true;
+        }
+    }
+
+    if (instr.Sub)
+    {
+        alu_out = rm_val - rn_val;
+    }
+    else // add
+    {
+        alu_out = rm_val + rn_val;
+    }
+
+    // saturate
+    if (alu_out > s32_max)
+    {
+        alu_out = s32_max;
+        cpu->CPSR.QSticky = true;
+    }
+    else if (alu_out < s32_min)
+    {
+        alu_out = s32_min;
+        cpu->CPSR.QSticky = true;
+    }
+
+    EXECYCLES(0, 1, 1);
+
+    if (instr.Rd != 15) // saturating maths dont support pc writeback
+    {
+        SETREG(instr.Rd, alu_out, 1, 1);
+    }
+}
+
+s8 ARM9_SatMath_Interlocks(struct ARM946ES* ARM9, u32 instr_data)
+{
+    const union SatMath_Decode instr = {.Raw = instr_data};
+    s8 stall = 0;
+
+    ARM9_CheckInterlocks(ARM9, &stall, instr.Rm, 0, false);
+    ARM9_CheckInterlocks(ARM9, &stall, instr.Rn, 0, false);
+    return stall;
 }

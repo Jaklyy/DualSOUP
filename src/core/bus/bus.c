@@ -1,3 +1,4 @@
+#if 0
 #include <stdio.h>
 #include <stdbit.h>
 #include "bus.h"
@@ -363,3 +364,4 @@ inline int Timing16Bit(const u8 accesswidth)
     }
     else return 1;
 }
+#endif

@@ -1,3 +1,4 @@
+#if 0
 #include <stdio.h>
 #include "../utils.h"
 #include "bus.h"
@@ -42,3 +43,4 @@
 #undef NAME3
 #undef NAME2
 #undef NAME1
+#endif

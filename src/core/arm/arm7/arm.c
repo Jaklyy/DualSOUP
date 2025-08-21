@@ -1,17 +1,18 @@
-#include "arm.h"
-#include "../arm_shared/arm.h"
 #include "../../utils.h"
+#include "../shared/arm.h"
+#include "arm.h"
 
 
 
 
 #define cpu ((struct ARM*)ARM7)
 
-void ARM7_Init(struct ARM7TDMI* ARM7)
+void ARM7_Init(struct ARM7TDMI* ARM7, struct Console* sys)
 {
     cpu->CPUID = ARM7ID;
     // msb of mode is always set
     cpu->CPSR.ModeMSB = 1;
+    cpu->Sys = sys; // TODO
 
     ARM7_Reset(ARM7); // raise reset exception
 }
@@ -34,13 +35,14 @@ u32 ARM7_GetReg(struct ARM7TDMI* ARM7, const int reg)
     return cpu->R[reg];
 }
 
-void ARM7_SetPC(struct ARM7TDMI* ARM7, const int reg, u32 val)
+void ARM7_SetPC(struct ARM7TDMI* ARM7, u32 val)
 {
     /// branch logic???
 
     // arm7 doesn't seem to implement bit0 of program counter
     // doesn't enforce alignment in arm mode either.
     val &= ~0x1;
+    cpu->PC = val;
 }
 
 void ARM7_SetReg(struct ARM7TDMI* ARM7, const int reg, u32 val)
@@ -49,7 +51,7 @@ void ARM7_SetReg(struct ARM7TDMI* ARM7, const int reg, u32 val)
 
     if (reg == 15) // PC must be handled specially
     {
-        ARM7_SetPC(ARM7, reg, val);
+        ARM7_SetPC(ARM7, val);
     }
     else
     {

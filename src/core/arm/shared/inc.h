@@ -21,5 +21,16 @@
 #define EXECYCLES(exec7, exec9, mem9) \
 ((cpu->CPUID == ARM7ID) \
     ? ARM7_ExecuteCycles((struct ARM7TDMI*)cpu, exec7-1) \
-    : ARM9_ExecuteCycles((struct ARM946ES*)cpu, exec9-1, mem9) \
+    : ARM9_ExecuteCycles((struct ARM946ES*)cpu, exec9, mem9) \
+)
+
+#define GETVECTOR \
+((cpu->CPUID == ARM7ID) \
+    ? 0x00000000 \
+    : ARM9_GetExceptionBase((struct ARM946ES*)cpu))
+
+#define WRITESPSR(psr) \
+((cpu->CPUID == ARM7ID) \
+    ? /* TODO */ \
+    : ARM9_WriteSPSR((struct ARM946ES*)cpu, psr) \
 )

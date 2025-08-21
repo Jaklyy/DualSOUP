@@ -8,7 +8,7 @@ OBJDIR := /obj
 SRCDIR := src
 
 CC := clang
-CFLAGS := -MP -MMD -O3 -std=gnu23 -flto -fwrapv -Wimplicit-fallthrough -Wall -Wno-unused-variable
+CFLAGS := -MP -MMD -O3 -std=gnu23 -flto -fwrapv -Wimplicit-fallthrough -Wall -Wextra -Werror=implicit-fallthrough
 
 ifeq ($(DEB), 1) # debug build
 	BUILDDIR := $(DEBDIR)
