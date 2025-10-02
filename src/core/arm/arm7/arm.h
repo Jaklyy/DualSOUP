@@ -35,6 +35,9 @@ void ARM7_Init(struct ARM7TDMI* ARM7, struct Console* console);
 // reset vector exception.
 void ARM7_Reset(struct ARM7TDMI* ARM7);
 
+union ARM_PSR ARM7_GetSPSR(struct ARM7TDMI* ARM7);
+void ARM7_SetSPSR(struct ARM7TDMI* ARM7, union ARM_PSR psr);
+
 // read register.
 [[nodiscard]] u32 ARM7_GetReg(struct ARM7TDMI* ARM7, const int reg);
 // write register.

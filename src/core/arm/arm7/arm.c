@@ -9,23 +9,69 @@
 
 void ARM7_Init(struct ARM7TDMI* ARM7, struct Console* sys)
 {
-    cpu->CPUID = ARM7ID;
-    // msb of mode is always set
-    cpu->CPSR.ModeMSB = 1;
-    cpu->Sys = sys; // TODO
-
-    ARM7_Reset(ARM7); // raise reset exception
+    ARM_Init(cpu, sys, ARM7ID);
 }
 
 void ARM7_Reset(struct ARM7TDMI* ARM7)
 {
     // set CPSR
-    cpu->CPSR.Mode = MODE_SWI;
+    cpu->CPSR.Mode = ARMMODE_SWI;
     cpu->CPSR.Thumb = false;
     cpu->CPSR.IRQDisable = true;
     cpu->CPSR.FIQDisable = true;
 
-    cpu->PC = 0x00000000 + VECTOR_RST;
+    cpu->PC = 0x00000000 + ARMVECTOR_RST;
+}
+
+union ARM_PSR ARM7_GetSPSR(struct ARM7TDMI* ARM7)
+{
+    // TODO: THIS IS WRONG FOR ARM7
+    switch(cpu->CPSR.Mode)
+    {
+    case ARMMODE_FIQ:
+        return cpu->FIQ_Bank.SPSR;
+    case ARMMODE_IRQ:
+        return cpu->IRQ_Bank.SPSR;
+    case ARMMODE_SWI:
+        return cpu->SWI_Bank.SPSR;
+    case ARMMODE_SWI+1 ... ARMMODE_ABT:
+        return cpu->ABT_Bank.SPSR;
+    case ARMMODE_ABT+1 ... ARMMODE_UND:
+        return cpu->UND_Bank.SPSR;
+    case ARMMODE_USR:
+    case ARMMODE_UND+1 ... ARMMODE_SYS:
+        return cpu->CPSR;
+    default: unreachable();
+    }
+}
+
+void ARM7_SetSPSR(struct ARM7TDMI* ARM7, union ARM_PSR psr)
+{
+    // TODO: THIS IS WRONG FOR ARM7
+    switch(cpu->CPSR.Mode)
+    {
+    case ARMMODE_FIQ:
+        cpu->FIQ_Bank.SPSR = psr;
+        break;
+    case ARMMODE_IRQ:
+        cpu->IRQ_Bank.SPSR = psr;
+        break;
+    case ARMMODE_SWI:
+        cpu->SWI_Bank.SPSR = psr;
+        break;
+    case ARMMODE_SWI+1 ... ARMMODE_ABT:
+        cpu->ABT_Bank.SPSR = psr;
+        break;
+    case ARMMODE_ABT+1 ... ARMMODE_UND:
+        cpu->UND_Bank.SPSR = psr;
+        break;
+    case ARMMODE_USR:
+    case ARMMODE_UND+1 ... ARMMODE_SYS:
+        // no spsr, no write
+        break;
+    default: unreachable();
+    }
+    return;
 }
 
 u32 ARM7_GetReg(struct ARM7TDMI* ARM7, const int reg)
@@ -61,8 +107,11 @@ void ARM7_SetReg(struct ARM7TDMI* ARM7, const int reg, u32 val)
 
 void ARM7_ExecuteCycles(struct ARM7TDMI* ARM7, const u32 Execute)
 {
-    cpu->Timestamp += Execute;
-    if (Execute != 0) ARM7->CodeSeq = false;
+    // must be minus 1 to model pipeline overlaps
+    cpu->Timestamp += Execute - 1;
+    // internal cycles break up instruction bursts
+    // CHECKME: presumably it end the burst on the first internal cycle?
+    if (Execute > 1) ARM7->CodeSeq = false;
 }
 
 #undef cpu

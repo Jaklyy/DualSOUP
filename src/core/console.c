@@ -14,7 +14,7 @@ void Console_Init(struct Console* sys)
 
 void Console_Reset(struct Console* sys)
 {
-    ARM9_Reset(&sys->ARM9, false, true);
+    ARM9_Reset(&sys->ARM9, false /*unverified I guess?*/, true);
     ARM7_Reset(&sys->ARM7);
 }
 

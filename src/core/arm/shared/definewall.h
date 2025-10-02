@@ -9,8 +9,8 @@
     #undef NAME
     #undef NAME2
     #undef NAME3
-    #undef SETREG
-    #undef GETREG
+    #undef ARM_SetReg
+    #undef ARM_GetReg
     #undef ADDCYCLES
     #undef CAST
 #else
@@ -35,8 +35,8 @@
     #define NAME3(x, y, z) x##z##_##y
     #define NAME2(x, y, z) NAME3(x, y, z)
     #define NAME(x, y) NAME2(x, y, CPUNUM)
-    #define SETREG NAME2(ARM, SetReg, CPUNUM)
-    #define GETREG NAME2(ARM, GetReg, CPUNUM)
+    #define ARM_SetReg NAME2(ARM, SetReg, CPUNUM)
+    #define ARM_GetReg NAME2(ARM, GetReg, CPUNUM)
     #define ADDCYCLES NAME2(ARM, AddCycles, CPUNUM)
 
     #if CPUNUM == 9

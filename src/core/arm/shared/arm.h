@@ -8,45 +8,45 @@
 // lsb is technically a negation of the pass/fail
 enum ARM_Condition_Codes : u8
 {
-    COND_EQ,
-    COND_NE,
-    COND_CS,
-    COND_CC,
-    COND_MI,
-    COND_PL,
-    COND_VS,
-    COND_VC,
-    COND_HI,
-    COND_LS,
-    COND_GE,
-    COND_LT,
-    COND_GT,
-    COND_LE,
-    COND_AL,
-    COND_NV, // legacy
+    ARMCOND_EQ,
+    ARMCOND_NE,
+    ARMCOND_CS,
+    ARMCOND_CC,
+    ARMCOND_MI,
+    ARMCOND_PL,
+    ARMCOND_VS,
+    ARMCOND_VC,
+    ARMCOND_HI,
+    ARMCOND_LS,
+    ARMCOND_GE,
+    ARMCOND_LT,
+    ARMCOND_GT,
+    ARMCOND_LE,
+    ARMCOND_AL,
+    ARMCOND_NV, // legacy
 };
 
 enum ARM_Modes : u8
 {
-    MODE_USR = 0x0,
-    MODE_FIQ = 0x1,
-    MODE_IRQ = 0x2,
-    MODE_SWI = 0x3, MODE_SVC = 0x3,
-    MODE_ABT = 0x7,
-    MODE_UND = 0xB,
-    MODE_SYS = 0xF,
+    ARMMODE_USR = 0x0,
+    ARMMODE_FIQ = 0x1,
+    ARMMODE_IRQ = 0x2,
+    ARMMODE_SWI = 0x3, ARMMODE_SVC = 0x3,
+    ARMMODE_ABT = 0x7,
+    ARMMODE_UND = 0xB,
+    ARMMODE_SYS = 0xF,
 };
 
 enum ARM_Exception_Vector_Offsets : u8
 {
-    VECTOR_RST = 0x00, // Reset
-    VECTOR_UND = 0x04, // Undefined Instruction
-    VECTOR_SWI = 0x08, VECTOR_SVC = 0x08, // Software Interrupt / Supervisor Call
-    VECTOR_PAB = 0x0C, // Prefetch Abort (instruction)
-    VECTOR_DAB = 0x10, // Data Abort (data)
-    VECTOR_ADR = 0x14, // Address Exception (legacy 26 bit addressing thing, only here for funsies)
-    VECTOR_IRQ = 0x18, // Interrupt Request
-    VECTOR_FIQ = 0x1C, // Fast Interrupt Request
+    ARMVECTOR_RST = 0x00, // Reset
+    ARMVECTOR_UND = 0x04, // Undefined Instruction
+    ARMVECTOR_SWI = 0x08, ARMVECTOR_SVC = 0x08, // Software Interrupt / Supervisor Call
+    ARMVECTOR_PAB = 0x0C, // Prefetch Abort (instruction)
+    ARMVECTOR_DAB = 0x10, // Data Abort (data)
+    ARMVECTOR_ADR = 0x14, // Address Exception (legacy 26 bit addressing thing, only here for funsies)
+    ARMVECTOR_IRQ = 0x18, // Interrupt Request
+    ARMVECTOR_FIQ = 0x1C, // Fast Interrupt Request
 };
 
 union ARM_FlagsOut
@@ -61,7 +61,7 @@ union ARM_FlagsOut
     };
 };
 
-union PSR
+union ARM_PSR
 {
     u32 Raw;
     struct
@@ -91,6 +91,8 @@ union PSR
         u32 Flags : 4;
     };
 };
+
+#define ARM_CoprocReg(Op1, CRn, CRm, Op2) (((Op1) << 11) | ((CRn) << 7) | ((CRm) << 3) | (Op2))
 
 struct ARM
 {
@@ -126,31 +128,31 @@ struct ARM
             bool WaitForEvent; // ARMv6K
         };
     };
-    union PSR CPSR;
+    union ARM_PSR CPSR;
     struct
     {
         u32 R[7];
-        union PSR SPSR;
+        union ARM_PSR SPSR;
     } FIQ_Bank;
     struct
     {
         u32 R[2];
-        union PSR SPSR;
+        union ARM_PSR SPSR;
     } IRQ_Bank;
     struct
     {
         u32 R[2];
-        union PSR SPSR;
+        union ARM_PSR SPSR;
     } SWI_Bank;
     struct
     {
         u32 R[2];
-        union PSR SPSR;
+        union ARM_PSR SPSR;
     } ABT_Bank;
     struct
     {
         u32 R[2];
-        union PSR SPSR;
+        union ARM_PSR SPSR;
     } UND_Bank;
     u8 CPUID;
     bool Privileged; // permissions
@@ -159,8 +161,11 @@ struct ARM
     struct Console* Sys;
 };
 
-bool ARM_ConditionLookup(u8 condition, u8 flags);
-void ARM_IncrPC(struct ARM* cpu, bool thumb);
-void ARM_BankSwap(struct ARM* cpu, u8 newmode);
-void ARM_UpdatePerms(struct ARM* cpu, bool privileged);
-void ARM_UpdateMode(struct ARM* cpu, u8 mode);
+void ARM_Init(struct ARM* cpu, struct Console* sys, const u8 CPUID);
+[[nodiscard]] bool ARM_ConditionLookup(const u8 condition, const u8 flags);
+void ARM_StepPC(struct ARM* cpu, const bool thumb);
+void ARM_BankSwap(struct ARM* cpu, const u8 newmode);
+void ARM_UpdatePerms(struct ARM* cpu, const u8 mode);
+void ARM_SetMode(struct ARM* cpu, const u8 mode);
+void ARM_SetCPSR(struct ARM* cpu, const u32 val);
+void ARM_SetThumb(struct ARM* cpu, const bool thumb);

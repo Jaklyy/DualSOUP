@@ -1,14 +1,13 @@
-#include <stdckdint.h>
 #include <stdbit.h>
 #include <stddef.h>
-#include "../../utils.h"
-#include "arm.h"
-#include "inc.h"
+#include "../../../utils.h"
+#include "../arm.h"
+#include "../inc.h"
 
 
 
 
-union DataProc_Decode
+union ARM_DataProc_Decode
 {
     u32 Raw;
     struct
@@ -42,45 +41,9 @@ union DataProc_Decode
     };
 };
 
-[[nodiscard]] u32 ARM_ADD(const u32 rn_val, const u32 shifter_out, union ARM_FlagsOut* flags_out)
-{
-    u32 alu_out;
-    flags_out->Carry    = ckd_add(&alu_out, (u32)rn_val, (u32)shifter_out);
-    flags_out->Overflow = ckd_add(&alu_out, (s32)rn_val, (s32)shifter_out);
-    return alu_out;
-}
-
-[[nodiscard]] u32 ARM_ADC(const u32 rn_val, const u32 shifter_out, const bool carry_in, union ARM_FlagsOut* flags_out)
-{
-    u32 alu_out;
-    union ARM_FlagsOut flags[2];
-    alu_out = ARM_ADD(rn_val, shifter_out, &flags[0]);
-    alu_out |= ARM_ADD(alu_out, carry_in, &flags[1]);
-    flags_out->Raw = flags[0].Raw | flags[1].Raw;
-    return alu_out;
-}
-
-[[nodiscard]] u32 ARM_SUB_RSB(const u32 a, const u32 b, union ARM_FlagsOut* flags_out)
-{
-    u32 alu_out;
-    flags_out->Carry    = ckd_sub(&alu_out, (u32)a, (u32)b);
-    flags_out->Overflow = ckd_sub(&alu_out, (s32)a, (s32)b);
-    return alu_out;
-}
-
-[[nodiscard]] u32 ARM_SBC_RSC(const u32 a, const u32 b, const bool carry_in, union ARM_FlagsOut* flags_out)
-{
-    u32 alu_out;
-    union ARM_FlagsOut flags[2];
-    alu_out = ARM_SUB_RSB(a, b, &flags[0]);
-    alu_out |= ARM_SUB_RSB(alu_out, carry_in, &flags[1]);
-    flags_out->Raw = flags[0].Raw | flags[1].Raw;
-    return alu_out;
-}
-
 void ARM_DataProc(struct ARM* cpu, const u32 instr_data)
 {
-    const union DataProc_Decode instr = {.Raw = instr_data};
+    const union ARM_DataProc_Decode instr = {.Raw = instr_data};
 
     // barrel shifter output
     u32 shifter_out;
@@ -91,134 +54,90 @@ void ARM_DataProc(struct ARM* cpu, const u32 instr_data)
     // due to pipelining(?), pc is incremented after the first cycle
     // so accessing pc via Rn with these variants gets addr + 12
     u32 rn_val;
-    bool twocycle = false;
+    bool twocycle;
+    bool carry_out = flags_out.Carry;
 
     if (instr.Immediate) // Immediate
     {
-        if (instr.RotateImm)
-        {
-            shifter_out = ROR32(instr.Imm8, instr.RotateImm*2);
-            flags_out.Carry = shifter_out >> 31;
-        }
-        else
-        {
-            shifter_out = instr.Imm8;
-        }
+        twocycle = false;
+        shifter_out = ARM_ROR(instr.Imm8, instr.RotateImm*2, &carry_out);
     }
     else // register
     {
-        u64 rm_val = GETREG(instr.Rm);
+        u64 rm_val = ARM_GetReg(instr.Rm);
+        twocycle = instr.ShiftType & 0x1;
         switch(instr.ShiftType)
         {
         case 0: // reg / lsl imm
         {
-            if (instr.ShiftImm)
-            {
-                rm_val <<= instr.ShiftImm;
-                flags_out.Carry = rm_val & ((u64)1 << 32);
-            }
+            rm_val = ARM_LSL(rm_val, instr.ShiftImm, &carry_out);
             break;
         }
         case 1: // lsl reg
         {
-            const u8 rs_val = GETREG(instr.Rs) & 0xFF;
-            twocycle = true;
-
-            if (rs_val)
-            {
-                rm_val <<= rs_val;
-                flags_out.Carry = rm_val & ((u64)1 << 32);
-            }
+            rm_val = ARM_LSL(rm_val, ARM_GetReg(instr.Rs), &carry_out);
             break;
         }
         case 2: // lsr imm
         {
-            if (instr.ShiftImm == 0) // becomes 32
-            {
-                flags_out.Carry = rm_val & (1<<31);
-                rm_val = 0;
-            }
-            else
-            {
-                flags_out.Carry = rm_val & (1<<(instr.ShiftImm-1));
-                rm_val >>= instr.ShiftImm;
-            }
+            u8 shift_imm = instr.ShiftImm;
+            if (shift_imm == 0) shift_imm = 32;
+
+            rm_val = ARM_LSR(rm_val, shift_imm, &carry_out);
             break;
         }
         case 3: // lsr reg
         {
-            const u8 rs_val = GETREG(instr.Rs) & 0xFF;
-            twocycle = true;
-
-            if (rs_val)
-            {
-                flags_out.Carry = rm_val & (1<<(rs_val-1));
-                rm_val >>= rs_val;
-            }
+            rm_val = ARM_LSR(rm_val, ARM_GetReg(instr.Rs), &carry_out);
             break;
         }
         case 4: // asr imm
         {
-            u8 ShiftImm = instr.ShiftImm;
-            if (ShiftImm == 0) ShiftImm = 32;
+            u8 shift_imm = instr.ShiftImm;
+            if (shift_imm == 0) shift_imm = 32;
 
-            flags_out.Carry = ((s32)rm_val >> (ShiftImm-1)) & 1;
-            rm_val = (s32)rm_val >> ShiftImm;
+            rm_val = ARM_ASR(rm_val, shift_imm, &carry_out);
             break;
         }
         case 5: // asr reg
         {
-            const u8 rs_val = GETREG(instr.Rs) & 0xFF;
-            twocycle = true;
-
-            if (rs_val)
-            {
-                flags_out.Carry = ((s32)rm_val >> (rs_val-1)) & 1;
-                rm_val = (s32)rm_val >> rs_val;
-            }
+            rm_val = ARM_ASR(rm_val, ARM_GetReg(instr.Rs), &carry_out);
             break;
         }
         case 6: // ror imm / rrx
         {
-            if (instr.ShiftImm)
+            if (instr.ShiftImm) // rotate right
             {
-                rm_val = ROR32(rm_val, instr.ShiftImm);
-                flags_out.Carry = rm_val & (1<<31);
+                rm_val = ARM_ROR(rm_val, instr.ShiftImm, &carry_out);
             }
-            else
+            else // rotate right w/ extend
             {
-                flags_out.Carry = rm_val & 1;
+                carry_out = rm_val & 1;
                 rm_val = (cpu->CPSR.Carry << 31) | (rm_val >> 1);
             }
             break;
         }
         case 7: // ror reg
         {
-            const u8 rs_val = GETREG(instr.Rs) & 0xFF;
-            twocycle = true;
-
-            if (rs_val)
-            {
-                rm_val = ROR32(rm_val, rs_val);
-                flags_out.Carry = rm_val & (1<<31);
-            }
+            rm_val = ARM_ROR(rm_val, ARM_GetReg(instr.Rs), &carry_out);
             break;
         }
         }
         shifter_out = rm_val;
     }
+    flags_out.Carry = carry_out; 
 
     // two cycle variants increment pc before fetching rn
-    if (twocycle) ARM_IncrPC(cpu, false);
+    if (twocycle) ARM_StepPC(cpu, false);
 
     if ((instr.Opcode & 0b1101) != 0b1101) // NOT mov or mvn
-        rn_val = GETREG(instr.Rn);
+        rn_val = ARM_GetReg(instr.Rn);
 
-    if (!twocycle) ARM_IncrPC(cpu, false);
+    if (!twocycle) ARM_StepPC(cpu, false);
 
-    EXECYCLES(1+twocycle, 1+twocycle, 1);
+    ARM_ExeCycles(1+twocycle, 1+twocycle, 1);
 
-    // the actual ALU part of the ALU instruction
+    // the actual data processing part of the data processing instruction
     u32 alu_out;
     switch(instr.Opcode)
     {
@@ -252,60 +171,43 @@ void ARM_DataProc(struct ARM* cpu, const u32 instr_data)
         alu_out = ~shifter_out; break;
     }
 
-    if (((instr.Opcode & 0b1100) == 0b1000)) // tst, teq, cmp, cmn
+    if (instr.SetFlags)
     {
-        // no register writeback
-
-        // unholy daemons awaken when the Rd field is 0xF...
         if (instr.Rd == 15)
         {
-            if (cpu->CPUID == ARM7ID)
-            {
-                // ARM7TDMI interprets this using the standard ALU decoding logic
-                // S bit is always set for these instructions and Rd is 15 which means we end up restoring the SPSR.
-                // pc still isn't written back though, which results in the cpsr being updated without a pipeline flush, similarly to an MSR.
-                flags_out.Negative = (alu_out >> 31);
-                flags_out.Zero = !alu_out;
-                cpu->CPSR.Flags = flags_out.Raw;
-                // restore spsr here.
-            }
-            else // ARM9ID
+            if ((cpu->CPUID == ARM9ID) && ((instr.Opcode & 0b1100) == 0b1000)) // tst/teq/cmp/cmn
             {
                 // ARM946E-S seemingly triggers some logic from legacy -P variant instructions?
                 // this actually results in r15 being written back (though no masking occurs unlike the actual legacy instructions).
-                // this also results in flags NOT being set.
-                SETREG(instr.Rd, alu_out, 0, 0);
+                // flags are NOT set.
+                // SPSR is NOT restored.
+                ARM_SetReg(instr.Rd, alu_out, 0, 0);
+            }
+            else // ARM7ID
+            {
+                // yes, this also happens for tst/teq/cmp/cmn
+                // yes, that complicates things *greatly*
+                ARM_RestoreSPSR;
             }
         }
         else
         {
-            // CHECKME: it shouldn't be possible for any of these opcodes to be valid without the s bit set...?
             flags_out.Negative = (alu_out >> 31);
             flags_out.Zero = !alu_out;
             cpu->CPSR.Flags = flags_out.Raw;
         }
     }
-    else
+
+    // tst/teq/cmp/cmn do not writeback to registers
+    if ((instr.Opcode & 0b1100) != 0b1000)
     {
-        if (instr.SetFlags)
-        {
-            flags_out.Negative = (alu_out >> 31);
-            flags_out.Zero = !alu_out;
-            cpu->CPSR.Flags = flags_out.Raw;
-
-            if (instr.Rd == 15)
-            {
-                // restore spsr
-            }
-        }
-
-        SETREG(instr.Rd, alu_out, 0, 0);
+        ARM_SetReg(instr.Rd, alu_out, 0, 0);
     }
 }
 
-s8 ARM9_DataProc_Interlocks(struct ARM946ES* ARM9, u32 instr_data)
+s8 ARM9_DataProc_Interlocks(struct ARM946ES* ARM9, const u32 instr_data)
 {
-    const union DataProc_Decode instr = (union DataProc_Decode)(instr_data);
+    const union ARM_DataProc_Decode instr = (union ARM_DataProc_Decode)(instr_data);
 
     s8 stall = 0;
     if (!instr.Immediate)
@@ -327,7 +229,7 @@ s8 ARM9_DataProc_Interlocks(struct ARM946ES* ARM9, u32 instr_data)
     return stall;
 }
 
-union Multiply_Decode
+union ARM_Multiply_Decode
 {
     u32 Raw;
     struct
@@ -344,58 +246,60 @@ union Multiply_Decode
         u32 : 20;
         bool SetFlags : 1;
         bool Accumulate : 1;
-        bool Unsigned : 1;
-        bool Long;
+        bool Signed : 1;
+        bool Long : 1;
     };
 };
 
-[[nodiscard]] int ARM7_NumBoothIters(const u32 rs_val, const bool _unsigned)
-{
-    int iter = stdc_leading_zeros(rs_val);
-    // signed 
-    if (!_unsigned) iter |= stdc_leading_ones(rs_val);
-    iter = 4 - (iter / 8);
-
-    if (iter < 1) iter = 1;
-    return iter;
-}
-
 // MUL, MLA, SMULL, SMLAL, UMULL, UMLAL
-// UMAAL should probably be in here, but the encoding is weird...?
+// should UMAAL be in here too...?
 void ARM_Mul(struct ARM* cpu, const u32 instr_data)
 {
-    const union Multiply_Decode instr = {.Raw = instr_data};
+    const union ARM_Multiply_Decode instr = {.Raw = instr_data};
 
-    u32 rm_val = GETREG(instr.Rm);
-    u32 rs_val = GETREG(instr.Rs);
+    u32 rm_val = ARM_GetReg(instr.Rm);
+    u32 rs_val = ARM_GetReg(instr.Rs);
 
-    ARM_IncrPC(cpu, false);
+    ARM_StepPC(cpu, false);
 
-    u64 acc = 0;
+    u64 acc;
     if (instr.Accumulate)
     {
-        acc = GETREG(instr.Rn);
+        acc = ARM_GetReg(instr.Rn);
         if (instr.Long)
         {
-            acc |= (u64)GETREG(instr.Rd) << 32;
+            acc |= (u64)ARM_GetReg(instr.Rd) << 32;
         }
     }
+    else acc = 0;
 
-    u64 mul_out = ((instr.Unsigned) ? ((u64)rm_val * (u64)rs_val)
-                                    : ((instr.Long)
-                                    ? ((s64)(s32)rm_val * (s64)(s32)rs_val)
-                                    : (rm_val * rs_val)));
-
-    mul_out += acc;
+    u64 mul_out;
+    if (instr.Long)
+    {
+        if (instr.Signed)
+        {
+            mul_out = (s64)(s32)rm_val * (s64)(s32)rs_val;
+        }
+        else
+        {
+            mul_out = (u64)rm_val * (u64)rs_val;
+        }
+        mul_out += acc;
+    }
+    else
+    {
+        // these casts are being done to make the flag setting logic work for both long and short multiplies
+        mul_out = (s64)(s32)((rm_val * rs_val) + (u32)acc);
+    }
 
     if (cpu->CPUID == ARM7ID)
     {
-        int iterations = ARM7_NumBoothIters(rs_val, instr.Unsigned);
+        int iterations = ARM7_NumBoothIters(rs_val, instr.Signed || !instr.Long);
 
         if (instr.SetFlags)
         {
             cpu->CPSR.Negative = (s64)mul_out < 0;
-            cpu->CPSR.Zero = (instr.Long) ? !mul_out : !(u32)mul_out;
+            cpu->CPSR.Zero = !mul_out;
             cpu->CPSR.Carry = cpu->CPSR.Carry; // TODO: Soon...
             // NOTE: reference manual says that long multiples result in the overflow flag being unpredictable.
             // this does not apply to the ARM7TDMI to my knowledge.
@@ -410,13 +314,13 @@ void ARM_Mul(struct ARM* cpu, const u32 instr_data)
         if (instr.SetFlags)
         {
             cpu->CPSR.Negative = (s64)mul_out < 0;
-            cpu->CPSR.Zero = (instr.Long) ? !mul_out : !(u32)mul_out;
+            cpu->CPSR.Zero = !mul_out;
 
             ARM9_ExecuteCycles((struct ARM946ES*)cpu, 4 + instr.Long, 1);
         }
         else
         {
-            // CHECKME: double check this pls.
+            // CHECKME: are these timings correct?
             if (!instr.Long)
             {
                 // 2 cycles effectively
@@ -429,11 +333,12 @@ void ARM_Mul(struct ARM* cpu, const u32 instr_data)
         }
     }
 
+    // A7/9: registers are written back in the order: RdLo -> RdHi
     if (instr.Long)
     {
-        if (instr.Rn != 15)
+        if (instr.Rn != 15) // multiplies fail writeback to pc
         {
-            SETREG(instr.Rn, mul_out, 0, 0);
+            ARM_SetReg(instr.Rn, mul_out, 0, 0);
         }
         // sort of silly way to keep this compatible w/ MUL
         mul_out >>= 32;
@@ -441,13 +346,13 @@ void ARM_Mul(struct ARM* cpu, const u32 instr_data)
 
     if (instr.Rd != 15) // multiplies fail writeback to pc
     {
-        SETREG(instr.Rd, mul_out, !instr.SetFlags, !instr.SetFlags);
+        ARM_SetReg(instr.Rd, mul_out, !instr.SetFlags, !instr.SetFlags);
     }
 }
 
 s8 ARM9_Mul_Interlocks(struct ARM946ES* ARM9, const u32 instr_data)
 {
-    const union Multiply_Decode instr = {.Raw = instr_data};
+    const union ARM_Multiply_Decode instr = {.Raw = instr_data};
 
     s8 stall = 0;
     ARM9_CheckInterlocks(ARM9, &stall, instr.Rm, 0, false);
@@ -457,14 +362,14 @@ s8 ARM9_Mul_Interlocks(struct ARM946ES* ARM9, const u32 instr_data)
     {
         ARM9_CheckInterlocks(ARM9, &stall, instr.Rn, 1, true);
         if (instr.Long)
-            ARM9_CheckInterlocks(ARM9, &stall, instr.Rd, 1, true);
+            ARM9_CheckInterlocks(ARM9, &stall, instr.Rd, 1 /*checkme?*/, true);
     }
     return stall;
 }
 
 // WELCOME TO THE ARMv5+ ONLY CLUB!
 
-union CLZ_Decode
+union ARM_CLZ_Decode
 {
     u32 Raw;
     struct
@@ -477,28 +382,28 @@ union CLZ_Decode
 
 void ARM_CLZ(struct ARM* cpu, const u32 instr_data)
 {
-    const union CLZ_Decode instr = {.Raw = instr_data};
+    const union ARM_CLZ_Decode instr = {.Raw = instr_data};
 
-    u32 rm_val = GETREG(instr.Rm);
+    u32 rm_val = ARM_GetReg(instr.Rm);
     u32 alu_out = stdc_leading_zeros(rm_val);
 
-    ARM_IncrPC(cpu, false);
+    ARM_StepPC(cpu, false);
 
-    EXECYCLES(0, 1, 1);
+    ARM_ExeCycles(0, 1, 1);
 
-    SETREG(instr.Rd, alu_out, 0, 0);
+    ARM_SetReg(instr.Rd, alu_out, 0, 0);
 }
 
 s8 ARM9_CLZ_Interlocks(struct ARM946ES* ARM9, const u32 instr_data)
 {
-    const union CLZ_Decode instr = {.Raw = instr_data};
+    const union ARM_CLZ_Decode instr = {.Raw = instr_data};
     s8 stall = 0;
 
     ARM9_CheckInterlocks(ARM9, &stall, instr.Rm, 0, false);
     return stall;
 }
 
-union SatMath_Decode
+union ARM_SatMath_Decode
 {
     u32 Raw;
     struct
@@ -516,12 +421,12 @@ union SatMath_Decode
 // QADD, QDADD, QSUB, QDSUB
 void ARM_SatMath(struct ARM* cpu, const u32 instr_data)
 {
-    const union SatMath_Decode instr = {.Raw = instr_data};
+    const union ARM_SatMath_Decode instr = {.Raw = instr_data};
 
-    s64 rm_val = (s32)GETREG(instr.Rm);
-    s64 rn_val = (s32)GETREG(instr.Rn);
+    s64 rm_val = (s32)ARM_GetReg(instr.Rm);
+    s64 rn_val = (s32)ARM_GetReg(instr.Rn);
 
-    ARM_IncrPC(cpu, false);
+    ARM_StepPC(cpu, false);
 
     s64 alu_out;
     if (instr.Double)
@@ -562,17 +467,17 @@ void ARM_SatMath(struct ARM* cpu, const u32 instr_data)
         cpu->CPSR.QSticky = true;
     }
 
-    EXECYCLES(0, 1, 1);
+    ARM_ExeCycles(0, 1, 1);
 
     if (instr.Rd != 15) // saturating maths dont support pc writeback
     {
-        SETREG(instr.Rd, alu_out, 1, 1);
+        ARM_SetReg(instr.Rd, alu_out, 1, 1);
     }
 }
 
-s8 ARM9_SatMath_Interlocks(struct ARM946ES* ARM9, u32 instr_data)
+s8 ARM9_SatMath_Interlocks(struct ARM946ES* ARM9, const u32 instr_data)
 {
-    const union SatMath_Decode instr = {.Raw = instr_data};
+    const union ARM_SatMath_Decode instr = {.Raw = instr_data};
     s8 stall = 0;
 
     ARM9_CheckInterlocks(ARM9, &stall, instr.Rm, 0, false);

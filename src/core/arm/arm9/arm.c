@@ -12,67 +12,70 @@
 // TEMP: debugging
 void ARM9_Log(struct ARM946ES* ARM9)
 {
-    LogPrint(LOG_ARM9, "DUMPING ARM9 STATE: ");
-    for (int i = 0; i < 16; i++)
+    LogPrint(LOG_ARM9, "DUMPING ARM9 STATE:\n");
+    /*for (int i = 0; i < 16; i++)
     {
         LogPrint(LOG_ARM9, "R%2i: %08X ", i, cpu->R[i]);
-    }
+    }*/
+    LogPrint(LOG_ARM9, "R2:%08X\n", cpu->R[2]);
     LogPrint(LOG_ARM9, "CPSR:%08X\n", cpu->CPSR.Raw);
-    LogPrint(LOG_ARM9, "EXE:%li MEM:%li\n", cpu->Timestamp, ARM9->MemTimestamp);
+    LogPrint(LOG_ARM9, "INSTR: %08X ", cpu->Instr[0]);
+    LogPrint(LOG_ARM9, "EXE:%li MEM:%li\n\n", cpu->Timestamp, ARM9->MemTimestamp);
 }
 
 void ARM9_Init(struct ARM946ES* ARM9, struct Console* sys)
 {
-    cpu->CPUID = ARM9ID;
-    // msb of mode is always set
-    cpu->CPSR.ModeMSB = 1;
-    // these bits needs to be one. i dont make the rules.
+    ARM_Init(cpu, sys, ARM9ID);
+
     ARM9->CP15.CR.FixedOnes = 0xF;
-    cpu->Sys = sys;
+
+    // finally something being initialized that isn't a constant!
+    // this needs to not be 0, because a lot of logic relies on this timestamp - 1
+    //ARM9->MemTimestamp = 1; nvm we dont need this actually i was dumb
 }
 
-union PSR ARM9_ReadSPSR(struct ARM946ES* ARM9)
+union ARM_PSR ARM9_GetSPSR(struct ARM946ES* ARM9)
 {
     switch(cpu->CPSR.Mode)
     {
-    case MODE_FIQ:
+    case ARMMODE_FIQ:
         return cpu->FIQ_Bank.SPSR;
-    case MODE_IRQ:
+    case ARMMODE_IRQ:
         return cpu->IRQ_Bank.SPSR;
-    case MODE_SWI:
+    case ARMMODE_SWI:
         return cpu->SWI_Bank.SPSR;
-    case MODE_SWI+1 ... MODE_ABT:
+    case ARMMODE_SWI+1 ... ARMMODE_ABT:
         return cpu->ABT_Bank.SPSR;
-    case MODE_ABT+1 ... MODE_UND:
+    case ARMMODE_ABT+1 ... ARMMODE_UND:
         return cpu->UND_Bank.SPSR;
-    case MODE_USR:
-    case MODE_UND+1 ... MODE_SYS:
+    case ARMMODE_USR:
+    case ARMMODE_UND+1 ... ARMMODE_SYS:
         return cpu->CPSR;
     default: unreachable();
     }
 }
 
-void ARM9_WriteSPSR(struct ARM946ES* ARM9, union PSR psr)
+void ARM9_SetSPSR(struct ARM946ES* ARM9, union ARM_PSR psr)
 {
     switch(cpu->CPSR.Mode)
     {
-    case MODE_FIQ:
+    case ARMMODE_FIQ:
         cpu->FIQ_Bank.SPSR = psr;
         break;
-    case MODE_IRQ:
+    case ARMMODE_IRQ:
         cpu->IRQ_Bank.SPSR = psr;
         break;
-    case MODE_SWI:
+    case ARMMODE_SWI:
         cpu->SWI_Bank.SPSR = psr;
         break;
-    case MODE_SWI+1 ... MODE_ABT:
+    case ARMMODE_SWI+1 ... ARMMODE_ABT:
         cpu->ABT_Bank.SPSR = psr;
         break;
-    case MODE_ABT+1 ... MODE_UND:
+    case ARMMODE_ABT+1 ... ARMMODE_UND:
         cpu->UND_Bank.SPSR = psr;
         break;
-    case MODE_USR:
-    case MODE_UND+1 ... MODE_SYS:
+    case ARMMODE_USR:
+    case ARMMODE_UND+1 ... ARMMODE_SYS:
         // no spsr, no write
         break;
     default: unreachable();
@@ -96,7 +99,6 @@ u32 ARM9_GetReg(struct ARM946ES* ARM9, const int reg)
 void ARM9_UpdateInterlocks(struct ARM946ES* ARM9, const s8 diff)
 {
     // i spent some time writing simd for this manually but it's so simple auto-simd was just as good.
-    #pragma GCC ivdep
     for (int i = 0; i < 32; i++)
     {
         ARM9->RegIL[i & 0xF][i>>4] -= diff;
@@ -122,6 +124,7 @@ void ARM9_SetPC(struct ARM946ES* ARM9, u32 addr, const s8 iloffs)
 
     // pipeline flush logic goes here.
     // TODO: handle stalls if icache streaming is ongoing here?
+    // TEMP?
     if (cpu->CPSR.Thumb)
     {
         cpu->Instr[1] = ARM9_InstrRead16(ARM9, addr);
@@ -134,6 +137,9 @@ void ARM9_SetPC(struct ARM946ES* ARM9, u32 addr, const s8 iloffs)
         cpu->Instr[2] = ARM9_InstrRead32(ARM9, addr+4);
         cpu->PC = addr + 8;
     }
+    // "fake" execute stage to keep timestamps coherent.
+    // TODO: do this differently it confuses me.
+    ARM9_ExecuteCycles(ARM9, 1, 1);
 }
 
 void ARM9_SetReg(struct ARM946ES* ARM9, const int reg, u32 val, const s8 iloffs, const s8 iloffs_c)
@@ -151,7 +157,7 @@ void ARM9_SetReg(struct ARM946ES* ARM9, const int reg, u32 val, const s8 iloffs,
     }
 }
 
-void ARM9_CheckInterlocks(struct ARM946ES* ARM9, s8* stall, const int reg, const int cycledelay, const bool portc)
+void ARM9_CheckInterlocks(struct ARM946ES* ARM9, s8* stall, const int reg, const s8 cycledelay, const bool portc)
 {
     // the fact this always needs a branch really annoys me.
     // but i dont think this is possible to work around without losing accuracy.
@@ -159,29 +165,40 @@ void ARM9_CheckInterlocks(struct ARM946ES* ARM9, s8* stall, const int reg, const
     if (*stall < diff) *stall = diff;
 }
 
+void ARM9_FetchCycles(struct ARM946ES* ARM9, const int fetch)
+{
+    cpu->Timestamp += fetch;
+
+    // make sure we're caught up to the memory timestamp
+    if (cpu->Timestamp < (ARM9->MemTimestamp))
+        cpu->Timestamp = (ARM9->MemTimestamp);
+}
+
 void ARM9_ExecuteCycles(struct ARM946ES* ARM9, const int execute, const int memory)
 {
-    if (cpu->Timestamp < (ARM9->MemTimestamp - 1))
-        cpu->Timestamp = (ARM9->MemTimestamp - 1);
+    // execute cycles must be minus 1 due to how im handling pipeline overlaps
+    cpu->Timestamp += execute - 1;
 
-    cpu->Timestamp += execute;
-
+    // catch the memory timestamp up
+    // save the difference between old and new so we can also catch up the interlock timestamps
     s8 diff = (cpu->Timestamp + memory) - ARM9->MemTimestamp;
     ARM9->MemTimestamp += diff;
 
     ARM9_UpdateInterlocks(ARM9, diff);
 }
 
-bool ARM9_CheckInterrupts(struct ARM946ES* ARM9)
+[[nodiscard]] bool ARM9_CheckInterrupts(struct ARM946ES* ARM9)
 {
     if (cpu->WakeIRQ)
     {
-        if (unlikely(cpu->FastInterruptRequest)) // jakly why are you implementing this...
+#if 0
+        if (cpu->FastInterruptRequest) // jakly why are you implementing this...
         {
             ARM9_FastInterruptRequest(ARM9);
             return true;
         }
         else
+#endif
         {
             ARM9_InterruptRequest(ARM9);
             return true;
@@ -221,7 +238,7 @@ void ARM9_Step(struct ARM946ES* ARM9)
     {
         u32 instr = cpu->Instr[0];
         u8 condcode = instr >> 28;
-        u16 decode = ((instr >> 16) & 0x0FF0) | ((instr >> 8) & 0xF);
+        u16 decode = ((instr >> 16) & 0xFF0) | ((instr >> 4) & 0xF);
 
         // TODO: DATA ABORTS?????
         // first we need to check the condition code (should be part of decoding?)
@@ -232,21 +249,15 @@ void ARM9_Step(struct ARM946ES* ARM9)
             ILCheck(ARM9_InterlockLUT[decode])
             FetchIRQExec(32, ARM9_InstructionLUT[decode])
         }
-        else if (unlikely(decode == 0x127)) // BKPT; needs special handling, it always passes condition codes
+        else if (condcode == ARMCOND_NV) // unconditional instructions
         {
-            // TODO: consider doing this after the unconditional instruction handling?
-            // bkpt doesn't have interlocks
-            FetchIRQExec(32, ARM9_PrefetchAbort)
+            ILCheck(ARM9_Uncond_Interlocks)
+            FetchIRQExec(32, ARM9_Uncond)
         }
-        else if (condcode == COND_NV) // unconditional instructions
+        else if (decode == 0x127) // BKPT; needs special handling, it always passes condition codes
         {
-            // list of instructions here:
-            // BLX (imm) - actually used
-            // PLD - valid and has unique timings (can interlock), doesn't seem to do anything useful though...
-            // STC2, LDC2, CDP2, MCR2, MRC2. - should all be undefined exceptions but might have unique timings?
-
-            ILCheck(ARM9_UNIMPL_Interlocks)
-            FetchIRQExec(32, ARM_UNIMPL)
+            // bkpt doesn't use registers and can't interlock.
+            FetchIRQExec(32, ARM9_PrefetchAbort)
         }
         else // actually an instruction that failed the condition check.
         {
@@ -258,6 +269,9 @@ void ARM9_Step(struct ARM946ES* ARM9)
                 ARM9_ExecuteCycles(ARM9, 1, 1);
         }
     }
+
+    // TEMP: debugging
+    ARM9_Log(ARM9);
 }
 
 #undef ILCheck

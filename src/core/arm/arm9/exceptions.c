@@ -27,12 +27,12 @@ void ARM9_Reset(struct ARM946ES* ARM9, const bool itcm, const bool hivec)
     // im gonna bank em for funsies.
     // unclear what pc would be here... probably depends on when the current instruction got interrupted?
     u32 oldpc = cpu->PC;
-    union PSR oldcpsr = cpu->CPSR;
+    union ARM_PSR oldcpsr = cpu->CPSR;
 
-    ARM_UpdateMode(cpu, MODE_SWI);
+    ARM_SetMode(cpu, ARMMODE_SWI);
 
     cpu->LR = oldpc;
-    ARM9_WriteSPSR(ARM9, oldcpsr);
+    ARM9_SetSPSR(ARM9, oldcpsr);
 
     // set cpsr bits
     // flag bits dont seem to be mentioned anywhere?
@@ -56,7 +56,7 @@ void ARM9_Reset(struct ARM946ES* ARM9, const bool itcm, const bool hivec)
     // itcm enable is less clear, it's probably not important since all relevant bootroms
     // should explicitly set this before using it, but it'd be nice to know ig.
     // Resetting with ITCM on + Low vectors is apparently an intended usecase?
-    // for some reason they mention that if you're initialzing tcms you should
+    // for some reason they mention that if you're initializing tcms you should
     // use the drain write buffer instruction before asserting reset...?
     // but write buffer doesn't work with tcms.....?
     ARM9->CP15.CR.ITCMEnable = itcm;
@@ -109,8 +109,7 @@ void ARM9_Reset(struct ARM946ES* ARM9, const bool itcm, const bool hivec)
     ARM9_ConfigureITCM(ARM9);
     ARM9_ConfigureDTCM(ARM9);
 
-    // could technically hardcode this exception vector check, but eh.
-    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + VECTOR_RST, 0);
+    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVECTOR_RST, 0);
 }
 
 void ARM9_UndefinedInstruction(struct ARM* ARM, const u32 instr_data)
@@ -124,16 +123,16 @@ void ARM9_UndefinedInstruction(struct ARM* ARM, const u32 instr_data)
 
     // addr of next instr
     u32 oldpc = cpu->PC - (cpu->CPSR.Thumb ? 2 : 4);
-    union PSR oldcpsr = cpu->CPSR;
+    union ARM_PSR oldcpsr = cpu->CPSR;
 
-    ARM_UpdateMode(cpu, MODE_UND);
+    ARM_SetMode(cpu, ARMMODE_UND);
 
     cpu->LR = oldpc;
-    ARM9_WriteSPSR(ARM9, oldcpsr);
+    ARM9_SetSPSR(ARM9, oldcpsr);
 
     cpu->CPSR.Thumb = false;
     cpu->CPSR.IRQDisable = true;
-    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + VECTOR_UND, 0);
+    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVECTOR_UND, 0);
 }
 
 void THUMB9_UndefinedInstruction(struct ARM* ARM, const u16 instr_data)
@@ -148,16 +147,16 @@ void ARM9_SoftwareInterrupt(struct ARM* ARM, [[maybe_unused]] const u32 instr_da
 
     // addr of next instr
     u32 oldpc = cpu->PC - (cpu->CPSR.Thumb ? 2 : 4);
-    union PSR oldcpsr = cpu->CPSR;
+    union ARM_PSR oldcpsr = cpu->CPSR;
 
-    ARM_UpdateMode(cpu, MODE_SWI);
+    ARM_SetMode(cpu, ARMMODE_SWI);
 
     cpu->LR = oldpc;
-    ARM9_WriteSPSR(ARM9, oldcpsr);
+    ARM9_SetSPSR(ARM9, oldcpsr);
 
     cpu->CPSR.Thumb = false;
     cpu->CPSR.IRQDisable = true;
-    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + VECTOR_SWI, 0);
+    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVECTOR_SWI, 0);
 }
 
 void THUMB9_SoftwareInterrupt(struct ARM* ARM, const u16 instr_data)
@@ -176,16 +175,16 @@ void ARM9_PrefetchAbort(struct ARM* ARM, const u32 instr_data)
 
     // lr is aborted instruction + 4
     u32 oldpc = cpu->PC - ((cpu->CPSR.Thumb) ? 0 : 4);
-    union PSR oldcpsr = cpu->CPSR;
+    union ARM_PSR oldcpsr = cpu->CPSR;
 
-    ARM_UpdateMode(cpu, MODE_ABT);
+    ARM_SetMode(cpu, ARMMODE_ABT);
 
     cpu->LR = oldpc;
-    ARM9_WriteSPSR(ARM9, oldcpsr);
+    ARM9_SetSPSR(ARM9, oldcpsr);
 
     cpu->CPSR.Thumb = false;
     cpu->CPSR.IRQDisable = true;
-    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + VECTOR_PAB, 0);
+    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVECTOR_PAB, 0);
 }
 
 void THUMB9_PrefetchAbort(struct ARM* ARM, const u16 instr_data)
@@ -201,49 +200,49 @@ void ARM9_DataAbort(struct ARM946ES* ARM9)
     // lr is aborted instr + 8
     // CHECKME: what happens if the abort was from an exception return LDM? (SPSR was restored?)
     u32 oldpc = cpu->PC + ((cpu->CPSR.Thumb) ? 4 : 0);
-    union PSR oldcpsr = cpu->CPSR;
+    union ARM_PSR oldcpsr = cpu->CPSR;
 
-    ARM_UpdateMode(cpu, MODE_ABT);
+    ARM_SetMode(cpu, ARMMODE_ABT);
 
     cpu->LR = oldpc;
-    ARM9_WriteSPSR(ARM9, oldcpsr);
+    ARM9_SetSPSR(ARM9, oldcpsr);
 
     cpu->CPSR.Thumb = false;
     cpu->CPSR.IRQDisable = true;
-    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + VECTOR_DAB, 0);
+    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVECTOR_DAB, 0);
 }
 
 void ARM9_InterruptRequest(struct ARM946ES* ARM9)
 {
     // lr is next instr + 4
     u32 oldpc = cpu->PC - ((cpu->CPSR.Thumb) ? 0 : 4);
-    union PSR oldcpsr = cpu->CPSR;
+    union ARM_PSR oldcpsr = cpu->CPSR;
 
-    ARM_UpdateMode(cpu, MODE_IRQ);
+    ARM_SetMode(cpu, ARMMODE_IRQ);
 
     cpu->LR = oldpc;
-    ARM9_WriteSPSR(ARM9, oldcpsr);
+    ARM9_SetSPSR(ARM9, oldcpsr);
 
     cpu->CPSR.Thumb = false;
     cpu->CPSR.IRQDisable = true;
-    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + VECTOR_IRQ, 0);
+    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVECTOR_IRQ, 0);
 }
 
 void ARM9_FastInterruptRequest(struct ARM946ES* ARM9)
 {
     // lr is next instr + 4
     u32 oldpc = cpu->PC - ((cpu->CPSR.Thumb) ? 0 : 4);
-    union PSR oldcpsr = cpu->CPSR;
+    union ARM_PSR oldcpsr = cpu->CPSR;
 
-    ARM_UpdateMode(cpu, MODE_FIQ);
+    ARM_SetMode(cpu, ARMMODE_FIQ);
 
     cpu->LR = oldpc;
-    ARM9_WriteSPSR(ARM9, oldcpsr);
+    ARM9_SetSPSR(ARM9, oldcpsr);
 
     cpu->CPSR.Thumb = false;
     cpu->CPSR.IRQDisable = true;
     cpu->CPSR.FIQDisable = true;
-    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + VECTOR_FIQ, 0);
+    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVECTOR_FIQ, 0);
 }
 
 #undef cpu

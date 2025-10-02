@@ -58,10 +58,10 @@ static_assert(ARM9_DCacheAssoc == 4);
 static_assert(ARM9_ICacheAssoc == 4);
 // keeping logic simple means these must be a power of 2.
 // sizes of 1KiB, 2KiB and >1MiB dont seem to be supported officially but I dont think there's any obvious reason up to 16MiB couldn't work?
-static_assert((__builtin_popcount(ARM9_DTCMSize) <= 1) || (ARM9_DTCMSize > 16));
-static_assert((__builtin_popcount(ARM9_ITCMSize) <= 1) || (ARM9_ITCMSize > 16));
-static_assert((__builtin_popcount(ARM9_DCacheSize) <= 1) || (ARM9_DCacheSize > 16));
-static_assert((__builtin_popcount(ARM9_ICacheSize) <= 1) || (ARM9_ICacheSize > 16));
+static_assert((POPCNT_CONSTEXPR(ARM9_DTCMSize) <= 1) || (ARM9_DTCMSize > 16));
+static_assert((POPCNT_CONSTEXPR(ARM9_ITCMSize) <= 1) || (ARM9_ITCMSize > 16));
+static_assert((POPCNT_CONSTEXPR(ARM9_DCacheSize) <= 1) || (ARM9_DCacheSize > 16));
+static_assert((POPCNT_CONSTEXPR(ARM9_ICacheSize) <= 1) || (ARM9_ICacheSize > 16));
 
 constexpr u32 ARM9_CacheTypeReg = (7 << 25) // Cache Type: (apparently in our case indicates: "cache-clean-step operation", "cache-flush-step operation", and "lock-down facilities".)
                                 | (1 << 24) // 1 = Harvard (Separate i/d caches) | 0 = Unified (One shared cache) | ARM946E-S only supports Harvard architecture(?)
@@ -182,7 +182,7 @@ struct ARM9_BusQueue
     };
 };
 
-union CacheLockdownCR
+union ARM9_CacheLockdownCR
 {
     u32 Raw;
     struct
@@ -193,7 +193,7 @@ union CacheLockdownCR
     };
 };
 
-union RegionCR
+union ARM9_RegionCR
 {
     u32 Raw;
     struct
@@ -264,11 +264,11 @@ struct ARM946ES
         u32 DataPermsReg;
         u32 InstrPermsReg;
         //u32 MPURegionCR[8];
-        union RegionCR MPURegionCR[8];
-        union CacheLockdownCR DCacheLockdownCR;
-        union CacheLockdownCR ICacheLockdownCR;
-        union RegionCR DTCMCR;
-        union RegionCR ITCMCR;
+        union ARM9_RegionCR MPURegionCR[8];
+        union ARM9_CacheLockdownCR DCacheLockdownCR;
+        union ARM9_CacheLockdownCR ICacheLockdownCR;
+        union ARM9_RegionCR DTCMCR;
+        union ARM9_RegionCR ITCMCR;
         u32 TraceProcIdReg; // Trace Process Identifer Register; NOTE: this is output externally on ARM9 pins.
         // TODO: Add BIST regs.
         u8 TraceProcCR; // Trace Process Control Reg;
@@ -320,21 +320,23 @@ void THUMB9_PrefetchAbort(struct ARM* ARM, const u16 instr_data);
 // read register.
 [[nodiscard]] u32 ARM9_GetReg(struct ARM946ES* ARM9, const int reg);
 // write register.
-// also sets interlock updates.
+// also sets up interlocks.
 void ARM9_SetReg(struct ARM946ES* ARM9, const int reg, u32 val, const s8 iloffs, const s8 iloffs_c);
 // write program counter (r15).
 void ARM9_SetPC(struct ARM946ES* ARM9, u32 addr, const s8 iloffs);
 
-[[nodiscard]] union PSR ARM9_ReadSPSR(struct ARM946ES* ARM9);
+[[nodiscard]] union ARM_PSR ARM9_GetSPSR(struct ARM946ES* ARM9);
 // NOTE: this has 0 sanity checking for the inputs.
-void ARM9_WriteSPSR(struct ARM946ES* ARM9, union PSR psr);
+void ARM9_SetSPSR(struct ARM946ES* ARM9, union ARM_PSR psr);
 
+// decrement interlock waits.
 void ARM9_UpdateInterlocks(struct ARM946ES* ARM9, const s8 diff);
 // cycledelay: time between the instruction beginning and register being fetched; used for interlock handling
 // portc: refers to the port used to read from the register bank, does not allow for forwarding from certain instructions resulting in different interlock conditions
-void ARM9_CheckInterlocks(struct ARM946ES* ARM9, s8* stall, const int reg, const int cycledelay, const bool portc);
+void ARM9_CheckInterlocks(struct ARM946ES* ARM9, s8* stall, const int reg, const s8 cycledelay, const bool portc);
+// handle fetch stage cycles.
+void ARM9_FetchCycles(struct ARM946ES* ARM9, const int fetch);
 // add execute and memory stage cycles.
-// also decrements the interlock waits.
 void ARM9_ExecuteCycles(struct ARM946ES* ARM9, const int execute, const int memory);
 
 // run the next step of execution
@@ -342,6 +344,7 @@ void ARM9_Step(struct ARM946ES* ARM9);
 
 [[nodiscard]] u32 ARM9_InstrRead32(struct ARM946ES* ARM9, u32 addr); // arm
 [[nodiscard]] u16 ARM9_InstrRead16(struct ARM946ES* ARM9, u32 addr); // thumb
+void ARM9_Uncond(struct ARM* cpu, const u32 instr_data); // idk where to put this tbh
 
 void ARM9_ConfigureITCM(struct ARM946ES* ARM9);
 void ARM9_ConfigureDTCM(struct ARM946ES* ARM9);

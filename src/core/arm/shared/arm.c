@@ -5,6 +5,20 @@
 
 
 
+void ARM_Init(struct ARM* cpu, struct Console* sys, const u8 CPUID)
+{
+    // set mode id
+    cpu->CPUID = CPUID;
+    // msb of mode is always set
+    cpu->CPSR.ModeMSB = 1;
+    cpu->FIQ_Bank.SPSR.ModeMSB = 1;
+    cpu->IRQ_Bank.SPSR.ModeMSB = 1;
+    cpu->SWI_Bank.SPSR.ModeMSB = 1;
+    cpu->ABT_Bank.SPSR.ModeMSB = 1;
+    cpu->UND_Bank.SPSR.ModeMSB = 1;
+    cpu->Sys = sys;
+}
+
 // implementation yoinked nearly 1:1 from melonDS
 // this is a fast way to check if a given condition code passes
 // 1. Look up an entry in the array using the condition code of the instruction
@@ -29,17 +43,17 @@ alignas(32) constexpr u16 CondLUT[16] =
     0x0000  // NV - Never passes (ARM4T and earlier?) | Unconditional instruction (ARMv5TE and onward)
 };
 
-bool ARM_ConditionLookup(u8 condition, u8 flags)
+bool ARM_ConditionLookup(const u8 condition, const u8 flags)
 {
     return CondLUT[condition] & (1<<flags);
 }
 
-void ARM_IncrPC(struct ARM* cpu, bool thumb)
+void ARM_StepPC(struct ARM* cpu, const bool thumb)
 {
     cpu->PC += (thumb ? 2 : 4);
 }
 
-void ARM_BankSwap(struct ARM* cpu, u8 newmode)
+void ARM_BankSwap(struct ARM* cpu, const u8 newmode)
 {
     u8 oldmode = cpu->CPSR.Mode;
     if (oldmode == newmode) return; // this is probably faster but idk
@@ -51,47 +65,59 @@ void ARM_BankSwap(struct ARM* cpu, u8 newmode)
     {
         switch(mode[i])
         {
-        case MODE_FIQ:
+        case ARMMODE_FIQ:
             memcpy(cpy, &cpu->FIQ_Bank, 7*4);
             memcpy(&cpu->FIQ_Bank, &cpu->R[8], 7*4);
             memcpy(&cpu->SP, &cpy, 7*4);
             break;
-        case MODE_IRQ:
+        case ARMMODE_IRQ:
             memcpy(cpy, &cpu->IRQ_Bank, 2*4);
             memcpy(&cpu->IRQ_Bank, &cpu->SP, 2*4);
             memcpy(&cpu->SP, &cpy, 2*4);
             break;
-        case MODE_SWI:
+        case ARMMODE_SWI:
             memcpy(cpy, &cpu->SWI_Bank, 2*4);
             memcpy(&cpu->SWI_Bank, &cpu->SP, 2*4);
             memcpy(&cpu->SP, &cpy, 2*4);
             break;
-        case MODE_ABT:
+        case ARMMODE_ABT:
             memcpy(cpy, &cpu->ABT_Bank, 2*4);
             memcpy(&cpu->ABT_Bank, &cpu->SP, 2*4);
             memcpy(&cpu->SP, &cpy, 2*4);
             break;
-        case MODE_UND:
+        case ARMMODE_UND:
             memcpy(cpy, &cpu->UND_Bank, 2*4);
             memcpy(&cpu->UND_Bank, &cpu->SP, 2*4);
             memcpy(&cpu->SP, &cpy, 2*4);
             break;
-        case MODE_USR:
-        case MODE_SYS:
+        case ARMMODE_USR:
+        case ARMMODE_SYS:
         default: // Invalid modes | TODO: test ARM7?
             break;
         }
     }
 }
 
-void ARM_UpdatePerms(struct ARM* cpu, bool privileged)
+void ARM_UpdatePerms(struct ARM* cpu, const u8 mode)
 {
-    cpu->Privileged = privileged;
+    cpu->Privileged = mode != ARMMODE_USR;
 }
 
-void ARM_UpdateMode(struct ARM* cpu, u8 mode)
+void ARM_SetMode(struct ARM* cpu, const u8 mode)
 {
     ARM_BankSwap(cpu, mode);
+    ARM_UpdatePerms(cpu, mode);
     cpu->CPSR.Mode = mode;
-    ARM_UpdatePerms(cpu, mode != MODE_USR);
+}
+
+void ARM_SetCPSR(struct ARM* cpu, const u32 val)
+{
+    const union ARM_PSR newcpsr = {.Raw = val};
+    ARM_SetMode(cpu, newcpsr.Mode);
+    cpu->CPSR = newcpsr;
+}
+
+void ARM_SetThumb(struct ARM* cpu, const bool thumb)
+{
+    cpu->CPSR.Thumb = thumb;
 }

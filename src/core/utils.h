@@ -52,11 +52,12 @@ typedef uint64_t timestamp;
 
 
 // todo: actually add fallback paths if these dont exist for w/e reason
-#define likely(x) __builtin_expect(!!(x), 1)
-#define unlikely(x) __builtin_expect(!!(x), 0)
+/*#define likely(x) __builtin_expect(!!(x), 1)
+#define unlikely(x) __builtin_expect(!!(x), 0)*/
 #define bswap(x) _Generic((x), \
        s16: __builtin_bswap16, u16: __builtin_bswap16, \
-       s32: __builtin_bswap32, u32: __builtin_bswap32)((x))
+       s32: __builtin_bswap32, u32: __builtin_bswap32, \
+       s64: __builtin_bswap64, u64: __builtin_bswap64)((x))
 
 #define HOST_CACHEALIGN (64)
 
@@ -109,13 +110,18 @@ enum LoggingLevels : u64
     LOG_SWI     = (1<<6 ), // Software interrupt
 };
 
+#define LOG_CPUID (1 << cpu->CPUID)
+#define CPUIDtoCPUNum ((cpu->CPUID*2)+7)
+
 [[nodiscard]] inline bool PatternMatch(const struct Pattern pattern, const u32 bits)
 {
     return ((bits & pattern.mask) == pattern.cmp);
 }
 
-[[nodiscard]] inline u32 ROR32(u32 val, u8 ror) // ub-san will bitch, but compilers only detect the code pattern properly if it's 32 bit
+// for some reason there isn't a rotate right function i can use...?
+[[nodiscard]] inline u32 ROR32(const u32 val, u8 ror)
 {
+    ror &= 0x1F; // do this to hopefully avoid undefined behavior.
     return (val >> ror) | (val << (32-ror));
 }
 

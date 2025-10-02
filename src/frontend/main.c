@@ -15,14 +15,28 @@ int main()
 
     Console_Init(sys);
 
-    // TEMP: debugging
-    sys->ARM9.ARM.R[1] = 0x80000000;
-    sys->ARM9.ARM.R[0] = 0xFFFFFFFF;
-    sys->ARM9.ARM.Instr[1] = 0xE0910000;
-
-    Console_MainLoop(sys);
-
     ARM9_Log(&sys->ARM9);
+
+    // TEMP: debugging
+    for (int i = 0; i < 2; i++)
+    {
+        if (i == 0)
+        {
+            sys->ARM9.ARM.CPSR.Flags = 0;
+            sys->ARM9.ARM.CPSR.QSticky = 0;
+        }
+        else
+        {
+            sys->ARM9.ARM.CPSR.Flags = 0xF;
+            sys->ARM9.ARM.CPSR.QSticky = 1;
+        }
+        sys->ARM9.ARM.R[5] = 0x80000000;
+        sys->ARM9.ARM.R[6] = 65;
+        //sys->ARM9.ARM.CPSR.Carry = 1;
+        sys->ARM9.ARM.Instr[1] = 0xE1B02655;
+
+        Console_MainLoop(sys);
+    }
 
     return EXIT_SUCCESS;
 }
