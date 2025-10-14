@@ -29,7 +29,7 @@ void ARM9_Reset(struct ARM946ES* ARM9, const bool itcm, const bool hivec)
     u32 oldpc = cpu->PC;
     union ARM_PSR oldcpsr = cpu->CPSR;
 
-    ARM_SetMode(cpu, ARMMODE_SWI);
+    ARM_SetMode(cpu, ARMMode_SWI);
 
     cpu->LR = oldpc;
     ARM9_SetSPSR(ARM9, oldcpsr);
@@ -109,38 +109,38 @@ void ARM9_Reset(struct ARM946ES* ARM9, const bool itcm, const bool hivec)
     ARM9_ConfigureITCM(ARM9);
     ARM9_ConfigureDTCM(ARM9);
 
-    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVECTOR_RST, 0);
+    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVector_RST, 0);
 }
 
-void ARM9_UndefinedInstruction(struct ARM* ARM, const u32 instr_data)
+void ARM9_UndefinedInstruction(struct ARM* ARM, const struct ARM_Instr instr_data)
 {
     struct ARM946ES* ARM9 = (struct ARM946ES*)ARM;
 
     if (cpu->CPSR.Thumb)
-        LogPrint(LOG_ARM9 | LOG_EXCEP, "THUMB9 - UNDEF INSTR: %04X @ %08X\n", instr_data, cpu->PC);
+        LogPrint(LOG_ARM9 | LOG_EXCEP, "THUMB9 - UNDEF INSTR: %04X @ %08X\n", instr_data.Raw, cpu->PC);
     else
-        LogPrint(LOG_ARM9 | LOG_EXCEP, "ARM9 - UNDEF INSTR: %08X @ %08X\n", instr_data, cpu->PC);
+        LogPrint(LOG_ARM9 | LOG_EXCEP, "ARM9 - UNDEF INSTR: %08X @ %08X\n", instr_data.Raw, cpu->PC);
 
     // addr of next instr
     u32 oldpc = cpu->PC - (cpu->CPSR.Thumb ? 2 : 4);
     union ARM_PSR oldcpsr = cpu->CPSR;
 
-    ARM_SetMode(cpu, ARMMODE_UND);
+    ARM_SetMode(cpu, ARMMode_UND);
 
     cpu->LR = oldpc;
     ARM9_SetSPSR(ARM9, oldcpsr);
 
     cpu->CPSR.Thumb = false;
     cpu->CPSR.IRQDisable = true;
-    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVECTOR_UND, 0);
+    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVector_UND, 0);
 }
 
-void THUMB9_UndefinedInstruction(struct ARM* ARM, const u16 instr_data)
+void THUMB9_UndefinedInstruction(struct ARM* ARM, const struct ARM_Instr instr_data)
 {
     ARM9_UndefinedInstruction(ARM, instr_data);
 }
 
-void ARM9_SoftwareInterrupt(struct ARM* ARM, [[maybe_unused]] const u32 instr_data)
+void ARM9_SoftwareInterrupt(struct ARM* ARM, [[maybe_unused]] const struct ARM_Instr instr_data)
 {
     // TODO: could add a print here for logging software interrupts that gets fired.
     struct ARM946ES* ARM9 = (struct ARM946ES*)ARM;
@@ -149,45 +149,50 @@ void ARM9_SoftwareInterrupt(struct ARM* ARM, [[maybe_unused]] const u32 instr_da
     u32 oldpc = cpu->PC - (cpu->CPSR.Thumb ? 2 : 4);
     union ARM_PSR oldcpsr = cpu->CPSR;
 
-    ARM_SetMode(cpu, ARMMODE_SWI);
+    ARM_SetMode(cpu, ARMMode_SWI);
 
     cpu->LR = oldpc;
     ARM9_SetSPSR(ARM9, oldcpsr);
 
     cpu->CPSR.Thumb = false;
     cpu->CPSR.IRQDisable = true;
-    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVECTOR_SWI, 0);
+    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVector_SWI, 0);
 }
 
-void THUMB9_SoftwareInterrupt(struct ARM* ARM, const u16 instr_data)
+void THUMB9_SoftwareInterrupt(struct ARM* ARM, const struct ARM_Instr instr_data)
 {
     ARM9_SoftwareInterrupt(ARM, instr_data);
 }
 
-void ARM9_PrefetchAbort(struct ARM* ARM, const u32 instr_data)
+void ARM9_PrefetchAbort(struct ARM* ARM, const struct ARM_Instr instr_data)
 {
     struct ARM946ES* ARM9 = (struct ARM946ES*)ARM;
 
-    if (cpu->CPSR.Thumb)
-        LogPrint(LOG_ARM9 | LOG_EXCEP, "THUMB9 - PREFETCH ABT: %08X @ %08X\n", instr_data, cpu->PC);
+    if (instr_data.Aborted)
+        LogPrint(LOG_ARM9 | LOG_EXCEP, "%s9 - PREFETCH ABT @ %08X\n", (cpu->CPSR.Thumb ? "THUMB" : "ARM"), cpu->PC);
     else
-        LogPrint(LOG_ARM9 | LOG_EXCEP, "ARM9 - PREFETCH ABT: %04X @ %08X\n", instr_data, cpu->PC);
+    {
+        if (cpu->CPSR.Thumb)
+            LogPrint(LOG_ARM9 | LOG_EXCEP, "THUMB9 - BKPT: %04X @ %08X\n", instr_data.Raw, cpu->PC);
+        else
+            LogPrint(LOG_ARM9 | LOG_EXCEP, "ARM9 - BKPT: %08X @ %08X\n", instr_data.Raw, cpu->PC);
+    }
 
     // lr is aborted instruction + 4
     u32 oldpc = cpu->PC - ((cpu->CPSR.Thumb) ? 0 : 4);
     union ARM_PSR oldcpsr = cpu->CPSR;
 
-    ARM_SetMode(cpu, ARMMODE_ABT);
+    ARM_SetMode(cpu, ARMMode_ABT);
 
     cpu->LR = oldpc;
     ARM9_SetSPSR(ARM9, oldcpsr);
 
     cpu->CPSR.Thumb = false;
     cpu->CPSR.IRQDisable = true;
-    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVECTOR_PAB, 0);
+    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVector_PAB, 0);
 }
 
-void THUMB9_PrefetchAbort(struct ARM* ARM, const u16 instr_data)
+void THUMB9_PrefetchAbort(struct ARM* ARM, const struct ARM_Instr instr_data)
 {
     ARM9_PrefetchAbort(ARM, instr_data);
 }
@@ -202,14 +207,14 @@ void ARM9_DataAbort(struct ARM946ES* ARM9)
     u32 oldpc = cpu->PC + ((cpu->CPSR.Thumb) ? 4 : 0);
     union ARM_PSR oldcpsr = cpu->CPSR;
 
-    ARM_SetMode(cpu, ARMMODE_ABT);
+    ARM_SetMode(cpu, ARMMode_ABT);
 
     cpu->LR = oldpc;
     ARM9_SetSPSR(ARM9, oldcpsr);
 
     cpu->CPSR.Thumb = false;
     cpu->CPSR.IRQDisable = true;
-    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVECTOR_DAB, 0);
+    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVector_DAB, 0);
 }
 
 void ARM9_InterruptRequest(struct ARM946ES* ARM9)
@@ -218,14 +223,14 @@ void ARM9_InterruptRequest(struct ARM946ES* ARM9)
     u32 oldpc = cpu->PC - ((cpu->CPSR.Thumb) ? 0 : 4);
     union ARM_PSR oldcpsr = cpu->CPSR;
 
-    ARM_SetMode(cpu, ARMMODE_IRQ);
+    ARM_SetMode(cpu, ARMMode_IRQ);
 
     cpu->LR = oldpc;
     ARM9_SetSPSR(ARM9, oldcpsr);
 
     cpu->CPSR.Thumb = false;
     cpu->CPSR.IRQDisable = true;
-    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVECTOR_IRQ, 0);
+    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVector_IRQ, 0);
 }
 
 void ARM9_FastInterruptRequest(struct ARM946ES* ARM9)
@@ -234,7 +239,7 @@ void ARM9_FastInterruptRequest(struct ARM946ES* ARM9)
     u32 oldpc = cpu->PC - ((cpu->CPSR.Thumb) ? 0 : 4);
     union ARM_PSR oldcpsr = cpu->CPSR;
 
-    ARM_SetMode(cpu, ARMMODE_FIQ);
+    ARM_SetMode(cpu, ARMMode_FIQ);
 
     cpu->LR = oldpc;
     ARM9_SetSPSR(ARM9, oldcpsr);
@@ -242,7 +247,7 @@ void ARM9_FastInterruptRequest(struct ARM946ES* ARM9)
     cpu->CPSR.Thumb = false;
     cpu->CPSR.IRQDisable = true;
     cpu->CPSR.FIQDisable = true;
-    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVECTOR_FIQ, 0);
+    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVector_FIQ, 0);
 }
 
 #undef cpu

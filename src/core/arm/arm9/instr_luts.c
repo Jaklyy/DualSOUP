@@ -8,10 +8,10 @@
 
 
 // TODO: making this compile time generated might enable better compiler optimizations?
-void (*ARM9_InstructionLUT[0x1000])(struct ARM*, u32);
-s8 (*ARM9_InterlockLUT[0x1000])(struct ARM946ES*, u32);
-void (*THUMB9_InstructionLUT[0x1000])(struct ARM*, u16);
-s8 (*THUMB9_InterlockLUT[0x1000])(struct ARM946ES*, u16);
+void (*ARM9_InstructionLUT[0x1000])(struct ARM*, struct ARM_Instr);
+s8 (*ARM9_InterlockLUT[0x1000])(struct ARM946ES*, struct ARM_Instr);
+void (*THUMB9_InstructionLUT[0x1000])(struct ARM*, struct ARM_Instr);
+s8 (*THUMB9_InterlockLUT[0x1000])(struct ARM946ES*, struct ARM_Instr);
 
 
 // these should all be sorted in order of likelyhood of usage:
@@ -21,11 +21,11 @@ s8 (*THUMB9_InterlockLUT[0x1000])(struct ARM946ES*, u16);
 // the rest just raise undefined instruction exceptions
 
 #define CHECK(cmp, mask, ptr) \
-if (PatternMatch((struct Pattern) {0b##cmp, 0b##mask}, instr_data)) \
+if (PatternMatch((struct Pattern) {0b##cmp, 0b##mask}, instr_data.Raw)) \
     ARM##ptr(cpu, instr_data); \
 else
 
-void ARM9_Uncond(struct ARM* cpu, const u32 instr_data)
+void ARM9_Uncond(struct ARM* cpu, const struct ARM_Instr instr_data)
 {
     CHECK(1111'1010'0000'0000'0000'0000'0000'0000, 1111'1110'0000'0000'0000'0000'0000'0000, _BLXImm) // BLX IMM
     CHECK(1111'0101'0101'0000'1111'0000'0000'0000, 1111'1101'0111'0000'1111'0000'0000'0000, _UNIMPL) // PLD
@@ -43,11 +43,11 @@ void ARM9_Uncond(struct ARM* cpu, const u32 instr_data)
 #undef CHECK
 
 #define CHECK(cmp, mask, ptr) \
-if (PatternMatch((struct Pattern) {0b##cmp, 0b##mask}, instr_data)) \
+if (PatternMatch((struct Pattern) {0b##cmp, 0b##mask}, instr_data.Raw)) \
     return ARM9_##ptr##_Interlocks(ARM9, instr_data); \
 else
 
-s8 ARM9_Uncond_Interlocks(struct ARM946ES* ARM9, const u32 instr_data)
+s8 ARM9_Uncond_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
 {
     CHECK(1111'1010'0000'0000'0000'0000'0000'0000, 1111'1110'0000'0000'0000'0000'0000'0000, None) // BLX IMM
     CHECK(1111'0101'0101'0000'1111'0000'0000'0000, 1111'1101'0111'0000'1111'0000'0000'0000, UNIMPL) // PLD
@@ -209,9 +209,9 @@ if (PatternMatch((struct Pattern) {0b##cmp, 0b##mask}, decode)) \
     THUMB##ptr(ARM, instr_data); \
 else
 
-void THUMB9_Misc(struct ARM* ARM, const u16 instr_data)
+void THUMB9_Misc(struct ARM* ARM, const struct ARM_Instr instr_data)
 {
-    const u16 decode = (instr_data >> 3) & 0x1FF;
+    const u16 decode = (instr_data.Raw >> 3) & 0x1FF;
 
     CHECK(0000'0000'0, 1111'0000'0, _AdjustSP) // adjust sp
     CHECK(0100'0000'0, 1110'0000'0, _UNIMPL) // push
@@ -229,9 +229,9 @@ if (PatternMatch((struct Pattern) {0b##cmp, 0b##mask}, decode)) \
     return THUMB9_##ptr##_Interlocks(ARM9, instr_data); \
 else
 
-s8 THUMB9_Misc_Interlocks(struct ARM946ES* ARM9, const u16 instr_data)
+s8 THUMB9_Misc_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
 {
-    const u16 decode = (instr_data >> 3) & 0x1FF;
+    const u16 decode = (instr_data.Raw >> 3) & 0x1FF;
 
     CHECK(0000'0000'0, 1111'0000'0, AdjustSP) // adjust sp
     CHECK(0100'0000'0, 1110'0000'0, UNIMPL) // push

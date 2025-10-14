@@ -88,7 +88,7 @@ union ARM9_ICacheTagsInternal
     struct
     {
         bool Valid : 1;
-        u32 TagBits : 32 - (CTZ_CONSTEXPR(ARM9_DCacheIndices) + CTZ_CONSTEXPR(ARM9_DCacheAssoc) + 3);
+        u32 TagBits : 32 - (CTZ_CONSTEXPR(ARM9_ICacheIndices) + CTZ_CONSTEXPR(ARM9_ICacheAssoc) + 3);
     };
 };
 
@@ -113,11 +113,9 @@ union ARM9_DCacheTagsInternal
     u32 Raw;
     struct
     {
-        u32 Set : CTZ_CONSTEXPR(ARM9_DCacheAssoc);
         bool DirtyLo : 1; // Lower half of cache line is dirty
         bool DirtyHi : 1; // Upper half of cache line is dirty
         bool Valid : 1;
-        u32 Index : CTZ_CONSTEXPR(ARM9_DCacheIndices);
         u32 TagBits : 32 - (CTZ_CONSTEXPR(ARM9_DCacheIndices) + CTZ_CONSTEXPR(ARM9_DCacheAssoc) + 3);
     };
 };
@@ -128,9 +126,11 @@ union ARM9_DCacheTagsExternal
     u32 Raw;
     struct
     {
+        u32 Set : CTZ_CONSTEXPR(ARM9_DCacheAssoc);
         bool DirtyLo : 1; // Lower half of cache line is dirty
         bool DirtyHi : 1; // Upper half of cache line is dirty
         bool Valid : 1;
+        u32 Index : CTZ_CONSTEXPR(ARM9_DCacheIndices);
         u32 TagBits : 32 - (CTZ_CONSTEXPR(ARM9_DCacheIndices) + CTZ_CONSTEXPR(ARM9_DCacheAssoc) + 3);
     };
 };
@@ -226,8 +226,10 @@ struct ARM946ES
     timestamp StreamTimes[8];
     alignas(32) s8 RegIL[16][2]; // r15 shouldn't be able to interlock?
     timestamp MemTimestamp; // used for memory stage and data bus tracking
-    // used for thumb upper halfword fetches
-    u16 LatchedHalfword;
+    timestamp DataBusTs;
+    timestamp InstrBusTs;
+    u16 LatchedHalfword; // used for thumb upper halfword fetches
+    bool ITCM_DataAccess; // used for handling deferrence of data accesses to itcm
     bool BoostedClock; /*   Determines whether the ARM9 is running at 4 or 2 times the bus clock.
                         *   Should only apply to the DSi bus.
                         *   true  = 4x
@@ -288,10 +290,10 @@ struct ARM946ES
 // ensure casting between the two types works as expected
 static_assert(offsetof(struct ARM946ES, ARM) == 0);
 
-extern void (*ARM9_InstructionLUT[0x1000])(struct ARM*, u32);
-extern s8 (*ARM9_InterlockLUT[0x1000])(struct ARM946ES*, u32);
-extern void (*THUMB9_InstructionLUT[0x1000])(struct ARM*, u16);
-extern s8 (*THUMB9_InterlockLUT[0x1000])(struct ARM946ES*, u16);
+extern void (*ARM9_InstructionLUT[0x1000])(struct ARM*, struct ARM_Instr);
+extern s8 (*ARM9_InterlockLUT[0x1000])(struct ARM946ES*, struct ARM_Instr);
+extern void (*THUMB9_InstructionLUT[0x1000])(struct ARM*, struct ARM_Instr);
+extern s8 (*THUMB9_InterlockLUT[0x1000])(struct ARM946ES*, struct ARM_Instr);
 
 // run to initialize the cpu.
 // assumes everything was zero'd out.
@@ -309,13 +311,13 @@ void ARM9_InterruptRequest(struct ARM946ES* ARM9);
 void ARM9_FastInterruptRequest(struct ARM946ES* ARM9);
 
 // executed exceptions.
-void ARM9_UndefinedInstruction(struct ARM* cpu, const u32 instr_data);
-void ARM9_SoftwareInterrupt(struct ARM* ARM, const u32 instr_data);
-void ARM9_PrefetchAbort(struct ARM* ARM, const u32 instr_data);
+void ARM9_UndefinedInstruction(struct ARM* cpu, const struct ARM_Instr instr_data);
+void ARM9_SoftwareInterrupt(struct ARM* ARM, const struct ARM_Instr instr_data);
+void ARM9_PrefetchAbort(struct ARM* ARM, const struct ARM_Instr instr_data);
 // stubs to make the compiler shut up
-void THUMB9_UndefinedInstruction(struct ARM* ARM, const u16 instr_data);
-void THUMB9_SoftwareInterrupt(struct ARM* ARM, const u16 instr_data);
-void THUMB9_PrefetchAbort(struct ARM* ARM, const u16 instr_data);
+void THUMB9_UndefinedInstruction(struct ARM* ARM, const struct ARM_Instr instr_data);
+void THUMB9_SoftwareInterrupt(struct ARM* ARM, const struct ARM_Instr instr_data);
+void THUMB9_PrefetchAbort(struct ARM* ARM, const struct ARM_Instr instr_data);
 
 // read register.
 [[nodiscard]] u32 ARM9_GetReg(struct ARM946ES* ARM9, const int reg);
@@ -342,9 +344,9 @@ void ARM9_ExecuteCycles(struct ARM946ES* ARM9, const int execute, const int memo
 // run the next step of execution
 void ARM9_Step(struct ARM946ES* ARM9);
 
-[[nodiscard]] u32 ARM9_InstrRead32(struct ARM946ES* ARM9, u32 addr); // arm
-[[nodiscard]] u16 ARM9_InstrRead16(struct ARM946ES* ARM9, u32 addr); // thumb
-void ARM9_Uncond(struct ARM* cpu, const u32 instr_data); // idk where to put this tbh
+[[nodiscard]] bool ARM9_InstrRead32(struct ARM946ES* ARM9, u32 addr); // arm
+[[nodiscard]] bool ARM9_InstrRead16(struct ARM946ES* ARM9, const u32 addr); // thumb
+void ARM9_Uncond(struct ARM* cpu, const struct ARM_Instr instr_data); // idk where to put this tbh
 
 void ARM9_ConfigureITCM(struct ARM946ES* ARM9);
 void ARM9_ConfigureDTCM(struct ARM946ES* ARM9);

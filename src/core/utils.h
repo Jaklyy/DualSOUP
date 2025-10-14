@@ -55,23 +55,23 @@ typedef uint64_t timestamp;
 /*#define likely(x) __builtin_expect(!!(x), 1)
 #define unlikely(x) __builtin_expect(!!(x), 0)*/
 #define bswap(x) _Generic((x), \
-       s16: __builtin_bswap16, u16: __builtin_bswap16, \
-       s32: __builtin_bswap32, u32: __builtin_bswap32, \
-       s64: __builtin_bswap64, u64: __builtin_bswap64)((x))
+    s16: __builtin_bswap16, u16: __builtin_bswap16, \
+    s32: __builtin_bswap32, u32: __builtin_bswap32, \
+    s64: __builtin_bswap64, u64: __builtin_bswap64)((x))
 
 #define HOST_CACHEALIGN (64)
 
 
 // the builtins are constexpr but the actual standard defined functions aren't...
 #define CTZ_CONSTEXPR(x) _Generic((x), \
-                         s32: __builtin_ctz, u32: __builtin_ctz, \
-                         s64: __builtin_ctzl, u64: __builtin_ctzl)((x))
+    s32: __builtin_ctz, u32: __builtin_ctz, \
+    s64: __builtin_ctzl, u64: __builtin_ctzl)((x))
 #define CLZ_CONSTEXPR(x) _Generic((x), \
-                         s32: __builtin_clz, u32: __builtin_clz, \
-                         s64: __builtin_clzl, u64: __builtin_clzl)((x))
+    s32: __builtin_clz, u32: __builtin_clz, \
+    s64: __builtin_clzl, u64: __builtin_clzl)((x))
 #define POPCNT_CONSTEXPR(x) _Generic((x), \
-                         s32: __builtin_popcount, u32: __builtin_popcount, \
-                         s64: __builtin_popcountl, u64: __builtin_popcountl)((x))
+    s32: __builtin_popcount, u32: __builtin_popcount, \
+    s64: __builtin_popcountl, u64: __builtin_popcountl)((x))
 
 #define MEMORY(name, size) \
 union { \
@@ -81,9 +81,9 @@ union { \
 }
 
 #define MemoryRead(size, memory, addr, mask) \
-(((size) == 32)   ? memory##32[((addr)/4) & (mask)] \
-: (((size) == 16) ? memory##16[((addr)/2) & (mask)] \
-                : memory##8 [((addr)/1) & (mask)]))
+    (((size) == 32)   ? (memory##32)[((addr)/4) & (mask)] \
+    : (((size) == 16) ? (memory##16)[((addr)/2) & (mask)] \
+                      : (memory##8) [((addr)/1) & (mask)]))
 
 
 enum CPU_IDs : u8
@@ -113,6 +113,8 @@ enum LoggingLevels : u64
 #define LOG_CPUID (1 << cpu->CPUID)
 #define CPUIDtoCPUNum ((cpu->CPUID*2)+7)
 
+#define MaskedWrite(dest, write, mask) ((dest) = (((dest) & ~(mask)) | ((write) & (mask))))
+
 [[nodiscard]] inline bool PatternMatch(const struct Pattern pattern, const u32 bits)
 {
     return ((bits & pattern.mask) == pattern.cmp);
@@ -128,3 +130,7 @@ enum LoggingLevels : u64
 extern u64 LogMask;
 // printf but with support for filtering out the noise
 void LogPrint(const u64 logtype, const char* str, ...);
+
+// coroutine stuff
+
+void CR_Make();

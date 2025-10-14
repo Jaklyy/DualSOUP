@@ -3,6 +3,7 @@
 #include "utils.h"
 #include "arm/arm9/arm.h"
 #include "arm/arm7/arm.h"
+#include "dma/dma.h"
 
 
 // system clocks
@@ -16,7 +17,7 @@ constexpr int NTR9_Clock   = Base_Clock * 4; // NARM9 Clock.
 
 // audio clocks
 // source: gbatek 
-// these numbers seem odd? not sure if these should actually be 
+// these numbers seem odd? not sure if these should actually be
 constexpr int SoundMixerFreq = 1048760; // >(1/16); (is this info relevant?)
 constexpr int SoundMixerOutput = 32768; // 
 
@@ -47,14 +48,33 @@ constexpr int VRAM_I_Size       = KiB(16);
 
 
 
+enum Scheduler_Events
+{
+    Sched_DMA9,
+    Sched_Timer9IRQ,
+
+    Sched_DMA7,
+
+    Sched_MAX,
+};
+
+
 struct Console
 {
     struct ARM946ES ARM9;
     struct ARM7TDMI ARM7;
 
+    struct DMA_Channel DMA9[4];
+    struct DMA_Channel DMA7[4];
+
     struct
     {
-        
+        u64 EventMask;
+        timestamp EventTimes[Sched_MAX];
+    } Scheduler;
+
+    struct
+    {
     } IO;
 
     alignas(HOST_CACHEALIGN)

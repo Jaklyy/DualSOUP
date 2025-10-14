@@ -1,4 +1,5 @@
 #if 0
+
 #include <stdio.h>
 #include <stdbit.h>
 #include "bus.h"
@@ -356,12 +357,32 @@ void Bus9_ResolvePriorities(struct Bus* Bus9)
     }
 }
 
+
+// dma
+// 4 sub buses (probably not how this is actually handled?)
+// priority lowest id to highest
+// - dma0
+// - dma1
+// - dma2
+// - dma3
+
+// arm9
+// 3 sub buses
+// equal-ish priority
+// - arm9 instruction
+// - arm9 data
+// - arm9 write buffer
+
+bool Bus9_NegotiateBusOwnership(struct Bus* bus)
+{
+    int curhighestpriority = stdc_leading_zeros(bus->CurRequests);
+
+    // eject current owner from driver's seat if someone "more important" came in.
+    bus->CurOwner = curhighestpriority;
+}
+
 inline int Timing16Bit(const u8 accesswidth)
 {
-    if (accesswidth == BusAccess_32Bit)
-    {
-        return 2;
-    }
-    else return 1;
+    return ((accesswidth == BusAccess_32Bit) ? 2 : 1);
 }
 #endif

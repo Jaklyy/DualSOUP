@@ -18,8 +18,12 @@ void Console_Reset(struct Console* sys)
     ARM7_Reset(&sys->ARM7);
 }
 
+void Console_Scheduler(struct Console* sys)
+{
+    
+}
+
 void Console_MainLoop(struct Console* sys)
 {
     ARM9_Step(&sys->ARM9);
 }
-

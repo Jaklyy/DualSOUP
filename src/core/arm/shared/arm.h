@@ -8,45 +8,52 @@
 // lsb is technically a negation of the pass/fail
 enum ARM_Condition_Codes : u8
 {
-    ARMCOND_EQ,
-    ARMCOND_NE,
-    ARMCOND_CS,
-    ARMCOND_CC,
-    ARMCOND_MI,
-    ARMCOND_PL,
-    ARMCOND_VS,
-    ARMCOND_VC,
-    ARMCOND_HI,
-    ARMCOND_LS,
-    ARMCOND_GE,
-    ARMCOND_LT,
-    ARMCOND_GT,
-    ARMCOND_LE,
-    ARMCOND_AL,
-    ARMCOND_NV, // legacy
+    ARMCond_EQ,
+    ARMCond_NE,
+    ARMCond_CS,
+    ARMCond_CC,
+    ARMCond_MI,
+    ARMCond_PL,
+    ARMCond_VS,
+    ARMCond_VC,
+    ARMCond_HI,
+    ARMCond_LS,
+    ARMCond_GE,
+    ARMCond_LT,
+    ARMCond_GT,
+    ARMCond_LE,
+    ARMCond_AL,
+    ARMCond_NV, // legacy
 };
 
 enum ARM_Modes : u8
 {
-    ARMMODE_USR = 0x0,
-    ARMMODE_FIQ = 0x1,
-    ARMMODE_IRQ = 0x2,
-    ARMMODE_SWI = 0x3, ARMMODE_SVC = 0x3,
-    ARMMODE_ABT = 0x7,
-    ARMMODE_UND = 0xB,
-    ARMMODE_SYS = 0xF,
+    ARMMode_USR = 0x0,
+    ARMMode_FIQ = 0x1,
+    ARMMode_IRQ = 0x2,
+    ARMMode_SWI = 0x3, ARMMode_SVC = 0x3,
+    ARMMode_ABT = 0x7,
+    ARMMode_UND = 0xB,
+    ARMMode_SYS = 0xF,
 };
 
 enum ARM_Exception_Vector_Offsets : u8
 {
-    ARMVECTOR_RST = 0x00, // Reset
-    ARMVECTOR_UND = 0x04, // Undefined Instruction
-    ARMVECTOR_SWI = 0x08, ARMVECTOR_SVC = 0x08, // Software Interrupt / Supervisor Call
-    ARMVECTOR_PAB = 0x0C, // Prefetch Abort (instruction)
-    ARMVECTOR_DAB = 0x10, // Data Abort (data)
-    ARMVECTOR_ADR = 0x14, // Address Exception (legacy 26 bit addressing thing, only here for funsies)
-    ARMVECTOR_IRQ = 0x18, // Interrupt Request
-    ARMVECTOR_FIQ = 0x1C, // Fast Interrupt Request
+    ARMVector_RST = 0x00, // Reset
+    ARMVector_UND = 0x04, // Undefined Instruction
+    ARMVector_SWI = 0x08, ARMVector_SVC = 0x08, // Software Interrupt / Supervisor Call
+    ARMVector_PAB = 0x0C, // Prefetch Abort (instruction)
+    ARMVector_DAB = 0x10, // Data Abort (data)
+    ARMVector_ADR = 0x14, // Address Exception (legacy 26 bit addressing thing, only here for funsies)
+    ARMVector_IRQ = 0x18, // Interrupt Request
+    ARMVector_FIQ = 0x1C, // Fast Interrupt Request
+};
+
+// proper order of these matters
+enum ARM_PipelineProg : u8
+{
+    ARMPipe_Fetch,
+    ARMPipe_Exec,
 };
 
 union ARM_FlagsOut
@@ -90,6 +97,19 @@ union ARM_PSR
         u32 : 23;
         u32 Flags : 4;
     };
+};
+
+struct ARM_Instr
+{
+    alignas(u64)
+    union
+    {
+        u32 Raw;
+        u32 Arm;
+        u16 Thumb;
+    };
+    bool Aborted; // whether the instruction fetch raised a prefetch abort.
+    bool CoprocPriv; // whether the coprocessor pipeline thinks we have privilege or not.
 };
 
 #define ARM_CoprocReg(Op1, CRn, CRm, Op2) (((Op1) << 11) | ((CRn) << 7) | ((CRm) << 3) | (Op2))
@@ -156,7 +176,13 @@ struct ARM
     } UND_Bank;
     u8 CPUID;
     bool Privileged; // permissions
-    u32 Instr[3]; // prefetch pipeline
+    u8 PipelineProgress; // tracks where we are in the pipeline progression.
+    bool BusStalled; // stuck waiting on bus accesses.
+    struct ARM_Instr Instr[3]; // prefetch pipeline
+    struct
+    {
+        
+    } LoadStoreCallback;
     timestamp Timestamp;
     struct Console* Sys;
 };
@@ -169,3 +195,5 @@ void ARM_UpdatePerms(struct ARM* cpu, const u8 mode);
 void ARM_SetMode(struct ARM* cpu, const u8 mode);
 void ARM_SetCPSR(struct ARM* cpu, const u32 val);
 void ARM_SetThumb(struct ARM* cpu, const bool thumb);
+void ARM_PipelineStep(struct ARM* cpu);
+void ARM_PipelineFlush(struct ARM* cpu);

@@ -57,6 +57,12 @@ ARM_SetCPSR(cpu, ARM_GetSPSR.Raw)
     : ARM9_UndefinedInstruction(cpu, (instr_data)) \
 )
 
+#define ARM_CanLoadInterwork \
+((cpu->CPUID == ARM7ID) \
+    ? false \
+    : !(((struct ARM946ES*)cpu)->CP15.CR.NoLoadTBit) \
+) 
+
 [[nodiscard]] u32 ARM_ADD(const u32 rn_val, const u32 shifter_out, union ARM_FlagsOut* flags_out);
 [[nodiscard]] u32 ARM_ADC(const u32 rn_val, const u32 shifter_out, const bool carry_in, union ARM_FlagsOut* flags_out);
 [[nodiscard]] u32 ARM_SUB_RSB(const u32 a, const u32 b, union ARM_FlagsOut* flags_out);

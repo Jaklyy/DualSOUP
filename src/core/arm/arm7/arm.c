@@ -15,12 +15,12 @@ void ARM7_Init(struct ARM7TDMI* ARM7, struct Console* sys)
 void ARM7_Reset(struct ARM7TDMI* ARM7)
 {
     // set CPSR
-    cpu->CPSR.Mode = ARMMODE_SWI;
+    cpu->CPSR.Mode = ARMMode_SWI;
     cpu->CPSR.Thumb = false;
     cpu->CPSR.IRQDisable = true;
     cpu->CPSR.FIQDisable = true;
 
-    cpu->PC = 0x00000000 + ARMVECTOR_RST;
+    cpu->PC = 0x00000000 + ARMVector_RST;
 }
 
 union ARM_PSR ARM7_GetSPSR(struct ARM7TDMI* ARM7)
@@ -28,18 +28,18 @@ union ARM_PSR ARM7_GetSPSR(struct ARM7TDMI* ARM7)
     // TODO: THIS IS WRONG FOR ARM7
     switch(cpu->CPSR.Mode)
     {
-    case ARMMODE_FIQ:
+    case ARMMode_FIQ:
         return cpu->FIQ_Bank.SPSR;
-    case ARMMODE_IRQ:
+    case ARMMode_IRQ:
         return cpu->IRQ_Bank.SPSR;
-    case ARMMODE_SWI:
+    case ARMMode_SWI:
         return cpu->SWI_Bank.SPSR;
-    case ARMMODE_SWI+1 ... ARMMODE_ABT:
+    case ARMMode_SWI+1 ... ARMMode_ABT:
         return cpu->ABT_Bank.SPSR;
-    case ARMMODE_ABT+1 ... ARMMODE_UND:
+    case ARMMode_ABT+1 ... ARMMode_UND:
         return cpu->UND_Bank.SPSR;
-    case ARMMODE_USR:
-    case ARMMODE_UND+1 ... ARMMODE_SYS:
+    case ARMMode_USR:
+    case ARMMode_UND+1 ... ARMMode_SYS:
         return cpu->CPSR;
     default: unreachable();
     }
@@ -50,23 +50,23 @@ void ARM7_SetSPSR(struct ARM7TDMI* ARM7, union ARM_PSR psr)
     // TODO: THIS IS WRONG FOR ARM7
     switch(cpu->CPSR.Mode)
     {
-    case ARMMODE_FIQ:
+    case ARMMode_FIQ:
         cpu->FIQ_Bank.SPSR = psr;
         break;
-    case ARMMODE_IRQ:
+    case ARMMode_IRQ:
         cpu->IRQ_Bank.SPSR = psr;
         break;
-    case ARMMODE_SWI:
+    case ARMMode_SWI:
         cpu->SWI_Bank.SPSR = psr;
         break;
-    case ARMMODE_SWI+1 ... ARMMODE_ABT:
+    case ARMMode_SWI+1 ... ARMMode_ABT:
         cpu->ABT_Bank.SPSR = psr;
         break;
-    case ARMMODE_ABT+1 ... ARMMODE_UND:
+    case ARMMode_ABT+1 ... ARMMode_UND:
         cpu->UND_Bank.SPSR = psr;
         break;
-    case ARMMODE_USR:
-    case ARMMODE_UND+1 ... ARMMODE_SYS:
+    case ARMMode_USR:
+    case ARMMode_UND+1 ... ARMMode_SYS:
         // no spsr, no write
         break;
     default: unreachable();

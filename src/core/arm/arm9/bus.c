@@ -34,7 +34,7 @@ bool ARM9_DTCMTryWrite(const struct ARM946ES* ARM9, const u32 addr)
 }
 
 // arm
-u32 ARM9_InstrRead32(struct ARM946ES* ARM9, const u32 addr)
+bool ARM9_InstrRead32(struct ARM946ES* ARM9, const u32 addr)
 {
     // todo: ns needs to check if cache streaming active
     // should probably be done in the pipeline flush logic?
@@ -44,7 +44,8 @@ u32 ARM9_InstrRead32(struct ARM946ES* ARM9, const u32 addr)
     if (false)
     {
         ARM9_FetchCycles(ARM9, 1);
-        return 0xE1240671; // bkpt, #0x4061
+        ARM9->ARM.Instr[2] = (struct ARM_Instr){0xE1200070, true}; // encode bkpt as a hack to make prefetch aborts quicker to handle
+        return true;
     }
 
     // itcm
@@ -53,7 +54,8 @@ u32 ARM9_InstrRead32(struct ARM946ES* ARM9, const u32 addr)
         // TODO: add contention cycle
         //return ARM9->ITCM32[(addr/4) & (ARM9_ITCMSize-1)];
         ARM9_FetchCycles(ARM9, 1);
-        return MemoryRead(32, ARM9->ITCM, addr, ARM9_ITCMSize-1);
+        ARM9->ARM.Instr[2] = (struct ARM_Instr){MemoryRead(32, ARM9->ITCM, addr, ARM9_ITCMSize-1), false, ARM9->ARM.Privileged};
+        return true;
     }
 
     // icache
@@ -64,21 +66,29 @@ u32 ARM9_InstrRead32(struct ARM946ES* ARM9, const u32 addr)
     // TODO: handle queuing of bus logic
 
     ARM9_FetchCycles(ARM9, 1);
-    return 0xE1251772; // bkpt, #0x5172
+    ARM9->ARM.Instr[2] = (struct ARM_Instr){0xE1200070, true}; // encode bkpt as a hack to make prefetch aborts quicker to handle
+    return true; // TODO: change
 }
 
 // thumb
-u16 ARM9_InstrRead16(struct ARM946ES* ARM9, const u32 addr)
+bool ARM9_InstrRead16(struct ARM946ES* ARM9, const u32 addr)
 {
     // todo: ns needs to check for cache streaming active
     // should probably be done in the pipeline flush logic?
     // CHECKME: though what happens if you switch fetch size without a flush?
 
+    // latched
+    // CHECKME: does latching apply to all access types?
+
+    // NOTE: not sure if clearing the high bits is correct?
+    // it's not currently clear if it's possible to switch from thumb -> arm without a pipeline flush on the ARM946E-S
+
     // TODO: prefetch abort
     if (false)
     {
         ARM9_FetchCycles(ARM9, 1);
-        return 0xBE41; // bkpt, #0x41
+        ARM9->ARM.Instr[2] = (struct ARM_Instr){0xBE00, true}; // encode bkpt as a hack to make prefetch aborts quicker to handle
+        return true;
     }
 
     // itcm
@@ -86,17 +96,27 @@ u16 ARM9_InstrRead16(struct ARM946ES* ARM9, const u32 addr)
     {
         // TODO: add contention cycle
         ARM9_FetchCycles(ARM9, 1);
-        return ARM9->ITCM16[(addr/2) & (ARM9_ITCMSize-1)];
+        ARM9->ARM.Instr[2] = (struct ARM_Instr){MemoryRead(16, ARM9->ITCM, addr, ARM9_ITCMSize-1), false, ARM9->ARM.Privileged};
+        return true;
     }
 
     // icache
-
-    // latched (is this done here only? how does this work with cache streaming?)
 
     // external bus
     //ARM9_BusClockAlign(ARM9, &ARM9->ARM.Timestamp);
     // TODO: handle queuing of bus logic
 
     ARM9_FetchCycles(ARM9, 1);
-    return 0xBE52; // bkpt, #0x52
+    ARM9->ARM.Instr[2] = (struct ARM_Instr){0xBE00, true}; // encode bkpt as a hack to make prefetch aborts quicker to handle
+    return true; //?
+}
+
+void ARM9_LoadRegister32_Callback()
+{
+
+}
+
+void ARM9_LoadRegister32Unaligned_Callback()
+{
+
 }

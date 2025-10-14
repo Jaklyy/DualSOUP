@@ -38,18 +38,18 @@ union ARM_PSR ARM9_GetSPSR(struct ARM946ES* ARM9)
 {
     switch(cpu->CPSR.Mode)
     {
-    case ARMMODE_FIQ:
+    case ARMMode_FIQ:
         return cpu->FIQ_Bank.SPSR;
-    case ARMMODE_IRQ:
+    case ARMMode_IRQ:
         return cpu->IRQ_Bank.SPSR;
-    case ARMMODE_SWI:
+    case ARMMode_SWI:
         return cpu->SWI_Bank.SPSR;
-    case ARMMODE_SWI+1 ... ARMMODE_ABT:
+    case ARMMode_SWI+1 ... ARMMode_ABT:
         return cpu->ABT_Bank.SPSR;
-    case ARMMODE_ABT+1 ... ARMMODE_UND:
+    case ARMMode_ABT+1 ... ARMMode_UND:
         return cpu->UND_Bank.SPSR;
-    case ARMMODE_USR:
-    case ARMMODE_UND+1 ... ARMMODE_SYS:
+    case ARMMode_USR:
+    case ARMMode_UND+1 ... ARMMode_SYS:
         return cpu->CPSR;
     default: unreachable();
     }
@@ -59,23 +59,23 @@ void ARM9_SetSPSR(struct ARM946ES* ARM9, union ARM_PSR psr)
 {
     switch(cpu->CPSR.Mode)
     {
-    case ARMMODE_FIQ:
+    case ARMMode_FIQ:
         cpu->FIQ_Bank.SPSR = psr;
         break;
-    case ARMMODE_IRQ:
+    case ARMMode_IRQ:
         cpu->IRQ_Bank.SPSR = psr;
         break;
-    case ARMMODE_SWI:
+    case ARMMode_SWI:
         cpu->SWI_Bank.SPSR = psr;
         break;
-    case ARMMODE_SWI+1 ... ARMMODE_ABT:
+    case ARMMode_SWI+1 ... ARMMode_ABT:
         cpu->ABT_Bank.SPSR = psr;
         break;
-    case ARMMODE_ABT+1 ... ARMMODE_UND:
+    case ARMMode_ABT+1 ... ARMMode_UND:
         cpu->UND_Bank.SPSR = psr;
         break;
-    case ARMMODE_USR:
-    case ARMMODE_UND+1 ... ARMMODE_SYS:
+    case ARMMode_USR:
+    case ARMMode_UND+1 ... ARMMode_SYS:
         // no spsr, no write
         break;
     default: unreachable();
@@ -122,24 +122,9 @@ void ARM9_SetPC(struct ARM946ES* ARM9, u32 addr, const s8 iloffs)
     // r15 interlocks must be resolved immediately.
     ARM9_InterlockStall(ARM9, iloffs);
 
-    // pipeline flush logic goes here.
-    // TODO: handle stalls if icache streaming is ongoing here?
-    // TEMP?
-    if (cpu->CPSR.Thumb)
-    {
-        cpu->Instr[1] = ARM9_InstrRead16(ARM9, addr);
-        cpu->Instr[2] = ARM9_InstrRead16(ARM9, addr+2);
-        cpu->PC = addr + 4;
-    }
-    else
-    {
-        cpu->Instr[1] = ARM9_InstrRead32(ARM9, addr+2);
-        cpu->Instr[2] = ARM9_InstrRead32(ARM9, addr+4);
-        cpu->PC = addr + 8;
-    }
-    // "fake" execute stage to keep timestamps coherent.
-    // TODO: do this differently it confuses me.
-    ARM9_ExecuteCycles(ARM9, 1, 1);
+    cpu->PC = addr;
+
+    ARM_PipelineFlush(cpu);
 }
 
 void ARM9_SetReg(struct ARM946ES* ARM9, const int reg, u32 val, const s8 iloffs, const s8 iloffs_c)
@@ -187,6 +172,51 @@ void ARM9_ExecuteCycles(struct ARM946ES* ARM9, const int execute, const int memo
     ARM9_UpdateInterlocks(ARM9, diff);
 }
 
+#define ILCheckFetch(size, x) \
+s8 stall = x (ARM9, instr); \
+if (stall) \
+{ \
+    ARM9_InterlockStall(ARM9, stall); \
+} \
+return ARM9_InstrRead##size (ARM9, cpu->PC);
+
+// handle interlocks and fetching
+// interlocks are checked and stalled for prior to the fetch stage
+bool ARM9_Fetch(struct ARM946ES* ARM9)
+{
+    if (cpu->CPSR.Thumb)
+    {
+        const struct ARM_Instr instr = cpu->Instr[0];
+        u16 decode = (instr.Thumb >> 10);
+
+        ILCheckFetch(16, THUMB9_InterlockLUT[decode])
+    }
+    else
+    {
+        const struct ARM_Instr instr = cpu->Instr[0];
+        u8 condcode = instr.Arm >> 28;
+        u16 decode = ((instr.Arm >> 16) & 0xFF0) | ((instr.Arm >> 4) & 0xF);
+
+        // TODO: DATA ABORTS?????
+        // first we need to check the condition code (should be part of decoding?)
+        if (ARM_ConditionLookup(condcode, cpu->CPSR.Flags))
+        {
+            ILCheckFetch(32, ARM9_InterlockLUT[decode])
+        }
+        else if (condcode == ARMCond_NV) // unconditional instructions
+        {
+            ILCheckFetch(32, ARM9_Uncond_Interlocks)
+        }
+        else // actually an instruction that failed the condition check. (or weird bkpt encoding)
+        {
+            // CHECKME: skipped instructions shouldn't trigger interlocks right?
+
+            return ARM9_InstrRead32(ARM9, cpu->PC);
+        }
+    }
+}
+#undef ILCheckFetch
+
 [[nodiscard]] bool ARM9_CheckInterrupts(struct ARM946ES* ARM9)
 {
     if (cpu->WakeIRQ)
@@ -207,66 +237,44 @@ void ARM9_ExecuteCycles(struct ARM946ES* ARM9, const int execute, const int memo
     else return false;
 }
 
-#define ILCheck(x) \
-s8 stall = x (ARM9, instr); \
-if (stall) \
-{ \
-    ARM9_InterlockStall(ARM9, stall); \
-}
-
-#define FetchIRQExec(size, x) \
-cpu->Instr[2] = ARM9_InstrRead##size (ARM9, cpu->PC); \
-if (!ARM9_CheckInterrupts(ARM9)) \
-    x \
-    (cpu, instr);
-
-void ARM9_Step(struct ARM946ES* ARM9)
+void ARM9_Execute(struct ARM946ES* ARM9)
 {
-    // step pipeline forward.
-    cpu->Instr[0] = cpu->Instr[1];
-    cpu->Instr[1] = cpu->Instr[2];
+    // irqs are handled now
+    if (!ARM9_CheckInterrupts(ARM9)) return;
 
     if (cpu->CPSR.Thumb)
     {
-        u16 instr = cpu->Instr[0];
-        u16 decode = (instr >> 10);
+        const struct ARM_Instr instr = cpu->Instr[0];
+        const u16 decode = (instr.Thumb >> 10);
 
-        ILCheck(THUMB9_InterlockLUT[decode])
-        FetchIRQExec(16, THUMB9_InstructionLUT[decode])
+        THUMB9_InstructionLUT[decode](cpu, instr);
     }
     else
     {
-        u32 instr = cpu->Instr[0];
-        u8 condcode = instr >> 28;
-        u16 decode = ((instr >> 16) & 0xFF0) | ((instr >> 4) & 0xF);
+        const struct ARM_Instr instr = cpu->Instr[0];
+        const u8 condcode = instr.Arm >> 28;
+        const u16 decode = ((instr.Arm >> 16) & 0xFF0) | ((instr.Arm >> 4) & 0xF);
 
         // TODO: DATA ABORTS?????
         // first we need to check the condition code (should be part of decoding?)
         if (ARM_ConditionLookup(condcode, cpu->CPSR.Flags))
         {
-            // partial decode stage modelling in order to check for and handle interlocks.
-            // must be done before fetch stage for proper cycle accuracy.
-            ILCheck(ARM9_InterlockLUT[decode])
-            FetchIRQExec(32, ARM9_InstructionLUT[decode])
+            ARM9_InstructionLUT[decode](cpu, instr);
         }
-        else if (condcode == ARMCOND_NV) // unconditional instructions
+        else if (condcode == ARMCond_NV) // unconditional instructions
         {
-            ILCheck(ARM9_Uncond_Interlocks)
-            FetchIRQExec(32, ARM9_Uncond)
+            ARM9_Uncond(cpu, instr);
         }
         else if (decode == 0x127) // BKPT; needs special handling, it always passes condition codes
         {
             // bkpt doesn't use registers and can't interlock.
-            FetchIRQExec(32, ARM9_PrefetchAbort)
+            ARM9_PrefetchAbort(cpu, instr);
         }
         else // actually an instruction that failed the condition check.
         {
             // CHECKME: skipped instructions shouldn't trigger interlocks right?
 
-            cpu->Instr[2] = ARM9_InstrRead32(ARM9, cpu->PC);
-
-            if (!ARM9_CheckInterrupts(ARM9))
-                ARM9_ExecuteCycles(ARM9, 1, 1);
+            ARM9_ExecuteCycles(ARM9, 1, 1);
         }
     }
 
@@ -274,7 +282,27 @@ void ARM9_Step(struct ARM946ES* ARM9)
     ARM9_Log(ARM9);
 }
 
-#undef ILCheck
-#undef FetchIRQExec
+void ARM9_Step(struct ARM946ES* ARM9)
+{
+    if (cpu->BusStalled) return; // note: this might not stay here?
+
+
+    switch(cpu->PipelineProgress)
+    {
+    case ARMPipe_Fetch:
+    {
+        ARM_PipelineStep(cpu);
+        cpu->BusStalled = ARM9_Fetch(ARM9);
+        break;
+    }
+    case ARMPipe_Exec:
+    {
+        ARM9_Execute(ARM9);
+        break;
+    }
+    default:
+        unreachable();
+    }
+}
 
 #undef cpu

@@ -19,9 +19,9 @@ union ARM_BranchImm_Decode
     };
 };
 
-void ARM_Branch(struct ARM* cpu, const u32 instr_data)
+void ARM_Branch(struct ARM* cpu, const struct ARM_Instr instr_data)
 {
-    const union ARM_BranchImm_Decode instr = {.Raw = instr_data};
+    const union ARM_BranchImm_Decode instr = {.Raw = instr_data.Raw};
 
     u32 pc = ARM_GetReg(15);
     u32 addr = ((s32)instr.Imm_s24 << 2) + pc;
@@ -35,20 +35,20 @@ void ARM_Branch(struct ARM* cpu, const u32 instr_data)
 }
 
 // ARMv5
-void ARM_BLXImm(struct ARM* cpu, const u32 instr_data)
+void ARM_BLXImm(struct ARM* cpu, const struct ARM_Instr instr_data)
 {
-    const union ARM_BranchImm_Decode instr = {.Raw = instr_data};
+    const union ARM_BranchImm_Decode instr = {.Raw = instr_data.Raw};
 
     u32 pc = ARM_GetReg(15);
     u32 addr = (((s32)instr.Imm_s24 << 2) | (instr.HalfwordOffset << 1)) + pc;
 
     ARM_ExeCycles(1, 1, 1);
 
-    // always saves return address
-    ARM_SetReg(14, pc-4, 0, 0);
-
     // always switches to thumb
     ARM_SetThumb(cpu, true);
+
+    // always saves return address
+    ARM_SetReg(14, pc-4, 0, 0);
 
     ARM_SetReg(15, addr, 0, 0);
 }
@@ -67,9 +67,9 @@ union ARM_BranchExchange_Decode
 };
 
 // TODO: apparently on the ARM7TDMI these are implemented as some sort of unholy MSR?
-void ARM_BranchExchange(struct ARM* cpu, const u32 instr_data)
+void ARM_BranchExchange(struct ARM* cpu, const struct ARM_Instr instr_data)
 {
-    const union ARM_BranchExchange_Decode instr = {.Raw = instr_data};
+    const union ARM_BranchExchange_Decode instr = {.Raw = instr_data.Raw};
 
     u32 addr = ARM_GetReg(instr.Rm);
 
@@ -85,9 +85,9 @@ void ARM_BranchExchange(struct ARM* cpu, const u32 instr_data)
     ARM_SetReg(15, addr, 0, 0);
 }
 
-s8 ARM9_BranchExchange_Interlocks(struct ARM946ES* ARM9, const u32 instr_data)
+s8 ARM9_BranchExchange_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
 {
-    const union ARM_BranchExchange_Decode instr = {.Raw = instr_data};
+    const union ARM_BranchExchange_Decode instr = {.Raw = instr_data.Raw};
     s8 stall = 0;
 
     ARM9_CheckInterlocks(ARM9, &stall, instr.Rm, 0, false);

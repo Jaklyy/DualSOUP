@@ -15,16 +15,16 @@ union THUMB_BranchCond_Decode
     };
 };
 
-void THUMB_BranchCond(struct ARM* cpu, const u16 instr_data)
+void THUMB_BranchCond(struct ARM* cpu, const struct ARM_Instr instr_data)
 {
-    const union THUMB_BranchCond_Decode instr = {.Raw = instr_data};
+    const union THUMB_BranchCond_Decode instr = {.Raw = instr_data.Raw};
 
     // these condition codes are handled specially
-    if (instr.Condition == ARMCOND_NV)
+    if (instr.Condition == ARMCond_NV)
     {
         return ARM_RaiseSWI;
     }
-    else if (instr.Condition == ARMCOND_AL)
+    else if (instr.Condition == ARMCond_AL)
     {
         return ARM_RaiseUDF;
     }
@@ -55,9 +55,9 @@ union THUMB_Branch_Decode
     };
 };
 
-void THUMB_Branch(struct ARM* cpu, const u16 instr_data)
+void THUMB_Branch(struct ARM* cpu, const struct ARM_Instr instr_data)
 {
-    const union THUMB_Branch_Decode instr = {.Raw = instr_data};
+    const union THUMB_Branch_Decode instr = {.Raw = instr_data.Raw};
 
     // undefined instruction.
     if ((instr.Opcode == 0b01) && (instr.ImmS11 & 0x1))
@@ -102,9 +102,9 @@ void THUMB_Branch(struct ARM* cpu, const u16 instr_data)
     }
 }
 
-s8 THUMB9_Branch_Interlocks(struct ARM946ES* ARM9, const u16 instr_data)
+s8 THUMB9_Branch_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
 {
-    const union THUMB_Branch_Decode instr = {.Raw = instr_data};
+    const union THUMB_Branch_Decode instr = {.Raw = instr_data.Raw};
     s8 stall = 0;
 
     if (instr.Opcode & 0b01)

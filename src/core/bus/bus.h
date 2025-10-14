@@ -1,5 +1,4 @@
 #pragma once
-#if 0
 #include "../utils.h"
 
 
@@ -109,8 +108,10 @@ static_assert(Dev_None < 0x80); // i swear if i somehow wind up needing 128 regi
 
 enum ARM9_BusControl : u8
 {
-    PRIO_ODMA, // idk where the term "ODMA" originates from but I have idea how else to refer to AGB/NTR style DMA vs TWL/CTR style.
-    PRIO_ARM9,
+    Bus9_DMA,
+    Bus9_ARM9,
+
+    Bus9_MaxOwners, // should be last
 };
 
 enum BusReturn : u8
@@ -130,12 +131,13 @@ enum BusAccessWidth : u8
 
 struct Bus
 {
-    u64 Timestamp; // Bus Timestamp.
-    u64 BusyDeviceTS; // when the currently busy device will stop being busy.
+    timestamp Timestamp; // Bus Timestamp.
+    timestamp BusyDeviceTS; // when the currently busy device will stop being busy.
     u32 CurOpenBus; // TODO: is this needed?
     u8 BusyDevice; // The most recently accessed device.
     u8 CurRequests; // List of requests for bus ownership; This will need to be expanded for DSi/3DS stuff.
     u8 CurOwner; // Who is currently owner of the bus.
+    void (*BusCallbacks) (struct Bus*, void*);
 };
 
 struct BusTiming
@@ -240,4 +242,3 @@ struct BusMainRAM
 
 void Bus_MainRAM();
 void Bus9();
-#endif

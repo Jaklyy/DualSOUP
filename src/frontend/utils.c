@@ -20,3 +20,5 @@ void LogPrint(const u64 logtype, const char* str, ...)
     va_end(args);
 #endif
 }
+
+void CR_Make()

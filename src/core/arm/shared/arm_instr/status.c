@@ -31,9 +31,9 @@ union ARM_StatusReg_Decode
     };
 };
 
-void ARM_MRS(struct ARM* cpu, const u32 instr_data)
+void ARM_MRS(struct ARM* cpu, const struct ARM_Instr instr_data)
 {
-    const union ARM_StatusReg_Decode instr = {.Raw = instr_data};
+    const union ARM_StatusReg_Decode instr = {.Raw = instr_data.Raw};
 
     u32 psr = ((instr.UseSPSR) ? ARM_GetSPSR.Raw : cpu->CPSR.Raw);
 
@@ -48,9 +48,9 @@ void ARM_MRS(struct ARM* cpu, const u32 instr_data)
     }
 }
 
-void ARM_MSR(struct ARM* cpu, const u32 instr_data)
+void ARM_MSR(struct ARM* cpu, const struct ARM_Instr instr_data)
 {
-    const union ARM_StatusReg_Decode instr = {.Raw = instr_data};
+    const union ARM_StatusReg_Decode instr = {.Raw = instr_data.Raw};
 
     u32 input;
 
@@ -96,10 +96,30 @@ void ARM_MSR(struct ARM* cpu, const u32 instr_data)
     // actually mask out bits
     psr = (psr & ~updatemask) | (input & updatemask);
 
-    // check if thumb bit was messed with
+    // check if thumb bit was messed with (dont ask me why arm didn't just mask this bit out...)
     if (psr ^ oldpsr & 0x20)
     {
-        LogPrint(LOG_UNIMP | LOG_CPUID, "ARM%i: MSR THUMB BIT WRITE AAAAAAAA SCARY\n", CPUIDtoCPUNum);
+        if (cpu->CPUID == ARM9ID)
+        {
+            // this processor is mostly sane i think, so we'll implement it. Still gonna log it though.
+            // TODO: does this mess up the coprocessor pipeline?
+
+            LogPrint(LOG_ODD | LOG_CPUID, "ARM9: MSR THUMB bit write?\n");
+
+            // compensate for our hacky prefetch handling
+            for (int i = 1; i < 3; i++)
+            {
+                if (cpu->Instr[i].Aborted)
+                {
+                    if (psr & 0x20)
+                        cpu->Instr[i].Raw = 0xBE00;
+                    else
+                        cpu->Instr[i].Raw = 0xE1200070;
+
+                }
+            }
+        }
+        else LogPrint(LOG_UNIMP | LOG_CPUID, "ARM%i: MSR THUMB BIT WRITE AAAAAAAA SCARY\n", CPUIDtoCPUNum);
     }
 
     ARM_StepPC(cpu, false);
@@ -120,9 +140,9 @@ void ARM_MSR(struct ARM* cpu, const u32 instr_data)
     ARM_SetCPSR(cpu, psr);
 }
 
-s8 ARM9_MSR_Interlocks(struct ARM946ES* ARM9, const u32 instr_data)
+s8 ARM9_MSR_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
 {
-    const union ARM_StatusReg_Decode instr = {.Raw = instr_data};
+    const union ARM_StatusReg_Decode instr = {.Raw = instr_data.Raw};
     s8 stall = 0;
 
     // only check for register variant

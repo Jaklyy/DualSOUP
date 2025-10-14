@@ -19,7 +19,7 @@ union ARM_MCR_MRC_Decode
         u32 Coproc : 4;
         u32 Rd : 4;
         u32 CRn : 4;
-        u32 : 0;
+        u32 : 1;
         u32 Op1 : 3;
     };
 };
@@ -27,9 +27,9 @@ union ARM_MCR_MRC_Decode
 void ARM9_MCR_15(struct ARM946ES* ARM9, const u8 Op1, const u8 CRn, const u8 CRm, const u8 Op2);
 u32 ARM9_MRC_15(struct ARM946ES* ARM9, const u16 cmd);
 
-void ARM_MCR(struct ARM* cpu, const u32 instr_data)
+void ARM_MCR(struct ARM* cpu, const struct ARM_Instr instr_data)
 {
-    const union ARM_MCR_MRC_Decode instr = {.Raw = instr_data};
+    const union ARM_MCR_MRC_Decode instr = {.Raw = instr_data.Raw};
 
     ARM_StepPC(cpu, false);
     u32 rd_val = ARM_GetReg(instr.Rd);
@@ -37,27 +37,44 @@ void ARM_MCR(struct ARM* cpu, const u32 instr_data)
     if (cpu->CPUID == ARM7ID)
     {
         // this is valid for mrc at least.
-        if (instr.Coproc == 14)
+        if (instr.Coproc == 14) // debug
         {
             // uhhhhhh
         }
-        else
+        else // absent
         {
             /// UHHHHHHHHH
             // TODO: ARM7 UNDEFINED EXCEPTION???
             // TODO: ARM7 TIMINGS????
         }
+        LogPrint(LOG_ARM7 | LOG_EXCEP, "ARM7: MCR?!\n");
     }
     else // ARM9ID
     {
-        if (instr.Coproc == 15)
+        if (instr.Coproc == 15) // system control
         {
-            // this actually does stuff wow!
-            // note: individual opcodes probably have different timings.
-            u16 command = instr.Op1 << 11 | instr.CRn << 7 | instr.CRm << 3 | instr.Op2;
-            ARM9_MCR_15((struct ARM946ES*)cpu, instr.Op1, instr.CRn, instr.CRm, instr.Op2);
+            if (instr_data.CoprocPriv != cpu->Privileged) 
+            {
+                LogPrint(LOG_ARM9 | LOG_ODD, "ARM9 ERRATA TRIGGERED: MCR COPROCESSOR 15 PRIVILEGE MISMATCH!\n");
+            }
+
+            if (instr_data.CoprocPriv) // requires privileged mode (this is different than the normal arm privilege check)
+            {
+                // this actually does stuff wow!
+                // note: individual opcodes probably have different timings.
+                u16 command = instr.Op1 << 11 | instr.CRn << 7 | instr.CRm << 3 | instr.Op2;
+                ARM9_MCR_15((struct ARM946ES*)cpu, instr.Op1, instr.CRn, instr.CRm, instr.Op2);
+            }
+            else
+            {
+                // user mode; raise udf
+                // present coprocessors seemingly take 2 cycles to raise udf
+                LogPrint(LOG_ARM9 | LOG_EXCEP, "ARM9: USER MODE MCR COPROC 15!\n");
+                ARM9_ExecuteCycles((struct ARM946ES*)cpu, 2, 1);
+                ARM9_UndefinedInstruction(cpu, instr_data);
+            }
         }
-        else if (instr.Coproc == 14)
+        else if (instr.Coproc == 14) // debug coprocessor
         {
             if (false) // enabled
             {
@@ -65,23 +82,25 @@ void ARM_MCR(struct ARM* cpu, const u32 instr_data)
             }
             else // disabled
             {
-                // TODO: ARM9 TIMINGS
+                // present coprocessors seemingly take 2 cycles to raise udf
+                LogPrint(LOG_ARM9 | LOG_EXCEP, "ARM9: MCR COPROC 14!\n");
+                ARM9_ExecuteCycles((struct ARM946ES*)cpu, 2, 1);
                 ARM9_UndefinedInstruction(cpu, instr_data);
             }
         }
-        else
+        else // absent
         {
-            LogPrint(LOG_ARM9 | LOG_EXCEP, "ARM9: ABSENT COPROCESSOR WRITE: %i\n", instr.Coproc);
-            // coprocessor undef takes 3 cycles vs the normal 1 cycle.
+            // absent coprocessors takes 3 cycles to raise undefined
+            LogPrint(LOG_ARM9 | LOG_EXCEP, "ARM9: MCR ABSENT COPROC %i!\n", instr.Coproc);
             ARM9_ExecuteCycles((struct ARM946ES*)cpu, 3, 1);
             ARM9_UndefinedInstruction(cpu, instr_data);
         }
     }
 }
 
-s8 ARM9_MCR_Interlocks(struct ARM946ES* ARM9, const u32 instr_data)
+s8 ARM9_MCR_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
 {
-    const union ARM_MCR_MRC_Decode instr = {.Raw = instr_data};
+    const union ARM_MCR_MRC_Decode instr = {.Raw = instr_data.Raw};
     s8 stall = 0;
     // ARM9E-S docs specify it as needing data during it's decode stage...?
     // i dont think that's true here...?
@@ -90,15 +109,15 @@ s8 ARM9_MCR_Interlocks(struct ARM946ES* ARM9, const u32 instr_data)
     return stall;
 }
 
-void ARM_MRC(struct ARM* cpu, const u32 instr_data)
+void ARM_MRC(struct ARM* cpu, const struct ARM_Instr instr_data)
 {
-    const union ARM_MCR_MRC_Decode instr = {.Raw = instr_data};
+    const union ARM_MCR_MRC_Decode instr = {.Raw = instr_data.Raw};
     ARM_StepPC(cpu, false);
 
     u32 val;
     if (cpu->CPUID == ARM7ID)
     {
-        if (instr.Coproc == 14)
+        if (instr.Coproc == 14) // debug coprocessor
         {
             if (false) // enabled???
             {
@@ -108,37 +127,55 @@ void ARM_MRC(struct ARM* cpu, const u32 instr_data)
                 // open bus.
                 // this is probably not always correct, but it's correct enough for now.
                 // can dma change the open bus value?
-                val = cpu->Instr[2];
+                val = cpu->Instr[2].Raw;
                 // TODO: ARM7 TIMINGS
+                LogPrint(LOG_ARM7 | LOG_ODD, "ARM7: MRC COPROC 14!\n");
             }
         }
-        else
+        else // absent
         {
             // TODO: ARM7 UNDEFINED EXCEPTION
             // TODO: ARM7 TIMINGS
+            LogPrint(LOG_ARM7 | LOG_EXCEP, "ARM7: MRC ABSENT COPROC %i!\n", instr.Coproc);
             return;
         }
     }
     else // ARM9ID
     {
-        if (instr.Coproc == 15)
+        if (instr.Coproc == 15) // system control coprocessor
         {
-            ARM9_MRC_15((struct ARM946ES*)cpu, ARM_CoprocReg(instr.Op1, instr.CRn, instr.CRm, instr.Op2));
-            // timings for MRC are always the same, no matter the command.
-            if (instr.Rd == 15)
+            if (instr_data.CoprocPriv != cpu->Privileged) 
             {
-                // flag update: takes longer due to needing to wait for the CPSR flag write.
-                // speculation: this seems to be one of the few cases where the decode stage actually matters and effectively triggers an interlock.
-                // CHECKME: this is semantically wrong i think?
-                ARM9_ExecuteCycles((struct ARM946ES*)cpu, 3, 1);
+                LogPrint(LOG_ARM9 | LOG_ODD, "ARM9 ERRATA TRIGGERED: MRC COPROCESSOR 15 PRIVILEGE MISMATCH!\n");
+            }
+
+            if (instr_data.CoprocPriv) // requires privileged mode (this is different than the normal arm privilege check)
+            {
+                ARM9_MRC_15((struct ARM946ES*)cpu, ARM_CoprocReg(instr.Op1, instr.CRn, instr.CRm, instr.Op2));
+                // timings for MRC are always the same, no matter the command.
+                if (instr.Rd == 15)
+                {
+                    // flag update: takes longer due to needing to wait for the CPSR flag write.
+                    // speculation: this seems to be one of the few cases where the decode stage actually matters for timings and effectively triggers an interlock.
+                    // CHECKME: this is semantically wrong i think?
+                    ARM9_ExecuteCycles((struct ARM946ES*)cpu, 3, 1);
+                }
+                else
+                {
+                    // CHECKME: memory 2?
+                    ARM9_ExecuteCycles((struct ARM946ES*)cpu, 1, 2);
+                }
             }
             else
             {
-                // CHECKME:
-                ARM9_ExecuteCycles((struct ARM946ES*)cpu, 1, 2);
+                // user mode; raise udf
+                // present coprocessors seemingly take 2 cycles to raise udf
+                LogPrint(LOG_ARM9 | LOG_EXCEP, "ARM9: USER MODE MRC COPROC 15!\n");
+                ARM9_ExecuteCycles((struct ARM946ES*)cpu, 2, 1);
+                ARM9_UndefinedInstruction(cpu, instr_data);
             }
         }
-        else if (instr.Coproc == 14)
+        else if (instr.Coproc == 14) // debug coprocessor
         {
             if (false) // enabled
             {
@@ -146,13 +183,17 @@ void ARM_MRC(struct ARM* cpu, const u32 instr_data)
             }
             else // disabled
             {
-                // TODO: ARM9 TIMINGS
+                // present coprocessors seemingly take 2 cycles to raise udf
+                LogPrint(LOG_ARM9 | LOG_EXCEP, "ARM9: MRC COPROC 14!\n");
+                ARM9_ExecuteCycles((struct ARM946ES*)cpu, 2, 1);
                 ARM9_UndefinedInstruction(cpu, instr_data);
             }
         }
-        else
+        else // absent
         {
-            // TODO: ARM9 TIMINGS
+            // absent coprocessors takes 3 cycles to raise undefined
+            LogPrint(LOG_ARM9 | LOG_EXCEP, "ARM9: MRC ABSENT COPROC %i!\n", instr.Coproc);
+            ARM9_ExecuteCycles((struct ARM946ES*)cpu, 3, 1);
             ARM9_UndefinedInstruction(cpu, instr_data);
         }
     }
@@ -169,7 +210,7 @@ void ARM_MRC(struct ARM* cpu, const u32 instr_data)
     }
 }
 
-s8 ARM9_MRC_Interlocks(struct ARM946ES* ARM9, const u32 instr_data)
+s8 ARM9_MRC_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
 {
     // it just dont
     return 0;
@@ -192,9 +233,9 @@ union ARM_LDC_Decode
     };
 };
 
-void ARM_LDC(struct ARM* cpu, const u32 instr_data)
+void ARM_LDC(struct ARM* cpu, const struct ARM_Instr instr_data)
 {
-    union ARM_LDC_Decode instr = {.Raw = instr_data};
+    union ARM_LDC_Decode instr = {.Raw = instr_data.Raw};
 
     if (cpu->CPUID == ARM7ID)
     {
@@ -209,9 +250,9 @@ void ARM_LDC(struct ARM* cpu, const u32 instr_data)
     }
 }
 
-s8 ARM9_LDC_Interlocks(struct ARM946ES* ARM9, const u32 instr_data)
+s8 ARM9_LDC_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
 {
-    union ARM_LDC_Decode instr = {.Raw = instr_data};
+    union ARM_LDC_Decode instr = {.Raw = instr_data.Raw};
     s8 stall = 0;
 
     ARM9_CheckInterlocks(ARM9, &stall, instr.Rn, 0, false);
@@ -223,13 +264,13 @@ s8 ARM9_LDC_Interlocks(struct ARM946ES* ARM9, const u32 instr_data)
 // note: all of these instructions use the same interlock behavior as their standard counterparts
 
 
-void ARM_MCR2(struct ARM* cpu, const u32 instr_data)
+void ARM_MCR2(struct ARM* cpu, const struct ARM_Instr instr_data)
 {
     // ARM9 CP15 treats MCR2 the same as MCR
     ARM_MCR(cpu, instr_data);
 }
 
-void ARM_MRC2(struct ARM* cpu, const u32 instr_data)
+void ARM_MRC2(struct ARM* cpu, const struct ARM_Instr instr_data)
 {
     // ARM9 CP15 treats MRC2 the same as MRC
     ARM_MRC(cpu, instr_data);
