@@ -110,8 +110,8 @@ void ARM7_ExecuteCycles(struct ARM7TDMI* ARM7, const u32 Execute)
     // must be minus 1 to model pipeline overlaps
     cpu->Timestamp += Execute - 1;
     // internal cycles break up instruction bursts
-    // CHECKME: presumably it end the burst on the first internal cycle?
-    if (Execute > 1) ARM7->CodeSeq = false;
+    // CHECKME: presumably it ends the burst on the first internal cycle?
+    if (Execute > 1) cpu->CodeSeq = false;
 }
 
 #undef cpu

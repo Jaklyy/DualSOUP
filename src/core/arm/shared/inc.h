@@ -46,15 +46,15 @@ ARM_SetCPSR(cpu, ARM_GetSPSR.Raw)
 )
 
 #define ARM_RaiseSWI \
-((cpu->CPUID == ARM7ID) \
+(/*(cpu->CPUID == ARM7ID) \
     ? ARM7_SoftwareInterrupt(cpu, (instr_data)) \
-    : ARM9_SoftwareInterrupt(cpu, (instr_data)) \
+    :*/ ARM9_SoftwareInterrupt(cpu, (instr_data)) \
 )
 
 #define ARM_RaiseUDF \
-((cpu->CPUID == ARM7ID) \
+(/*(cpu->CPUID == ARM7ID) \
     ? ARM7_UndefinedInstruction(cpu, (instr_data)) \
-    : ARM9_UndefinedInstruction(cpu, (instr_data)) \
+    :*/ ARM9_UndefinedInstruction(cpu, (instr_data)) \
 )
 
 #define ARM_CanLoadInterwork \

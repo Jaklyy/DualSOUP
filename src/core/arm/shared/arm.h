@@ -108,7 +108,7 @@ struct ARM_Instr
         u32 Arm;
         u16 Thumb;
     };
-    bool Aborted; // whether the instruction fetch raised a prefetch abort.
+    bool Aborted; // whether the instruction fetch raised a prefetch abort; used for fixing prefetch aborts during flushless switches to thumb, and distinguishing real aborts w/ bkpt
     bool CoprocPriv; // whether the coprocessor pipeline thinks we have privilege or not.
 };
 
@@ -176,13 +176,8 @@ struct ARM
     } UND_Bank;
     u8 CPUID;
     bool Privileged; // permissions
-    u8 PipelineProgress; // tracks where we are in the pipeline progression.
-    bool BusStalled; // stuck waiting on bus accesses.
+    bool CodeSeq; // should the next code fetch be sequential
     struct ARM_Instr Instr[3]; // prefetch pipeline
-    struct
-    {
-        
-    } LoadStoreCallback;
     timestamp Timestamp;
     struct Console* Sys;
 };

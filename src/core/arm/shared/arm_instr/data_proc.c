@@ -207,7 +207,7 @@ void ARM_DataProc(struct ARM* cpu, const struct ARM_Instr instr_data)
 
 s8 ARM9_DataProc_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
 {
-    const union ARM_DataProc_Decode instr = (union ARM_DataProc_Decode)(instr_data);
+    const union ARM_DataProc_Decode instr = {.Raw = instr_data.Raw};
 
     s8 stall = 0;
     if (!instr.Immediate)

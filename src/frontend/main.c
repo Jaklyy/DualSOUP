@@ -6,15 +6,18 @@
 
 int main()
 {
-    struct Console* sys = aligned_alloc(alignof(struct Console), sizeof(struct Console));
     LogMask = u64_max; // temp
 
     // init arm luts
     ARM9_InitInstrLUT();
     THUMB9_InitInstrLUT();
 
-    Console_Init(sys);
-
+    // initialize main emulator state struct
+    struct Console* sys = nullptr;
+    if (!Console_Init(sys))
+    {
+        return EXIT_FAILURE;
+    }
     ARM9_Log(&sys->ARM9);
 
     // TEMP: debugging
@@ -33,7 +36,7 @@ int main()
         sys->ARM9.ARM.R[5] = 0x80000000;
         sys->ARM9.ARM.R[6] = 65;
         //sys->ARM9.ARM.CPSR.Carry = 1;
-        sys->ARM9.ARM.Instr[1] = 0xE1B02655;
+        sys->ARM9.ARM.Instr[1].Raw = 0xE1B02655;
 
         Console_MainLoop(sys);
     }

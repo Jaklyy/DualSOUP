@@ -21,7 +21,6 @@
 struct ARM7TDMI
 {
     struct ARM ARM;
-    bool CodeSeq; // should the next code fetch be sequential
 };
 
 // ensure casting between the two types works as expected

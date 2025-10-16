@@ -341,11 +341,11 @@ void ARM9_FetchCycles(struct ARM946ES* ARM9, const int fetch);
 // add execute and memory stage cycles.
 void ARM9_ExecuteCycles(struct ARM946ES* ARM9, const int execute, const int memory);
 
-// run the next step of execution
-void ARM9_Step(struct ARM946ES* ARM9);
+// ARM9 handler entrypoint
+void ARM9_MainLoop(struct ARM946ES* ARM9);
 
-[[nodiscard]] bool ARM9_InstrRead32(struct ARM946ES* ARM9, u32 addr); // arm
-[[nodiscard]] bool ARM9_InstrRead16(struct ARM946ES* ARM9, const u32 addr); // thumb
+void ARM9_InstrRead32(struct ARM946ES* ARM9, u32 addr); // arm
+void ARM9_InstrRead16(struct ARM946ES* ARM9, const u32 addr); // thumb
 void ARM9_Uncond(struct ARM* cpu, const struct ARM_Instr instr_data); // idk where to put this tbh
 
 void ARM9_ConfigureITCM(struct ARM946ES* ARM9);

@@ -141,4 +141,6 @@ void ARM_PipelineFlush(struct ARM* cpu)
     u32 instr = instrs[cpu->CPSR.Thumb][cpu->CPSR.Zero];
     cpu->Instr[1] = (struct ARM_Instr){instr, false, false};
     cpu->Instr[2] = (struct ARM_Instr){instr, false, false};
+
+    cpu->CodeSeq = false;
 }

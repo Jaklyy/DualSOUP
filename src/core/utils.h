@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbit.h>
+#include "../frontend/coroutine.h"
 
 
 
@@ -101,6 +102,7 @@ struct Pattern
 
 enum LoggingLevels : u64
 {
+    LOG_ALWAYS  = (0    ),  // always log this
     LOG_ARM7    = (1<<0 ), // Things under ownership of the ARM7TDMI
     LOG_ARM9    = (1<<1 ), // Things under ownership of the ARM946E-S
     LOG_ARM11   = (1<<2 ), // Things under ownership of the ARM11MPCore
@@ -127,10 +129,16 @@ enum LoggingLevels : u64
     return (val >> ror) | (val << (32-ror));
 }
 
+// TODO: should this be per thread?
 extern u64 LogMask;
 // printf but with support for filtering out the noise
 void LogPrint(const u64 logtype, const char* str, ...);
 
 // coroutine stuff
 
-void CR_Make();
+// null coroutine
+#define cr_null ((coroutine)0)
+
+coroutine CR_Create(void (*func)(void*), void* param);
+void CR_Free(coroutine handle);
+void CR_Switch(coroutine handle);

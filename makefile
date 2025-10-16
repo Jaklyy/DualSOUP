@@ -31,9 +31,10 @@ endif
 endif
 
 OBJS := $(shell find $(SRCDIR) -name '*.c')
-OBJS := $(patsubst $(SRCDIR)/%,$(BUILDDIR)$(OBJDIR)/%,$(OBJS:.c=.o))
+OBJS += libs/libco/libco.c
+OBJS := $(patsubst %,$(BUILDDIR)$(OBJDIR)/%,$(OBJS:.c=.o))
 
-$(BUILDDIR)$(OBJDIR)/%.o: $(SRCDIR)/%.c
+$(BUILDDIR)$(OBJDIR)/%.o: %.c
 	@mkdir -p $(dir $@)
 	$(CC) -c -o $@ $< $(CFLAGS)
 

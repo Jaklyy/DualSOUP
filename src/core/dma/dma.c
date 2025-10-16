@@ -1,7 +1,7 @@
 #include "dma.h"
 
 
-
+#if 0
 
 void DMA_ScheduleStart()
 {
@@ -177,3 +177,4 @@ void DMA7_IOWriteHandler(struct DMA_Channel channels[4], u32 addr, u32 val, cons
     }
     }
 }
+#endif
