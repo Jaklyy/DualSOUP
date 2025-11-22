@@ -316,7 +316,7 @@ s8 THUMB9_DataProcReg_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr i
     const union THUMB_DataProcReg_Decode instr = {.Raw = instr_data.Raw};
     s8 stall = 0;
 
-    if (((instr.Opcode != 9) || (instr.Opcode != 15)))
+    if (((instr.Opcode != 9) && (instr.Opcode != 15)))
     {
         ARM9_CheckInterlocks(ARM9, &stall, instr.Rd, 0, false);
     }
@@ -486,9 +486,7 @@ void THUMB_AdjustSP(struct ARM* cpu, const struct ARM_Instr instr_data)
 
 s8 THUMB9_AdjustSP_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
 {
-    const union THUMB_AdjustSP_Decode instr = {.Raw = instr_data.Raw};
     s8 stall = 0;
-
     // im not sure if this interlock can actually be triggered but it should work in theory?
     ARM9_CheckInterlocks(ARM9, &stall, 13, 0, false);
 

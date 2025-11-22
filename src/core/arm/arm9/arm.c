@@ -13,13 +13,20 @@
 void ARM9_Log(struct ARM946ES* ARM9)
 {
     LogPrint(LOG_ARM9, "DUMPING ARM9 STATE:\n");
-    /*for (int i = 0; i < 16; i++)
+    for (int i = 0; i < 16; i++)
     {
         LogPrint(LOG_ARM9, "R%2i: %08X ", i, cpu->R[i]);
-    }*/
-    LogPrint(LOG_ARM9, "R2:%08X\n", cpu->R[2]);
+    }
+    //LogPrint(LOG_ARM9, "R2:%08X\n", cpu->R[2]);
     LogPrint(LOG_ARM9, "CPSR:%08X\n", cpu->CPSR.Raw);
-    LogPrint(LOG_ARM9, "INSTR: %08X ", cpu->Instr[0]);
+    if (cpu->Instr[0].Flushed)
+    {
+        LogPrint(LOG_ARM9, "INSTR: Flushed. ");
+    }
+    else
+    {
+        LogPrint(LOG_ARM9, "INSTR: %08X ", cpu->Instr[0]);
+    }
     LogPrint(LOG_ARM9, "EXE:%li MEM:%li\n\n", cpu->Timestamp, ARM9->MemTimestamp);
 }
 
@@ -27,7 +34,12 @@ void ARM9_Init(struct ARM946ES* ARM9, struct Console* sys)
 {
     ARM_Init(cpu, sys, ARM9ID);
 
+    // set permanently set CP15 CR bits
     ARM9->CP15.CR.FixedOnes = 0xF;
+
+    // 7 indicates no cache streaming in progress
+    ARM9->DStream.Prog = 7;
+    ARM9->IStream.Prog = 7;
 
     // finally something being initialized that isn't a constant!
     // this needs to not be 0, because a lot of logic relies on this timestamp - 1
@@ -154,7 +166,7 @@ void ARM9_FetchCycles(struct ARM946ES* ARM9, const int fetch)
 {
     cpu->Timestamp += fetch;
 
-    // make sure we're caught up to the memory timestamp
+    // next instruction cannot execute until the last memory stage is complete
     if (cpu->Timestamp < (ARM9->MemTimestamp))
         cpu->Timestamp = (ARM9->MemTimestamp);
 }
@@ -170,6 +182,13 @@ void ARM9_ExecuteCycles(struct ARM946ES* ARM9, const int execute, const int memo
     ARM9->MemTimestamp += diff;
 
     ARM9_UpdateInterlocks(ARM9, diff);
+
+    cpu->CodeSeq = true;
+}
+
+void ARM9_ExecuteOnly(struct ARM946ES* ARM9, const int execute)
+{
+
 }
 
 #define ILCheck(size, x) \
@@ -257,6 +276,7 @@ void ARM9_Step(struct ARM946ES* ARM9)
         {
             // CHECKME: skipped instructions shouldn't trigger interlocks right?
             FetchIRQExec(32, ARM9_ExecuteCycles(ARM9, 1, 1))
+            ARM_StepPC(cpu, false);
         }
     }
 
@@ -269,6 +289,7 @@ void ARM9_Step(struct ARM946ES* ARM9)
 
 void ARM9_MainLoop(struct ARM946ES* ARM9)
 {
+    LogPrint(0, "okay\n");
     while(true)
     {
         ARM9_Step(ARM9);

@@ -49,21 +49,96 @@ void ARM9_ConfigureDTCM(struct ARM946ES* ARM9)
 
 
 
-void ARM9_MCR_15(struct ARM946ES* ARM9, const u8 Op1, const u8 CRn, const u8 CRm, const u8 Op2, const u32 val)
+void ARM9_MCR_15(struct ARM946ES* ARM9, const u16 cmd, const u32 val)
 {
-    switch(CRn)
+    // try to make sure the compiler knows only 14 bits are used here.
+    //if (cmd >= (1<<14)) unreachable();
+
+    switch(cmd)
     {
-    default:
+    case ARM_CoprocReg(0, 1, 0, 0): // control register
     {
-        // CHECKME: this is a placeholder basically.
+        // CHECKME: bitmask
+        MaskedWrite(ARM9->CP15.CR.Raw, val, 0x000FF085);
+        ARM9_ConfigureDTCM(ARM9);
+        ARM9_ConfigureITCM(ARM9);
+        // CHECKME: this is untested
         ARM9_ExecuteCycles(ARM9, 3, 1);
         return;
     }
-    case 1: // control register
+    case ARM_CoprocReg(0, 2, 0, 0): // dcache
+    case ARM_CoprocReg(0, 2, 0, 1): // icache
+    case ARM_CoprocReg(0, 3, 0, 0): // wbuffer
+
+    case ARM_CoprocReg(0, 5, 0, 0): // legacy data perms
+    case ARM_CoprocReg(0, 5, 0, 1): // legacy instr perms
+
+    case ARM_CoprocReg(0, 5, 0, 2): // data perms
+    case ARM_CoprocReg(0, 5, 0, 3): // instr perms
+
+    // Regions: op2 == 1 is not valid for some reason?
+    case ARM_CoprocReg(0, 6, 0, 0): // region 0
+    case ARM_CoprocReg(0, 6, 1, 0): // region 1
+    case ARM_CoprocReg(0, 6, 2, 0): // region 2 
+    case ARM_CoprocReg(0, 6, 3, 0): // region 3
+    case ARM_CoprocReg(0, 6, 4, 0): // region 4
+    case ARM_CoprocReg(0, 6, 5, 0): // region 5
+    case ARM_CoprocReg(0, 6, 6, 0): // region 6
+    case ARM_CoprocReg(0, 6, 7, 0): // region 7
+
+    case ARM_CoprocReg(0, 7, 0, 4): // wait for interrupt
+    case ARM_CoprocReg(0, 15, 8, 2): // wait for interrupt
+    case ARM_CoprocReg(0, 7, 5, 0): // flush icache
+    case ARM_CoprocReg(0, 7, 5, 1): // flush icache line by addr
+    case ARM_CoprocReg(0, 7, 6, 0): // flush dcache
+    case ARM_CoprocReg(0, 7, 6, 1): // flush dcache line by addr
+    case ARM_CoprocReg(0, 7, 10, 1): // clean dcache line by addr
+    case ARM_CoprocReg(0, 7, 10, 2): // clean dcache line by index + segment
+    case ARM_CoprocReg(0, 7, 10, 4): // drain write buffer
+    case ARM_CoprocReg(0, 7, 13, 1): // prefetch icache line
+    case ARM_CoprocReg(0, 7, 14, 1): // clean + flush dcache line by addr
+    case ARM_CoprocReg(0, 7, 14, 2): // clean + flush dcache line by index + segment
+
+    case ARM_CoprocReg(0, 9, 1, 0): // dtcm reg
+    case ARM_CoprocReg(0, 9, 1, 1): // itcm reg
+
+    case ARM_CoprocReg(0, 13, 0, 1): // pid
+    case ARM_CoprocReg(0, 13, 1, 1): // pid
+
+    // BIST
+    case ARM_CoprocReg(0, 15, 0, 0): // test state
+    // TAG BIST
+    case ARM_CoprocReg(0, 15, 0, 1): // tag bist cr
+    case ARM_CoprocReg(0, 15, 0, 2): // itag addr
+    case ARM_CoprocReg(0, 15, 0, 3): // itag gen
+    case ARM_CoprocReg(0, 15, 0, 6): // dtag addr
+    case ARM_CoprocReg(0, 15, 0, 7): // dtag gen
+    // TCM BIST
+    case ARM_CoprocReg(1, 15, 0, 1): // tcm bist cr
+    case ARM_CoprocReg(1, 15, 0, 2): // itcm addr
+    case ARM_CoprocReg(1, 15, 0, 3): // itcm gen
+    case ARM_CoprocReg(1, 15, 0, 6): // dtcm addr
+    case ARM_CoprocReg(1, 15, 0, 7): // dtcm gen
+    // Cache BIST
+    case ARM_CoprocReg(2, 15, 0, 1): // cache bist cr
+    case ARM_CoprocReg(2, 15, 0, 2): // icache addr
+    case ARM_CoprocReg(2, 15, 0, 3): // icache gen
+    case ARM_CoprocReg(2, 15, 0, 6): // dcache addr
+    case ARM_CoprocReg(2, 15, 0, 7): // dcache gen
+
+    // cache debug
+    case ARM_CoprocReg(3, 15, 0, 0): // index reg
+    case ARM_CoprocReg(3, 15, 1, 0): // itag
+    case ARM_CoprocReg(3, 15, 2, 0): // dtag
+    case ARM_CoprocReg(3, 15, 3, 0): // icache
+    case ARM_CoprocReg(3, 15, 4, 0): // dcache
+
+    // trace control
+    case ARM_CoprocReg(1, 15, 1, 0):
+    default:
     {
-        // CHECKME: bitmask
-        ARM9->CP15.CR.Raw = val & 0x000FF087;
-        // CHECKME: this is untested
+        LogPrint(LOG_ARM9 | LOG_UNIMP, "ARM9 - UNIMPLEMENTED MCR CMD: %i\n", cmd);
+        // CHECKME: this is a placeholder basically.
         ARM9_ExecuteCycles(ARM9, 3, 1);
         return;
     }
@@ -73,10 +148,10 @@ void ARM9_MCR_15(struct ARM946ES* ARM9, const u8 Op1, const u8 CRn, const u8 CRm
 u32 ARM9_MRC_15(struct ARM946ES* ARM9, const u16 cmd)
 {
     // try to make sure the compiler knows only 14 bits are used here.
-    if (cmd >= (1<<14)) unreachable();
+    //if (cmd >= (1<<14)) unreachable();
 
     // Note: I couldn't find any undocumented ways of accessing registers other than MRC2
-    switch (cmd)
+    switch(cmd)
     {
     case ARM_CoprocReg(0, 0, 0, 0):
     case ARM_CoprocReg(0, 0, 0, 3) ... ARM_CoprocReg(0, 0, 0, 7): // idk why they duplicated this one so much but im sure there was a reason.
@@ -89,7 +164,7 @@ u32 ARM9_MRC_15(struct ARM946ES* ARM9, const u16 cmd)
         return ARM9_TCMSizeReg;
 
 
-    case ARM_CoprocReg(0, 1, 0, 0):
+    case ARM_CoprocReg(0, 1, 0, 0): // control reg
         return ARM9->CP15.CR.Raw;
 
 
@@ -133,7 +208,7 @@ u32 ARM9_MRC_15(struct ARM946ES* ARM9, const u16 cmd)
 
 
     // region perms
-    // Op2 = 0 or 1 both valid for backwards compatibility reasons according to docs
+    // Op2 == 0 or 1 both valid for backwards compatibility reasons according to docs
     case ARM_CoprocReg(0, 6, 0, 0): case ARM_CoprocReg(0, 6, 0, 1):
     case ARM_CoprocReg(0, 6, 1, 0): case ARM_CoprocReg(0, 6, 1, 1):
     case ARM_CoprocReg(0, 6, 2, 0): case ARM_CoprocReg(0, 6, 2, 1):
@@ -163,17 +238,41 @@ u32 ARM9_MRC_15(struct ARM946ES* ARM9, const u16 cmd)
     case ARM_CoprocReg(0, 13, 1, 1): // arm supports this for compat reasons idk
         return ARM9->CP15.TraceProcIdReg;
 
+    // BIST
+    case ARM_CoprocReg(0, 15, 0, 0): // test state
+    // TAG BIST
+    case ARM_CoprocReg(0, 15, 0, 1): // tag bist cr
+    case ARM_CoprocReg(0, 15, 0, 2): // itag addr
+    case ARM_CoprocReg(0, 15, 0, 3): // itag gen
+    case ARM_CoprocReg(0, 15, 0, 6): // dtag addr
+    case ARM_CoprocReg(0, 15, 0, 7): // dtag gen
+    // TCM BIST
+    case ARM_CoprocReg(1, 15, 0, 1): // tcm bist cr
+    case ARM_CoprocReg(1, 15, 0, 2): // itcm addr
+    case ARM_CoprocReg(1, 15, 0, 3): // itcm gen
+    case ARM_CoprocReg(1, 15, 0, 6): // dtcm addr
+    case ARM_CoprocReg(1, 15, 0, 7): // dtcm gen
+    // Cache BIST
+    case ARM_CoprocReg(2, 15, 0, 1): // cache bist cr
+    case ARM_CoprocReg(2, 15, 0, 2): // icache addr
+    case ARM_CoprocReg(2, 15, 0, 3): // icache gen
+    case ARM_CoprocReg(2, 15, 0, 6): // dcache addr
+    case ARM_CoprocReg(2, 15, 0, 7): // dcache gen
 
-    // TODO: BIST
-
-
-    // TODO: Cache Debug
-
+    // cache debug
+    case ARM_CoprocReg(3, 15, 0, 0): // index reg
+    case ARM_CoprocReg(3, 15, 1, 0): // itag
+    case ARM_CoprocReg(3, 15, 2, 0): // dtag
+    case ARM_CoprocReg(3, 15, 3, 0): // icache
+    case ARM_CoprocReg(3, 15, 4, 0): // dcache
+        LogPrint(LOG_ARM9 | LOG_UNIMP, "ARM9 - UNIMPLEMENTED MRC CMD: %i\n", cmd);
+        return 0;
 
     case ARM_CoprocReg(1, 15, 1, 0):
         return ARM9->CP15.TraceProcCR;
 
     default: // all unmapped commands return 0
+        LogPrint(LOG_ARM9 | LOG_ODD, "ARM9 - INVALID MRC CMD: %i\n", cmd);
         return 0;
     }
 }

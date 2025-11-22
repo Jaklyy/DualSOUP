@@ -2,157 +2,49 @@
 #include "../utils.h"
 
 
+struct Console;
 
-
-enum NTRBus_Devices : u8
+// used for modelling write contention
+enum NTRAHB_Devices : u8
 {
-    Dev_Abort, // sets a flag to raise an abort in the future
-    Dev_ITCM,
-    Dev_DTCM, // only on data buses
-
-    Dev_Dummy, // explicitly mapped as unmapped memory
-    Dev_BIOS,
     Dev_MainRAM,
+    Dev_SWRAM,
     Dev_A7WRAM, // ARM7 only
-    Dev_SWRAM_Lo,
-    Dev_SWRAM_Hi,
     Dev_IO,
-    Dev_Wifi0,
-    Dev_Wifi1,
-    Dev_GBAROM,
-    Dev_GBAROM_Unmap, // always 0
-    Dev_GBARAM,
-    Dev_GBARAM_Unmap, // always 0
 
     // ya like vram?
-    Dev_LCD_A,
-    Dev_LCD_B,
-    Dev_LCD_C,
-    Dev_LCD_D,
-    Dev_LCD_E,
-    Dev_LCD_F,
-    Dev_LCD_G,
-    Dev_LCD_H,
-    Dev_LCD_I,
+    Dev_VRAM_A,
+    Dev_VRAM_B,
+    Dev_VRAM_C,
+    Dev_VRAM_D,
+    Dev_VRAM_E,
+    Dev_VRAM_F,
+    Dev_VRAM_G,
+    Dev_VRAM_H,
+    Dev_VRAM_I,
 
-    Dev_BG0_A,
-    Dev_BG0_B,
-    Dev_BG0_C,
-    Dev_BG0_D,
-    Dev_BG0_E,
-    Dev_BG0_F,
-    Dev_BG0_G,
-    Dev_BG0_Slow,
+    Dev_Palette,
+    Dev_OAM,
 
-    Dev_OBJ0_A,
-    Dev_OBJ0_B,
-    Dev_OBJ0_E,
-    Dev_OBJ0_F,
-    Dev_OBJ0_G,
-    Dev_OBJ0_Slow,
-
-    Dev_BG1_C,
-    Dev_BG1_H,
-    Dev_BG1_I,
-    Dev_BG1_Slow,
-
-    Dev_OBJ1_D,
-    Dev_OBJ1_I,
-    Dev_OBJ1_Slow,
-
-    Dev_A7_C,
-    Dev_A7_D,
-    Dev_A7_Slow,
-
-    Dev_BGPal0,
-    Dev_BGPal1,
-    Dev_OBJPal0,
-    Dev_OBJPal1,
-    Dev_OAM0,
-    Dev_OAM1,
-
-    // woe, New Shared WRAM upon ye.
-    Dev_NSWRAM_A0,
-    Dev_NSWRAM_A1,
-    Dev_NSWRAM_A2,
-    Dev_NSWRAM_A3,
-    Dev_NSWRAM_B0,
-    Dev_NSWRAM_B1,
-    Dev_NSWRAM_B2,
-    Dev_NSWRAM_B3,
-    Dev_NSWRAM_B4,
-    Dev_NSWRAM_B5,
-    Dev_NSWRAM_B6,
-    Dev_NSWRAM_B7,
-    Dev_NSWRAM_C0,
-    Dev_NSWRAM_C1,
-    Dev_NSWRAM_C2,
-    Dev_NSWRAM_C3,
-    Dev_NSWRAM_C4,
-    Dev_NSWRAM_C5,
-    Dev_NSWRAM_C6,
-    Dev_NSWRAM_C7,
-
-    Dev_MainRAM_OpenBus, // Retail TWL only
-
-    // extra expansion room, dont adjust anything in this enum past here
-
-    // not actually devices; for internal emulator use only.
-    Dev_Wait, // access must be deferred til later.
-    Dev_None, // no device.
-
-    Dev_Cache = 0x80, // should do a cached check beforehand
+    Dev_MAX,
 };
 
-static_assert(Dev_None < 0x80); // i swear if i somehow wind up needing 128 regions
-
-enum ARM9_BusControl : u8
+enum ARM9_AHBPriorities : u8
 {
-    Bus9_DMA,
-    Bus9_ARM9,
-
-    Bus9_MaxOwners, // should be last
+    AHB9Prio_DMABase, // 0 == highest priority
+    AHB9Prio_DMA0 = AHB9Prio_DMABase,
+    AHB9Prio_DMA1,
+    AHB9Prio_DMA2,
+    AHB9Prio_DMA3,
+    AHB9Prio_ARM9,
 };
 
-enum BusReturn : u8
+struct AHB
 {
-    BUSRET_ERROR,
-    BUSRET_WAIT,
-    BUSRET_PASS,
-};
-
-// Can also be used to enforce appropriate alignment.
-enum BusAccessWidth : u8
-{
-    BusAccess_8Bit = 0,
-    BusAccess_16Bit = 1,
-    BusAccess_32Bit = 3,
-};
-
-struct Bus
-{
-    timestamp Timestamp; // Bus Timestamp.
+    timestamp Timestamp; // AHB Timestamp.
     timestamp BusyDeviceTS; // when the currently busy device will stop being busy.
     u32 CurOpenBus; // TODO: is this needed?
     u8 BusyDevice; // The most recently accessed device.
-    u8 CurRequests; // List of requests for bus ownership; This will need to be expanded for DSi/3DS stuff.
-    u8 CurOwner; // Who is currently owner of the bus.
-    void (*BusCallbacks) (struct Bus*, void*);
-};
-
-struct BusTiming
-{
-    u8 NTiming; // Nonsequential
-    u8 STiming; // Sequential
-};
-
-struct BusRet
-{
-    u32 Val;
-    u8 Cycles;
-    u8 Device;
-    // struct BusTiming Timings;
-    //u8 ErrorCode;
 };
 
 // MainRAM is a type of FCRAM.
@@ -165,7 +57,12 @@ struct BusRet
 // seem to always perform a rotate right and bit masking operation on byte reads
 struct BusMainRAM
 {
-    timestamp Timestamp; // 
+    timestamp BurstStartTS; // when the current burst began; used for enforcing the burst length limit
+    timestamp BusyTS; // when a new burst can begin; used for the determining when a new burst can next start
+    timestamp LastAccessTS; // when the last access ended; used for main ram prefetching, and sequential access handling
+    bool WeirdStartAddr; // used for handling a quirk where main ram bursts will restart with certain start pos alignments
+    bool LastWasRead; // if the last access was a read; used for some jank with mainram -> mainram dma ig
+
     // pointers to timestamps for each bus that can access main ram.
     // if main ram is not in danger then that side should point to when they next awaken
     // if main ram is in active danger then this should point to that side's Bus Timestamp.
@@ -240,5 +137,5 @@ struct BusMainRAM
     } ControlReg;
 };
 
-void Bus_MainRAM();
-void Bus9();
+u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, const bool atomic, const bool hold, bool* seq);
+bool AHB9_NegOwnership(struct Console* sys, timestamp* cur, const u8 priority, const bool atomic);

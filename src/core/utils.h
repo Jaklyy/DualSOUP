@@ -76,15 +76,15 @@ typedef uint64_t timestamp;
 
 #define MEMORY(name, size) \
 union { \
-    u8  name##8 [size/sizeof(u8 )]; \
-    u16 name##16[size/sizeof(u16)]; \
-    u32 name##32[size/sizeof(u32)]; \
-}
+    u8  b##8 [size/sizeof(u8 )]; \
+    u16 b##16[size/sizeof(u16)]; \
+    u32 b##32[size/sizeof(u32)]; \
+} name;
 
-#define MemoryRead(size, memory, addr, mask) \
-    (((size) == 32)   ? (memory##32)[((addr)/4) & (mask)] \
-    : (((size) == 16) ? (memory##16)[((addr)/2) & (mask)] \
-                      : (memory##8) [((addr)/1) & (mask)]))
+#define MemoryRead(accesssize, memory, addr, memsize) \
+    (((accesssize) == 32)   ? (memory.b##32)[(((addr) & (memsize-1))/sizeof(u32))] \
+    : (((accesssize) == 16) ? (memory.b##16)[(((addr) & (memsize-1))/sizeof(u16))] \
+                            : (memory.b##8) [(((addr) & (memsize-1))/sizeof(u8 ))]))
 
 
 enum CPU_IDs : u8
@@ -102,14 +102,14 @@ struct Pattern
 
 enum LoggingLevels : u64
 {
-    LOG_ALWAYS  = (0    ),  // always log this
-    LOG_ARM7    = (1<<0 ), // Things under ownership of the ARM7TDMI
-    LOG_ARM9    = (1<<1 ), // Things under ownership of the ARM946E-S
-    LOG_ARM11   = (1<<2 ), // Things under ownership of the ARM11MPCore
+    LOG_ALWAYS  = (0    ), // Always logged; used for emulator error logging.
+    LOG_ARM7    = (1<<0 ), // Things under ownership of the ARM7TDMI.
+    LOG_ARM9    = (1<<1 ), // Things under ownership of the ARM946E-S.
+    LOG_ARM11   = (1<<2 ), // Things under ownership of the ARM11MPCore.
     LOG_UNIMP   = (1<<3 ), // For anything currently known to be unimplemented in the emulator.
     LOG_ODD     = (1<<4 ), // Program doing something weird that isn't inherently bad...?
-    LOG_EXCEP   = (1<<5 ), // Program is going off the rails.
-    LOG_SWI     = (1<<6 ), // Software interrupt
+    LOG_EXCEP   = (1<<5 ), // Hardware error handler has been triggered. Probably means the software has crashed.
+    LOG_BUG     = (1<<6 ), // Program is triggering hardware bugs.
 };
 
 #define LOG_CPUID (1 << cpu->CPUID)
@@ -133,6 +133,8 @@ enum LoggingLevels : u64
 extern u64 LogMask;
 // printf but with support for filtering out the noise
 void LogPrint(const u64 logtype, const char* str, ...);
+// logprint but with more crashing to desktop
+void CrashSpectacularly(const char* str, ...);
 
 // coroutine stuff
 

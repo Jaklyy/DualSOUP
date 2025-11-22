@@ -1,12 +1,14 @@
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include "console.h"
 #include "utils.h"
 
 
 
 
-bool Console_Init(struct Console* sys)
+// TODO: this function probably shouldn't manage memory on its own?
+struct Console* Console_Init(struct Console* sys, FILE* ntr9)
 {
     if (sys == nullptr)
     {
@@ -16,7 +18,7 @@ bool Console_Init(struct Console* sys)
         if (sys == NULL)
         {
             LogPrint(LOG_ALWAYS, "FATAL: Memory allocation failed.\n");
-            return false;
+            return nullptr;
         }
     }
     else
@@ -33,15 +35,30 @@ bool Console_Init(struct Console* sys)
 
     // initialize coroutine handles
     sys->HandleARM9 = CR_Create((void*)ARM9_MainLoop, &sys->ARM9);
+
     if (sys->HandleARM9 == cr_null)
     {
         LogPrint(LOG_ALWAYS, "FATAL: Coroutine handle allocation failed.\n");
-        return false;
+        free(sys); // probably a good idea to not leak memory, just in case.
+        return nullptr;
+    }
+    int num; 
+    // allocate any internal or external ROMs
+    if (ntr9 != NULL)
+    {
+        num = fread(sys->NTRBios9.b8, NTRBios9_Size, 1, ntr9);
+
+        if (num != 1)
+        {
+            LogPrint(LOG_ALWAYS, "ERROR: ARM9 BIOS did not load properly. This will cause issues!!!\n");
+            // TODO: this should probably return an error code to the frontend.
+            exit(EXIT_FAILURE);
+        }
     }
 
     Console_Reset(sys);
 
-    return true;
+    return sys;
 }
 
 void Console_Reset(struct Console* sys)
@@ -57,6 +74,5 @@ void Console_Scheduler(struct Console* sys)
 
 void Console_MainLoop(struct Console* sys)
 {
-    //ARM9_Step(&sys->ARM9);
     CR_Switch(sys->HandleARM9);
 }

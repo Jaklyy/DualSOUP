@@ -17,6 +17,12 @@ enum DMA_StartModes : u8
     DMAStart_WiFiIRQ,
 };
 
+struct DMA_TSID
+{
+    timestamp TS;
+    int ID;
+};
+
 union DMA_CR
 {
     u32 Raw;
@@ -25,7 +31,7 @@ union DMA_CR
         u32 NumWords : 21;
         u32 DestCR : 2;
         u32 SourceCR: 2;
-        bool DMARepeat : 1;
+        bool Repeat : 1;
         bool Width32 : 1;
         u32 StartMode9 : 3;
         bool IRQ : 1;
@@ -53,8 +59,9 @@ struct DMA_Channel
 
 struct DMA_Controller
 {
+    alignas(sizeof(timestamp[4])) timestamp ChannelTimestamps[4];
     struct DMA_Channel Channels[4];
-    timestamp ChannelTimestamps[4];
 };
 
-void DMA7_IOWriteHandler(struct DMA_Channel channels[4], u32 addr, u32 val, const u32 mask);
+void DMA7_IOWriteHandler(struct DMA_Channel* channels, u32 addr, u32 val, const u32 mask);
+timestamp DMA_TimeNextScheduled(const timestamp* ts, const unsigned numtst); // if you pass something greater than 4 i will kill you

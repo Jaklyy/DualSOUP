@@ -138,9 +138,9 @@ void ARM_PipelineFlush(struct ARM* cpu)
         {0xD000, 0xD100}, // thumb: branch cond
         {0x0320F000, 0x1320F000}}; // arm: msr cpsr_(empty field), immediate (v6k: nop) (in theory this one is already a nop but i think encoding a missed instruction would be faster)
 
-    u32 instr = instrs[cpu->CPSR.Thumb][cpu->CPSR.Zero];
-    cpu->Instr[1] = (struct ARM_Instr){instr, false, false};
-    cpu->Instr[2] = (struct ARM_Instr){instr, false, false};
+    u32 instr = instrs[!cpu->CPSR.Thumb][cpu->CPSR.Zero];
+    cpu->Instr[1] = (struct ARM_Instr){.Raw = instr, .Aborted = false, .CoprocPriv = false, .Flushed = true};
+    cpu->Instr[2] = (struct ARM_Instr){.Raw = instr, .Aborted = false, .CoprocPriv = false, .Flushed = true};
 
     cpu->CodeSeq = false;
 }

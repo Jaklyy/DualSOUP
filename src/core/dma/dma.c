@@ -1,7 +1,8 @@
 #include "dma.h"
+#include "../console.h"
 
 
-#if 0
+
 
 void DMA_ScheduleStart()
 {
@@ -10,7 +11,7 @@ void DMA_ScheduleStart()
     // channel timestamp.
     // update the main scheduler
     // when the write occured.
-
+#if 0
     switch(channel->CurrentMode)
     {
         case DMAStart_Immediate:
@@ -18,6 +19,21 @@ void DMA_ScheduleStart()
             controller->ChannelTimestamps[curchannel] = /* bus timestamp...? */ + 1;
         }
     }
+#endif
+}
+
+timestamp DMA_TimeNextScheduled(const timestamp* ts, const unsigned numtst)
+{
+    timestamp ret = timestamp_max;
+
+    for (unsigned i = 0; i < numtst; i++)
+    {
+        if (ret > ts[i])
+        {
+            ret = ts[i];
+        }
+    }
+    return ret;
 }
 
 void DMA7_Enable(struct DMA_Channel* channel, u8 channel_id)
@@ -96,7 +112,37 @@ void DMA9_Enable(struct DMA_Channel* channel)
     }
 }
 
-void DMA9_IOWriteHandler(struct DMA_Channel channels[4], u32 address, u32 val, u32 mask)
+void DMA_Run(struct Console* sys, struct DMA_Channel* channel, u8 id)
+{
+    if (channel->CR.Width32)
+    {
+
+    }
+    while(channel->Latched_NumWords > 0)
+    {
+        AHB9_NegOwnership(sys, &sys->AHB9.Timestamp, id, false);
+        //Bus9Read
+        AHB9_NegOwnership(sys, &sys->AHB9.Timestamp, id, false);
+        //Bus9Write
+    }
+
+    // end
+
+    if (!channel->CR.Repeat)
+    {
+        // reschedule
+    }
+    else
+    {
+        channel->CR.Enable = false;
+    }
+
+    if (channel->CR.IRQ) // idk
+        ;
+
+}
+
+void DMA9_IOWriteHandler(struct DMA_Channel* channels, u32 address, u32 val, u32 mask)
 {
     address &= 0xFF;
     address -= 0xB0;
@@ -128,7 +174,7 @@ void DMA9_IOWriteHandler(struct DMA_Channel channels[4], u32 address, u32 val, u
     }
 }
 
-void DMA7_IOWriteHandler(struct DMA_Channel channels[4], u32 addr, u32 val, const u32 mask)
+void DMA7_IOWriteHandler(struct DMA_Channel* channels, u32 addr, u32 val, const u32 mask)
 {
     addr &= 0xFF;
     addr -= 0xB0;
@@ -177,4 +223,3 @@ void DMA7_IOWriteHandler(struct DMA_Channel channels[4], u32 addr, u32 val, cons
     }
     }
 }
-#endif

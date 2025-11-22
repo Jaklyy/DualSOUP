@@ -23,7 +23,8 @@ enum ARM_Condition_Codes : u8
     ARMCond_GT,
     ARMCond_LE,
     ARMCond_AL,
-    ARMCond_NV, // legacy
+    ARMCond_NV, // legacy; applies to armv4te and earlier
+    ARMCond_UN = ARMCond_NV, // applies to armv5 onward
 };
 
 enum ARM_Modes : u8
@@ -58,7 +59,7 @@ enum ARM_PipelineProg : u8
 
 union ARM_FlagsOut
 {
-    u8 Raw;
+    u8 Raw : 4;
     struct
     {
         bool Overflow : 1;
@@ -110,6 +111,7 @@ struct ARM_Instr
     };
     bool Aborted; // whether the instruction fetch raised a prefetch abort; used for fixing prefetch aborts during flushless switches to thumb, and distinguishing real aborts w/ bkpt
     bool CoprocPriv; // whether the coprocessor pipeline thinks we have privilege or not.
+    bool Flushed; // whether the current instruction has been invalidated and should not be executed. (used for debugging purposes mostly...)
 };
 
 #define ARM_CoprocReg(Op1, CRn, CRm, Op2) (((Op1) << 11) | ((CRn) << 7) | ((CRm) << 3) | (Op2))

@@ -2,6 +2,7 @@
 #include <stdarg.h>
 #include "../core/utils.h"
 #include "../../libs/libco/libco.h"
+#include <stdlib.h>
 
 
 
@@ -20,6 +21,18 @@ void LogPrint(const u64 logtype, const char* str, ...)
 
     va_end(args);
 #endif
+}
+
+void CrashSpectacularly(const char* str, ...)
+{
+    va_list args;
+    va_start(args);
+
+    vprintf(str, args);
+
+    va_end(args);
+
+    exit(EXIT_FAILURE);
 }
 
 // coroutine junk

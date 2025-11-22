@@ -175,6 +175,20 @@ void ARM_DataProc(struct ARM* cpu, const struct ARM_Instr instr_data)
     {
         if (instr.Rd == 15)
         {
+            if ((instr.Opcode & 0b1100) == 0b1000) // tst/teq/cmp/cmn behave weirdly here
+            {
+                char* str;
+                switch(instr.Opcode)
+                {
+                case 8: str = "TST"; break;
+                case 9: str = "TEQ"; break;
+                case 10: str = "CMP"; break;
+                case 11: str = "CMN"; break;
+                default: str = "Jakly, why is there an error in your error handler?"; break;
+                }
+                LogPrint(LOG_CPUID | LOG_ODD, "ARM%i: Executing %s with Rd == 15: %08X\n", CPUIDtoCPUNum, instr_data.Raw);
+            }
+
             if ((cpu->CPUID == ARM9ID) && ((instr.Opcode & 0b1100) == 0b1000)) // tst/teq/cmp/cmn
             {
                 // ARM946E-S seemingly triggers some logic from legacy -P variant instructions?

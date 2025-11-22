@@ -55,50 +55,95 @@ union THUMB_Branch_Decode
     };
 };
 
+// TODO: UN FUCK THIS FUNCTION
+/*
+00 == b
+01 == blx (hi)
+10 == bl (lo)
+11 == bl (hi)
+
+
+00
+r15 = r15 + (imm << 1)
+
+01
+if (imm & 1) raise udf;
+pc = r15
+imm <<= 1;
+addr = pc
+r14 = r15 - 3
+pc += imm
+clear thumb
+addr &= ~3
+r15 = pc
+
+raise udf
+clear thumb
+r14 = r15 - 3
+r15 = r15 + (imm << 1)
+*/
+
 void THUMB_Branch(struct ARM* cpu, const struct ARM_Instr instr_data)
 {
     const union THUMB_Branch_Decode instr = {.Raw = instr_data.Raw};
 
+    // 00 = B
+    // 01 = BLX hi
+    // 10 = lo
+    // 11 = BL hi
+    u8 opcode = instr.Opcode;
+
+    // TODO: arm7 doesn't have BLX hi.
+    // presumably it decodes into BL hi...?
+    if ((opcode == 0b01) && (cpu->CPUID == ARM7ID))
+        LogPrint(LOG_ARM7 | LOG_ODD, "ARM7 doing a BLX high...?\n");
+
     // undefined instruction.
-    if ((instr.Opcode == 0b01) && (instr.ImmS11 & 0x1))
+    if ((opcode == 0b01) && (instr.ImmS11 & 0x1))
     {
         return ARM_RaiseUDF;
     }
 
+    const s32 signedimm = instr.ImmS11 << ((opcode == 0b10) ? 12 : 1);
+
+    // NOTE: the link and pc variables are not used by all variants
+    // they're always set though, because im lazy.
+    u32 link = ARM_GetReg(15);
+    u32 addr = ((opcode & 0b01) ? link : ARM_GetReg(14));
+
     ARM_ExeCycles(1, 1, 1);
 
-    u32 pc = ARM_GetReg(15);
-    s32 signedimm = instr.ImmS11 << ((instr.Opcode == 2) ? 12 : 1);
-    u32 addr = ((instr.Opcode & 0b01) ? pc : ARM_GetReg(14));
-
-    // CHECKME: this might somehow be faster to always do?
-    if (instr.Opcode == 0b10)
+    // update link register
+    if (opcode != 0b00) // NOT branch uncond
     {
-        ARM_StepPC(cpu, true);
+        if (opcode & 0b01)
+        {
+            // bl(x) hi
+            // this gets the same effect as subtracting 4 and setting the interworking bit
+            link -= 3;
+        }
+        else
+        {
+            // b(l)x low
+            link += signedimm;
+            ARM_StepPC(cpu, true);
+        }
+        ARM_SetReg(14, link, 0, 0);
     }
 
-    // should update link register
-    if (instr.Opcode & 0b01)
+    // branch (write to pc)
+    if (opcode != 0b10) // BL(X) lo doesn't branch
     {
-        ARM_SetReg(14, pc - 3, 0, 0);
-    }
+        addr += signedimm;
 
-    pc += signedimm;
-
-    if (instr.Opcode == 0b10)
-    {
-        ARM_SetReg(14, pc, 0, 0);
-    }
-    else
-    {
-        if (instr.Opcode == 0b01)
+        // blx hi has some extra logic
+        if (opcode == 0b01)
         {
             ARM_SetThumb(cpu, false);
-            // this might actually be done explicitly?
-            addr &= ~0x3;
+            addr &= ~3;
         }
 
-        ARM_SetReg(15, pc, 0, 0);
+        ARM_SetReg(15, addr, 0, 0);
     }
 }
 
@@ -107,6 +152,8 @@ s8 THUMB9_Branch_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_
     const union THUMB_Branch_Decode instr = {.Raw = instr_data.Raw};
     s8 stall = 0;
 
+    // hi variants read lr to use for branching.
+    // ... can lr actually be interlocked on thumb?
     if (instr.Opcode & 0b01)
     {
         ARM9_CheckInterlocks(ARM9, &stall, 14, 0, false);

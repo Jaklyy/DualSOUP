@@ -99,7 +99,8 @@ void ARM9_InitInstrLUT()
         CHECK (0001'0000'1000, 1111'1001'1001, UNIMPL) // signed multiplies
         // load/store extension space
         CHECK (0001'0000'1001, 1111'1011'1111, UNIMPL) // swp
-        CHECK (0001'1000'1001, 1111'1000'1111, UNIMPL) // ldrex/strex (and variants)
+        //CHECK (0001'1000'1001, 1111'1000'1111, UNIMPL) // ldrex/strex (and variants)
+        CHECK (0000'0000'1001, 1110'0000'1001, LoadStoreMisc)
         CHECK (0000'0000'1011, 1110'0000'1111, UNIMPL) // ldrh/strh
         CHECK (0000'0001'1101, 1110'0001'1101, UNIMPL) // ldrsh/ldrsb
         CHECK (0000'0000'1101, 1110'0001'1101, UNIMPL) // ldrd/strd
@@ -114,7 +115,7 @@ void ARM9_InitInstrLUT()
         // data processing
         CHECK (0000'0000'0000, 1100'0000'0000, DataProc)
         // load/store
-        CHECK (0100'0000'0000, 1100'0000'0000, UNIMPL)
+        CHECK (0100'0000'0000, 1100'0000'0000, LoadStore)
         // coprocessor data processing
         CHECK (1110'0000'0000, 1111'0000'0001, UNIMPL) // cdp - checkme: longer undef?
         // coprocessor register transfers
@@ -130,76 +131,6 @@ void ARM9_InitInstrLUT()
         unreachable();
     }
 }
-
-#undef CHECK
-#undef CHECK9
-
-#define CHECK(cmp, mask, ptr) \
-if (PatternMatch((struct Pattern) {0b##cmp, 0b##mask}, i)) \
-{ \
-    ARM9_InstructionLUT[i] = ARM_##ptr ; \
-    ARM9_InterlockLUT[i] = ARM9_##ptr##_Interlocks; \
-} \
-else
-
-#define CHECK9(cmp, mask, ptr) \
-if (PatternMatch((struct Pattern) {0b##cmp, 0b##mask}, i)) \
-{ \
-    ARM9_InstructionLUT[i] = ARM9_##ptr ; \
-    ARM9_InterlockLUT[i] = ARM9_None_Interlocks; \
-} \
-else
-
-#if 0
-void ARM9_InstrLUT(struct ARM* cpu, u32 instr)
-{
-        // most specific ones should go first
-        u16 decode = 
-        // multiply extension space
-        CHECK9(0000'0100'1001, 1111'1100'1111, UndefinedInstruction) // UMAAL (undefined on ARM9)
-        CHECK (0000'0000'1001, 1111'0000'1111, Mul)
-        // control/dsp extension space
-        CHECK (0001'0000'0000, 1111'1011'1111, UNIMPL) // mrs
-        CHECK (0001'0010'0000, 1111'1011'1111, UNIMPL) // msr (reg)
-        CHECK (0001'0010'0001, 1111'1111'1101, UNIMPL) // b(l)x (reg)
-        CHECK (0001'0110'0001, 1111'1111'1111, CLZ)
-        CHECK (0001'0000'0101, 1111'1001'1111, SatMath)
-        CHECK9(0001'0010'0111, 1111'1111'1111, PrefetchAbort) // bkpt | we're reusing bkpt as a faster way to handle prefetch aborts
-        CHECK (0001'0000'1000, 1111'1001'1001, UNIMPL) // signed multiplies
-        // load/store extension space
-        CHECK (0001'0000'1001, 1111'1011'1111, UNIMPL) // swp
-        CHECK (0001'1000'1001, 1111'1000'1111, UNIMPL) // ldrex/strex (and variants)
-        CHECK (0000'0000'1011, 1110'0000'1111, UNIMPL) // ldrh/strh
-        CHECK (0000'0001'1101, 1110'0001'1101, UNIMPL) // ldrsh/ldrsb
-        CHECK (0000'0000'1101, 1110'0001'1101, UNIMPL) // ldrd/strd
-        // explicitly defined undefined space
-        CHECK9(0111'1111'1111, 1111'1111'1111, UndefinedInstruction)
-        // coproc extension space
-        CHECK (1100'0001'0000, 1111'0001'0000, LDC) // ldc
-        CHECK9(1100'0000'0000, 1111'0001'0000, UndefinedInstruction) // stc
-        CHECK9(1100'0100'0000, 1111'1111'0000, UndefinedInstruction) // mcrr
-        CHECK9(1100'0101'0000, 1111'1111'0000, UndefinedInstruction) // mrrc
-        CHECK9(1100'0000'0000, 1111'1010'0000, UndefinedInstruction) // coprocessor? - checkme: longer undef?
-        // data processing
-        CHECK (0000'0000'0000, 1100'0000'0000, DataProc)
-        // load/store
-        CHECK (0100'0000'0000, 1100'0000'0000, UNIMPL)
-        // coprocessor data processing
-        CHECK9(1110'0000'0000, 1111'0000'0001, UndefinedInstruction) // cdp - checkme: longer undef?
-        // coprocessor register transfers
-        CHECK (1110'0000'0001, 1111'0001'0001, MCR) // mcr
-        CHECK (1110'0001'0001, 1111'0001'0001, MRC) // mrc
-        // multiple load/store
-        CHECK (1000'0000'0000, 1110'0000'0000, UNIMPL) // ldm/stm
-        // branch
-        CHECK (1010'0000'0000, 1110'0000'0000, UNIMPL) // b/bl
-        CHECK9(1111'0000'0000, 1111'0000'0000, SoftwareInterrupt)
-        CHECK9(1110'0000'0000, 1111'0000'0000, UndefinedInstruction) // coprocessor instruction - checkme: longer undef?
-        CHECK9(0000'0000'0000, 0000'0000'0000, UndefinedInstruction)
-        unreachable();
-    }
-}
-#endif
 
 #undef CHECK
 #undef CHECK9
@@ -267,7 +198,7 @@ void THUMB9_InitInstrLUT()
         CHECK (0010'00, 1111'10, MovsImm8) // movs imm8
         CHECK (0010'00, 1110'00, DataProcImm8) // adds/sub/cmp imm8
         CHECK (0100'00, 1111'11, DataProcReg) // data proc reg
-        CHECK (0100'00, 1111'11, DataProcHiReg) // data proc/b(l)x hi-regs
+        CHECK (0100'01, 1111'11, DataProcHiReg) // data proc/b(l)x hi-regs
         CHECK (0100'10, 1111'10, UNIMPL) // ldr pc-rel
         CHECK (0101'00, 1111'00, UNIMPL) // ldr/str reg offs
         CHECK (0110'00, 1110'00, UNIMPL) // ldr/str(b) imm offs

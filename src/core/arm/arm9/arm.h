@@ -135,53 +135,6 @@ union ARM9_DCacheTagsExternal
     };
 };
 
-enum ARM9_InternalBuses : u8
-{
-    A9Bus_Free,  // bus is not being used
-    A9Bus_Instr, // instruction bus
-    A9Bus_Data,  // data bus
-    A9Bus_Write, // write buffer (might have a distinct bus path of its own...?)
-};
-
-enum ARM_BurstType : u8
-{
-    ARMBus_Read8u,  // 8 bit read (unsigned)
-    ARMBus_Read8s,  // 8 bit read (sign extend)
-    ARMBus_Read16u, // 16 bit read (unsigned)
-    ARMBus_Read16s, // 16 bit read (sign extend)
-    ARMBus_Read32,  // single read (ROR)
-    ARMBus_Read32b, // burst read (no ROR)
-    ARMBus_Write8,  // 8 bit write
-    ARMBus_Write16, // 16 bit write
-    ARMBus_Write32, // 32 bit write
-    ARMBus_Swap8,   // Atomic 8 bit read & write
-    ARMBus_Swap32,  // Atomic 32 bit read & write
-};
-
-enum ARM_BurstWidth : u8
-{
-    ARMBus_8,
-    ARMBus_16,
-    ARMBus_32, // supports bursts
-};
-
-struct ARM9_BusQueue
-{
-    u8 BurstType;
-    u8 BurstWidth;
-    u8 BurstLen; // how many more fetches are remaining. max 16.
-    union
-    {
-        u16 RList; // bitfield storing each register to be read from or written to
-                   // used for loads and stores
-        struct
-        {
-            u8 Read;
-            u8 Write;
-        };
-    };
-};
-
 union ARM9_CacheLockdownCR
 {
     u32 Raw;
@@ -205,6 +158,36 @@ union ARM9_RegionCR
     };
 };
 
+struct ARM9_CacheStream
+{
+    timestamp Times[7];
+    u32* ReadPtr;
+    u8 Prog; // 7 (or greater) means done
+};
+
+enum ARM9_WriteBufferFlags : u8
+{
+    A9WB_8,
+    A9WB_16,
+    A9WB_32,
+    A9WB_Addr,
+};
+
+struct ARM9_WriteBuffer
+{
+    timestamp NextStep;
+    alignas(u64)
+    struct
+    {
+        u32 Data;
+        u8 Flags;
+    } FIFOEntry[16];
+    u32 CurAddr;
+    u32 LatchedData;
+    u8 FIFOFillPtr;
+    u8 FIFODrainPtr;
+};
+
 /*
     arm9 invalid modes:
     mode: 0x4, 0x5, 0x6
@@ -223,11 +206,10 @@ union ARM9_RegionCR
 struct ARM946ES
 {
     struct ARM ARM;
-    timestamp StreamTimes[8];
-    alignas(32) s8 RegIL[16][2]; // r15 shouldn't be able to interlock?
-    timestamp MemTimestamp; // used for memory stage and data bus tracking
-    timestamp DataBusTs;
-    timestamp InstrBusTs;
+    alignas(32) s8 RegIL[16][2]; // r15 shouldn't be able to interlock(?) but the extra byte should be kept for alignment purposes.
+    struct ARM9_CacheStream DStream;
+    struct ARM9_CacheStream IStream;
+    struct ARM9_WriteBuffer WBuffer;
     u16 LatchedHalfword; // used for thumb upper halfword fetches
     bool ITCM_DataAccess; // used for handling deferrence of data accesses to itcm
     bool BoostedClock; /*   Determines whether the ARM9 is running at 4 or 2 times the bus clock.
@@ -237,6 +219,8 @@ struct ARM946ES
                         *   Checkme: Is it faster to do this branchless?
                         *   Checkme: Can 3DS get an 8x or 1x clock multiplier with some jank?
                         */
+    timestamp MemTimestamp; // used for memory stage and data bus tracking
+    timestamp LastBusTime;
     struct
     {
         union
@@ -310,6 +294,7 @@ void ARM9_InterruptRequest(struct ARM946ES* ARM9);
 // only used by debugger hardware.
 void ARM9_FastInterruptRequest(struct ARM946ES* ARM9);
 
+void ARM9_RaiseUDF(struct ARM* ARM, const struct ARM_Instr instr_data, const int execycles, const int memcycles);
 // executed exceptions.
 void ARM9_UndefinedInstruction(struct ARM* cpu, const struct ARM_Instr instr_data);
 void ARM9_SoftwareInterrupt(struct ARM* ARM, const struct ARM_Instr instr_data);
@@ -346,6 +331,12 @@ void ARM9_MainLoop(struct ARM946ES* ARM9);
 
 void ARM9_InstrRead32(struct ARM946ES* ARM9, u32 addr); // arm
 void ARM9_InstrRead16(struct ARM946ES* ARM9, const u32 addr); // thumb
+
+u32 ARM9_DataRead32(struct ARM946ES* ARM9, u32 addr, bool* seq, bool* dabt);
+u16 ARM9_DataRead16(struct ARM946ES* ARM9, u32 addr, bool* seq, bool* dabt);
+u8 ARM9_DataRead8(struct ARM946ES* ARM9, u32 addr, bool* seq, bool* dabt);
+void ARM9_DataWrite(struct ARM946ES* ARM9, u32 addr, const u32 val, const u32 mask, const bool atomic, bool* seq, bool* dabt);
+
 void ARM9_Uncond(struct ARM* cpu, const struct ARM_Instr instr_data); // idk where to put this tbh
 
 void ARM9_ConfigureITCM(struct ARM946ES* ARM9);

@@ -12,25 +12,29 @@
 
 void ARM9_Reset(struct ARM946ES* ARM9, const bool itcm, const bool hivec)
 {
-    // todo: how many cycles does this take?
+    // TODO: how many cycles does this take?
+    // 
 
-    // note: 
-    // ...what was i going to write there?
+    // TODO: does cache prng ever get reset? (does it ever get explicitly initialized?)
 
-    // todo: does cache prng ever get reset? (does it ever get explicitly initialized?)
+    // we probably want to wait for the cache stream to end...?
+    // it might be interrupted immediately though...?
+    bool ARM9_ProgressCacheStream(timestamp* ts, struct ARM9_CacheStream* stream, u32* ret, const bool seq);
+    ARM9_ProgressCacheStream(&ARM9->ARM.Timestamp, &ARM9->IStream, nullptr, false);
+    ARM9_ProgressCacheStream(&ARM9->ARM.Timestamp, &ARM9->DStream, nullptr, false);
 
-    // note: arm docs explicitly state that R14_SVC and SPSR_SVC have an "unpredictable value" when reset is de-asserted
+    // SPECULATIVE: arm docs explicitly state that R14_SVC and SPSR_SVC have an "unpredictable value" when reset is de-asserted
     // which could mean literally anything
     // it is entirely possible that the old pc and cpsr are banked by the processor
     // or at least it tries to and instead puts some nonsense in them?
     // ...or it could just mean that they aren't reset in any way......
     // im gonna bank em for funsies.
-    // unclear what pc would be here... probably depends on when the current instruction got interrupted?
-    u32 oldpc = cpu->PC;
     union ARM_PSR oldcpsr = cpu->CPSR;
 
     ARM_SetMode(cpu, ARMMode_SWI);
 
+    // one can only imagine what pc would be here... probably depends on when the current instruction got interrupted?
+    u32 oldpc = cpu->PC;
     cpu->LR = oldpc;
     ARM9_SetSPSR(ARM9, oldcpsr);
 
@@ -112,7 +116,7 @@ void ARM9_Reset(struct ARM946ES* ARM9, const bool itcm, const bool hivec)
     ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVector_RST, 0);
 }
 
-void ARM9_UndefinedInstruction(struct ARM* ARM, const struct ARM_Instr instr_data)
+void ARM9_RaiseUDF(struct ARM* ARM, const struct ARM_Instr instr_data, const int execycles, const int memcycles)
 {
     struct ARM946ES* ARM9 = (struct ARM946ES*)ARM;
 
@@ -125,6 +129,8 @@ void ARM9_UndefinedInstruction(struct ARM* ARM, const struct ARM_Instr instr_dat
     u32 oldpc = cpu->PC - (cpu->CPSR.Thumb ? 2 : 4);
     union ARM_PSR oldcpsr = cpu->CPSR;
 
+    ARM9_ExecuteCycles(ARM9, execycles, memcycles);
+
     ARM_SetMode(cpu, ARMMode_UND);
 
     cpu->LR = oldpc;
@@ -135,9 +141,14 @@ void ARM9_UndefinedInstruction(struct ARM* ARM, const struct ARM_Instr instr_dat
     ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVector_UND, 0);
 }
 
+void ARM9_UndefinedInstruction(struct ARM* ARM, const struct ARM_Instr instr_data)
+{
+    ARM9_RaiseUDF(ARM, instr_data, 1, 1);
+}
+
 void THUMB9_UndefinedInstruction(struct ARM* ARM, const struct ARM_Instr instr_data)
 {
-    ARM9_UndefinedInstruction(ARM, instr_data);
+    ARM9_RaiseUDF(ARM, instr_data, 1, 1);
 }
 
 void ARM9_SoftwareInterrupt(struct ARM* ARM, [[maybe_unused]] const struct ARM_Instr instr_data)
@@ -148,6 +159,8 @@ void ARM9_SoftwareInterrupt(struct ARM* ARM, [[maybe_unused]] const struct ARM_I
     // addr of next instr
     u32 oldpc = cpu->PC - (cpu->CPSR.Thumb ? 2 : 4);
     union ARM_PSR oldcpsr = cpu->CPSR;
+
+    ARM9_ExecuteCycles(ARM9, 1, 1);
 
     ARM_SetMode(cpu, ARMMode_SWI);
 
@@ -181,6 +194,8 @@ void ARM9_PrefetchAbort(struct ARM* ARM, const struct ARM_Instr instr_data)
     // lr is aborted instruction + 4
     u32 oldpc = cpu->PC - ((cpu->CPSR.Thumb) ? 0 : 4);
     union ARM_PSR oldcpsr = cpu->CPSR;
+
+    ARM9_ExecuteCycles(ARM9, 1, 1);
 
     ARM_SetMode(cpu, ARMMode_ABT);
 
@@ -223,6 +238,8 @@ void ARM9_InterruptRequest(struct ARM946ES* ARM9)
     u32 oldpc = cpu->PC - ((cpu->CPSR.Thumb) ? 0 : 4);
     union ARM_PSR oldcpsr = cpu->CPSR;
 
+    ARM9_ExecuteCycles(ARM9, 1, 1);
+
     ARM_SetMode(cpu, ARMMode_IRQ);
 
     cpu->LR = oldpc;
@@ -238,6 +255,8 @@ void ARM9_FastInterruptRequest(struct ARM946ES* ARM9)
     // lr is next instr + 4
     u32 oldpc = cpu->PC - ((cpu->CPSR.Thumb) ? 0 : 4);
     union ARM_PSR oldcpsr = cpu->CPSR;
+
+    ARM9_ExecuteCycles(ARM9, 1, 1);
 
     ARM_SetMode(cpu, ARMMode_FIQ);
 

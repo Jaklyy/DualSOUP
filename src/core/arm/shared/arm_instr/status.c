@@ -97,7 +97,7 @@ void ARM_MSR(struct ARM* cpu, const struct ARM_Instr instr_data)
     psr = (psr & ~updatemask) | (input & updatemask);
 
     // check if thumb bit was messed with (dont ask me why arm didn't just mask this bit out...)
-    if ((psr ^ oldpsr) & 0x20)
+    if ((instr.UseSPSR) && ((psr ^ oldpsr) & 0x20))
     {
         if (cpu->CPUID == ARM9ID)
         {
@@ -137,7 +137,7 @@ void ARM_MSR(struct ARM* cpu, const struct ARM_Instr instr_data)
         ARM_ExeCycles(1, 1, 1);
     }
 
-    ARM_SetCPSR(cpu, psr);
+    ((instr.UseSPSR) ? ARM_SetSPSR((union ARM_PSR){.Raw = psr}) : ARM_SetCPSR(cpu, psr));
 }
 
 s8 ARM9_MSR_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)

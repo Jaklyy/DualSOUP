@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <stdio.h>
 #include "../core/console.h"
 #include "../core/arm/arm9/instr_luts.h"
 #include "../core/arm/arm9/arm.h"
@@ -12,16 +13,26 @@ int main()
     ARM9_InitInstrLUT();
     THUMB9_InitInstrLUT();
 
+    FILE* ntr9 = fopen("ntr9.bin", "rb");
+
+    if (ntr9 == NULL)
+    {
+        printf("no ntr arm9 bios :(\n");
+        return EXIT_FAILURE;
+    }
+
     // initialize main emulator state struct
-    struct Console* sys = nullptr;
-    if (!Console_Init(sys))
+    struct Console* sys = Console_Init(nullptr, ntr9);
+    if (sys == nullptr)
     {
         return EXIT_FAILURE;
     }
-    ARM9_Log(&sys->ARM9);
+    //ARM9_Log(&sys->ARM9);
+
+    Console_MainLoop(sys);
 
     // TEMP: debugging
-    for (int i = 0; i < 2; i++)
+    /*for (int i = 0; i < 2; i++)
     {
         if (i == 0)
         {
@@ -39,7 +50,7 @@ int main()
         sys->ARM9.ARM.Instr[1].Raw = 0xE1B02655;
 
         Console_MainLoop(sys);
-    }
+    }*/
 
     return EXIT_SUCCESS;
 }

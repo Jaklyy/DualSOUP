@@ -39,6 +39,10 @@ void ARM_BranchExchange(struct ARM* cpu, const struct ARM_Instr instr_data);
 void ARM_MRS(struct ARM* cpu, const struct ARM_Instr instr_data);
 void ARM_MSR(struct ARM* cpu, const struct ARM_Instr instr_data);
 
+// load/store
+void ARM_LoadStore(struct ARM* cpu, const struct ARM_Instr instr_data);
+void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data);
+
 
 
 // THUMB
