@@ -130,7 +130,7 @@ void ARM_MSR(struct ARM* cpu, const struct ARM_Instr instr_data)
         // yes that is actually how it works.
         // no i dont know why it cares about the extension or status bits?
         // CHECKME: ...it might also care about none set actually...?
-        ARM9_ExecuteCycles((struct ARM946ES*)cpu, 3, 1);
+        ARM9_ExecuteCycles(ARM9Cast, 3, 1);
     }
     else
     {

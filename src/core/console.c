@@ -8,7 +8,7 @@
 
 
 // TODO: this function probably shouldn't manage memory on its own?
-struct Console* Console_Init(struct Console* sys, FILE* ntr9)
+struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7)
 {
     if (sys == nullptr)
     {
@@ -42,6 +42,16 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9)
         free(sys); // probably a good idea to not leak memory, just in case.
         return nullptr;
     }
+
+    sys->HandleARM7 = CR_Create((void*)ARM7_MainLoop, &sys->ARM7);
+
+    if (sys->HandleARM7 == cr_null)
+    {
+        LogPrint(LOG_ALWAYS, "FATAL: Coroutine handle allocation failed.\n");
+        free(sys); // probably a good idea to not leak memory, just in case.
+        return nullptr;
+    }
+
     int num; 
     // allocate any internal or external ROMs
     if (ntr9 != NULL)
@@ -51,6 +61,18 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9)
         if (num != 1)
         {
             LogPrint(LOG_ALWAYS, "ERROR: ARM9 BIOS did not load properly. This will cause issues!!!\n");
+            // TODO: this should probably return an error code to the frontend.
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    if (ntr7 != NULL)
+    {
+        num = fread(sys->NTRBios7.b8, NTRBios7_Size, 1, ntr7);
+
+        if (num != 1)
+        {
+            LogPrint(LOG_ALWAYS, "ERROR: ARM7 BIOS did not load properly. This will cause issues!!!\n");
             // TODO: this should probably return an error code to the frontend.
             exit(EXIT_FAILURE);
         }

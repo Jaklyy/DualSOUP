@@ -321,7 +321,7 @@ void ARM_Mul(struct ARM* cpu, const struct ARM_Instr instr_data)
 
         // takes 1 cycle + 1 cycle per booth iteration needed to calculate.
         // one booth iteration is needed per byte of Rs.
-        ARM7_ExecuteCycles((struct ARM7TDMI*)cpu, iterations + 1 + instr.Long);
+        ARM7_ExecuteCycles(ARM7Cast, iterations + 1 + instr.Long);
     }
     else // ARM9ID
     {
@@ -330,7 +330,7 @@ void ARM_Mul(struct ARM* cpu, const struct ARM_Instr instr_data)
             cpu->CPSR.Negative = (s64)mul_out < 0;
             cpu->CPSR.Zero = !mul_out;
 
-            ARM9_ExecuteCycles((struct ARM946ES*)cpu, 4 + instr.Long, 1);
+            ARM9_ExecuteCycles(ARM9Cast, 4 + instr.Long, 1);
         }
         else
         {
@@ -338,11 +338,11 @@ void ARM_Mul(struct ARM* cpu, const struct ARM_Instr instr_data)
             if (!instr.Long)
             {
                 // 2 cycles effectively
-                ARM9_ExecuteCycles((struct ARM946ES*)cpu, 1, 2);
+                ARM9_ExecuteCycles(ARM9Cast, 1, 2);
             }
             else
             {
-                ARM9_ExecuteCycles((struct ARM946ES*)cpu, 3, 1);
+                ARM9_ExecuteCycles(ARM9Cast, 3, 1);
             }
         }
     }

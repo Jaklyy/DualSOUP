@@ -221,6 +221,8 @@ struct ARM946ES
                         */
     timestamp MemTimestamp; // used for memory stage and data bus tracking
     timestamp LastBusTime;
+    timestamp DataContTS; // data bus contention timestamp
+    timestamp InstrContTS; // instr bus contention timestamp
     struct
     {
         union
@@ -284,6 +286,9 @@ extern s8 (*THUMB9_InterlockLUT[0x1000])(struct ARM946ES*, struct ARM_Instr);
 // should be akin to a cold boot?
 void ARM9_Init(struct ARM946ES* ARM9, struct Console* sys);
 
+// ARM9 handler entrypoint
+void ARM9_MainLoop(struct ARM946ES* ARM9);
+
 // TEMP: debugging
 void ARM9_Log(struct ARM946ES* ARM9);
 
@@ -326,16 +331,13 @@ void ARM9_FetchCycles(struct ARM946ES* ARM9, const int fetch);
 // add execute and memory stage cycles.
 void ARM9_ExecuteCycles(struct ARM946ES* ARM9, const int execute, const int memory);
 
-// ARM9 handler entrypoint
-void ARM9_MainLoop(struct ARM946ES* ARM9);
-
 void ARM9_InstrRead32(struct ARM946ES* ARM9, u32 addr); // arm
 void ARM9_InstrRead16(struct ARM946ES* ARM9, const u32 addr); // thumb
 
-u32 ARM9_DataRead32(struct ARM946ES* ARM9, u32 addr, bool* seq, bool* dabt);
-u16 ARM9_DataRead16(struct ARM946ES* ARM9, u32 addr, bool* seq, bool* dabt);
-u8 ARM9_DataRead8(struct ARM946ES* ARM9, u32 addr, bool* seq, bool* dabt);
-void ARM9_DataWrite(struct ARM946ES* ARM9, u32 addr, const u32 val, const u32 mask, const bool atomic, bool* seq, bool* dabt);
+[[nodiscard]] u32 ARM9_DataRead32(struct ARM946ES* ARM9, u32 addr, bool* seq, bool* dabt);
+[[nodiscard]] u16 ARM9_DataRead16(struct ARM946ES* ARM9, u32 addr, bool* seq, bool* dabt);
+[[nodiscard]] u8 ARM9_DataRead8(struct ARM946ES* ARM9, u32 addr, bool* seq, bool* dabt);
+void ARM9_DataWrite(struct ARM946ES* ARM9, u32 addr, const u32 val, const u32 mask, const bool atomic, const bool deferrable, bool* seq, bool* dabt);
 
 void ARM9_Uncond(struct ARM* cpu, const struct ARM_Instr instr_data); // idk where to put this tbh
 

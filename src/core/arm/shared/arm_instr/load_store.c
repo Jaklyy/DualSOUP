@@ -148,15 +148,26 @@ void ARM_LoadStore(struct ARM* cpu, const struct ARM_Instr instr_data)
         // Load
         u32 val;
         u32 interlock = 0;
+        bool seq = false;
+        bool dabt = false;
         if (cpu->CPUID == ARM7ID)
         {
             // TODO
-            cpu->CodeSeq = false;
-            val = 0;
+
+            u32 mask;
+            bool dabt = false;
+            if (instr.Byte)
+            {
+                mask = u8_max << ((addr & 3) * 8);
+            }
+            else mask = u32_max;
+
+            val = ARM7_BusRead(ARM7Cast, addr, mask, &seq);
 
             // arm7 needs 1 cycle extra after the load.
             // presumably this is for the same reason that certain loads can have writeback stage interlocks on arm9.
-            ARM_ExeCycles(1, 1, 1);
+            cpu->Timestamp+=1;
+            cpu->CodeSeq = false;
 
             // no idea why, but base writeback to r15 makes writing back the loaded value fail on arm7.
             // CHECKME: does this still incur the idle cycle?
@@ -168,10 +179,8 @@ void ARM_LoadStore(struct ARM* cpu, const struct ARM_Instr instr_data)
         }
         else
         {
-            bool seq = false;
-            bool dabt = false;
-            val = ((instr.Byte) ? ARM9_DataRead8((struct ARM946ES*)cpu, addr, &seq, &dabt)
-                                : ARM9_DataRead32((struct ARM946ES*)cpu, addr, &seq, &dabt));
+            val = ((instr.Byte) ? ARM9_DataRead8(ARM9Cast, addr, &seq, &dabt)
+                                : ARM9_DataRead32(ARM9Cast, addr, &seq, &dabt));
 
             // RORing the result takes an extra cycle
             // masking out bits also incurs the extra cycle, so it always applies to byte accesses.
@@ -195,26 +204,26 @@ void ARM_LoadStore(struct ARM* cpu, const struct ARM_Instr instr_data)
     {
         // Store
         u32 val = ARM_GetReg(instr.Rd);
+        u32 mask;
+        bool seq = false;
+        bool dabt = false;
+
+        if (instr.Byte)
+        {
+            val <<= (addr & 3) * 8;
+            mask = u8_max << ((addr & 3) * 8);
+        }
+        else mask = u32_max;
 
         if (cpu->CPUID == ARM7ID)
         {
-            // TODO
+            ARM7_BusWrite(ARM7Cast, addr, val, mask, false, &seq);
             cpu->CodeSeq = false;
         }
         else
         {
-            bool seq = false;
-            bool dabt = false;
 
-            u32 mask;
-            if (instr.Byte)
-            {
-                val <<= (addr & 3) * 8;
-                mask = 0xFF << ((addr & 3) * 8);
-            }
-            else mask = 0xFFFFFFFF;
-
-            ARM9_DataWrite((struct ARM946ES*)cpu, addr, val, mask, false, &seq, &dabt);
+            ARM9_DataWrite(ARM9Cast, addr, val, mask, false, true, &seq, &dabt);
 
             // TODO: Data abort
         }
@@ -348,22 +357,20 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
         // Store
         u32 val = ARM_GetReg(instr.Rd);
 
+        bool seq = false;
+        bool dabt = false;
+        u32 mask;
+        val <<= (addr & 2) * 8;
+        mask = u16_max << ((addr & 2) * 8);
+
         if (cpu->CPUID == ARM7ID)
         {
-            // TODO
+            ARM7_BusWrite(ARM7Cast, addr, val, mask, false, &seq);
             cpu->CodeSeq = false;
         }
         else
         {
-            bool seq = false;
-            bool dabt = false;
-
-            u32 mask;
-            val <<= (addr & 2) * 8;
-            mask = 0xFFFF << ((addr & 2) * 8);
-
-            ARM9_DataWrite((struct ARM946ES*)cpu, addr, val, mask, false, &seq, &dabt);
-
+            ARM9_DataWrite(ARM9Cast, addr, val, mask, false, false, &seq, &dabt);
             // TODO: Data abort
         }
         break;
@@ -372,20 +379,22 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
     case 0b111: // LDRSH
     {
         u32 val;
+        bool seq = false;
+        bool dabt = false;
         if (cpu->CPUID == ARM7ID)
         {
-            // TODO
-            cpu->CodeSeq = false;
-            val = 0;
+            u32 mask = u16_max << ((addr & 2) * 8);
 
             // arm7 needs 1 cycle extra after the load.
             // presumably this is for the same reason that certain loads can have writeback stage interlocks on arm9.
-            ARM_ExeCycles(1, 1, 1);
+            cpu->Timestamp += 1;
 
             // no idea why, but base writeback to r15 makes writing back the loaded value fail on arm7.
             // CHECKME: does this still incur the idle cycle?
             if (instr.Rn == 15 && (instr.Writeback || (!instr.PreIndex)))
                 return;
+
+            val = ARM7_BusRead(ARM7Cast, addr, mask, &seq);
 
             // rotate result right based on lsb of address.
             val = ROR32(val, (addr&3) * 8);
@@ -393,12 +402,12 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
             // sign extension is weird on ARM7
             if (opcode == 0b111)
                 val = (addr & 1) ? ((s32)(s8)val) : ((s32)(s16)val);
+
+            cpu->CodeSeq = false;
         }
         else
         {
-            bool seq = false;
-            bool dabt = false;
-            val = ARM9_DataRead16((struct ARM946ES*)cpu, addr, &seq, &dabt);
+            val = ARM9_DataRead16(ARM9Cast, addr, &seq, &dabt);
             // TODO: data abort
 
             // Note: ARM9 doesn't ROR weirdly for LDRH
@@ -420,32 +429,34 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
     case 0b110: // LDRSB
     {
         u32 val;
+        bool seq = false;
+        bool dabt = false;
         if (cpu->CPUID == ARM7ID)
         {
-            // TODO
-            cpu->CodeSeq = false;
-            val = 0;
-
-            // arm7 needs 1 cycle extra after the load.
-            // presumably this is for the same reason that certain loads can have writeback stage interlocks on arm9.
-            ARM_ExeCycles(1, 1, 1);
+            u32 mask = u16_max << ((addr & 3) * 8);
 
             // no idea why, but base writeback to r15 makes writing back the loaded value fail on arm7.
             // CHECKME: does this still incur the idle cycle?
             if (instr.Rn == 15 && (instr.Writeback || (!instr.PreIndex)))
                 return;
 
+            val = ARM7_BusRead(ARM7Cast, addr, mask, &seq);
+
+            // arm7 needs 1 cycle extra after the load.
+            // presumably this is for the same reason that certain loads can have writeback stage interlocks on arm9.
+            cpu->Timestamp += 1;
+
             // rotate result right based on lsb of address.
             val = ROR32(val, (addr&3) * 8);
 
             // CHECKME: i dont remember if this is weird in some way or not
             val = (s8)val;
+
+            cpu->CodeSeq = false;
         }
         else
         {
-            bool seq = false;
-            bool dabt = false;
-            val = ARM9_DataRead8((struct ARM946ES*)cpu, addr, &seq, &dabt);
+            val = ARM9_DataRead8(ARM9Cast, addr, &seq, &dabt);
             // TODO: data abort
 
             // rotate result right based on lsb of address.

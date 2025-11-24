@@ -23,19 +23,20 @@ void STR(struct ARM* cpu, const u32 addr, const u8 rd, const int width)
     u32 val = ARM_GetReg(rd);
     bool seq = false;
     bool dabt = false;
+    u32 mask;
+
+    if (width == width32) { mask = u32_max; }
+    if (width == width16) { mask = ROR32(u16_max, (addr & 2) * 8); val = ROR32(val, (addr & 2) * 8); }
+    if (width == width8 ) { mask = ROR32(u8_max  , (addr & 3) * 8); val = ROR32(val, (addr & 3) * 8); }
+
     if (cpu->CPUID == ARM7ID)
     {
-        // TODO
+        ARM7_BusWrite(ARM7Cast, addr, val, mask, false, &seq);
         cpu->CodeSeq = false;
     }
     else
     {
-        u32 mask;
-        if (width == width32) { mask = 0xFFFFFFFF; }
-        if (width == width16) { mask = ROR32(0xFFFF, (addr & 2) * 8); val = ROR32(val, (addr & 2) * 8); }
-        if (width == width8 ) { mask = ROR32(0xFF  , (addr & 3) * 8); val = ROR32(val, (addr & 3) * 8); }
-
-        ARM9_DataWrite((struct ARM946ES*)cpu, addr, val, mask, false, &seq, &dabt);
+        ARM9_DataWrite(ARM9Cast, addr, val, mask, false, true, &seq, &dabt);
         // TODO: data abort
     }
 
@@ -55,26 +56,32 @@ void LDR(struct ARM* cpu, const u32 addr, const u8 rd, const int width, const bo
     u32 interlock = 0;
     if (cpu->CPUID == ARM7ID)
     {
-        // TODO
+    u32 mask;
+
+        if (width == width32) { mask = u32_max; }
+        if (width == width16) { mask = ROR32(u16_max, (addr & 2) * 8); val = ROR32(val, (addr & 2) * 8); }
+        if (width == width8 ) { mask = ROR32(u8_max  , (addr & 3) * 8); val = ROR32(val, (addr & 3) * 8); }
+
+        val = ARM7_BusRead(ARM7Cast, addr, mask, &seq);
+
         cpu->CodeSeq = false;
-        val = 0;
 
         // arm7 needs 1 cycle extra after the load.
         // presumably this is for the same reason that certain loads can have writeback stage interlocks on arm9.
-        ARM_ExeCycles(1, 1, 1);
+        cpu->Timestamp += 1;
 
         // rotate result right based on lsb of address.
         val = ROR32(val, (addr&3) * 8);
 
-            // sign extension is weird on ARM7 for 16 bit wide loads
-            if (signext)
-                val = (((width == width8) || (addr & 1)) ? ((s32)(s8)val) : ((s32)(s16)val));
+        // sign extension is weird on ARM7 for 16 bit wide loads
+        if (signext)
+            val = (((width == width8) || (addr & 1)) ? ((s32)(s8)val) : ((s32)(s16)val));
     }
     else
     {
-        if (width == width32) val = ARM9_DataRead32((struct ARM946ES*)cpu, addr, &seq, &dabt);
-        if (width == width16) val = ARM9_DataRead16((struct ARM946ES*)cpu, addr, &seq, &dabt);
-        if (width == width8 ) val = ARM9_DataRead8 ((struct ARM946ES*)cpu, addr, &seq, &dabt);
+        if (width == width32) val = ARM9_DataRead32(ARM9Cast, addr, &seq, &dabt);
+        if (width == width16) val = ARM9_DataRead16(ARM9Cast, addr, &seq, &dabt);
+        if (width == width8 ) val = ARM9_DataRead8 (ARM9Cast, addr, &seq, &dabt);
         // TODO: data abort
 
         // RORing the result takes an extra cycle
@@ -291,13 +298,14 @@ void THUMB_Push(struct ARM* cpu, const struct ARM_Instr instr_data)
         int reg = stdc_trailing_zeros(rlist);
 
         // write
+        u32 val = ARM_GetReg(reg);
         if (cpu->CPUID == ARM7ID)
         {
-            // TODO
+            ARM7_BusWrite(ARM7Cast, addr, val, u32_max, false, &seq);
         }
         else
         {
-            ARM9_DataWrite((struct ARM946ES*)cpu, addr, ARM_GetReg(reg), 0xFFFFFFFF, false, &seq, &dabt);
+            ARM9_DataWrite(ARM9Cast, addr, val, u32_max, false, false, &seq, &dabt);
         }
         // increment address
         addr += 4;
@@ -309,13 +317,14 @@ void THUMB_Push(struct ARM* cpu, const struct ARM_Instr instr_data)
     if (instr.Link)
     {
         // write
+        u32 val = ARM_GetReg(14);
         if (cpu->CPUID == ARM7ID)
         {
-            // TODO
+            ARM7_BusWrite(ARM7Cast, addr, val, u32_max, false, &seq);
         }
         else
         {
-            ARM9_DataWrite((struct ARM946ES*)cpu, addr, ARM_GetReg(14), 0xFFFFFFFF, false, &seq, &dabt);
+            ARM9_DataWrite(ARM9Cast, addr, val, u32_max, false, false, &seq, &dabt);
         }
     }
 
@@ -323,7 +332,13 @@ void THUMB_Push(struct ARM* cpu, const struct ARM_Instr instr_data)
     {
         // not an interlock but close enough
         if (cpu->CPUID == ARM9ID)
-            ARM9_InterlockStall((struct ARM946ES*)cpu, 1);
+            ARM9_InterlockStall(ARM9Cast, 1);
+    }
+
+    // clean up arm7 timings
+    if (cpu->CPUID == ARM7ID)
+    {
+        cpu->CodeSeq = false;
     }
 
     // note: should technically be done after first iteration for arm7, but sp can't be in rlist so we can cheat
@@ -386,12 +401,11 @@ void THUMB_Pop(struct ARM* cpu, const struct ARM_Instr instr_data)
         u32 val;
         if (cpu->CPUID == ARM7ID)
         {
-            val = 0;
-            // TODO
+            val = ARM7_BusRead(ARM7Cast, addr, u32_max, &seq);
         }
         else
         {
-            val = ARM9_DataRead32((struct ARM946ES*)cpu, addr, &seq, &dabt);
+            val = ARM9_DataRead32(ARM9Cast, addr, &seq, &dabt);
         }
         ARM_SetReg(reg, val, 1, 1);
 
@@ -408,12 +422,11 @@ void THUMB_Pop(struct ARM* cpu, const struct ARM_Instr instr_data)
         u32 val;
         if (cpu->CPUID == ARM7ID)
         {
-            val = 0;
-            // TODO
+            val = ARM7_BusRead(ARM7Cast, addr, u32_max, &seq);
         }
         else
         {
-            val = ARM9_DataRead32((struct ARM946ES*)cpu, addr, &seq, &dabt);
+            val = ARM9_DataRead32(ARM9Cast, addr, &seq, &dabt);
         }
         ARM_SetReg(15, val, 1, 1);
     }
@@ -421,7 +434,14 @@ void THUMB_Pop(struct ARM* cpu, const struct ARM_Instr instr_data)
     {
         // not an interlock but close enough
         if (cpu->CPUID == ARM9ID)
-            ARM9_InterlockStall((struct ARM946ES*)cpu, 1);
+            ARM9_InterlockStall(ARM9Cast, 1);
+    }
+
+    // clean up arm7 timings
+    if (cpu->CPUID == ARM7ID)
+    {
+        cpu->Timestamp += 1;
+        cpu->CodeSeq = false;
     }
 
     // note: should technically be done after first iteration for arm7, but sp can't be in rlist so we can cheat

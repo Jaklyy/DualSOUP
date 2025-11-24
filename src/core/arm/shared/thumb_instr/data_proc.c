@@ -284,12 +284,12 @@ void THUMB_DataProcReg(struct ARM* cpu, const struct ARM_Instr instr_data)
         if (cpu->CPUID == ARM7ID)
         {
             int iterations = ARM7_NumBoothIters(rm_val, true);
-            ARM7_ExecuteCycles((struct ARM7TDMI*)cpu, iterations + 1);
+            ARM7_ExecuteCycles(ARM7Cast, iterations + 1);
             flags_out.Carry = flags_out.Carry; // TODO: Soon...
         }
         else // ARM9ID
         {
-            ARM9_ExecuteCycles((struct ARM946ES*)cpu, 4, 1);
+            ARM9_ExecuteCycles(ARM9Cast, 4, 1);
         }
     }
     else

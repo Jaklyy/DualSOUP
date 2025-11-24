@@ -174,7 +174,7 @@ u32 ARM9_InstrRead(struct ARM946ES* ARM9, const u32 addr)
 
     // external bus
     bool seq = false; // instruction accesses are always nonsequential
-    u32 ret = ARM9_AHBRead(ARM9, &ARM9->ARM.Timestamp, addr, 0xFFFFFFFF, false, &seq);
+    u32 ret = ARM9_AHBRead(ARM9, &ARM9->ARM.Timestamp, addr, u32_max, false, &seq);
     ARM9_FetchCycles(ARM9, 0); // add dummy cycles to ensure things stay coherent.
     return ret;
 }
@@ -265,7 +265,7 @@ void ARM9_InstrRead16(struct ARM946ES* ARM9, const u32 addr)
 
                 // NOTE: not sure if clearing the high bits is correct?
                 // it's not currently clear if it's possible to switch from thumb -> arm without a pipeline flush on the ARM946E-S, but exact behavior might matter for handling that.
-                instr &= 0xFFFF;
+                instr &= u16_max;
             }
         }
     }
@@ -286,17 +286,31 @@ u32 ARM9_DataRead(struct ARM946ES* ARM9, const u32 addr, const u32 mask, bool* s
         *seq = false;
     }
 
+    // TODO: CACHE STREAMING HANDLING
+
+    // handle contention
+    // CHECKME: does this apply to aborts?
+    // CHECKME: This does apply to itcm right?
+    if (ARM9->MemTimestamp < ARM9->DataContTS)
+        ARM9->MemTimestamp = ARM9->DataContTS;
+
     if (false) // TODO: Data Aborts
     {
         *dabt = true;
     }
     else if (ARM9_ITCMTryRead(ARM9, addr))
     {
-        // itcm
+        // TODO: make deferrable...?
+        // TODO: cause contention
+        ARM9->MemTimestamp += 1;
+        *seq = true;
+        return MemoryRead(32, ARM9->ITCM, addr, ARM9_ITCMSize);
     }
     else if (ARM9_DTCMTryRead(ARM9, addr))
     {
-        // dtcm
+        ARM9->MemTimestamp += 1;
+        *seq = true;
+        return MemoryRead(32, ARM9->ITCM, addr, ARM9_ITCMSize);
     }
     else if (false)
     {
@@ -322,12 +336,12 @@ u32 ARM9_DataRead(struct ARM946ES* ARM9, const u32 addr, const u32 mask, bool* s
 
 u32 ARM9_DataRead32(struct ARM946ES* ARM9, u32 addr, bool* seq, bool* dabt)
 {
-    return ARM9_DataRead(ARM9, addr, 0xFFFFFFFF, seq, dabt);
+    return ARM9_DataRead(ARM9, addr, u32_max, seq, dabt);
 }
 
 u16 ARM9_DataRead16(struct ARM946ES* ARM9, u32 addr, bool* seq, bool* dabt)
 {
-    u32 mask = 0xFFFF << ((addr & 2) * 8);
+    u32 mask = u16_max << ((addr & 2) * 8);
     u32 ret = ARM9_DataRead(ARM9, addr, mask, seq, dabt);
 
     // note: arm9 ldrh doesn't do a rotate right so we need to special case the correction here.
@@ -336,11 +350,11 @@ u16 ARM9_DataRead16(struct ARM946ES* ARM9, u32 addr, bool* seq, bool* dabt)
 
 u8 ARM9_DataRead8(struct ARM946ES* ARM9, u32 addr, bool* seq, bool* dabt)
 {
-    u32 mask = 0xFF << ((addr & 3) * 8);
+    u32 mask = u8_max << ((addr & 3) * 8);
     return ARM9_DataRead(ARM9, addr, mask, seq, dabt);
 }
 
-void ARM9_DataWrite(struct ARM946ES* ARM9, u32 addr, const u32 val, const u32 mask, const bool atomic, bool* seq, bool* dabt)
+void ARM9_DataWrite(struct ARM946ES* ARM9, u32 addr, const u32 val, const u32 mask, const bool atomic, const bool deferrable, bool* seq, bool* dabt)
 {
     // ldm/stm (and presumably ldrd/strd too) are forcibly split when crossing 4 KiB boundaries to perform a permission look up again.
     // we aren't actually implementing it that way currently but tbf we could?
@@ -350,17 +364,36 @@ void ARM9_DataWrite(struct ARM946ES* ARM9, u32 addr, const u32 val, const u32 ma
         *seq = false;
     }
 
+    // TODO: CACHE STREAMING HANDLING
+
+    // handle contention
+    // CHECKME: does this apply to aborts?
+    // CHECKME: this does actually apply to writes, right?
+    // CHECKME: This does apply to itcm right?
+    if (ARM9->MemTimestamp < ARM9->DataContTS)
+        ARM9->MemTimestamp = ARM9->DataContTS;
+
     if (false) // TODO: Data Aborts
     {
         *dabt = true;
     }
     else if (ARM9_ITCMTryWrite(ARM9, addr))
     {
-        // itcm
+        // TODO: make deferrable
+        // TODO: cause contention
+        // CHECKME: Does this cause data bus contention?
+        MemoryWrite(32, ARM9->ITCM, addr, ARM9_ITCMSize, val, mask);
+        ARM9->MemTimestamp += 1;
+        *seq = true;
+        return;
     }
     else if (ARM9_DTCMTryWrite(ARM9, addr))
     {
-        // dtcm
+        MemoryWrite(32, ARM9->DTCM, addr, ARM9_DTCMSize, val, mask);
+        ARM9->MemTimestamp += 1;
+        ARM9->DataContTS = ARM9->MemTimestamp + 1;
+        *seq = true;
+        return;
     }
     else if (false)
     {

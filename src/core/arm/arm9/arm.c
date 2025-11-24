@@ -1,6 +1,6 @@
 #include "../../utils.h"
 #include "../shared/arm.h"
-#include "../shared/instr.h"
+#include "../../console.h"
 #include "instr_il.h"
 #include "arm.h"
 
@@ -8,27 +8,6 @@
 
 
 #define cpu ((struct ARM*)ARM9)
-
-// TEMP: debugging
-void ARM9_Log(struct ARM946ES* ARM9)
-{
-    LogPrint(LOG_ARM9, "DUMPING ARM9 STATE:\n");
-    for (int i = 0; i < 16; i++)
-    {
-        LogPrint(LOG_ARM9, "R%2i: %08X ", i, cpu->R[i]);
-    }
-    //LogPrint(LOG_ARM9, "R2:%08X\n", cpu->R[2]);
-    LogPrint(LOG_ARM9, "CPSR:%08X\n", cpu->CPSR.Raw);
-    if (cpu->Instr[0].Flushed)
-    {
-        LogPrint(LOG_ARM9, "INSTR: Flushed. ");
-    }
-    else
-    {
-        LogPrint(LOG_ARM9, "INSTR: %08X ", cpu->Instr[0]);
-    }
-    LogPrint(LOG_ARM9, "EXE:%li MEM:%li\n\n", cpu->Timestamp, ARM9->MemTimestamp);
-}
 
 void ARM9_Init(struct ARM946ES* ARM9, struct Console* sys)
 {
@@ -229,6 +208,27 @@ if (!ARM9_CheckInterrupts(ARM9)) \
     else return false;
 }
 
+// TEMP: debugging
+void ARM9_Log(struct ARM946ES* ARM9)
+{
+    LogPrint(LOG_ARM9, "DUMPING ARM9 STATE:\n");
+    for (int i = 0; i < 16; i++)
+    {
+        LogPrint(LOG_ARM9, "R%2i: %08X ", i, cpu->R[i]);
+    }
+    //LogPrint(LOG_ARM9, "R2:%08X\n", cpu->R[2]);
+    LogPrint(LOG_ARM9, "CPSR:%08X\n", cpu->CPSR.Raw);
+    if (cpu->Instr[0].Flushed)
+    {
+        LogPrint(LOG_ARM9, "INSTR: Flushed. ");
+    }
+    else
+    {
+        LogPrint(LOG_ARM9, "INSTR: %08X ", cpu->Instr[0]);
+    }
+    LogPrint(LOG_ARM9, "EXE:%li MEM:%li\n\n", cpu->Timestamp, ARM9->MemTimestamp);
+}
+
 /*  order of operations:
     1. pipeline is stepped
     2. interlocks are stalled for
@@ -275,7 +275,13 @@ void ARM9_Step(struct ARM946ES* ARM9)
         else // actually an instruction that failed the condition check.
         {
             // CHECKME: skipped instructions shouldn't trigger interlocks right?
-            FetchIRQExec(32, ARM9_ExecuteCycles(ARM9, 1, 1))
+            ARM9_InstrRead32(ARM9, cpu->PC);
+
+            // this needs a special check because im stupid and reusing this path for pipeline refills
+            if (!cpu->Instr[0].Flushed && !ARM9_CheckInterrupts(ARM9))
+            {
+                ARM9_ExecuteCycles(ARM9, 1, 1);
+            }
             ARM_StepPC(cpu, false);
         }
     }
@@ -293,6 +299,8 @@ void ARM9_MainLoop(struct ARM946ES* ARM9)
     while(true)
     {
         ARM9_Step(ARM9);
+
+        CR_Switch(cpu->Sys->HandleARM7);
     }
 }
 

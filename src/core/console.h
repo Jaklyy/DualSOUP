@@ -75,6 +75,7 @@ struct Console
     struct DMA_Channel DMA7[4];
 
     struct AHB AHB9;
+    struct AHB AHB7;
     struct BusMainRAM BusMR;
 
     struct
@@ -115,7 +116,7 @@ struct Console
 // if a nullptr is passed then it will allocate and initialize a console from scratch.
 // otherwise it will re-initialize an already allocated struct.
 // returns success or failure.
-struct Console* Console_Init(struct Console* sys, FILE* ntr9);
+struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7);
 // emulate a hardware reset.
 void Console_Reset(struct Console* sys);
 // actually run the emulation.

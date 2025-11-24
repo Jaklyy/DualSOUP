@@ -29,6 +29,7 @@ void ARM9_Reset(struct ARM946ES* ARM9, const bool itcm, const bool hivec)
     // or at least it tries to and instead puts some nonsense in them?
     // ...or it could just mean that they aren't reset in any way......
     // im gonna bank em for funsies.
+    // Note: this is apparently actually what the ARM7TDMI does, according to documentation.
     union ARM_PSR oldcpsr = cpu->CPSR;
 
     ARM_SetMode(cpu, ARMMode_SWI);
@@ -112,6 +113,8 @@ void ARM9_Reset(struct ARM946ES* ARM9, const bool itcm, const bool hivec)
     // reset all this junk.
     ARM9_ConfigureITCM(ARM9);
     ARM9_ConfigureDTCM(ARM9);
+
+    cpu->CpuSleeping = 0;
 
     ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVector_RST, 0);
 }
@@ -247,6 +250,9 @@ void ARM9_InterruptRequest(struct ARM946ES* ARM9)
 
     cpu->CPSR.Thumb = false;
     cpu->CPSR.IRQDisable = true;
+
+    cpu->CpuSleeping = 0;
+
     ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVector_IRQ, 0);
 }
 
@@ -266,6 +272,9 @@ void ARM9_FastInterruptRequest(struct ARM946ES* ARM9)
     cpu->CPSR.Thumb = false;
     cpu->CPSR.IRQDisable = true;
     cpu->CPSR.FIQDisable = true;
+
+    cpu->CpuSleeping = 0;
+
     ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVector_FIQ, 0);
 }
 

@@ -86,6 +86,11 @@ union { \
     : (((accesssize) == 16) ? (memory.b##16)[(((addr) & (memsize-1))/sizeof(u16))] \
                             : (memory.b##8) [(((addr) & (memsize-1))/sizeof(u8 ))]))
 
+#define MemoryWrite(accesssize, memory, addr, memsize, write, mask) \
+    (((accesssize) == 32)   ? ((memory.b##32)[(((addr) & (memsize-1))/sizeof(u32))] = (((memory.b##32)[(((addr) & (memsize-1))/sizeof(u32))] & ~(mask)) | (write) & (mask))) \
+    : (((accesssize) == 16) ? ((memory.b##16)[(((addr) & (memsize-1))/sizeof(u16))] = (((memory.b##16)[(((addr) & (memsize-1))/sizeof(u16))] & ~(mask)) | (write) & (mask))) \
+                            : ((memory.b##8) [(((addr) & (memsize-1))/sizeof(u8) )] = (((memory.b##8) [(((addr) & (memsize-1))/sizeof(u8) )] & ~(mask)) | (write) & (mask)))))
+
 
 enum CPU_IDs : u8
 {

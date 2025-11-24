@@ -62,7 +62,7 @@ void ARM_MCR(struct ARM* cpu, const struct ARM_Instr instr_data)
             {
                 // this actually does stuff wow!
                 // note: individual opcodes probably have different timings.
-                ARM9_MCR_15((struct ARM946ES*)cpu, ARM_CoprocReg(instr.Op1, instr.CRn, instr.CRm, instr.Op2), rd_val);
+                ARM9_MCR_15(ARM9Cast, ARM_CoprocReg(instr.Op1, instr.CRn, instr.CRm, instr.Op2), rd_val);
             }
             else
             {
@@ -147,19 +147,19 @@ void ARM_MRC(struct ARM* cpu, const struct ARM_Instr instr_data)
 
             if (instr_data.CoprocPriv) // requires privileged mode (this is different than the normal arm privilege check)
             {
-                val = ARM9_MRC_15((struct ARM946ES*)cpu, ARM_CoprocReg(instr.Op1, instr.CRn, instr.CRm, instr.Op2));
+                val = ARM9_MRC_15(ARM9Cast, ARM_CoprocReg(instr.Op1, instr.CRn, instr.CRm, instr.Op2));
                 // timings for MRC are always the same, no matter the command.
                 if (instr.Rd == 15)
                 {
                     // flag update: takes longer due to needing to wait for the CPSR flag write.
                     // speculation: this seems to be one of the few cases where the decode stage actually matters for timings and effectively triggers an interlock.
                     // CHECKME: this is semantically wrong i think?
-                    ARM9_ExecuteCycles((struct ARM946ES*)cpu, 3, 1);
+                    ARM9_ExecuteCycles(ARM9Cast, 3, 1);
                 }
                 else
                 {
                     // CHECKME: memory 2?
-                    ARM9_ExecuteCycles((struct ARM946ES*)cpu, 1, 2);
+                    ARM9_ExecuteCycles(ARM9Cast, 1, 2);
                 }
             }
             else
@@ -237,7 +237,7 @@ void ARM_LDC(struct ARM* cpu, const struct ARM_Instr instr_data)
     else if (cpu->CPUID == ARM9ID)
     {
         if (instr.Coproc < 14) // fully absent coprocessors raise exceptions slower for some reason.
-            ARM9_ExecuteCycles((struct ARM946ES*)cpu, 2, 1);
+            ARM9_ExecuteCycles(ARM9Cast, 2, 1);
 
         ARM9_UndefinedInstruction(cpu, instr_data);
     }

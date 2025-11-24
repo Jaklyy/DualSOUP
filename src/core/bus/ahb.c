@@ -155,6 +155,12 @@ void WriteContention(struct AHB* bus, const u8 device, const bool seq)
     }
 }
 
+inline void AddWriteContention(struct AHB* bus, const u8 device)
+{
+    bus->BusyDevice = device;
+    bus->BusyDeviceTS = bus->Timestamp+1;
+}
+
 u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, const bool atomic, const bool hold, bool* seq)
 {
     // CHECKME: alignment is enforced by the bus on arm7 on gba, does that also apply to arm9?
@@ -278,4 +284,132 @@ bool AHB9_NegOwnership(struct Console* sys, timestamp* cur, const u8 priority, c
     if (bus->Timestamp < *cur) bus->Timestamp = *cur;
 
     return true;
+}
+
+u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, const bool atomic, const bool hold, bool* seq)
+{
+    // CHECKME: alignment is enforced by the bus on arm7 on gba, this presumably still applies to arm9.
+    // is the alignment properly enforced by all bus devices?
+
+    addr &= ~3; // 4 byte aligned value used to simplify read logic.
+
+    const unsigned width = stdc_count_ones(mask);
+    u32 ret;
+
+    switch(addr >> 24) // check most signficant byte
+    {
+    case 0x00: // NDS BIOS
+        // CHECKME: bios contention?
+        // TODO: Bios protection.
+        Timing32(&sys->AHB7);
+        ret = MemoryRead(32, sys->NTRBios7, addr, NTRBios7_Size);
+        break;
+
+    case 0x02: // Main RAM
+        LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented READ%i: MAINRAM\n", width);
+        ret = Bus_MainRAM_Read(sys, &sys->AHB7, timestamp_max/*ah shit*/, addr, mask, atomic, hold, seq);
+        break;
+
+    case 0x03: // Shared WRAM
+        LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented READ%i: SWRAM\n", width);
+        // NOTE: it seems to still have write contention even if unmapped?
+        WriteContention(&sys->AHB7, Dev_SWRAM, *seq);
+        Timing32(&sys->AHB7);
+        ret = 0; // TODO
+        break;
+
+    case 0x04: // Memory Mapped IO
+        LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented READ%i: IO\n", width);
+        // now this'll need a lot of logic
+        WriteContention(&sys->AHB7, Dev_IO, *seq); // checkme: does all of IO have write contention at the same time?
+        Timing32(&sys->AHB7); // checkme: does all of IO have the exact same timings?
+        ret = 0; // TODO
+        break;
+
+    case 0x06: // VRAM
+        LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented READ%i: VRAM\n", 16);
+        // im going to cry
+        Timing16(&sys->AHB7, mask); // placeholder
+        ret = 0; // TODO
+        break;
+
+    case 0x08 ... 0x09: // GBA Cartridge ROM
+        LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented READ%i: GBAROM\n", width);
+        ret = 0; // TODO
+        break;
+
+    case 0x0A: // GBA Cartridge RAM
+        LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented READ%i: GBARAM\n", width);
+        ret = 0; // TODO
+        break;
+
+    default: // Unmapped Device;
+        /*LogPrint(LOG_ODD|LOG_ARM7,*/ CrashSpectacularly("NTR_AHB7: %i bit read from unmapped memory at 0x%08X? Something went wrong?\n", width, addr);
+        Timing32(&sys->AHB7);
+        ret = 0; // always reads 0
+        break;
+    }
+
+    *ts = sys->AHB7.Timestamp;
+    return ret;
+}
+
+void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, const u32 mask, const bool atomic, const bool hold, bool* seq)
+{
+    // CHECKME: alignment is enforced by the bus on arm7 on gba, this presumably still applies to arm9.
+    // is the alignment properly enforced by all bus devices?
+
+    addr &= ~3; // 4 byte aligned value used to simplify write logic.
+
+    const unsigned width = stdc_count_ones(mask);
+
+    switch(addr >> 24) // check most signficant byte
+    {
+    case 0x02: // Main RAM
+        LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented WRITE%i: MAINRAM\n", width);
+        //Bus_MainRAM_Write(sys, &sys->AHB7, timestamp_max/*ah shit*/, addr, val, mask, atomic, hold, seq);
+        break;
+
+    case 0x03: // Shared WRAM
+        LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented WRITE%i: SWRAM\n", width);
+        // NOTE: it seems to still have write contention even if unmapped?
+        WriteContention(&sys->AHB7, Dev_SWRAM, *seq);
+        Timing32(&sys->AHB7);
+        AddWriteContention(&sys->AHB7, Dev_SWRAM);
+        // TODO
+        break;
+
+    case 0x04: // Memory Mapped IO
+        LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented WRITE%i: IO\n", width);
+        // now this'll need a lot of logic
+        WriteContention(&sys->AHB7, Dev_IO, *seq); // checkme: does all of IO have write contention at the same time?
+        Timing32(&sys->AHB7); // checkme: does all of IO have the exact same timings?
+        AddWriteContention(&sys->AHB7, Dev_IO);
+        // TODO
+        break;
+
+    case 0x06: // VRAM
+        LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented WRITE%i: VRAM\n", 16);
+        // im going to cry
+        Timing16(&sys->AHB7, mask); // placeholder
+        // TODO
+        break;
+
+    case 0x08 ... 0x09: // GBA Cartridge ROM
+        LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented WRITE%i: GBAROM\n", width);
+        // TODO
+        break;
+
+    case 0x0A: // GBA Cartridge RAM
+        LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented WRITE%i: GBARAM\n", width);
+        // TODO
+        break;
+
+    default: // Unmapped Device;
+        /*LogPrint(LOG_ODD|LOG_ARM7,*/ CrashSpectacularly("NTR_AHB7: %i bit write to unmapped memory at 0x%08X? Something went wrong?\n", width, addr);
+        Timing32(&sys->AHB7);
+        break;
+    }
+
+    *ts = sys->AHB7.Timestamp;
 }

@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include "../core/console.h"
 #include "../core/arm/arm9/instr_luts.h"
+#include "../core/arm/arm7/instr_luts.h"
 #include "../core/arm/arm9/arm.h"
 
 
@@ -12,21 +13,32 @@ int main()
     // init arm luts
     ARM9_InitInstrLUT();
     THUMB9_InitInstrLUT();
+    ARM7_InitInstrLUT();
+    THUMB7_InitInstrLUT();
 
     FILE* ntr9 = fopen("ntr9.bin", "rb");
-
     if (ntr9 == NULL)
     {
         printf("no ntr arm9 bios :(\n");
         return EXIT_FAILURE;
     }
 
+    FILE* ntr7 = fopen("ntr7.bin", "rb");
+    if (ntr7 == NULL)
+    {
+        printf("no ntr arm7 bios :(\n");
+        return EXIT_FAILURE;
+    }
+
     // initialize main emulator state struct
-    struct Console* sys = Console_Init(nullptr, ntr9);
+    struct Console* sys = Console_Init(nullptr, ntr9, ntr7);
     if (sys == nullptr)
     {
         return EXIT_FAILURE;
     }
+
+    fclose(ntr9);
+    fclose(ntr7);
     //ARM9_Log(&sys->ARM9);
 
     Console_MainLoop(sys);

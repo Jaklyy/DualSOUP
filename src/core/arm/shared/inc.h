@@ -6,28 +6,31 @@
 
 
 
+#define ARM9Cast ((struct ARM946ES*)cpu)
+#define ARM7Cast ((struct ARM7TDMI*)cpu)
+
 #define ARM_GetReg(reg) \
 ((cpu->CPUID == ARM7ID) \
-    ? ARM7_GetReg((struct ARM7TDMI*)cpu, (reg)) \
-    : ARM9_GetReg((struct ARM946ES*)cpu, (reg)) \
+    ? ARM7_GetReg(ARM7Cast, (reg)) \
+    : ARM9_GetReg(ARM9Cast, (reg)) \
 )
 
 #define ARM_SetReg(reg, val, interlock, interlock_c) \
 ((cpu->CPUID == ARM7ID) \
-    ? ARM7_SetReg((struct ARM7TDMI*)cpu, (reg), (val)) \
-    : ARM9_SetReg((struct ARM946ES*)cpu, (reg), (val), (interlock), (interlock_c)) \
+    ? ARM7_SetReg(ARM7Cast, (reg), (val)) \
+    : ARM9_SetReg(ARM9Cast, (reg), (val), (interlock), (interlock_c)) \
 )
 
 #define ARM_GetSPSR \
 ((cpu->CPUID == ARM7ID) \
-    ? ARM7_GetSPSR((struct ARM7TDMI*)cpu) \
-    : ARM9_GetSPSR((struct ARM946ES*)cpu) \
+    ? ARM7_GetSPSR(ARM7Cast) \
+    : ARM9_GetSPSR(ARM9Cast) \
 )
 
 #define ARM_SetSPSR(psr) \
 ((cpu->CPUID == ARM7ID) \
-    ? ARM7_SetSPSR((struct ARM7TDMI*)cpu, (psr)) \
-    : ARM9_SetSPSR((struct ARM946ES*)cpu, (psr)) \
+    ? ARM7_SetSPSR(ARM7Cast, (psr)) \
+    : ARM9_SetSPSR(ARM9Cast, (psr)) \
 )
 
 #define ARM_RestoreSPSR \
@@ -35,33 +38,33 @@ ARM_SetCPSR(cpu, ARM_GetSPSR.Raw)
 
 #define ARM_ExeCycles(exec7, exec9, mem9) \
 ((cpu->CPUID == ARM7ID) \
-    ? ARM7_ExecuteCycles((struct ARM7TDMI*)cpu, (exec7)) \
-    : ARM9_ExecuteCycles((struct ARM946ES*)cpu, (exec9), (mem9)) \
+    ? ARM7_ExecuteCycles(ARM7Cast, (exec7)) \
+    : ARM9_ExecuteCycles(ARM9Cast, (exec9), (mem9)) \
 )
 
 #define ARM_GetVector \
 ((cpu->CPUID == ARM7ID) \
     ? 0x00000000 \
-    : ARM9_GetExceptionBase((struct ARM946ES*)cpu) \
+    : ARM9_GetExceptionBase(ARM9Cast) \
 )
 
 #define ARM_RaiseSWI \
-(/*(cpu->CPUID == ARM7ID) \
+((cpu->CPUID == ARM7ID) \
     ? ARM7_SoftwareInterrupt(cpu, (instr_data)) \
-    :*/ ARM9_SoftwareInterrupt(cpu, (instr_data)) \
+    : ARM9_SoftwareInterrupt(cpu, (instr_data)) \
 )
 
 #define ARM_RaiseUDF \
-(/*(cpu->CPUID == ARM7ID) \
+((cpu->CPUID == ARM7ID) \
     ? ARM7_UndefinedInstruction(cpu, (instr_data)) \
-    :*/ ARM9_UndefinedInstruction(cpu, (instr_data)) \
+    : ARM9_UndefinedInstruction(cpu, (instr_data)) \
 )
 
 #define ARM_CanLoadInterwork \
 ((cpu->CPUID == ARM7ID) \
     ? false \
-    : !(((struct ARM946ES*)cpu)->CP15.CR.NoLoadTBit) \
-) 
+    : !((ARM9Cast)->CP15.CR.NoLoadTBit) \
+)
 
 [[nodiscard]] u32 ARM_ADD(const u32 rn_val, const u32 shifter_out, union ARM_FlagsOut* flags_out);
 [[nodiscard]] u32 ARM_ADC(const u32 rn_val, const u32 shifter_out, const bool carry_in, union ARM_FlagsOut* flags_out);
