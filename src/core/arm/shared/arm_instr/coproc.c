@@ -147,7 +147,7 @@ void ARM_MRC(struct ARM* cpu, const struct ARM_Instr instr_data)
 
             if (instr_data.CoprocPriv) // requires privileged mode (this is different than the normal arm privilege check)
             {
-                ARM9_MRC_15((struct ARM946ES*)cpu, ARM_CoprocReg(instr.Op1, instr.CRn, instr.CRm, instr.Op2));
+                val = ARM9_MRC_15((struct ARM946ES*)cpu, ARM_CoprocReg(instr.Op1, instr.CRn, instr.CRm, instr.Op2));
                 // timings for MRC are always the same, no matter the command.
                 if (instr.Rd == 15)
                 {
@@ -167,7 +167,7 @@ void ARM_MRC(struct ARM* cpu, const struct ARM_Instr instr_data)
                 // user mode; raise udf
                 // present coprocessors seemingly take 2 cycles longer to raise udf
                 LogPrint(LOG_ARM9 | LOG_EXCEP, "ARM9: USER MODE MRC COPROC 15!\n");
-                ARM9_RaiseUDF(cpu, instr_data, 3, 1);
+                return ARM9_RaiseUDF(cpu, instr_data, 3, 1);
             }
         }
         else if (instr.Coproc == 14) // debug coprocessor
@@ -180,14 +180,14 @@ void ARM_MRC(struct ARM* cpu, const struct ARM_Instr instr_data)
             {
                 // present coprocessors seemingly take 2 cycles longer to raise udf
                 LogPrint(LOG_ARM9 | LOG_EXCEP, "ARM9: MRC COPROC 14!\n");
-                ARM9_RaiseUDF(cpu, instr_data, 3, 1);
+                return ARM9_RaiseUDF(cpu, instr_data, 3, 1);
             }
         }
         else // absent
         {
             // absent coprocessors takes 3 cycles longer to raise undefined
             LogPrint(LOG_ARM9 | LOG_EXCEP, "ARM9: MRC ABSENT COPROC %i!\n", instr.Coproc);
-            ARM9_RaiseUDF(cpu, instr_data, 4, 1);
+            return ARM9_RaiseUDF(cpu, instr_data, 4, 1);
         }
     }
 

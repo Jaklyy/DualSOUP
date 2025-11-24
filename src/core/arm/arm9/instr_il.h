@@ -60,3 +60,14 @@ s8 THUMB9_AdjustSP_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr inst
 // branch
 #define THUMB9_BranchCond_Interlocks THUMB9_None_Interlocks
 s8 THUMB9_Branch_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data);
+
+// load/store
+s8 THUMB9_LoadStoreReg_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data);
+s8 THUMB9_LoadStoreImm_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data);
+#define THUMB9_LoadStoreWordImm_Interlocks THUMB9_LoadStoreImm_Interlocks
+#define THUMB9_LoadStoreHalfwordImm_Interlocks THUMB9_LoadStoreImm_Interlocks
+#define THUMB9_LoadStoreByteImm_Interlocks THUMB9_LoadStoreImm_Interlocks
+#define THUMB9_LoadPCRel_Interlocks THUMB9_None_Interlocks
+s8 THUMB9_LoadStoreSPRel_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data);
+s8 THUMB9_Push_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data);
+s8 THUMB9_Pop_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data);

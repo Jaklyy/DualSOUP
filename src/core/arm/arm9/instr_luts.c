@@ -101,9 +101,6 @@ void ARM9_InitInstrLUT()
         CHECK (0001'0000'1001, 1111'1011'1111, UNIMPL) // swp
         //CHECK (0001'1000'1001, 1111'1000'1111, UNIMPL) // ldrex/strex (and variants)
         CHECK (0000'0000'1001, 1110'0000'1001, LoadStoreMisc)
-        CHECK (0000'0000'1011, 1110'0000'1111, UNIMPL) // ldrh/strh
-        CHECK (0000'0001'1101, 1110'0001'1101, UNIMPL) // ldrsh/ldrsb
-        CHECK (0000'0000'1101, 1110'0001'1101, UNIMPL) // ldrd/strd
         // explicitly defined undefined space
         CHECK9(0111'1111'1111, 1111'1111'1111, UndefinedInstruction)
         // coproc extension space
@@ -145,8 +142,8 @@ void THUMB9_Misc(struct ARM* ARM, const struct ARM_Instr instr_data)
     const u16 decode = (instr_data.Raw >> 3) & 0x1FF;
 
     CHECK(0000'0000'0, 1111'0000'0, _AdjustSP) // adjust sp
-    CHECK(0100'0000'0, 1110'0000'0, _UNIMPL) // push
-    CHECK(1100'0000'0, 1110'0000'0, _UNIMPL) // pop
+    CHECK(0100'0000'0, 1110'0000'0, _Push) // push
+    CHECK(1100'0000'0, 1110'0000'0, _Pop) // pop
     CHECK(1110'0000'0, 1110'0000'0, 9_PrefetchAbort)
     CHECK(0000'0000'0, 0000'0000'0, 9_UndefinedInstruction)
     unreachable();
@@ -165,8 +162,8 @@ s8 THUMB9_Misc_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_da
     const u16 decode = (instr_data.Raw >> 3) & 0x1FF;
 
     CHECK(0000'0000'0, 1111'0000'0, AdjustSP) // adjust sp
-    CHECK(0100'0000'0, 1110'0000'0, UNIMPL) // push
-    CHECK(1100'0000'0, 1110'0000'0, UNIMPL) // pop
+    CHECK(0100'0000'0, 1110'0000'0, Push) // push
+    CHECK(1100'0000'0, 1110'0000'0, Pop) // pop
     CHECK(0000'0000'0, 0000'0000'0, None) // BKPT / UDF
     unreachable();
 }
@@ -193,16 +190,18 @@ void THUMB9_InitInstrLUT()
 {
     for (int i = 0; i <= 0x3F; i++)
     {
-        CHECK (0000'00, 1110'00, ShiftImm) // shift imm5
         CHECK (0001'10, 1111'10, AddSub) // adds/subs reg/imm3
+        CHECK (0000'00, 1110'00, ShiftImm) // shift imm5
         CHECK (0010'00, 1111'10, MovsImm8) // movs imm8
         CHECK (0010'00, 1110'00, DataProcImm8) // adds/sub/cmp imm8
         CHECK (0100'00, 1111'11, DataProcReg) // data proc reg
         CHECK (0100'01, 1111'11, DataProcHiReg) // data proc/b(l)x hi-regs
-        CHECK (0100'10, 1111'10, UNIMPL) // ldr pc-rel
-        CHECK (0101'00, 1111'00, UNIMPL) // ldr/str reg offs
-        CHECK (0110'00, 1110'00, UNIMPL) // ldr/str(b) imm offs
-        CHECK (1000'00, 1111'00, UNIMPL) // ldr/strh imm offs
+        CHECK (0100'10, 1111'10, LoadPCRel) // ldr pc-rel
+        CHECK (0101'00, 1111'00, LoadStoreReg) // ldr/str reg offs
+        CHECK (0110'00, 1111'00, LoadStoreWordImm) // ldr/str imm offs
+        CHECK (0111'00, 1111'00, LoadStoreByteImm) // ldrb/strb imm offs
+        CHECK (1000'00, 1111'00, LoadStoreHalfwordImm) // ldr/strh imm offs
+        CHECK (1001'00, 1111'00, LoadStoreSPRel) // load/store sp-rel
         CHECK (1010'00, 1111'00, AddPCSPRel) // sp/pc-rel add?
         CHECK9(1011'00, 1111'00, Misc) // misc
         CHECK (1100'00, 1111'00, UNIMPL) // ldm/stm

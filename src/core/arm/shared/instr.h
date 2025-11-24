@@ -60,3 +60,13 @@ void THUMB_AdjustSP(struct ARM* cpu, const struct ARM_Instr instr_data);
 // branch
 void THUMB_BranchCond(struct ARM* cpu, const struct ARM_Instr instr_data);
 void THUMB_Branch(struct ARM* cpu, const struct ARM_Instr instr_data);
+
+// load/store
+void THUMB_LoadStoreReg(struct ARM* cpu, const struct ARM_Instr instr_data);
+void THUMB_LoadStoreWordImm(struct ARM* cpu, const struct ARM_Instr instr_data);
+void THUMB_LoadStoreHalfwordImm(struct ARM* cpu, const struct ARM_Instr instr_data);
+void THUMB_LoadStoreByteImm(struct ARM* cpu, const struct ARM_Instr instr_data);
+void THUMB_LoadPCRel(struct ARM* cpu, const struct ARM_Instr instr_data);
+void THUMB_LoadStoreSPRel(struct ARM* cpu, const struct ARM_Instr instr_data);
+void THUMB_Push(struct ARM* cpu, const struct ARM_Instr instr_data);
+void THUMB_Pop(struct ARM* cpu, const struct ARM_Instr instr_data);

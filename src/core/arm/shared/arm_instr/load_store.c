@@ -359,8 +359,8 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
             bool dabt = false;
 
             u32 mask;
-            val <<= (addr & 2) * 16;
-            mask = 0xFFFF << ((addr & 2) * 16);
+            val <<= (addr & 2) * 8;
+            mask = 0xFFFF << ((addr & 2) * 8);
 
             ARM9_DataWrite((struct ARM946ES*)cpu, addr, val, mask, false, &seq, &dabt);
 
@@ -391,7 +391,7 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
             val = ROR32(val, (addr&3) * 8);
 
             // sign extension is weird on ARM7
-            if (opcode & 0b010)
+            if (opcode == 0b111)
                 val = (addr & 1) ? ((s32)(s8)val) : ((s32)(s16)val);
         }
         else
@@ -404,7 +404,7 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
             // Note: ARM9 doesn't ROR weirdly for LDRH
 
             // sign extend
-            if (opcode & 0b010)
+            if (opcode == 0b111)
                 val = ((s32)(s16)val);
         }
 
@@ -464,7 +464,7 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
         ARM_SetReg(instr.Rd, val, 1, 2);
         break;
     }
-    default: LogPrint(LOG_ALWAYS, "INVALID LOADSTORE MISC OPCODE!!!!!!!\n"); break;
+    default: LogPrint(LOG_ALWAYS, "INVALID LOAD/STORE MISC OPCODE!!!!!!!\n"); break;
     }
 }
 

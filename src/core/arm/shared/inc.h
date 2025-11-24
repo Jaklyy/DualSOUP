@@ -73,4 +73,4 @@ ARM_SetCPSR(cpu, ARM_GetSPSR.Raw)
 [[nodiscard]] u32 ARM_LSL(u64 val, const u8 shift, bool* carry_out);
 [[nodiscard]] u32 ARM_LSR(u64 val, const u8 shift, bool* carry_out);
 [[nodiscard]] u32 ARM_ASR(u64 val, const u8 shift, bool* carry_out);
-[[nodiscard]] u32 ARM_ROR(u64 val, const u8 shift, bool* carry_out);
+[[nodiscard]] u32 ARM_ROR(u32 val, const u8 shift, bool* carry_out);

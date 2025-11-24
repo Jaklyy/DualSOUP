@@ -96,7 +96,7 @@ u32 ARM_ASR(u64 val, const u8 shift, bool* carry_out)
     return val;
 }
 
-u32 ARM_ROR(u64 val, const u8 shift, bool* carry_out)
+u32 ARM_ROR(u32 val, const u8 shift, bool* carry_out)
 {
     if (shift)
     {

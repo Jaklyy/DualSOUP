@@ -53,6 +53,10 @@ union THUMB_Branch_Decode
         s16 ImmS11 : 11;
         u16 Opcode : 2; // used 
     };
+    struct
+    {
+        u16 ImmU11 : 11;
+    };
 };
 
 // TODO: UN FUCK THIS FUNCTION
@@ -99,34 +103,41 @@ void THUMB_Branch(struct ARM* cpu, const struct ARM_Instr instr_data)
         LogPrint(LOG_ARM7 | LOG_ODD, "ARM7 doing a BLX high...?\n");
 
     // undefined instruction.
-    if ((opcode == 0b01) && (instr.ImmS11 & 0x1))
+    if ((opcode == 0b01) && (instr.ImmU11 & 0x1))
     {
         return ARM_RaiseUDF;
     }
 
-    const s32 signedimm = instr.ImmS11 << ((opcode == 0b10) ? 12 : 1);
+    u32 imm;
+    switch(opcode)
+    {
+    case 0b00: imm = instr.ImmS11 << 1;  break;
+    case 0b01: imm = instr.ImmU11 << 1;  break;
+    case 0b10: imm = instr.ImmS11 << 12; break;
+    case 0b11: imm = instr.ImmU11 << 1;  break;
+    }
 
     // NOTE: the link and pc variables are not used by all variants
     // they're always set though, because im lazy.
     u32 link = ARM_GetReg(15);
-    u32 addr = ((opcode & 0b01) ? link : ARM_GetReg(14));
+    u32 addr = ((opcode == 0b00) ? link : ARM_GetReg(14));
 
     ARM_ExeCycles(1, 1, 1);
 
     // update link register
     if (opcode != 0b00) // NOT branch uncond
     {
-        if (opcode & 0b01)
+        if (opcode == 0b10)
         {
-            // bl(x) hi
-            // this gets the same effect as subtracting 4 and setting the interworking bit
-            link -= 3;
+            // b(l)x low
+            link += imm;
+            ARM_StepPC(cpu, true);
         }
         else
         {
-            // b(l)x low
-            link += signedimm;
-            ARM_StepPC(cpu, true);
+            // bl(x) hi
+            // this gets the same effect as subtracting 4 and setting the interworking bit
+            link -= 1;
         }
         ARM_SetReg(14, link, 0, 0);
     }
@@ -134,7 +145,7 @@ void THUMB_Branch(struct ARM* cpu, const struct ARM_Instr instr_data)
     // branch (write to pc)
     if (opcode != 0b10) // BL(X) lo doesn't branch
     {
-        addr += signedimm;
+        addr += imm;
 
         // blx hi has some extra logic
         if (opcode == 0b01)
