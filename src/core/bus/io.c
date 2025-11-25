@@ -12,6 +12,10 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask)
             return sys->IO.IPCSyncDataTo7
                     | (sys->IO.IPCSyncDataTo9 << 8)
                     | (sys->IO.IPCSyncIRQEnableTo7 << 14);
+
+        case 0x00'01'00 ... 0x00'01'0C:
+            return Timer_IOReadHandler(sys->IO.Timers7, sys->AHB7.Timestamp, addr);
+
         default:
             LogPrint(LOG_ARM7 | LOG_UNIMP, "UNIMPLEMENTED IO7 READ: %08lX %08lX\n", addr, mask);
             return 0;
@@ -25,6 +29,10 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
         // DMA
         case 0x00'00'B0 ... 0x00'00'E0-1:
             DMA7_IOWriteHandler(sys->DMA7, addr, val, mask);
+            break;
+
+        case 0x00'01'00 ... 0x00'01'0C:
+            Timer_IOWriteHandler(sys->IO.Timers7, sys->AHB7.Timestamp, addr, val, mask);
             break;
 
         case 0x00'01'80: // ipcsync
@@ -61,6 +69,9 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask)
                     | (sys->IO.IPCSyncDataTo7 << 8)
                     | (sys->IO.IPCSyncIRQEnableTo9 << 14);
 
+        case 0x00'01'00 ... 0x00'01'0C:
+            return Timer_IOReadHandler(sys->IO.Timers9, sys->AHB9.Timestamp, addr);
+
         case 0x00'02'08: // IME
             return sys->IO.IME9;
 
@@ -96,6 +107,10 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             }
             break;
         }
+
+        case 0x00'01'00 ... 0x00'01'0C:
+            Timer_IOWriteHandler(sys->IO.Timers9, sys->AHB9.Timestamp, addr, val, mask);
+            break;
 
         case 0x00'02'08: // IME
             sys->IO.IME9 = val & 1 & mask;

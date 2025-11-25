@@ -85,7 +85,7 @@ u32 ARM9_AHBRead(struct ARM946ES* ARM9, timestamp* ts, const u32 addr, const u32
 
     // actually read off of the bus
     u32 ret = AHB9_Read(ARM9->ARM.Sys, ts, addr, mask, atomic, false, seq);
-
+    ARM9->LastBusTime = *ts;
     // convert clock back
     // the arm9 interacts with the bus on the rising edge of the bus clock so we get the result on the first cycle of the clock.
     // so we do this weird looking thing to get the right effect.
@@ -107,6 +107,7 @@ void ARM9_AHBWrite(struct ARM946ES* ARM9, timestamp* ts, const u32 addr, const u
 
     // actually read off of the bus
     AHB9_Write(ARM9->ARM.Sys, ts, addr, val, mask, atomic, false, seq);
+    ARM9->LastBusTime = *ts;
 
     // convert clock back
     // the arm9 interacts with the bus on the rising edge of the bus clock so we get the result on the first cycle of the clock.

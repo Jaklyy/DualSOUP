@@ -48,7 +48,7 @@ int main()
         return EXIT_FAILURE;
     }
 
-    //Console_DirectBoot(sys, ztst);
+    Console_DirectBoot(sys, ztst);
     //ARM9_Log(&sys->ARM9);
 
     Console_MainLoop(sys);

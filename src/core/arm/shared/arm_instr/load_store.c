@@ -139,7 +139,7 @@ void ARM_LoadStore(struct ARM* cpu, const struct ARM_Instr instr_data)
     }
 
     // arm9 timings are input as 0 since they will be added during the actual fetch
-    ARM_ExeCycles(1, 0, 0);
+    ARM_ExeCycles(1, 1, 0);
 
     ARM_StepPC(cpu, false);
 
@@ -350,7 +350,7 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
     skipwriteback:
 
     // arm9 timings are input as 0 since they will be added during the actual fetch
-    ARM_ExeCycles(1, 0, 0);
+    ARM_ExeCycles(1, 1, 0);
 
     ARM_StepPC(cpu, false);
 

@@ -6,6 +6,7 @@
 #include "arm/arm7/arm.h"
 #include "dma/dma.h"
 #include "bus/ahb.h"
+#include "timer/timer.h"
 
 
 // system clocks
@@ -95,6 +96,9 @@ struct Console
         u8 WRAMCR;
 
         bool IME9;
+
+        struct Timer Timers9[4];
+        struct Timer Timers7[4];
     } IO;
 
     alignas(HOST_CACHEALIGN)

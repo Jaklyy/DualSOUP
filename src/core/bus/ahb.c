@@ -241,6 +241,9 @@ u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
     // CHECKME: alignment is enforced by the bus on arm7 on gba, does that also apply to arm9?
     // if so, is the alignment properly enforced by all bus devices?
 
+    if (sys->AHB9.Timestamp < *ts)
+        sys->AHB9.Timestamp = *ts;
+
     addr &= ~3; // 4 byte aligned value used to simplify read logic.
 
     const unsigned width = stdc_count_ones(mask);
@@ -334,6 +337,9 @@ void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
 {
     // CHECKME: alignment is enforced by the bus on arm7 on gba, does that also apply to arm9?
     // if so, is the alignment properly enforced by all bus devices?
+
+    if (sys->AHB9.Timestamp < *ts)
+        sys->AHB9.Timestamp = *ts;
 
     addr &= ~3; // 4 byte aligned value used to simplify read logic.
 
@@ -541,6 +547,8 @@ void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
 {
     // CHECKME: alignment is enforced by the bus on arm7 on gba, this presumably still applies to arm9.
     // is the alignment properly enforced by all bus devices?
+    if (*ts < sys->AHB7.Timestamp)
+        *ts = sys->AHB7.Timestamp;
 
     addr &= ~3; // 4 byte aligned value used to simplify write logic.
 

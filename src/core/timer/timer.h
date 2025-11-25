@@ -29,5 +29,9 @@ struct Timer
     u16 Counter;
     u8 DividerShift;
     bool NeedsUpdate;
+    bool NeedsInit;
     u32 BufferedRegs;
 };
+
+void Timer_IOWriteHandler(struct Timer* timers, const timestamp curts, const u32 addr, u32 val, const u32 mask);
+u32 Timer_IOReadHandler(struct Timer* timers, const timestamp curts, const u32 addr);
