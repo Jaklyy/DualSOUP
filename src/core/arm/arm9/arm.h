@@ -336,7 +336,7 @@ void ARM9_InstrRead16(struct ARM946ES* ARM9, const u32 addr); // thumb
 
 [[nodiscard]] u32 ARM9_DataRead32(struct ARM946ES* ARM9, u32 addr, bool* seq, bool* dabt);
 [[nodiscard]] u16 ARM9_DataRead16(struct ARM946ES* ARM9, u32 addr, bool* seq, bool* dabt);
-[[nodiscard]] u8 ARM9_DataRead8(struct ARM946ES* ARM9, u32 addr, bool* seq, bool* dabt);
+[[nodiscard]] u32 ARM9_DataRead8(struct ARM946ES* ARM9, u32 addr, bool* seq, bool* dabt);
 void ARM9_DataWrite(struct ARM946ES* ARM9, u32 addr, const u32 val, const u32 mask, const bool atomic, const bool deferrable, bool* seq, bool* dabt);
 
 void ARM9_Uncond(struct ARM* cpu, const struct ARM_Instr instr_data); // idk where to put this tbh

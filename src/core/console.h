@@ -65,6 +65,7 @@ enum Scheduler_Events
 
 struct Console
 {
+    coroutine HandleMain;
     coroutine HandleARM9;
     coroutine HandleARM7;
 
@@ -86,6 +87,14 @@ struct Console
 
     struct
     {
+        u8 IPCSyncDataTo9; // data sent to arm9
+        u8 IPCSyncDataTo7; // data sent to arm7
+        bool IPCSyncIRQEnableTo9; // enable for arm9
+        bool IPCSyncIRQEnableTo7; // enable irqs for arm7
+
+        u8 WRAMCR;
+
+        bool IME9;
     } IO;
 
     alignas(HOST_CACHEALIGN)
@@ -121,3 +130,5 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7);
 void Console_Reset(struct Console* sys);
 // actually run the emulation.
 void Console_MainLoop(struct Console* sys);
+
+void Console_DirectBoot(struct Console* sys, FILE* rom);

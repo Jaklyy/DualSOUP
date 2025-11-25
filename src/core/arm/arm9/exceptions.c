@@ -123,6 +123,8 @@ void ARM9_RaiseUDF(struct ARM* ARM, const struct ARM_Instr instr_data, const int
 {
     struct ARM946ES* ARM9 = (struct ARM946ES*)ARM;
 
+    CrashSpectacularly("FARK %08lX\n", cpu->PC);
+
     if (cpu->CPSR.Thumb)
         LogPrint(LOG_ARM9 | LOG_EXCEP, "THUMB9 - UNDEF INSTR: %04X @ %08X\n", instr_data.Raw, cpu->PC);
     else

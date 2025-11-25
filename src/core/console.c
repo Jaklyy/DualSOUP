@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include "console.h"
+#include "arm/arm9/arm.h"
 #include "utils.h"
 
 
@@ -34,6 +35,8 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7)
     ARM7_Init(&sys->ARM7, sys);
 
     // initialize coroutine handles
+    sys->HandleMain = CR_Active();
+
     sys->HandleARM9 = CR_Create((void*)ARM9_MainLoop, &sys->ARM9);
 
     if (sys->HandleARM9 == cr_null)
@@ -83,6 +86,55 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7)
     return sys;
 }
 
+void Console_DirectBoot(struct Console* sys, FILE* rom)
+{
+
+    sys->IO.WRAMCR = 3;
+
+    fseek(rom, 0x20, SEEK_SET);
+    u32 vars[8];
+
+    fread(vars, 4*4*2, 1, rom);
+
+    fseek(rom, vars[0], SEEK_SET);
+    {
+    timestamp nop;
+    u32 arry[vars[3]/4];
+
+    fseek(rom, vars[0], SEEK_SET);
+    fread(arry, vars[3], 1, rom);
+    bool nopy;
+
+    for (unsigned i = 0; i < vars[3]/4; i++)
+    {
+        AHB7_Write(sys, &nop, vars[2], arry[i], 0xFFFFFFFF, false, false, &nopy);
+        vars[2]+=4;
+    }
+    }
+    {
+    timestamp nop;
+    u32 arry[vars[7]/4];
+
+    fseek(rom, vars[4], SEEK_SET);
+    fread(arry, vars[7], 1, rom);
+    bool nopy;
+
+    for (unsigned i = 0; i < vars[7]/4; i++)
+    {
+        AHB7_Write(sys, &nop, vars[6], arry[i], 0xFFFFFFFF, false, false, &nopy);
+        vars[6]+=4;
+    }
+    }
+
+    memset(&sys->AHB7, 0, sizeof(sys->AHB7));
+    memset(&sys->AHB9, 0, sizeof(sys->AHB9));
+    memset(&sys->BusMR, 0, sizeof(sys->BusMR));
+
+
+    ARM9_SetPC(&sys->ARM9, vars[1], 0);
+    ARM7_SetPC(&sys->ARM7, vars[5]);
+}
+
 void Console_Reset(struct Console* sys)
 {
     ARM9_Reset(&sys->ARM9, false /*unverified I guess?*/, true);
@@ -96,5 +148,11 @@ void Console_Scheduler(struct Console* sys)
 
 void Console_MainLoop(struct Console* sys)
 {
-    CR_Switch(sys->HandleARM9);
+    while(true)
+    {
+        if ((sys->ARM9.ARM.Timestamp / 2) < sys->ARM7.ARM.Timestamp)
+            CR_Switch(sys->HandleARM9);
+        else
+            CR_Switch(sys->HandleARM7);
+    }
 }

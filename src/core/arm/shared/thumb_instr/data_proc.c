@@ -469,6 +469,7 @@ union THUMB_AdjustSP_Decode
     struct
     {
         u16 Imm7 : 7;
+        bool Sub : 1;
     };
 };
 
@@ -476,7 +477,10 @@ void THUMB_AdjustSP(struct ARM* cpu, const struct ARM_Instr instr_data)
 {
     const union THUMB_AdjustSP_Decode instr = {.Raw = instr_data.Raw};
 
-    u32 alu_out = ARM_GetReg(13) + (instr.Imm7 * 4);
+    u32 alu_out = ARM_GetReg(13);
+
+    if (instr.Sub) alu_out -= (instr.Imm7 * 4);
+    else           alu_out += (instr.Imm7 * 4);
 
     ARM_StepPC(cpu, true);
     ARM_ExeCycles(1, 1, 1);

@@ -61,7 +61,7 @@ void DMA7_Enable(struct DMA_Channel* channel, u8 channel_id)
     }
     case 3: // (DMA 0 & 2) WiFi IRQ / (DMA 1 & 3) AGB Cartridge IRQ
     {
-        channel->CurrentMode = (channel_id & 0b01) ? DMAStart_AGBCartIRQ : DMAStart_WiFiIRQ;
+        channel->CurrentMode = (channel_id & 0b01) ? DMAStart_AGBPakIRQ : DMAStart_WiFiIRQ;
         // agb cart dma is probably based on the cart slot irq pin?
         // wifi irq might not actually be real?
         break;
@@ -75,38 +75,46 @@ void DMA9_Enable(struct DMA_Channel* channel)
     {
     case 0: // Immediate
     {
+        channel->CurrentMode = DMAStart_Immediate;
         break;
     }
     case 1: // VBlank
     {
+        channel->CurrentMode = DMAStart_VBlank;
         break;
     }
     case 2: // HBlank (excl. VBlank)
     {
+        channel->CurrentMode = DMAStart_HBlank;
         break;
     }
     case 3: // synchronize to start of display(??)
     {
+        channel->CurrentMode = DMAStart_Video;
         // not sure what this means actually...?
         // melonds seems to run it once per vcount for vcounts 2 - 193; and then explicitly tries to stop them on vcount 194?
         break;
     }
     case 4: // Display FIFO
     {
+        channel->CurrentMode = DMAStart_DisplayFIFO;
         break;
     }
     case 5: // NTR Gamecard
     {
+        channel->CurrentMode = DMAStart_NTRCard;
         break;
     }
-    case 6: // AGB Cartridge
+    case 6: // AGB Gamepak
     {
+        channel->CurrentMode = DMAStart_AGBPakIRQ;
         // TODO: how does this work?
         // is it even hooked up?
         break;
     }
     case 7: // 3D Command FIFO
     {
+        channel->CurrentMode = DMAStart_3DFIFO;
         break;
     }
     }

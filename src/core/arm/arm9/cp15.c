@@ -66,6 +66,21 @@ void ARM9_MCR_15(struct ARM946ES* ARM9, const u16 cmd, const u32 val)
         ARM9_ExecuteCycles(ARM9, 3, 1);
         return;
     }
+
+    case ARM_CoprocReg(0, 9, 1, 0): // dtcm reg
+        ARM9->CP15.DTCMCR.Raw = val & 0xFFFFF03E;
+        ARM9_ConfigureDTCM(ARM9);
+        // CHECKME: this needs more testing
+        ARM9_ExecuteCycles(ARM9, 2, 1);
+        break;
+
+    case ARM_CoprocReg(0, 9, 1, 1): // itcm reg
+        ARM9->CP15.ITCMCR.Raw = val & 0x3E;
+        ARM9_ConfigureITCM(ARM9);
+        // CHECKME: this needs more testing
+        ARM9_ExecuteCycles(ARM9, 2, 1);
+        break;
+
     case ARM_CoprocReg(0, 2, 0, 0): // dcache
     case ARM_CoprocReg(0, 2, 0, 1): // icache
     case ARM_CoprocReg(0, 3, 0, 0): // wbuffer
@@ -98,9 +113,6 @@ void ARM9_MCR_15(struct ARM946ES* ARM9, const u16 cmd, const u32 val)
     case ARM_CoprocReg(0, 7, 13, 1): // prefetch icache line
     case ARM_CoprocReg(0, 7, 14, 1): // clean + flush dcache line by addr
     case ARM_CoprocReg(0, 7, 14, 2): // clean + flush dcache line by index + segment
-
-    case ARM_CoprocReg(0, 9, 1, 0): // dtcm reg
-    case ARM_CoprocReg(0, 9, 1, 1): // itcm reg
 
     case ARM_CoprocReg(0, 13, 0, 1): // pid
     case ARM_CoprocReg(0, 13, 1, 1): // pid
@@ -137,7 +149,7 @@ void ARM9_MCR_15(struct ARM946ES* ARM9, const u16 cmd, const u32 val)
     case ARM_CoprocReg(1, 15, 1, 0):
     default:
     {
-        LogPrint(LOG_ARM9 | LOG_UNIMP, "ARM9 - UNIMPLEMENTED MCR CMD: %i\n", cmd);
+        LogPrint(LOG_ARM9 | LOG_UNIMP, "ARM9 - UNIMPLEMENTED MCR CMD: %04lX %08lX %08lX @ %08lX\n", cmd, val, ARM9->ARM.Instr[0].Raw, ARM9->ARM.PC);
         // CHECKME: this is a placeholder basically.
         ARM9_ExecuteCycles(ARM9, 3, 1);
         return;

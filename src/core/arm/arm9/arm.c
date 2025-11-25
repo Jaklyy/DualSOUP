@@ -287,7 +287,7 @@ void ARM9_Step(struct ARM946ES* ARM9)
     }
 
     // TEMP: debugging
-    ARM9_Log(ARM9);
+    //ARM9_Log(ARM9);
 }
 
 #undef ILCheck
@@ -295,12 +295,15 @@ void ARM9_Step(struct ARM946ES* ARM9)
 
 void ARM9_MainLoop(struct ARM946ES* ARM9)
 {
-    LogPrint(0, "okay\n");
     while(true)
     {
         ARM9_Step(ARM9);
 
-        CR_Switch(cpu->Sys->HandleARM7);
+        if (cpu->Sys->ARM7.ARM.Timestamp < (cpu->Timestamp / 2))
+            CR_Switch(cpu->Sys->HandleARM7);
+
+        /*if (((cpu->Timestamp / 2) >= cpu->Sys->endframe))
+            CR_Switch(cpu->Sys->HandleMain);*/
     }
 }
 

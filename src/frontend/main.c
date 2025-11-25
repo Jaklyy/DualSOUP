@@ -41,6 +41,16 @@ int main()
     fclose(ntr7);
     //ARM9_Log(&sys->ARM9);
 
+    FILE* ztst = fopen("ztst.nds", "rb");
+    if (ztst == NULL)
+    {
+        printf("no ztst :(\n");
+        return EXIT_FAILURE;
+    }
+
+    //Console_DirectBoot(sys, ztst);
+    //ARM9_Log(&sys->ARM9);
+
     Console_MainLoop(sys);
 
     // TEMP: debugging

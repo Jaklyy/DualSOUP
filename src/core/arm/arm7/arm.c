@@ -194,7 +194,7 @@ void ARM7_Step(struct ARM7TDMI* ARM7)
     }
 
     // TEMP: debugging
-    ARM7_Log(ARM7);
+    //ARM7_Log(ARM7);
 }
 
 #undef ILCheck
@@ -207,7 +207,11 @@ void ARM7_MainLoop(struct ARM7TDMI* ARM7)
     {
         ARM7_Step(ARM7);
 
-        CR_Switch(cpu->Sys->HandleARM9);
+        if ((cpu->Sys->ARM9.ARM.Timestamp / 2) < cpu->Timestamp)
+            CR_Switch(cpu->Sys->HandleARM9);
+
+        /*if ((cpu->Timestamp >= cpu->Sys->endframe))
+            CR_Switch(cpu->Sys->HandleMain);*/
     }
 }
 

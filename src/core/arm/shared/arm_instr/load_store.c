@@ -155,7 +155,6 @@ void ARM_LoadStore(struct ARM* cpu, const struct ARM_Instr instr_data)
             // TODO
 
             u32 mask;
-            bool dabt = false;
             if (instr.Byte)
             {
                 mask = u8_max << ((addr & 3) * 8);
@@ -192,6 +191,11 @@ void ARM_LoadStore(struct ARM* cpu, const struct ARM_Instr instr_data)
         // rotate result right based on lsb of address.
         val = ROR32(val, (addr&3) * 8);
 
+        if (instr.Byte)
+        {
+            val &= 0xFF;
+        }
+
         // loads can interwork on arm9 when the disable bit is clear.
         if ((instr.Rd == 15) && ARM_CanLoadInterwork)
         {
@@ -210,8 +214,8 @@ void ARM_LoadStore(struct ARM* cpu, const struct ARM_Instr instr_data)
 
         if (instr.Byte)
         {
-            val <<= (addr & 3) * 8;
-            mask = u8_max << ((addr & 3) * 8);
+            val = ROL32(val, (addr & 3) * 8);
+            mask = ROL32(u8_max, ((addr & 3) * 8));
         }
         else mask = u32_max;
 
@@ -360,8 +364,8 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
         bool seq = false;
         bool dabt = false;
         u32 mask;
-        val <<= (addr & 2) * 8;
-        mask = u16_max << ((addr & 2) * 8);
+        val = ROL32(val, (addr & 2) * 8);
+        mask = ROL32(u16_max, ((addr & 2) * 8));
 
         if (cpu->CPUID == ARM7ID)
         {
@@ -496,5 +500,170 @@ s8 ARM9_LoadStoreMisc_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr i
     {
         ARM9_CheckInterlocks(ARM9, &stall, instr.Rd, 1, true);
     }
+    return stall;
+}
+
+// we need this here to handle ldm/stm jank
+void ARM9_InterlockStall(struct ARM946ES* ARM9, const s8 stall);
+
+union ARM_LoadStoreMultiple_Decode
+{
+    u32 Raw;
+    struct
+    {
+        u32 RList : 16;
+        u32 Rn : 4;
+        bool Load : 1;
+        bool Writeback : 1;
+        bool S : 1;
+        bool Up : 1;
+        bool PreInc : 1;
+
+    };
+};
+
+void ARM_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
+{
+    union ARM_LoadStoreMultiple_Decode instr = {.Raw = instr_data.Raw};
+
+    bool preinc = instr.PreInc ^ (!instr.Up);
+    if (instr.S) CrashSpectacularly("UNIMPLEMENTED LDM/STM!!!! %08lX @ %08lX\n", instr_data.Raw, cpu->PC);
+
+    u32 addr = ARM_GetReg(instr.Rn);
+
+    unsigned nregs = stdc_count_ones((u16)instr.RList);
+
+    // TODO: handle empty Rlist
+    if (!instr.RList)
+    {
+        CrashSpectacularly("EMPTY RLIST POP!!!\n");
+    }
+
+    // arm9 timings are input as 0 since they will be added during the actual fetch
+    ARM_ExeCycles(1, 0, 0);
+
+    ARM_StepPC(cpu, false);
+
+    u32 wbaddr;
+
+    if (instr.Up)
+    {
+        wbaddr = (addr + (nregs*4));
+    }
+    else
+    {
+        wbaddr = (addr -= (nregs*4));
+    }
+
+    if (preinc) addr += 4;
+
+    u16 rlist = instr.RList;
+
+    bool seq = false;
+    bool dabt = false;
+    if (instr.Load)
+    {
+        while(rlist)
+        {
+            unsigned reg = stdc_trailing_zeros(rlist);
+
+            // read
+            u32 val;
+            if (cpu->CPUID == ARM7ID)
+            {
+                val = ARM7_BusRead(ARM7Cast, addr, u32_max, &seq);
+
+                // base writeback after first access
+                if (instr.Writeback && (reg == stdc_trailing_zeros((u16)instr.RList)))
+                    ARM_SetReg(instr.Rn, wbaddr, 0, 0);
+            }
+            else
+            {
+                val = ARM9_DataRead32(ARM9Cast, addr, &seq, &dabt);
+
+                // base writeback before last access
+                if (instr.Writeback && (reg == (15-stdc_leading_zeros((u16)instr.RList))))
+                    ARM_SetReg(instr.Rn, wbaddr, 0, 0);
+            }
+
+            // loads can interwork on arm9 when the disable bit is clear.
+            if ((reg == 15) && ARM_CanLoadInterwork)
+            {
+                ARM_SetThumb(cpu, val & 1);
+            }
+
+            ARM_SetReg(reg, val, 1, 1);
+
+            // increment address
+            addr += 4;
+
+            rlist &= (~1)<<reg;
+        }
+    }
+    else
+    {
+        while(rlist)
+        {
+            unsigned reg = stdc_trailing_zeros(rlist);
+
+            // write
+            u32 val = ARM_GetReg(reg);
+            if (cpu->CPUID == ARM7ID)
+            {
+                ARM7_BusWrite(ARM7Cast, addr, val, u32_max, false, &seq);
+
+                // base writeback after first access
+                if (instr.Writeback && (reg == stdc_trailing_zeros((u16)instr.RList)))
+                    ARM_SetReg(instr.Rn, wbaddr, 0, 0);
+            }
+            else
+            {
+                ARM9_DataWrite(ARM9Cast, addr, val, u32_max, false, false, &seq, &dabt);
+
+                // base writeback before last access
+                if (instr.Writeback && (reg == (15-stdc_leading_zeros((u16)instr.RList))))
+                    ARM_SetReg(instr.Rn, wbaddr, 0, 0);
+            }
+            // increment address
+            addr += 4;
+
+            rlist &= (~1)<<reg;
+        }
+    }
+
+    if (nregs == 1)
+    {
+        if (cpu->CPUID == ARM9ID)
+        {
+            // not an interlock but close enough
+            ARM9_InterlockStall(ARM9Cast, 1);
+            // writeback seems to always occur after the first fetch
+            if (instr.Writeback)
+                ARM_SetReg(instr.Rn, wbaddr, 0, 0);
+        }
+    }
+
+    // clean up arm7 timings
+    if (cpu->CPUID == ARM7ID)
+    {
+        cpu->Timestamp += 1;
+        cpu->CodeSeq = false;
+    }
+}
+
+s8 ARM9_LoadStoreMultiple_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
+{
+    const union ARM_LoadStoreMultiple_Decode instr = {.Raw = instr_data.Raw};
+    s8 stall = 0;
+
+    // ig
+    ARM9_CheckInterlocks(ARM9, &stall, instr.Rn, 0, false);
+
+    if (!instr.Load && instr.RList)
+    {
+        int reg = stdc_trailing_zeros((u8)instr.RList);
+        ARM9_CheckInterlocks(ARM9, &stall, reg, 1, true);
+    }
+
     return stall;
 }

@@ -12,7 +12,7 @@ enum DMA_StartModes : u8
     DMAStart_Video,
     DMAStart_DisplayFIFO,
     DMAStart_NTRCard,
-    DMAStart_AGBCartIRQ,
+    DMAStart_AGBPakIRQ,
     DMAStart_3DFIFO,
     DMAStart_WiFiIRQ,
 };

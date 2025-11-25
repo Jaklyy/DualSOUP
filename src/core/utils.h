@@ -134,6 +134,12 @@ enum LoggingLevels : u64
     return (val >> ror) | (val << (32-ror));
 }
 
+[[nodiscard]] inline u32 ROL32(const u32 val, u8 ror)
+{
+    ror &= 0x1F; // do this to hopefully avoid undefined behavior.
+    return (val << ror) | (val >> (32-ror));
+}
+
 // TODO: should this be per thread?
 extern u64 LogMask;
 // printf but with support for filtering out the noise
@@ -149,3 +155,4 @@ void CrashSpectacularly(const char* str, ...);
 coroutine CR_Create(void (*func)(void*), void* param);
 void CR_Free(coroutine handle);
 void CR_Switch(coroutine handle);
+cothread_t CR_Active();

@@ -74,3 +74,8 @@ void CR_Switch(cothread_t handle)
 {
     co_switch(handle);
 }
+
+cothread_t CR_Active()
+{
+    return co_active();
+}

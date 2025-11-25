@@ -138,6 +138,7 @@ struct BusMainRAM
 };
 
 [[nodiscard]] u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, const bool atomic, const bool hold, bool* seq);
+void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, const u32 mask, const bool atomic, const bool hold, bool* seq);
 [[nodiscard]] u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, const bool atomic, const bool hold, bool* seq);
 void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, const u32 mask, const bool atomic, const bool hold, bool* seq);
 bool AHB9_NegOwnership(struct Console* sys, timestamp* cur, const u8 priority, const bool atomic);

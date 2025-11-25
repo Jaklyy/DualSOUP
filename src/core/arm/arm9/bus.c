@@ -106,7 +106,7 @@ void ARM9_AHBWrite(struct ARM946ES* ARM9, timestamp* ts, const u32 addr, const u
     }
 
     // actually read off of the bus
-    //AHB9_Write(ARM9->ARM.Sys, ts, addr, val, mask, atomic, false, seq);
+    AHB9_Write(ARM9->ARM.Sys, ts, addr, val, mask, atomic, false, seq);
 
     // convert clock back
     // the arm9 interacts with the bus on the rising edge of the bus clock so we get the result on the first cycle of the clock.
@@ -310,7 +310,7 @@ u32 ARM9_DataRead(struct ARM946ES* ARM9, const u32 addr, const u32 mask, bool* s
     {
         ARM9->MemTimestamp += 1;
         *seq = true;
-        return MemoryRead(32, ARM9->ITCM, addr, ARM9_ITCMSize);
+        return MemoryRead(32, ARM9->DTCM, addr, ARM9_ITCMSize);
     }
     else if (false)
     {
@@ -341,17 +341,19 @@ u32 ARM9_DataRead32(struct ARM946ES* ARM9, u32 addr, bool* seq, bool* dabt)
 
 u16 ARM9_DataRead16(struct ARM946ES* ARM9, u32 addr, bool* seq, bool* dabt)
 {
-    u32 mask = u16_max << ((addr & 2) * 8);
+    u32 mask = ROL32(u16_max,((addr & 2) * 8));
     u32 ret = ARM9_DataRead(ARM9, addr, mask, seq, dabt);
 
     // note: arm9 ldrh doesn't do a rotate right so we need to special case the correction here.
     return ret >> ((addr & 2) * 8);
 }
 
-u8 ARM9_DataRead8(struct ARM946ES* ARM9, u32 addr, bool* seq, bool* dabt)
+u32 ARM9_DataRead8(struct ARM946ES* ARM9, u32 addr, bool* seq, bool* dabt)
 {
-    u32 mask = u8_max << ((addr & 3) * 8);
-    return ARM9_DataRead(ARM9, addr, mask, seq, dabt);
+    u32 mask = ROL32(u8_max, ((addr & 3) * 8));
+    u32 ret = ARM9_DataRead(ARM9, addr, mask, seq, dabt);
+
+    return ret;
 }
 
 void ARM9_DataWrite(struct ARM946ES* ARM9, u32 addr, const u32 val, const u32 mask, const bool atomic, const bool deferrable, bool* seq, bool* dabt)
@@ -390,6 +392,7 @@ void ARM9_DataWrite(struct ARM946ES* ARM9, u32 addr, const u32 val, const u32 ma
     else if (ARM9_DTCMTryWrite(ARM9, addr))
     {
         MemoryWrite(32, ARM9->DTCM, addr, ARM9_DTCMSize, val, mask);
+
         ARM9->MemTimestamp += 1;
         ARM9->DataContTS = ARM9->MemTimestamp + 1;
         *seq = true;

@@ -119,7 +119,7 @@ void ARM9_InitInstrLUT()
         CHECK (1110'0000'0001, 1111'0001'0001, MCR) // mcr
         CHECK (1110'0001'0001, 1111'0001'0001, MRC) // mrc
         // multiple load/store
-        CHECK (1000'0000'0000, 1110'0000'0000, UNIMPL) // ldm/stm
+        CHECK (1000'0000'0000, 1110'0000'0000, LoadStoreMultiple) // ldm/stm
         // branch
         CHECK (1010'0000'0000, 1110'0000'0000, Branch) // b/bl
         CHECK9(1111'0000'0000, 1111'0000'0000, SoftwareInterrupt)
@@ -204,7 +204,7 @@ void THUMB9_InitInstrLUT()
         CHECK (1001'00, 1111'00, LoadStoreSPRel) // load/store sp-rel
         CHECK (1010'00, 1111'00, AddPCSPRel) // sp/pc-rel add?
         CHECK9(1011'00, 1111'00, Misc) // misc
-        CHECK (1100'00, 1111'00, UNIMPL) // ldm/stm
+        CHECK (1100'00, 1111'00, LoadStoreMultiple) // ldm/stm
         CHECK (1101'00, 1111'00, BranchCond) // cond b/udf/swi
         CHECK (1110'00, 1110'00, Branch) // b/bl(x) prefix/suffix
         CHECK9(0000'00, 0000'00, UndefinedInstruction)

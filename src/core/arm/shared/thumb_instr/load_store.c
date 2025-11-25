@@ -26,8 +26,8 @@ void STR(struct ARM* cpu, const u32 addr, const u8 rd, const int width)
     u32 mask;
 
     if (width == width32) { mask = u32_max; }
-    if (width == width16) { mask = ROR32(u16_max, (addr & 2) * 8); val = ROR32(val, (addr & 2) * 8); }
-    if (width == width8 ) { mask = ROR32(u8_max  , (addr & 3) * 8); val = ROR32(val, (addr & 3) * 8); }
+    if (width == width16) { mask = ROL32(u16_max, (addr & 2) * 8); val = ROL32(val, (addr & 2) * 8); }
+    if (width == width8 ) { mask = ROL32(u8_max  , (addr & 3) * 8); val = ROL32(val, (addr & 3) * 8); }
 
     if (cpu->CPUID == ARM7ID)
     {
@@ -59,8 +59,8 @@ void LDR(struct ARM* cpu, const u32 addr, const u8 rd, const int width, const bo
     u32 mask;
 
         if (width == width32) { mask = u32_max; }
-        if (width == width16) { mask = ROR32(u16_max, (addr & 2) * 8); val = ROR32(val, (addr & 2) * 8); }
-        if (width == width8 ) { mask = ROR32(u8_max  , (addr & 3) * 8); val = ROR32(val, (addr & 3) * 8); }
+        if (width == width16) { mask = ROL32(u16_max, (addr & 2) * 8); }
+        if (width == width8 ) { mask = ROL32(u8_max  , (addr & 3) * 8); }
 
         val = ARM7_BusRead(ARM7Cast, addr, mask, &seq);
 
@@ -93,8 +93,19 @@ void LDR(struct ARM* cpu, const u32 addr, const u8 rd, const int width, const bo
         if (width != width16)
             val = ROR32(val, (addr&3) * 8);
 
+        if (width == width8)
+        {
+            val &= 0xFF;
+        }
+
         if (signext)
             val = ((width == width8) ? ((s32)(s8)val) : ((s32)(s16)val));
+    }
+
+    // loads can interwork on arm9 when the disable bit is clear.
+    if ((rd == 15) && ARM_CanLoadInterwork)
+    {
+        ARM_SetThumb(cpu, val & 1);
     }
 
     ARM_SetReg(rd, val, interlock, interlock+1);
@@ -272,7 +283,7 @@ void THUMB_Push(struct ARM* cpu, const struct ARM_Instr instr_data)
     const union THUMB_PushPop_Decode instr = {.Raw = instr_data.Raw};
 
     u32 addr = ARM_GetReg(13);
-    int nregs = stdc_count_ones(instr.FullRList);
+    unsigned nregs = stdc_count_ones(instr.FullRList);
 
     // TODO: handle empty Rlist
     if (nregs == 0)
@@ -295,7 +306,7 @@ void THUMB_Push(struct ARM* cpu, const struct ARM_Instr instr_data)
 
     while(rlist)
     {
-        int reg = stdc_trailing_zeros(rlist);
+        unsigned reg = stdc_trailing_zeros(rlist);
 
         // write
         u32 val = ARM_GetReg(reg);
@@ -372,7 +383,7 @@ void THUMB_Pop(struct ARM* cpu, const struct ARM_Instr instr_data)
     const union THUMB_PushPop_Decode instr = {.Raw = instr_data.Raw};
 
     u32 addr = ARM_GetReg(13);
-    int nregs = stdc_count_ones(instr.FullRList);
+    unsigned nregs = stdc_count_ones(instr.FullRList);
 
     // TODO: handle empty Rlist
     if (!instr.FullRList)
@@ -388,14 +399,14 @@ void THUMB_Pop(struct ARM* cpu, const struct ARM_Instr instr_data)
     u8 rlist = instr.RList;
 
     // pop is encoded as an incrementing after variant
-    u32 wbaddr = addr;
+    u32 wbaddr = addr + (nregs*4);
 
     bool seq = false;
     bool dabt = false;
 
     while(rlist)
     {
-        int reg = stdc_trailing_zeros(rlist);
+        unsigned reg = stdc_trailing_zeros(rlist);
 
         // read
         u32 val;
@@ -428,6 +439,13 @@ void THUMB_Pop(struct ARM* cpu, const struct ARM_Instr instr_data)
         {
             val = ARM9_DataRead32(ARM9Cast, addr, &seq, &dabt);
         }
+
+        // loads can interwork on arm9 when the disable bit is clear.
+        if (ARM_CanLoadInterwork)
+        {
+            ARM_SetThumb(cpu, val & 1);
+        }
+
         ARM_SetReg(15, val, 1, 1);
     }
     else if (nregs == 1)
@@ -448,12 +466,154 @@ void THUMB_Pop(struct ARM* cpu, const struct ARM_Instr instr_data)
     ARM_SetReg(13, wbaddr, 0, 0);
 }
 
-s8 THUMB9_Pop_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
+s8 THUMB9_Pop_Interlocks(struct ARM946ES* ARM9, [[maybe_unused]] const struct ARM_Instr instr_data)
 {
     s8 stall = 0;
 
     // ig
     ARM9_CheckInterlocks(ARM9, &stall, 13, 0, false);
+
+    return stall;
+}
+
+union THUMB_LoadStoreMultiple_Decode
+{
+    u16 Raw;
+    struct
+    {
+        u16 RList : 8;
+        u16 Rn : 3;
+        bool Load : 1;
+    };
+};
+
+void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
+{
+    const union THUMB_LoadStoreMultiple_Decode instr = {.Raw = instr_data.Raw};
+
+    u32 addr = ARM_GetReg(instr.Rn);
+
+    unsigned nregs = stdc_count_ones((u8)instr.RList);
+
+    // TODO: handle empty Rlist
+    if (!instr.RList)
+    {
+        CrashSpectacularly("EMPTY RLIST POP!!!\n");
+    }
+
+    // arm9 timings are input as 0 since they will be added during the actual fetch
+    ARM_ExeCycles(1, 0, 0);
+
+    ARM_StepPC(cpu, true);
+
+    u32 wbaddr = addr + (nregs*4);
+
+    u8 rlist = instr.RList;
+
+    bool seq = false;
+    bool dabt = false;
+    if (instr.Load)
+    {
+        while(rlist)
+        {
+            unsigned reg = stdc_trailing_zeros(rlist);
+
+            // read
+            u32 val;
+            if (cpu->CPUID == ARM7ID)
+            {
+                val = ARM7_BusRead(ARM7Cast, addr, u32_max, &seq);
+
+                // base writeback after first access
+                if (reg == stdc_trailing_zeros((u8)instr.RList))
+                    ARM_SetReg(instr.Rn, wbaddr, 0, 0);
+            }
+            else
+            {
+                val = ARM9_DataRead32(ARM9Cast, addr, &seq, &dabt);
+
+                // base writeback before last access
+                if (reg == 7-stdc_leading_zeros((u8)instr.RList))
+                    ARM_SetReg(instr.Rn, wbaddr, 0, 0);
+            }
+
+            // loads can interwork on arm9 when the disable bit is clear.
+            if ((reg == 15) && ARM_CanLoadInterwork)
+            {
+                ARM_SetThumb(cpu, val & 1);
+            }
+
+            ARM_SetReg(reg, val, 1, 1);
+
+            // increment address
+            addr += 4;
+
+            rlist &= (~1)<<reg;
+        }
+    }
+    else
+    {
+        while(rlist)
+        {
+            unsigned reg = stdc_trailing_zeros(rlist);
+
+            // write
+            u32 val = ARM_GetReg(reg);
+            if (cpu->CPUID == ARM7ID)
+            {
+                ARM7_BusWrite(ARM7Cast, addr, val, u32_max, false, &seq);
+
+                // base writeback after first access
+                if (reg == stdc_trailing_zeros((u8)instr.RList))
+                    ARM_SetReg(instr.Rn, wbaddr, 0, 0);
+            }
+            else
+            {
+                ARM9_DataWrite(ARM9Cast, addr, val, u32_max, false, false, &seq, &dabt);
+
+                // base writeback before last access
+                if (reg == 7-stdc_leading_zeros((u8)instr.RList))
+                    ARM_SetReg(instr.Rn, wbaddr, 0, 0);
+            }
+            // increment address
+            addr += 4;
+
+            rlist &= (~1)<<reg;
+        }
+    }
+
+    if (nregs == 1)
+    {
+        // not an interlock but close enough
+        if (cpu->CPUID == ARM9ID)
+        {
+            ARM9_InterlockStall(ARM9Cast, 1);
+            // writeback seems to always occur after the first fetch
+            ARM_SetReg(instr.Rn, wbaddr, 0, 0);
+        }
+    }
+
+    // clean up arm7 timings
+    if (cpu->CPUID == ARM7ID)
+    {
+        cpu->Timestamp += 1;
+        cpu->CodeSeq = false;
+    }
+}
+
+s8 THUMB9_LoadStoreMultiple_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
+{
+    const union THUMB_LoadStoreMultiple_Decode instr = {.Raw = instr_data.Raw};
+    s8 stall = 0;
+
+    // ig
+    ARM9_CheckInterlocks(ARM9, &stall, instr.Rn, 0, false);
+
+    if (!instr.Load && instr.RList)
+    {
+        int reg = stdc_trailing_zeros((u8)instr.RList);
+        ARM9_CheckInterlocks(ARM9, &stall, reg, 1, true);
+    }
 
     return stall;
 }

@@ -42,6 +42,7 @@ void ARM_MSR(struct ARM* cpu, const struct ARM_Instr instr_data);
 // load/store
 void ARM_LoadStore(struct ARM* cpu, const struct ARM_Instr instr_data);
 void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data);
+void ARM_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data);
 
 
 
@@ -70,3 +71,4 @@ void THUMB_LoadPCRel(struct ARM* cpu, const struct ARM_Instr instr_data);
 void THUMB_LoadStoreSPRel(struct ARM* cpu, const struct ARM_Instr instr_data);
 void THUMB_Push(struct ARM* cpu, const struct ARM_Instr instr_data);
 void THUMB_Pop(struct ARM* cpu, const struct ARM_Instr instr_data);
+void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data);
