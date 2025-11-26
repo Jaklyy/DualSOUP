@@ -25,7 +25,7 @@ void ARM9_ConfigureDTCM(struct ARM946ES* ARM9)
         if (size < 12) size = 12; // 4KiB min
         // CHECKME does anything interesting happen with a size >32 aka 4GiB?
 
-        u32 base = ARM9->CP15.DTCMCR.Raw >> size;
+        u32 base = (u64)ARM9->CP15.DTCMCR.Raw >> size;
 
         ARM9->CP15.DTCMShift = size;
         ARM9->CP15.DTCMWriteBase = base;

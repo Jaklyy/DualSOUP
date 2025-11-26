@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include "console.h"
 #include "arm/arm9/arm.h"
+#include "dma/dma.h"
 #include "utils.h"
 
 
@@ -98,8 +99,9 @@ void Console_DirectBoot(struct Console* sys, FILE* rom)
 
     fseek(rom, vars[0], SEEK_SET);
     {
+        if (vars[3] > MiB(512)) return;
     timestamp nop;
-    u32 arry[vars[3]/4];
+    u32* arry = malloc(vars[3]);
 
     fseek(rom, vars[0], SEEK_SET);
     fread(arry, vars[3], 1, rom);
@@ -107,13 +109,15 @@ void Console_DirectBoot(struct Console* sys, FILE* rom)
 
     for (unsigned i = 0; i < vars[3]/4; i++)
     {
-        AHB7_Write(sys, &nop, vars[2], arry[i], 0xFFFFFFFF, false, false, &nopy);
+        AHB9_Write(sys, &nop, vars[2], arry[i], 0xFFFFFFFF, false, false, &nopy);
         vars[2]+=4;
     }
+    free(arry);
     }
     {
+        if (vars[7] > MiB(512)) return;
     timestamp nop;
-    u32 arry[vars[7]/4];
+    u32* arry = malloc(vars[7]);
 
     fseek(rom, vars[4], SEEK_SET);
     fread(arry, vars[7], 1, rom);
@@ -124,6 +128,7 @@ void Console_DirectBoot(struct Console* sys, FILE* rom)
         AHB7_Write(sys, &nop, vars[6], arry[i], 0xFFFFFFFF, false, false, &nopy);
         vars[6]+=4;
     }
+    free(arry);
     }
 
     memset(&sys->AHB7, 0, sizeof(sys->AHB7));
@@ -139,6 +144,11 @@ void Console_Reset(struct Console* sys)
 {
     ARM9_Reset(&sys->ARM9, false /*unverified I guess?*/, true);
     ARM7_Reset(&sys->ARM7);
+
+    sys->DMA9.ChannelTimestamps[0] = timestamp_max;
+    sys->DMA9.ChannelTimestamps[1] = timestamp_max;
+    sys->DMA9.ChannelTimestamps[2] = timestamp_max;
+    sys->DMA9.ChannelTimestamps[3] = timestamp_max;
 }
 
 void Console_Scheduler(struct Console* sys)

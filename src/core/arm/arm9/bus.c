@@ -6,22 +6,22 @@
 
 bool ARM9_ITCMTryRead(const struct ARM946ES* ARM9, const u32 addr)
 {
-    return (ARM9->CP15.CR.ITCMEnable && !ARM9->CP15.CR.ITCMLoadMode && !(addr >> ARM9->CP15.ITCMShift));
+    return (ARM9->CP15.CR.ITCMEnable && !ARM9->CP15.CR.ITCMLoadMode && !((u64)addr >> ARM9->CP15.ITCMShift));
 }
 
 bool ARM9_ITCMTryWrite(const struct ARM946ES* ARM9, const u32 addr)
 {
-    return (ARM9->CP15.CR.ITCMEnable && !(addr >> ARM9->CP15.ITCMShift));
+    return (ARM9->CP15.CR.ITCMEnable && !((u64)addr >> ARM9->CP15.ITCMShift));
 }
 
 bool ARM9_DTCMTryRead(const struct ARM946ES* ARM9, const u32 addr)
 {
-    return ((addr >> ARM9->CP15.DTCMShift) == ARM9->CP15.DTCMReadBase);
+    return (((u64)addr >> ARM9->CP15.DTCMShift) == ARM9->CP15.DTCMReadBase);
 }
 
 bool ARM9_DTCMTryWrite(const struct ARM946ES* ARM9, const u32 addr)
 {
-    return ((addr >> ARM9->CP15.DTCMShift) == ARM9->CP15.DTCMWriteBase);
+    return (((u64)addr >> ARM9->CP15.DTCMShift) == ARM9->CP15.DTCMWriteBase);
 }
 
 // this function results in the timestamp being aligned with the bus clock

@@ -54,6 +54,8 @@ struct DMA_Channel
     u32 Latched_SrcAddr;
     u32 Latched_DstAddr;
     u32 Latched_NumWords;
+    s8 SrcInc;
+    s8 DstInc;
     u8 CurrentMode;
 };
 
@@ -63,5 +65,11 @@ struct DMA_Controller
     struct DMA_Channel Channels[4];
 };
 
-void DMA7_IOWriteHandler(struct DMA_Channel* channels, u32 addr, u32 val, const u32 mask);
+struct Console;
+
+void DMA9_Run(struct Console* sys, struct DMA_Channel* channel, u8 id);
+void DMA7_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 addr, u32 val, const u32 mask);
+void DMA9_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 addr, u32 val, u32 mask);
+u32 DMA_IOReadHandler(struct DMA_Channel* channels, u32 addr);
 timestamp DMA_TimeNextScheduled(const timestamp* ts, const unsigned numtst); // if you pass something greater than 4 i will kill you
+timestamp DMA_NextScheduled(const timestamp* ts, const unsigned numtst);

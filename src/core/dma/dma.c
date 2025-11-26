@@ -36,17 +36,34 @@ timestamp DMA_TimeNextScheduled(const timestamp* ts, const unsigned numtst)
     return ret;
 }
 
-void DMA7_Enable(struct DMA_Channel* channel, u8 channel_id)
+timestamp DMA_NextScheduled(const timestamp* ts, const unsigned numtst)
 {
-    channel->Latched_SrcAddr = channel->Latched_SrcAddr;
-    channel->Latched_DstAddr = channel->Latched_SrcAddr;
-    channel->Latched_SrcAddr = channel->Latched_SrcAddr;
+    timestamp ret = timestamp_max;
+    int rety = 4;
+
+    for (unsigned i = 0; i < numtst; i++)
+    {
+        if (ret >= ts[i])
+        {
+            ret = ts[i];
+            rety = i;
+        }
+    }
+    return rety;
+}
+
+void DMA7_Enable(struct Console* sys, struct DMA_Channel* channel, u8 channel_id)
+{
+    channel->Latched_SrcAddr = channel->SrcAddr;
+    channel->Latched_DstAddr = channel->DstAddr;
+    channel->Latched_NumWords = (channel->CR.NumWords ? channel->CR.NumWords : ((channel_id == 3) ? 0x10000 : 0x4000));
 
     switch(channel->CR.StartMode7)
     {
     case 0: // Immediate
     {
         channel->CurrentMode = DMAStart_Immediate;
+        sys->DMA7.ChannelTimestamps[channel_id] = sys->AHB7.Timestamp+1;
         break;
     }
     case 1: // VBlank
@@ -67,15 +84,47 @@ void DMA7_Enable(struct DMA_Channel* channel, u8 channel_id)
         break;
     }
     }
+
+    switch(channel->CR.DestCR)
+    {
+    case 0: channel->DstInc = 1; break;
+    case 1: channel->DstInc = -1; break;
+    case 2: channel->DstInc = 0; break;
+    case 3: channel->DstInc = 1; break;
+    }
+
+    switch(channel->CR.SourceCR)
+    {
+    case 0: channel->SrcInc = 1; break;
+    case 1: channel->SrcInc = -1; break;
+    case 2: channel->SrcInc = 0; break;
+    case 3: channel->SrcInc = 1; break;
+    }
+
+    if (channel->CR.Width32)
+    {
+        channel->SrcInc *= 4;
+        channel->DstInc *= 4;
+    }
+    else
+    {
+        channel->SrcInc *= 2;
+        channel->DstInc *= 2;
+    }
 }
 
-void DMA9_Enable(struct DMA_Channel* channel)
+void DMA9_Enable(struct Console* sys, struct DMA_Channel* channel, u8 channel_id)
 {
+    channel->Latched_SrcAddr = channel->SrcAddr;
+    channel->Latched_DstAddr = channel->DstAddr;
+    channel->Latched_NumWords = (channel->CR.NumWords ? channel->CR.NumWords : 0x200000);
+
     switch(channel->CR.StartMode9)
     {
     case 0: // Immediate
     {
         channel->CurrentMode = DMAStart_Immediate;
+        sys->DMA9.ChannelTimestamps[channel_id] = sys->AHB9.Timestamp+1;
         break;
     }
     case 1: // VBlank
@@ -118,31 +167,93 @@ void DMA9_Enable(struct DMA_Channel* channel)
         break;
     }
     }
-}
 
-void DMA_Run(struct Console* sys, struct DMA_Channel* channel, u8 id)
-{
+    switch(channel->CR.DestCR)
+    {
+    case 0: channel->DstInc = 1; break;
+    case 1: channel->DstInc = -1; break;
+    case 2: channel->DstInc = 0; break;
+    case 3: channel->DstInc = 1; break;
+    }
+
+    switch(channel->CR.SourceCR)
+    {
+    case 0: channel->SrcInc = 1; break;
+    case 1: channel->SrcInc = -1; break;
+    case 2: channel->SrcInc = 0; break;
+    case 3: channel->SrcInc = 1; break;
+    }
+
     if (channel->CR.Width32)
     {
-
+        channel->SrcInc *= 4;
+        channel->DstInc *= 4;
     }
+    else
+    {
+        channel->SrcInc *= 2;
+        channel->DstInc *= 2;
+    }
+}
+
+void DMA9_Run(struct Console* sys, struct DMA_Channel* channel, u8 id)
+{
+    u32 rmask;
+    u32 wmask;
+    if (channel->CR.Width32)
+    {
+        rmask = wmask = u32_max;
+    }
+    else
+    {
+        rmask = ROR32(u16_max, (channel->Latched_SrcAddr & 2)*8);
+        wmask = ROR32(u16_max, (channel->Latched_DstAddr & 2)*8);
+    }
+    bool rseq = false;
+    bool wseq = false;
     while(channel->Latched_NumWords > 0)
     {
-        AHB9_NegOwnership(sys, &sys->AHB9.Timestamp, id, false);
-        //Bus9Read
-        AHB9_NegOwnership(sys, &sys->AHB9.Timestamp, id, false);
-        //Bus9Write
+        if (!AHB9_NegOwnership(sys, &sys->AHB9.Timestamp, id, false))
+        {
+            rseq = false;
+            wseq = false;
+        }
+        u32 read = AHB9_Read(sys, &sys->AHB9.Timestamp, channel->Latched_SrcAddr, rmask, false, true, &rseq);
+
+        if (channel->SrcInc != 1) rseq = false;
+
+        channel->Latched_SrcAddr += channel->SrcInc;
+
+        if (!AHB9_NegOwnership(sys, &sys->AHB9.Timestamp, id, false))
+        {
+            rseq = false;
+            wseq = false;
+        }
+        AHB9_Write(sys, &sys->AHB9.Timestamp, channel->Latched_DstAddr, read, wmask, false, true, &wseq);
+
+        if (channel->DstInc != 1) wseq = false;
+
+        channel->Latched_DstAddr += channel->DstInc;
+
+        channel->Latched_NumWords -= 1;
+
+        if (!channel->CR.Width32)
+        {
+            rmask = ROR32(u16_max, (channel->Latched_SrcAddr & 2)*8);
+            wmask = ROR32(u16_max, (channel->Latched_DstAddr & 2)*8);
+        }
     }
 
     // end
 
-    if (!channel->CR.Repeat)
+    if (channel->CR.Repeat)
     {
         // reschedule
     }
     else
     {
         channel->CR.Enable = false;
+        sys->DMA9.ChannelTimestamps[id] = timestamp_max;
     }
 
     if (channel->CR.IRQ) // idk
@@ -150,12 +261,12 @@ void DMA_Run(struct Console* sys, struct DMA_Channel* channel, u8 id)
 
 }
 
-void DMA9_IOWriteHandler(struct DMA_Channel* channels, u32 address, u32 val, u32 mask)
+void DMA9_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 addr, u32 val, u32 mask)
 {
-    address &= 0xFF;
-    address -= 0xB0;
-    int channel = (address / 4) % 4;
-    int reg = (address / 4) % 3;
+    addr &= 0xFF;
+    addr -= 0xB0;
+    int channel = (addr / 4) / 3;
+    int reg = (addr / 4) % 3;
 
     struct DMA_Channel* cur = &channels[channel];
 
@@ -163,30 +274,75 @@ void DMA9_IOWriteHandler(struct DMA_Channel* channels, u32 address, u32 val, u32
     {
     case 0: // source address
     {
-        val &= 0x0FFFFFFE;
+        mask &= 0x0FFFFFFE;
 
         MaskedWrite(cur->SrcAddr, val, mask);
         break;
     }
     case 1: // destination address
     {
-        val &= 0x0FFFFFFE;
+        mask &= 0x0FFFFFFE;
 
         MaskedWrite(cur->DstAddr, val, mask);
         break;
     }
     case 2: // control register
     {
+        union DMA_CR oldcr = cur->CR;
+        MaskedWrite(cur->CR.Raw, val, mask);
 
+        if (oldcr.Enable ^ cur->CR.Enable)
+        {
+            if (cur->CR.Enable == true)
+            {
+                // starting dma channel
+                DMA9_Enable(sys, cur, channel);
+            }
+            else
+            {
+                // stopping dma channel
+                // TODO: allegedly under specific circumstances this can lock up the bus?
+            }
+        }
+        break;
     }
     }
 }
 
-void DMA7_IOWriteHandler(struct DMA_Channel* channels, u32 addr, u32 val, const u32 mask)
+u32 DMA_IOReadHandler(struct DMA_Channel* channels, u32 addr)
+{
+
+    addr &= 0xFF;
+    addr -= 0xB0;
+    int channel = (addr / 4) / 3;
+    int reg = (addr / 4) % 3;
+
+    struct DMA_Channel* cur = &channels[channel];
+
+    switch(reg)
+    {
+    case 0: // source address
+    {
+        return cur->SrcAddr;
+    }
+    case 1: // destination address
+    {
+        return cur->DstAddr;
+    }
+    case 2: // control register
+    {
+        return cur->CR.Raw;
+    }
+    default:
+        return 0;
+    }
+}
+
+void DMA7_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 addr, u32 val, const u32 mask)
 {
     addr &= 0xFF;
     addr -= 0xB0;
-    int channel = (addr / 4) % 4;
+    int channel = (addr / 4) / 3;
     int reg = (addr / 4) % 3;
 
     struct DMA_Channel* cur = &channels[channel];
@@ -219,7 +375,7 @@ void DMA7_IOWriteHandler(struct DMA_Channel* channels, u32 addr, u32 val, const 
             if (cur->CR.Enable == true)
             {
                 // starting dma channel
-                DMA7_Enable(cur, channel);
+                DMA7_Enable(sys, cur, channel);
             }
             else
             {

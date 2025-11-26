@@ -74,7 +74,7 @@ struct Console
     struct ARM7TDMI ARM7;
 
     struct DMA_Controller DMA9;
-    struct DMA_Channel DMA7[4];
+    struct DMA_Controller DMA7;
 
     struct AHB AHB9;
     struct AHB AHB7;

@@ -322,8 +322,7 @@ u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
         else [[fallthrough]];
 
     default: // Unmapped Device;
-        LogPrint(LOG_ALWAYS, "%08lX %08lX %08lX\n", sys->ARM9.CP15.CR.Raw, sys->ARM9.CP15.ITCMCR.Raw, sys->ARM9.CP15.DTCMCR.Raw);
-        /*LogPrint(LOG_ODD|LOG_ARM9,*/ CrashSpectacularly("NTR_AHB9: %i bit read from unmapped memory at 0x%08X? Something went wrong?\n", width, addr);
+        LogPrint(LOG_ODD|LOG_ARM9, "NTR_AHB9: %i bit read from unmapped memory at 0x%08X? Something went wrong?\n", width, addr);
         Timing32(&sys->AHB9);
         ret = 0; // always reads 0
         break;
@@ -348,7 +347,7 @@ void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
     switch(addr >> 24) // check most signficant byte
     {
     case 0x02: // Main RAM
-        if (addr < 0x02000100) LogPrint(LOG_ALWAYS, "%08lX\n", val);
+        if (addr < 0x02000100) LogPrint(LOG_ALWAYS, "%i\n", val);
         Bus_MainRAM_Write(sys, &sys->AHB9, timestamp_max/*ah shit*/, addr, val, mask, atomic, hold, seq);
         break;
 
@@ -447,7 +446,9 @@ bool AHB9_NegOwnership(struct Console* sys, timestamp* cur, const u8 priority, c
     // check if anything else is able to run
     if (!atomic && (*cur >= DMA_TimeNextScheduled(sys->DMA9.ChannelTimestamps, priority)))
     {
-        // TODO: run higher priority components here
+        // TODO: run *lower* priority components here
+        int dmaid = DMA_NextScheduled(sys->DMA9.ChannelTimestamps, priority);
+        DMA9_Run(sys, &sys->DMA9.Channels[dmaid], dmaid);
 
         // catch up component to bus again; otherwise catch bus up to component
         if (*cur < bus->Timestamp) *cur = bus->Timestamp;
@@ -558,7 +559,7 @@ void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
     {
     case 0x020: // Main RAM
     case 0x028: // Main RAM
-        if (addr < 0x02000100) LogPrint(LOG_ALWAYS, "%08lX\n", val);
+        if (addr < 0x02000100) LogPrint(LOG_ALWAYS, "%i\n", val);
         Bus_MainRAM_Write(sys, &sys->AHB7, timestamp_max/*ah shit*/, addr, val, mask, atomic, hold, seq);
         break;
 
