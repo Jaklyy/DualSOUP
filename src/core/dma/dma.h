@@ -63,13 +63,15 @@ struct DMA_Controller
 {
     alignas(sizeof(timestamp[4])) timestamp ChannelTimestamps[4];
     struct DMA_Channel Channels[4];
+    u8 NextDMAID;
+    u8 EvtID;
 };
 
 struct Console;
 
-void DMA9_Run(struct Console* sys, struct DMA_Channel* channel, u8 id);
+void DMA_Run(struct Console* sys, struct DMA_Controller* cnt, u8 id, const bool a9);
 void DMA7_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 addr, u32 val, const u32 mask);
 void DMA9_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 addr, u32 val, u32 mask);
 u32 DMA_IOReadHandler(struct DMA_Channel* channels, u32 addr);
-timestamp DMA_TimeNextScheduled(const timestamp* ts, const unsigned numtst); // if you pass something greater than 4 i will kill you
-timestamp DMA_NextScheduled(const timestamp* ts, const unsigned numtst);
+void DMA_Schedule(struct Console* sys, struct DMA_Controller* cnt);
+timestamp DMA_CheckNext(struct Console* sys, struct DMA_Controller* cnt, u8* id);

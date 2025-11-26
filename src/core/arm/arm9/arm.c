@@ -190,6 +190,10 @@ if (!ARM9_CheckInterrupts(ARM9)) \
 
 [[nodiscard]] bool ARM9_CheckInterrupts(struct ARM946ES* ARM9)
 {
+    // TODO: fix for dsi mode
+    if ((ARM9->ARM.Timestamp/2) >= Console_GetARM7Cur(ARM9->ARM.Sys))
+        CR_Switch(ARM9->ARM.Sys->HandleARM7);
+
     if (cpu->WakeIRQ)
     {
 #if 0
@@ -299,11 +303,8 @@ void ARM9_MainLoop(struct ARM946ES* ARM9)
     {
         ARM9_Step(ARM9);
 
-        if (cpu->Sys->ARM7.ARM.Timestamp < (cpu->Timestamp / 2))
-            CR_Switch(cpu->Sys->HandleARM7);
-
-        /*if (((cpu->Timestamp / 2) >= cpu->Sys->endframe))
-            CR_Switch(cpu->Sys->HandleMain);*/
+        if (cpu->Timestamp >= cpu->Sys->ARM9Target)
+            CR_Switch(cpu->Sys->HandleMain);
     }
 }
 

@@ -62,6 +62,7 @@ struct BusMainRAM
     timestamp LastAccessTS; // when the last access ended; used for main ram prefetching, and sequential access handling
     bool WeirdStartAddr; // used for handling a quirk where main ram bursts will restart with certain start pos alignments
     bool LastWasRead; // if the last access was a read; used for some jank with mainram -> mainram dma ig
+    bool LastWasARM9; // used for which cpu was the last to go
 
     // pointers to timestamps for each bus that can access main ram.
     // if main ram is not in danger then that side should point to when they next awaken
@@ -83,8 +84,8 @@ struct BusMainRAM
     Bus9Timestamp
     */
 
-    timestamp* ARM9ThreatTimestamp;
-    timestamp* ARM7ThreatTimestamp;
+    //timestamp* ARM9ThreatTimestamp;
+    //timestamp* ARM7ThreatTimestamp;
     // Internal control reg for the FCRAM chip on the NDS.
     // NTR/USG ARM9 BIOS has init code for mainRAM @ offset 0x180.
     // Should be initialized using halfword r/w to the most significant halfword of mainRAM.
@@ -137,8 +138,8 @@ struct BusMainRAM
     } ControlReg;
 };
 
-[[nodiscard]] u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, const bool atomic, const bool hold, bool* seq);
-void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, const u32 mask, const bool atomic, const bool hold, bool* seq);
-[[nodiscard]] u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, const bool atomic, const bool hold, bool* seq);
-void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, const u32 mask, const bool atomic, const bool hold, bool* seq);
+[[nodiscard]] u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, const bool atomic, const bool hold, bool* seq, const bool timings);
+void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, const u32 mask, const bool atomic, bool* seq, const bool timings);
+[[nodiscard]] u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, const bool atomic, const bool hold, bool* seq, const bool timings);
+void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, const u32 mask, const bool atomic, bool* seq, const bool timings);
 bool AHB9_NegOwnership(struct Console* sys, timestamp* cur, const u8 priority, const bool atomic);

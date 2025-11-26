@@ -4,6 +4,13 @@
 
 
 
+
+
+// TODO: Testing passes needed
+// IPCSYNC
+// WRAMCR
+// EXMEMCNT
+
 u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask)
 {
     switch(addr & 0xFF'FF'FC)
@@ -19,6 +26,9 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask)
             return sys->IO.IPCSyncDataTo7
                     | (sys->IO.IPCSyncDataTo9 << 8)
                     | (sys->IO.IPCSyncIRQEnableTo7 << 14);
+
+        case 0x00'02'04: // External Memory Control
+            return sys->IO.ExtMemCR_Shared.Raw | sys->IO.ExtMemCR_7.Raw;
 
         default:
             LogPrint(LOG_ARM7 | LOG_UNIMP, "UNIMPLEMENTED IO7 READ: %08lX %08lX\n", addr, mask);
@@ -57,6 +67,11 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             }
             break;
         }
+
+        case 0x00'02'04: // exmemcnt
+            MaskedWrite(sys->IO.ExtMemCR_7.Raw, val, mask & 0x7F);
+            break;
+
         default:
             LogPrint(LOG_ARM7 | LOG_UNIMP, "UNIMPLEMENTED IO7 WRITE: %08lX %08lX %08lX\n", addr, val, mask);
             break;
@@ -79,6 +94,9 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask)
             return sys->IO.IPCSyncDataTo9
                     | (sys->IO.IPCSyncDataTo7 << 8)
                     | (sys->IO.IPCSyncIRQEnableTo9 << 14);
+
+        case 0x00'02'04: // External Memory Control
+            return sys->IO.ExtMemCR_Shared.Raw | sys->IO.ExtMemCR_9.Raw;
 
         case 0x00'02'08: // IME
             return sys->IO.IME9;
@@ -124,6 +142,19 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             }
             break;
         }
+
+        case 0x00'02'04: // exmemcnt
+            MaskedWrite(sys->IO.ExtMemCR_9.Raw, val, mask & 0x7F);
+            bool membit1 = sys->IO.ExtMemCR_Shared.MRSomething1;
+            bool membit2 = sys->IO.ExtMemCR_Shared.MRSomething2;
+
+            // TODO: this mask should change with DSi features
+            MaskedWrite(sys->IO.ExtMemCR_Shared.Raw, val, mask & 0xE880);
+
+            // these are probably write once...?
+            sys->IO.ExtMemCR_Shared.MRSomething1 |= membit1;
+            sys->IO.ExtMemCR_Shared.MRSomething2 |= membit2;
+            break;
 
         case 0x00'02'08: // IME
             sys->IO.IME9 = val & 1 & mask;

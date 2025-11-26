@@ -1,5 +1,6 @@
 #include "dma.h"
 #include "../console.h"
+#include "../scheduler.h"
 
 
 
@@ -22,34 +23,37 @@ void DMA_ScheduleStart()
 #endif
 }
 
-timestamp DMA_TimeNextScheduled(const timestamp* ts, const unsigned numtst)
+void DMA_Schedule(struct Console* sys, struct DMA_Controller* cnt)
 {
-    timestamp ret = timestamp_max;
+    timestamp time = timestamp_max;
+    int id = 4;
 
-    for (unsigned i = 0; i < numtst; i++)
+    for (unsigned i = 0; i < 4; i++)
     {
-        if (ret > ts[i])
+        if (time >= cnt->ChannelTimestamps[i])
         {
-            ret = ts[i];
+            time = cnt->ChannelTimestamps[i];
+            id = i;
         }
     }
-    return ret;
+    cnt->NextDMAID = id;
+    Schedule_Event(sys, cnt->EvtID, time);
 }
 
-timestamp DMA_NextScheduled(const timestamp* ts, const unsigned numtst)
+timestamp DMA_CheckNext(struct Console* sys, struct DMA_Controller* cnt, u8* id)
 {
-    timestamp ret = timestamp_max;
-    int rety = 4;
+    timestamp time = timestamp_max;
 
-    for (unsigned i = 0; i < numtst; i++)
+    int max = *id-1;
+    for (int i = max; i >= 0; i--)
     {
-        if (ret >= ts[i])
+        if (time >= cnt->ChannelTimestamps[i])
         {
-            ret = ts[i];
-            rety = i;
+            time = cnt->ChannelTimestamps[i];
+            *id = i;
         }
     }
-    return rety;
+    return time;
 }
 
 void DMA7_Enable(struct Console* sys, struct DMA_Channel* channel, u8 channel_id)
@@ -111,6 +115,8 @@ void DMA7_Enable(struct Console* sys, struct DMA_Channel* channel, u8 channel_id
         channel->SrcInc *= 2;
         channel->DstInc *= 2;
     }
+
+    DMA_Schedule(sys, &sys->DMA7);
 }
 
 void DMA9_Enable(struct Console* sys, struct DMA_Channel* channel, u8 channel_id)
@@ -194,12 +200,16 @@ void DMA9_Enable(struct Console* sys, struct DMA_Channel* channel, u8 channel_id
         channel->SrcInc *= 2;
         channel->DstInc *= 2;
     }
+    DMA_Schedule(sys, &sys->DMA9);
 }
 
-void DMA9_Run(struct Console* sys, struct DMA_Channel* channel, u8 id)
+void DMA_Run(struct Console* sys, struct DMA_Controller* cnt, u8 id, const bool a9)
 {
     u32 rmask;
     u32 wmask;
+
+    struct DMA_Channel* channel = &cnt->Channels[id];
+
     if (channel->CR.Width32)
     {
         rmask = wmask = u32_max;
@@ -213,25 +223,51 @@ void DMA9_Run(struct Console* sys, struct DMA_Channel* channel, u8 id)
     bool wseq = false;
     while(channel->Latched_NumWords > 0)
     {
-        if (!AHB9_NegOwnership(sys, &sys->AHB9.Timestamp, id, false))
+        if (a9)
         {
-            rseq = false;
-            wseq = false;
+            if (!AHB9_NegOwnership(sys, &sys->DMA9.ChannelTimestamps[id], id, false))
+            {
+                rseq = false;
+                wseq = false;
+            }
         }
-        u32 read = AHB9_Read(sys, &sys->AHB9.Timestamp, channel->Latched_SrcAddr, rmask, false, true, &rseq);
-
-        if (channel->SrcInc != 1) rseq = false;
+        timestamp time = cnt->ChannelTimestamps[id];
+        u32 read;
+        if (a9)
+        {
+            read = AHB9_Read(sys, &cnt->ChannelTimestamps[id], channel->Latched_SrcAddr, rmask, false, rseq, &rseq, true);
+        }
+        else
+        {
+            read = AHB7_Read(sys, &cnt->ChannelTimestamps[id], channel->Latched_SrcAddr, rmask, false, rseq, &rseq, true);
+        }
+        time = sys->DMA9.ChannelTimestamps[id] - time;
 
         channel->Latched_SrcAddr += channel->SrcInc;
 
-        if (!AHB9_NegOwnership(sys, &sys->AHB9.Timestamp, id, false))
+        if (a9)
         {
-            rseq = false;
-            wseq = false;
+            if (!AHB9_NegOwnership(sys, &cnt->ChannelTimestamps[id], id, false))
+            {
+                rseq = false;
+                wseq = false;
+            }
+            AHB9_Write(sys, &cnt->ChannelTimestamps[id], channel->Latched_DstAddr, read, wmask, false, &wseq, true);
         }
-        AHB9_Write(sys, &sys->AHB9.Timestamp, channel->Latched_DstAddr, read, wmask, false, true, &wseq);
+        else
+        {
+            AHB7_Write(sys, &cnt->ChannelTimestamps[id], channel->Latched_DstAddr, read, wmask, false, &wseq, true);
+        }
+        // CHECKME: should this only apply to the actual first?
+        if (!rseq)
+        {
+            // TODO: figure out why exactly this happens?
+            if (time == 1)
+                cnt->ChannelTimestamps[id] +=1;
+        }
 
-        if (channel->DstInc != 1) wseq = false;
+        rseq = (channel->SrcInc > 0);
+        wseq = (channel->DstInc > 0);
 
         channel->Latched_DstAddr += channel->DstInc;
 
@@ -259,6 +295,7 @@ void DMA9_Run(struct Console* sys, struct DMA_Channel* channel, u8 id)
     if (channel->CR.IRQ) // idk
         ;
 
+    DMA_Schedule(sys, cnt);
 }
 
 void DMA9_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 addr, u32 val, u32 mask)

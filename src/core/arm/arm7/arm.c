@@ -118,6 +118,9 @@ if (!ARM7_CheckInterrupts(ARM7)) \
 
 [[nodiscard]] bool ARM7_CheckInterrupts(struct ARM7TDMI* ARM7)
 {
+    if (ARM7->ARM.Timestamp >= Console_GetARM9Cur(ARM7->ARM.Sys))
+        CR_Switch(ARM7->ARM.Sys->HandleARM9);
+
     if (cpu->WakeIRQ)
     {
 #if 0
@@ -202,16 +205,12 @@ void ARM7_Step(struct ARM7TDMI* ARM7)
 
 void ARM7_MainLoop(struct ARM7TDMI* ARM7)
 {
-    LogPrint(0, "okay\n");
     while(true)
     {
         ARM7_Step(ARM7);
 
-        if ((cpu->Sys->ARM9.ARM.Timestamp / 2) < cpu->Timestamp)
-            CR_Switch(cpu->Sys->HandleARM9);
-
-        /*if ((cpu->Timestamp >= cpu->Sys->endframe))
-            CR_Switch(cpu->Sys->HandleMain);*/
+        if (cpu->Timestamp >= cpu->Sys->ARM7Target)
+            CR_Switch(cpu->Sys->HandleMain);
     }
 }
 

@@ -4,6 +4,7 @@
 #include "console.h"
 #include "arm/arm9/arm.h"
 #include "dma/dma.h"
+#include "scheduler.h"
 #include "utils.h"
 
 
@@ -37,6 +38,13 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7)
 
     // initialize coroutine handles
     sys->HandleMain = CR_Active();
+
+    if (sys->HandleMain == cr_null)
+    {
+        LogPrint(LOG_ALWAYS, "FATAL: Coroutine handle allocation failed.\n");
+        free(sys); // probably a good idea to not leak memory, just in case.
+        return nullptr;
+    }
 
     sys->HandleARM9 = CR_Create((void*)ARM9_MainLoop, &sys->ARM9);
 
@@ -89,8 +97,13 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7)
 
 void Console_DirectBoot(struct Console* sys, FILE* rom)
 {
-
+    // wram should probably be enabled...?
     sys->IO.WRAMCR = 3;
+
+    // set main ram bits to be enabled
+    sys->IO.ExtMemCR_Shared.MRSomething1 = true;
+    sys->IO.ExtMemCR_Shared.MRSomething2 = true;
+    sys->IO.ExtMemCR_Shared.MRPriority = true; // ARM7
 
     fseek(rom, 0x20, SEEK_SET);
     u32 vars[8];
@@ -109,7 +122,7 @@ void Console_DirectBoot(struct Console* sys, FILE* rom)
 
     for (unsigned i = 0; i < vars[3]/4; i++)
     {
-        AHB9_Write(sys, &nop, vars[2], arry[i], 0xFFFFFFFF, false, false, &nopy);
+        AHB9_Write(sys, &nop, vars[2], arry[i], 0xFFFFFFFF, false, &nopy, false);
         vars[2]+=4;
     }
     free(arry);
@@ -125,7 +138,7 @@ void Console_DirectBoot(struct Console* sys, FILE* rom)
 
     for (unsigned i = 0; i < vars[7]/4; i++)
     {
-        AHB7_Write(sys, &nop, vars[6], arry[i], 0xFFFFFFFF, false, false, &nopy);
+        AHB7_Write(sys, &nop, vars[6], arry[i], 0xFFFFFFFF, false, &nopy, false);
         vars[6]+=4;
     }
     free(arry);
@@ -149,20 +162,47 @@ void Console_Reset(struct Console* sys)
     sys->DMA9.ChannelTimestamps[1] = timestamp_max;
     sys->DMA9.ChannelTimestamps[2] = timestamp_max;
     sys->DMA9.ChannelTimestamps[3] = timestamp_max;
-}
 
-void Console_Scheduler(struct Console* sys)
-{
-    
+    sys->DMA7.ChannelTimestamps[0] = timestamp_max;
+    sys->DMA7.ChannelTimestamps[1] = timestamp_max;
+    sys->DMA7.ChannelTimestamps[2] = timestamp_max;
+    sys->DMA7.ChannelTimestamps[3] = timestamp_max;
+
+    for (int i = 0; i < Sched_MAX; i++)
+        sys->Sched.EventTimes[i] = timestamp_max;
 }
 
 void Console_MainLoop(struct Console* sys)
 {
+    Scheduler_Check(sys);
     while(true)
     {
-        if ((sys->ARM9.ARM.Timestamp / 2) < sys->ARM7.ARM.Timestamp)
+        if (Console_GetARM9Cur(sys) < Console_GetARM7Cur(sys))
             CR_Switch(sys->HandleARM9);
         else
             CR_Switch(sys->HandleARM7);
     }
+}
+
+timestamp Console_GetARM7Cur(struct Console* sys)
+{
+    timestamp ts = sys->ARM7.ARM.Timestamp;
+    if (ts < sys->AHB7.Timestamp)
+        ts = sys->AHB7.Timestamp;
+    if ((ts < sys->Sched.EventTimes[Sched_DMA7]) && (sys->Sched.EventTimes[Sched_DMA7] != timestamp_max))
+        ts = sys->Sched.EventTimes[Sched_DMA7];
+
+    return ts;
+}
+
+timestamp Console_GetARM9Cur(struct Console* sys)
+{
+    timestamp ts = sys->ARM9.ARM.Timestamp/2;
+
+    if (ts < sys->AHB9.Timestamp)
+        ts = sys->AHB9.Timestamp;
+
+    if ((ts < sys->Sched.EventTimes[Sched_DMA9]) && (sys->Sched.EventTimes[Sched_DMA9] != timestamp_max))
+        ts = sys->Sched.EventTimes[Sched_DMA9];
+    return ts;
 }

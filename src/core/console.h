@@ -7,6 +7,7 @@
 #include "dma/dma.h"
 #include "bus/ahb.h"
 #include "timer/timer.h"
+#include "scheduler.h"
 
 
 // system clocks
@@ -53,16 +54,6 @@ constexpr unsigned OAM_Size         = KiB(2);
 
 
 
-enum Scheduler_Events
-{
-    Sched_DMA9,
-    Sched_Timer9IRQ,
-
-    Sched_DMA7,
-
-    Sched_MAX,
-};
-
 
 struct Console
 {
@@ -80,11 +71,10 @@ struct Console
     struct AHB AHB7;
     struct BusMainRAM BusMR;
 
-    struct
-    {
-        u64 EventMask;
-        timestamp EventTimes[Sched_MAX];
-    } Scheduler;
+    struct Scheduler Sched;
+
+    timestamp ARM9Target;
+    timestamp ARM7Target;
 
     struct
     {
@@ -99,6 +89,46 @@ struct Console
 
         struct Timer Timers9[4];
         struct Timer Timers7[4];
+
+        union
+        {
+            u8 Raw;
+            struct
+            {
+                u8 GBARAMTimings : 2;
+                u8 GBAROMTimingsNS : 2;
+                u8 GBAROMTimingsSeq : 1;
+                u8 GBAPHIClock : 2;
+            };
+        } ExtMemCR_7;
+        union
+        {
+            u8 Raw;
+            struct
+            {
+                u8 GBARAMTimings : 2;
+                u8 GBAROMTimingsNS : 2;
+                u8 GBAROMTimingsSeq : 1;
+                u8 GBAPHIClock : 2;
+            };
+        } ExtMemCR_9;
+        union
+        {
+            u16 Raw;
+            struct
+            {
+                u16 : 7;
+                bool GBAPakAccess : 1; // enabled = arm7
+                u16 : 1;
+                bool NDSCard2Access: 1; // DSI ONLY
+                u16 : 1;
+                bool NDSCardAccess : 1; // enabled = arm7
+                u16 : 1;
+                bool MRSomething1 : 1; // idk
+                bool MRSomething2 : 1; // idk either
+                bool MRPriority : 1; // enabled = arm7 priority
+            };
+        } ExtMemCR_Shared;
     } IO;
 
     alignas(HOST_CACHEALIGN)
@@ -136,3 +166,6 @@ void Console_Reset(struct Console* sys);
 void Console_MainLoop(struct Console* sys);
 
 void Console_DirectBoot(struct Console* sys, FILE* rom);
+
+timestamp Console_GetARM7Cur(struct Console* sys);
+timestamp Console_GetARM9Cur(struct Console* sys);
