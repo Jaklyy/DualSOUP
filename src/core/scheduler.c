@@ -6,7 +6,7 @@
 
 
 
-void Scheduler_Check(struct Console* sys)
+void Scheduler_UpdateTargets(struct Console* sys)
 {
     timestamp next = timestamp_max;
     for (int i = 0; i < Sched_MAX; i++)
@@ -35,20 +35,28 @@ void Scheduler_Run(struct Console* sys)
     }
     if (nextevt == Sched_MAX) CrashSpectacularly("WHAT\n");
 
-    sys->Sched.EventCallbacks[nextevt](sys);
-    Scheduler_Check(sys);
+    sys->Sched.EventCallbacks[nextevt](sys, sys->Sched.EventTimes[nextevt]);
+    Scheduler_UpdateTargets(sys);
 }
 
-void Schedule_Event(struct Console* sys, void (*callback) (struct Console*), u8 event, timestamp time, const bool offset)
+void Scheduler_RunEventManual(struct Console* sys, timestamp time, const u8 event, const u8 a9)
 {
-    if (offset)
+    // need to catch up other components to ensure coherency
+    if (a9 && (time >= Console_GetARM7Cur(sys)))
+        CR_Switch(sys->HandleARM7);
+    if (!a9 && (time >= Console_GetARM9Cur(sys)))
+        CR_Switch(sys->HandleARM9);
+
+    if (time >= sys->Sched.EventTimes[event])
     {
-        sys->Sched.EventTimes[event] += time;
+        sys->Sched.EventCallbacks[event](sys, sys->Sched.EventTimes[event]);
+        Scheduler_UpdateTargets(sys);
     }
-    else
-    {
-        sys->Sched.EventTimes[event] = time;
-    }
+}
+
+void Schedule_Event(struct Console* sys, void (*callback) (struct Console*, timestamp), u8 event, timestamp time)
+{
+    sys->Sched.EventTimes[event] = time;
     sys->Sched.EventCallbacks[event] = callback;
-    Scheduler_Check(sys);
+    Scheduler_UpdateTargets(sys);
 }

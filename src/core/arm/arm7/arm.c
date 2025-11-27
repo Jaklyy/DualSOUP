@@ -121,7 +121,8 @@ if (!ARM7_CheckInterrupts(ARM7)) \
     if (ARM7->ARM.Timestamp >= Console_GetARM9Cur(ARM7->ARM.Sys))
         CR_Switch(ARM7->ARM.Sys->HandleARM9);
 
-    if (cpu->WakeIRQ)
+    // TODO: schedule this instead
+    if (cpu->Sys->IO.IME7 && !cpu->CPSR.IRQDisable && (cpu->Sys->IO.IE7 & cpu->Sys->IO.IF7))
     {
 #if 0
         if (cpu->FastInterruptRequest) // jakly why are you implementing this...

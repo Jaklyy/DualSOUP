@@ -7,6 +7,7 @@
 #include "scheduler.h"
 #include "utils.h"
 #include "video.h"
+#include "bus/io.h"
 
 
 
@@ -94,8 +95,15 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7)
     for (int i = 0; i < Sched_MAX; i++)
         sys->Sched.EventTimes[i] = timestamp_max;
 
+
+    for (int i = 0; i < IRQ_Max; i++)
+        sys->IRQSched9[i] = timestamp_max;
+
+    for (int i = 0; i < IRQ_Max; i++)
+        sys->IRQSched7[i] = timestamp_max;
+
     // TODO: is this always running?
-    Schedule_Event(sys, LCD_Scanline, Sched_Scanline, Scanline_Cycles, false);
+    Schedule_Event(sys, LCD_Scanline, Sched_Scanline, 0);
 
     sys->DMA9.ChannelTimestamps[0] = timestamp_max;
     sys->DMA9.ChannelTimestamps[1] = timestamp_max;
@@ -180,7 +188,7 @@ void Console_Reset(struct Console* sys)
 
 void Console_MainLoop(struct Console* sys)
 {
-    Scheduler_Check(sys);
+    Scheduler_UpdateTargets(sys);
     while(true)
     {
         CR_Switch(sys->HandleARM9);
@@ -211,4 +219,66 @@ timestamp Console_GetARM9Cur(struct Console* sys)
     if ((ts < sys->Sched.EventTimes[Sched_DMA9]) && (sys->Sched.EventTimes[Sched_DMA9] != timestamp_max))
         ts = sys->Sched.EventTimes[Sched_DMA9];
     return ts;
+}
+
+void IF9_Update(struct Console* sys, timestamp now)
+{
+    timestamp time = sys->Sched.EventTimes[Sched_IF9Update];
+    timestamp next = timestamp_max;
+    for (int i = 0; i < IRQ_Max; i++)
+    {
+        if (time >= sys->IRQSched9[i])
+        {
+            sys->IO.IF9 |= (1<<i);
+            sys->IRQSched9[i] = timestamp_max;
+        }
+        if (next > sys->IRQSched9[i])
+            next = sys->IRQSched9[i];
+    }
+    Schedule_Event(sys, IF9_Update, Sched_IF9Update, next);
+}
+
+void IF7_Update(struct Console* sys, timestamp now)
+{
+    timestamp time = sys->Sched.EventTimes[Sched_IF7Update];
+    timestamp next = timestamp_max;
+    for (int i = 0; i < IRQ_Max; i++)
+    {
+        if (time >= sys->IRQSched7[i])
+        {
+            sys->IO.IF7 |= (1<<i);
+            sys->IRQSched7[i] = timestamp_max;
+        }
+        if (next > sys->IRQSched7[i])
+            next = sys->IRQSched7[i];
+    }
+    Schedule_Event(sys, IF7_Update, Sched_IF7Update, next);
+}
+
+void Console_ScheduleIRQs(struct Console* sys, const u8 irq, const bool a9, timestamp time)
+{
+    timestamp* irqs;
+    if (a9)
+    {
+        irqs = sys->IRQSched9;
+    }
+    else
+    {
+        irqs = sys->IRQSched7;
+    }
+
+    irqs[irq] = time;
+
+    timestamp next = timestamp_max;
+
+    for (int i = 0; i < IRQ_Max; i++)
+    {
+        if (next > irqs[i])
+            next = irqs[i];
+    }
+
+    if (a9)
+        Schedule_Event(sys, IF9_Update, Sched_IF9Update, time);
+    else
+        Schedule_Event(sys, IF7_Update, Sched_IF7Update, time);
 }

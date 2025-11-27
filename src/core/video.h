@@ -7,4 +7,5 @@
 
 struct Console;
 
-void LCD_Scanline(struct Console* sys);
+void LCD_HBlank(struct Console* sys, timestamp now);
+void LCD_Scanline(struct Console* sys, timestamp now);

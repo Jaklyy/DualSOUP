@@ -27,8 +27,10 @@ constexpr unsigned SoundMixerOutput = 32768; //
 
 // yoinked from melonDS; should be validated personally.
 // they're written this way in melonDS; I'm not sure why? Probably makes sense with 2d gpu knowledge.
-constexpr unsigned Scanline_Cycles   = 355*3; // total length of a scanline in 16 MHz cycles.
-constexpr unsigned Frame_Cycles      = Scanline_Cycles * 263; // total frame length.
+constexpr unsigned ActiveRender_Cycles = 24+(256*3); // How long the PPUs are actively rendering graphics in a given scanline. (note: 24 cycles are not actually spent rendering)
+constexpr unsigned HBlank_Cycles       = 91*3; // length of the HBlank period.
+constexpr unsigned Scanline_Cycles     = HBlank_Cycles + ActiveRender_Cycles; // total length of a scanline in 16 MHz cycles.
+constexpr unsigned Frame_Cycles        = Scanline_Cycles * 263; // total frame length.
 constexpr long double FPS       = 59.8260982881; // how do I represent this losslessly.
 constexpr long double Framems   = 16.7151131131; // see above.
 constexpr long double VCountus  = 63.5555631677; // length of a scanline in us; see above.
@@ -75,6 +77,9 @@ struct Console
 
     struct Scheduler Sched;
 
+    alignas(HOST_CACHEALIGN) timestamp IRQSched9[24];
+    alignas(HOST_CACHEALIGN) timestamp IRQSched7[24];
+
     timestamp ARM9Target;
     timestamp ARM7Target;
 
@@ -88,6 +93,40 @@ struct Console
         u8 WRAMCR;
 
         bool IME9;
+        bool IME7;
+        u32 IE9;
+        u32 IF9;
+        u32 IE7;
+        u32 IF7;
+        union
+        {
+            u16 Raw;
+            struct
+            {
+                u16 : 3;
+                bool VBlankIRQ : 1;
+                bool HBlankIRQ : 1;
+                bool VCountMatchIRQ : 1;
+                u16 : 1;
+                u16 VCountMSB : 1;
+                u16 VCountLSB : 8;
+            };
+        } DispStatRW;
+        u16 TargetVCount;
+        u16 VCountNew;
+        bool VCountUpdate;
+        union
+        {
+            u8 Raw;
+            struct
+            {
+                bool VBlank : 1;
+                bool HBlank : 1;
+                bool VCountMatch : 1;
+                u8 : 3;
+                bool LCDReady : 1;
+            };
+        } DispStatRO;
 
         struct Timer Timers9[4];
         struct Timer Timers7[4];
@@ -169,5 +208,7 @@ void Console_MainLoop(struct Console* sys);
 
 void Console_DirectBoot(struct Console* sys, FILE* rom);
 
+
+void Console_ScheduleIRQs(struct Console* sys, const u8 irq, const bool a9, timestamp time);
 timestamp Console_GetARM7Cur(struct Console* sys);
 timestamp Console_GetARM9Cur(struct Console* sys);

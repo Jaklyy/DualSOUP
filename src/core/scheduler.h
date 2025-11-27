@@ -9,21 +9,27 @@ struct Console;
 enum Scheduler_Events : u8
 {
     Sched_DMA9,
-    Sched_Timer9IRQ,
+    Sched_IF9Update,
 
     Sched_DMA7,
+    Sched_IF7Update,
 
     Sched_Scanline,
 
-    Sched_MAX,
+    Sched_MAX
 };
 
 struct Scheduler
 {
     alignas(HOST_CACHEALIGN) timestamp EventTimes[Sched_MAX];
-    void (*EventCallbacks[Sched_MAX]) (struct Console*);
+    void (*EventCallbacks[Sched_MAX]) (struct Console*, timestamp);
 };
 
-void Scheduler_Check(struct Console* sys);
+// update targets
+void Scheduler_UpdateTargets(struct Console* sys);
+// run the next event in the scheduler
 void Scheduler_Run(struct Console* sys);
-void Schedule_Event(struct Console* sys, void (*callback) (struct Console*), u8 event, timestamp time, const bool offset);
+// check to run an event manually
+void Scheduler_RunEventManual(struct Console* sys, timestamp time, const u8 event, const u8 a9);
+// schedule an event to run
+void Schedule_Event(struct Console* sys, void (*callback) (struct Console*, timestamp), u8 event, timestamp time);
