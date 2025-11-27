@@ -301,10 +301,10 @@ void ARM9_MainLoop(struct ARM946ES* ARM9)
 {
     while(true)
     {
-        ARM9_Step(ARM9);
-
         if (cpu->Timestamp >= cpu->Sys->ARM9Target)
             CR_Switch(cpu->Sys->HandleMain);
+        else
+            ARM9_Step(ARM9);
     }
 }
 

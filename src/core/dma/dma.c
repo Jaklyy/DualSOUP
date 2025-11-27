@@ -23,7 +23,17 @@ void DMA_ScheduleStart()
 #endif
 }
 
-void DMA_Schedule(struct Console* sys, struct DMA_Controller* cnt)
+void DMA9_ScheduledRun(struct Console* sys)
+{
+    DMA_Run(sys, &sys->DMA9, sys->DMA9.EvtID, true);
+}
+
+void DMA7_ScheduledRun(struct Console* sys)
+{
+    DMA_Run(sys, &sys->DMA7, sys->DMA7.EvtID, false);
+}
+
+void DMA_Schedule(struct Console* sys, struct DMA_Controller* cnt, const bool a9)
 {
     timestamp time = timestamp_max;
     int id = 4;
@@ -37,7 +47,10 @@ void DMA_Schedule(struct Console* sys, struct DMA_Controller* cnt)
         }
     }
     cnt->NextDMAID = id;
-    Schedule_Event(sys, cnt->EvtID, time);
+    //if (a9)
+    //    Schedule_Event(sys, DMA9_ScheduledRun, cnt->EvtID, time, false);
+    //else
+    //    Schedule_Event(sys, DMA7_ScheduledRun, cnt->EvtID, time, false);
 }
 
 timestamp DMA_CheckNext(struct Console* sys, struct DMA_Controller* cnt, u8* id)
@@ -116,7 +129,7 @@ void DMA7_Enable(struct Console* sys, struct DMA_Channel* channel, u8 channel_id
         channel->DstInc *= 2;
     }
 
-    DMA_Schedule(sys, &sys->DMA7);
+    DMA_Schedule(sys, &sys->DMA7, false);
 }
 
 void DMA9_Enable(struct Console* sys, struct DMA_Channel* channel, u8 channel_id)
@@ -200,7 +213,7 @@ void DMA9_Enable(struct Console* sys, struct DMA_Channel* channel, u8 channel_id
         channel->SrcInc *= 2;
         channel->DstInc *= 2;
     }
-    DMA_Schedule(sys, &sys->DMA9);
+    DMA_Schedule(sys, &sys->DMA9, true);
 }
 
 void DMA_Run(struct Console* sys, struct DMA_Controller* cnt, u8 id, const bool a9)
@@ -295,7 +308,7 @@ void DMA_Run(struct Console* sys, struct DMA_Controller* cnt, u8 id, const bool 
     if (channel->CR.IRQ) // idk
         ;
 
-    DMA_Schedule(sys, cnt);
+    DMA_Schedule(sys, cnt, a9);
 }
 
 void DMA9_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 addr, u32 val, u32 mask)

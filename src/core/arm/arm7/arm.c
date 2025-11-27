@@ -207,10 +207,10 @@ void ARM7_MainLoop(struct ARM7TDMI* ARM7)
 {
     while(true)
     {
-        ARM7_Step(ARM7);
-
         if (cpu->Timestamp >= cpu->Sys->ARM7Target)
             CR_Switch(cpu->Sys->HandleMain);
+        else
+            ARM7_Step(ARM7);
     }
 }
 

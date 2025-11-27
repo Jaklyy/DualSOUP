@@ -6,6 +6,7 @@
 #include "dma/dma.h"
 #include "scheduler.h"
 #include "utils.h"
+#include "video.h"
 
 
 
@@ -90,6 +91,22 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7)
         }
     }
 
+    for (int i = 0; i < Sched_MAX; i++)
+        sys->Sched.EventTimes[i] = timestamp_max;
+
+    // TODO: is this always running?
+    Schedule_Event(sys, LCD_Scanline, Sched_Scanline, Scanline_Cycles, false);
+
+    sys->DMA9.ChannelTimestamps[0] = timestamp_max;
+    sys->DMA9.ChannelTimestamps[1] = timestamp_max;
+    sys->DMA9.ChannelTimestamps[2] = timestamp_max;
+    sys->DMA9.ChannelTimestamps[3] = timestamp_max;
+
+    sys->DMA7.ChannelTimestamps[0] = timestamp_max;
+    sys->DMA7.ChannelTimestamps[1] = timestamp_max;
+    sys->DMA7.ChannelTimestamps[2] = timestamp_max;
+    sys->DMA7.ChannelTimestamps[3] = timestamp_max;
+
     Console_Reset(sys);
 
     return sys;
@@ -158,18 +175,7 @@ void Console_Reset(struct Console* sys)
     ARM9_Reset(&sys->ARM9, false /*unverified I guess?*/, true);
     ARM7_Reset(&sys->ARM7);
 
-    sys->DMA9.ChannelTimestamps[0] = timestamp_max;
-    sys->DMA9.ChannelTimestamps[1] = timestamp_max;
-    sys->DMA9.ChannelTimestamps[2] = timestamp_max;
-    sys->DMA9.ChannelTimestamps[3] = timestamp_max;
-
-    sys->DMA7.ChannelTimestamps[0] = timestamp_max;
-    sys->DMA7.ChannelTimestamps[1] = timestamp_max;
-    sys->DMA7.ChannelTimestamps[2] = timestamp_max;
-    sys->DMA7.ChannelTimestamps[3] = timestamp_max;
-
-    for (int i = 0; i < Sched_MAX; i++)
-        sys->Sched.EventTimes[i] = timestamp_max;
+    // TODO: reset dma?
 }
 
 void Console_MainLoop(struct Console* sys)
@@ -177,10 +183,10 @@ void Console_MainLoop(struct Console* sys)
     Scheduler_Check(sys);
     while(true)
     {
-        if (Console_GetARM9Cur(sys) < Console_GetARM7Cur(sys))
-            CR_Switch(sys->HandleARM9);
-        else
-            CR_Switch(sys->HandleARM7);
+        CR_Switch(sys->HandleARM9);
+        CR_Switch(sys->HandleARM7);
+
+        Scheduler_Run(sys);
     }
 }
 

@@ -71,6 +71,8 @@ struct Console
     struct AHB AHB7;
     struct BusMainRAM BusMR;
 
+    u16 VCount;
+
     struct Scheduler Sched;
 
     timestamp ARM9Target;
