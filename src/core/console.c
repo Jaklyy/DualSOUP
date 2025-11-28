@@ -123,12 +123,12 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7)
 void Console_DirectBoot(struct Console* sys, FILE* rom)
 {
     // wram should probably be enabled...?
-    sys->IO.WRAMCR = 3;
+    sys->WRAMCR = 3;
 
     // set main ram bits to be enabled
-    sys->IO.ExtMemCR_Shared.MRSomething1 = true;
-    sys->IO.ExtMemCR_Shared.MRSomething2 = true;
-    sys->IO.ExtMemCR_Shared.MRPriority = true; // ARM7
+    sys->ExtMemCR_Shared.MRSomething1 = true;
+    sys->ExtMemCR_Shared.MRSomething2 = true;
+    sys->ExtMemCR_Shared.MRPriority = true; // ARM7
 
     fseek(rom, 0x20, SEEK_SET);
     u32 vars[8];
@@ -229,7 +229,7 @@ void IF9_Update(struct Console* sys, timestamp now)
     {
         if (time >= sys->IRQSched9[i])
         {
-            sys->IO.IF9 |= (1<<i);
+            sys->IF9 |= (1<<i);
             sys->IRQSched9[i] = timestamp_max;
         }
         if (next > sys->IRQSched9[i])
@@ -246,7 +246,7 @@ void IF7_Update(struct Console* sys, timestamp now)
     {
         if (time >= sys->IRQSched7[i])
         {
-            sys->IO.IF7 |= (1<<i);
+            sys->IF7 |= (1<<i);
             sys->IRQSched7[i] = timestamp_max;
         }
         if (next > sys->IRQSched7[i])

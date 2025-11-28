@@ -7,8 +7,9 @@ struct Console;
 // used for modelling write contention
 enum NTRAHB_Devices : u8
 {
+    Dev_Bios7, // ARM7 only
     Dev_MainRAM,
-    Dev_SWRAM,
+    Dev_WRAM,
     Dev_A7WRAM, // ARM7 only
     Dev_IO,
 

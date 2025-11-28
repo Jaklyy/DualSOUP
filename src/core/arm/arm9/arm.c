@@ -196,7 +196,7 @@ if (!ARM9_CheckInterrupts(ARM9)) \
         CR_Switch(ARM9->ARM.Sys->HandleARM7);
 
     // todo: schedule this instead
-    if (cpu->Sys->IO.IME9 && !cpu->CPSR.IRQDisable && (cpu->Sys->IO.IE9 & cpu->Sys->IO.IF9))
+    if (cpu->Sys->IME9 && !cpu->CPSR.IRQDisable && (cpu->Sys->IE9 & cpu->Sys->IF9))
     {
 #if 0
         if (cpu->FastInterruptRequest) // jakly why are you implementing this...

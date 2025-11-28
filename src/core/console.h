@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdio.h>
+#include "bus/io.h"
 #include "utils.h"
 #include "arm/arm9/arm.h"
 #include "arm/arm7/arm.h"
@@ -8,6 +9,7 @@
 #include "bus/ahb.h"
 #include "timer/timer.h"
 #include "scheduler.h"
+#include "irq.h"
 
 
 // system clocks
@@ -57,12 +59,20 @@ constexpr unsigned OAM_Size         = KiB(2);
 
 
 
+union VRAMCR
+{
+    u8 Raw;
+    struct
+    {
+        u32 Mode : 3;
+        u32 Offset : 2;
+        u32 : 2;
+        bool Enable : 1;
+    };
+};
+
 struct Console
 {
-    coroutine HandleMain;
-    coroutine HandleARM9;
-    coroutine HandleARM7;
-
     struct ARM946ES ARM9;
     struct ARM7TDMI ARM7;
 
@@ -73,104 +83,107 @@ struct Console
     struct AHB AHB7;
     struct BusMainRAM BusMR;
 
-    u16 VCount;
-
-    struct Scheduler Sched;
-
-    alignas(HOST_CACHEALIGN) timestamp IRQSched9[24];
-    alignas(HOST_CACHEALIGN) timestamp IRQSched7[24];
+    coroutine HandleMain;
+    coroutine HandleARM9;
+    coroutine HandleARM7;
 
     timestamp ARM9Target;
     timestamp ARM7Target;
 
-    struct
+    struct Scheduler Sched;
+
+    alignas(HOST_CACHEALIGN) timestamp IRQSched9[IRQ_Max];
+    alignas(HOST_CACHEALIGN) timestamp IRQSched7[IRQ_Max];
+
+    u16 VCount;
+
+    u8 IPCSyncDataTo9; // data sent to arm9
+    u8 IPCSyncDataTo7; // data sent to arm7
+    bool IPCSyncIRQEnableTo9; // enable for arm9
+    bool IPCSyncIRQEnableTo7; // enable irqs for arm7
+
+    bool IME9;
+    bool IME7;
+
+    alignas(u32) union VRAMCR VRAMCR[9];
+    u8 WRAMCR;
+    u32 IE9;
+    u32 IF9;
+    u32 IE7;
+    u32 IF7;
+    u32 DMAFill[4];
+    union
     {
-        u8 IPCSyncDataTo9; // data sent to arm9
-        u8 IPCSyncDataTo7; // data sent to arm7
-        bool IPCSyncIRQEnableTo9; // enable for arm9
-        bool IPCSyncIRQEnableTo7; // enable irqs for arm7
+        u16 Raw;
+        struct
+        {
+            u16 : 3;
+            bool VBlankIRQ : 1;
+            bool HBlankIRQ : 1;
+            bool VCountMatchIRQ : 1;
+            u16 : 1;
+            u16 VCountMSB : 1;
+            u16 VCountLSB : 8;
+        };
+    } DispStatRW;
+    u16 TargetVCount;
+    u16 VCountNew;
+    bool VCountUpdate;
+    union
+    {
+        u8 Raw;
+        struct
+        {
+            bool VBlank : 1;
+            bool HBlank : 1;
+            bool VCountMatch : 1;
+            u8 : 3;
+            bool LCDReady : 1;
+        };
+    } DispStatRO;
 
-        u8 WRAMCR;
+    struct Timer Timers9[4];
+    struct Timer Timers7[4];
 
-        bool IME9;
-        bool IME7;
-        u32 IE9;
-        u32 IF9;
-        u32 IE7;
-        u32 IF7;
-        union
+    union
+    {
+        u8 Raw;
+        struct
         {
-            u16 Raw;
-            struct
-            {
-                u16 : 3;
-                bool VBlankIRQ : 1;
-                bool HBlankIRQ : 1;
-                bool VCountMatchIRQ : 1;
-                u16 : 1;
-                u16 VCountMSB : 1;
-                u16 VCountLSB : 8;
-            };
-        } DispStatRW;
-        u16 TargetVCount;
-        u16 VCountNew;
-        bool VCountUpdate;
-        union
+            u8 GBARAMTimings : 2;
+            u8 GBAROMTimingsNS : 2;
+            u8 GBAROMTimingsSeq : 1;
+            u8 GBAPHIClock : 2;
+        };
+    } ExtMemCR_7;
+    union
+    {
+        u8 Raw;
+        struct
         {
-            u8 Raw;
-            struct
-            {
-                bool VBlank : 1;
-                bool HBlank : 1;
-                bool VCountMatch : 1;
-                u8 : 3;
-                bool LCDReady : 1;
-            };
-        } DispStatRO;
-
-        struct Timer Timers9[4];
-        struct Timer Timers7[4];
-
-        union
+            u8 GBARAMTimings : 2;
+            u8 GBAROMTimingsNS : 2;
+            u8 GBAROMTimingsSeq : 1;
+            u8 GBAPHIClock : 2;
+        };
+    } ExtMemCR_9;
+    union
+    {
+        u16 Raw;
+        struct
         {
-            u8 Raw;
-            struct
-            {
-                u8 GBARAMTimings : 2;
-                u8 GBAROMTimingsNS : 2;
-                u8 GBAROMTimingsSeq : 1;
-                u8 GBAPHIClock : 2;
-            };
-        } ExtMemCR_7;
-        union
-        {
-            u8 Raw;
-            struct
-            {
-                u8 GBARAMTimings : 2;
-                u8 GBAROMTimingsNS : 2;
-                u8 GBAROMTimingsSeq : 1;
-                u8 GBAPHIClock : 2;
-            };
-        } ExtMemCR_9;
-        union
-        {
-            u16 Raw;
-            struct
-            {
-                u16 : 7;
-                bool GBAPakAccess : 1; // enabled = arm7
-                u16 : 1;
-                bool NDSCard2Access: 1; // DSI ONLY
-                u16 : 1;
-                bool NDSCardAccess : 1; // enabled = arm7
-                u16 : 1;
-                bool MRSomething1 : 1; // idk
-                bool MRSomething2 : 1; // idk either
-                bool MRPriority : 1; // enabled = arm7 priority
-            };
-        } ExtMemCR_Shared;
-    } IO;
+            u16 : 7;
+            bool GBAPakAccess : 1; // enabled = arm7
+            u16 : 1;
+            bool NDSCard2Access: 1; // DSI ONLY
+            u16 : 1;
+            bool NDSCardAccess : 1; // enabled = arm7
+            u16 : 1;
+            bool MRSomething1 : 1; // idk
+            bool MRSomething2 : 1; // idk either
+            bool MRPriority : 1; // enabled = arm7 priority
+        };
+    } ExtMemCR_Shared;
 
     alignas(HOST_CACHEALIGN)
     // FCRAM

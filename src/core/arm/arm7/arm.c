@@ -122,7 +122,7 @@ if (!ARM7_CheckInterrupts(ARM7)) \
         CR_Switch(ARM7->ARM.Sys->HandleARM9);
 
     // TODO: schedule this instead
-    if (cpu->Sys->IO.IME7 && !cpu->CPSR.IRQDisable && (cpu->Sys->IO.IE7 & cpu->Sys->IO.IF7))
+    if (cpu->Sys->IME7 && !cpu->CPSR.IRQDisable && (cpu->Sys->IE7 & cpu->Sys->IF7))
     {
 #if 0
         if (cpu->FastInterruptRequest) // jakly why are you implementing this...

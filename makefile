@@ -36,10 +36,10 @@ OBJS := $(patsubst %,$(BUILDDIR)$(OBJDIR)/%,$(OBJS:.c=.o))
 
 $(BUILDDIR)$(OBJDIR)/%.o: %.c
 	@mkdir -p $(dir $@)
-	$(CC) -c -o $@ $< $(CFLAGS)
+	@$(CC) -c -o $@ $< $(CFLAGS)
 
 $(BUILDDIR)/DualSOUP: $(OBJS)
-	$(CC) -o $@ $^ $(CFLAGS)
+	@$(CC) -o $@ $^ $(CFLAGS)
 
 .PHONY: clean
 clean:
