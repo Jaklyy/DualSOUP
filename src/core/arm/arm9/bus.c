@@ -24,6 +24,16 @@ bool ARM9_DTCMTryWrite(const struct ARM946ES* ARM9, const u32 addr)
     return (((u64)addr >> ARM9->CP15.DTCMShift) == ARM9->CP15.DTCMWriteBase);
 }
 
+struct ARM9_MPUPerms ARM9_RegionLookup(const struct ARM946ES* ARM9, const u32 addr, const bool priv)
+{
+    for (int i = 7; i >= 0; i--)
+    {
+        if ((addr & ARM9->CP15.MPURegionMask[i]) == ARM9->CP15.MPURegionBase[i])
+            return (priv ? ARM9->CP15.MPURegionPermsPriv[i] : ARM9->CP15.MPURegionPermsUser[i]);
+    }
+    return (struct ARM9_MPUPerms) {.Read = false, .Write = false, .Exec = false, .ICache = false, .DCache = false, .Buffer = false};
+}
+
 // this function results in the timestamp being aligned with the bus clock
 void ARM9_AHBAccess(struct ARM946ES* ARM9, timestamp* ts, const bool atomic, bool* seq)
 {
@@ -138,6 +148,147 @@ void ARM9_RunWriteBuffer(struct ARM946ES* ARM9, const timestamp until)
     }
 }
 
+// xorshift algorithm i stole from wikipedia:
+// https://en.wikipedia.org/wiki/Xorshift
+// obvious but this is not even close to how this works.
+u64 ARM9_CachePRNG(u64* input)
+{
+	u64 x = *input;
+	x ^= x << 13;
+	x ^= x >> 7;
+	x ^= x << 17;
+	return *input = x;
+}
+
+u32 ARM9_ICacheLookup(struct ARM946ES* ARM9, const u32 addr)
+{
+    ARM9_ICacheSetLookup
+
+    // if we found a valid set we use that set.
+    if (set < ARM9_ICacheAssoc)
+    {
+        // use set to lookup into icache
+
+        // TODO: add contention cycle
+        ARM9_FetchCycles(ARM9, 1);
+        return ARM9->ICache.b32[((index | set)<<3) | ((addr/4) & 0x7)];
+    }
+
+    // cache line fill time, oh boy.
+
+    // roll for a set
+    if (ARM9->CP15.CR.CacheRR)
+        LogPrint(LOG_ARM9 | LOG_UNIMP, "ARM9 ICACHE ROUND ROBIN MODE UNIMPLEMENTED\n");
+
+    set = ARM9_CachePRNG(&ARM9->CP15.ICachePRNG) & 3;
+
+    // update tag ram
+    // CHECKME: is this actually done immediately?
+    ARM9->ITagRAM[index+set].Valid = true;
+    ARM9->ITagRAM[index+set].TagBits = (tagcmp >> 1);
+
+    // begin cache streaming
+
+    // CHECKME: can you read from icache mid-stream with test commands?
+    bool seq = false;
+    timestamp time = ARM9->ARM.Timestamp;
+    unsigned waittil = (addr / 4) & 0x7;
+    u32 actualaddr = addr & ~0x1F;
+    for (unsigned i = 0; i < 8; i++)
+    {
+        // TODO: Atomic access bug
+        ARM9->ICache.b32[((index | set)<<3) + i] = ARM9_AHBRead(ARM9, &time, actualaddr+(i*4), u32_max, false, &seq);
+        seq = true;
+        if (waittil == i)
+        {
+            ARM9->ARM.Timestamp = time;
+            ARM9->IStream.ReadPtr = &ARM9->ICache.b32[((index | set)<<3) | (i+1)];
+            ARM9->IStream.Prog = i;
+        }
+        else if (waittil < i)
+        {
+            ARM9->IStream.Times[i] = time;
+        }
+    }
+    ARM9_FetchCycles(ARM9, 0); // dummy to ensure coherency.
+    return ARM9->ICache.b32[((index | set)<<3) | ((addr/4) & 0x7)];
+}
+
+void DCache_CleanLine(struct ARM946ES* ARM9, const u32 idxset);
+
+u32 ARM9_DCacheReadLookup(struct ARM946ES* ARM9, const u32 addr)
+{
+    ARM9_DCacheSetLookup
+
+    // if we found a valid set we use that set.
+    if (set < ARM9_DCacheAssoc)
+    {
+        // use set to lookup into icache
+        LogPrint(0, "LOG: %i %i %08lX\n", index, set, ARM9->DTagRAM[index|set].Raw);
+        ARM9->MemTimestamp += 1;
+        return ARM9->DCache.b32[((index | set)<<3) | ((addr/4) & 0x7)];
+    }
+
+    // cache line fill time, oh boy.
+
+    // roll for a set
+    if (ARM9->CP15.CR.CacheRR)
+        LogPrint(LOG_ARM9 | LOG_UNIMP, "ARM9 DCACHE ROUND ROBIN MODE UNIMPLEMENTED\n");
+
+    set = ARM9_CachePRNG(&ARM9->CP15.DCachePRNG) & 3;
+
+    // CHECKME: can this trigger the clean+flush errata
+    DCache_CleanLine(ARM9, index|set);
+
+    // update tag ram
+    // CHECKME: is this actually done immediately?
+    ARM9->DTagRAM[index|set].Valid = true;
+    ARM9->DTagRAM[index|set].TagBits = (tagcmp >> 1);
+
+    // begin cache streaming
+
+    // CHECKME: can you read from icache mid-stream with test commands?
+    bool seq = false;
+    timestamp time = ARM9->MemTimestamp;
+    unsigned waittil = (addr / 4) & 0x7;
+    u32 actualaddr = addr & ~0x1F;
+    for (unsigned i = 0; i < 8; i++)
+    {
+        // TODO: Atomic access bug
+        ARM9->DCache.b32[((index | set)<<3) + i] = ARM9_AHBRead(ARM9, &time, actualaddr+(i*4), u32_max, false, &seq);
+        seq = true;
+        if (waittil == i)
+        {
+            ARM9->ARM.Timestamp = time;
+            ARM9->DStream.ReadPtr = &ARM9->DCache.b32[((index | set)<<3) | (i+1)];
+            ARM9->DStream.Prog = i;
+        }
+        else if (waittil < i)
+        {
+            ARM9->DStream.Times[i] = time;
+        }
+    }
+    return ARM9->DCache.b32[((index | set)<<3) | ((addr/4) & 0x7)];
+}
+
+bool ARM9_DCacheWriteLookup(struct ARM946ES* ARM9, const u32 addr, const u32 val, const u32 mask)
+{
+    ARM9_DCacheSetLookup
+
+    // if we found a valid set we use that set.
+    if (set < ARM9_DCacheAssoc)
+    {
+        // use set to lookup into icache
+
+        // CHECKME: does this actually contention?
+        ARM9->DataContTS = ARM9->MemTimestamp + 1;
+        ARM9->MemTimestamp += 1;
+        MaskedWrite(ARM9->DCache.b32[((index | set)<<3) | ((addr/4) & 0x7)], val, mask);
+        return true;
+    }
+    return false;
+}
+
 bool ARM9_ProgressCacheStream(timestamp* ts, struct ARM9_CacheStream* stream, u32* ret, const bool seq)
 {
     // check if stream is even active
@@ -154,11 +305,12 @@ bool ARM9_ProgressCacheStream(timestamp* ts, struct ARM9_CacheStream* stream, u3
     }
     *ret = *stream->ReadPtr;
     stream->ReadPtr += 4;
+    stream->Prog++;
     return true;
 }
 
 // always 32 bit
-u32 ARM9_InstrRead(struct ARM946ES* ARM9, const u32 addr)
+u32 ARM9_InstrRead(struct ARM946ES* ARM9, const u32 addr, const struct ARM9_MPUPerms perms)
 {
     // itcm
     if (ARM9_ITCMTryRead(ARM9, addr))
@@ -168,7 +320,10 @@ u32 ARM9_InstrRead(struct ARM946ES* ARM9, const u32 addr)
         return MemoryRead(32, ARM9->ITCM, addr, ARM9_ITCMSize);
     }
 
-    // TODO: icache lookup
+    if (perms.ICache)
+    {
+        return ARM9_ICacheLookup(ARM9, addr);
+    }
 
     // TODO: run write buffer here (not drain)
     // instruction accesses never drain write buffer.
@@ -196,9 +351,10 @@ void ARM9_InstrRead32(struct ARM946ES* ARM9, const u32 addr)
         return;
     }
 
+    const struct ARM9_MPUPerms perms = ARM9_RegionLookup(ARM9, addr, ARM9->ARM.Privileged);
     // TODO: prefetch abort
     // CHECKME: is this before or after cache streaming is checked for
-    if (false)
+    if (!perms.Exec)
     {
         ARM9_FetchCycles(ARM9, 1);
 
@@ -209,7 +365,7 @@ void ARM9_InstrRead32(struct ARM946ES* ARM9, const u32 addr)
     }
     else
     {
-        ARM9->ARM.Instr[2] = (struct ARM_Instr){.Raw = ARM9_InstrRead(ARM9, addr),
+        ARM9->ARM.Instr[2] = (struct ARM_Instr){.Raw = ARM9_InstrRead(ARM9, addr, perms),
                                                 .Aborted = false,
                                                 .CoprocPriv = ARM9->ARM.Privileged,
                                                 .Flushed = false};
@@ -229,16 +385,11 @@ void ARM9_InstrRead16(struct ARM946ES* ARM9, const u32 addr)
         // use latched halfword
         instr = ARM9->LatchedHalfword;
     }
-    else if (ARM9_ProgressCacheStream(&ARM9->ARM.Timestamp, &ARM9->IStream, &instr, ARM9->ARM.CodeSeq))
-    {
-        // add dummy cycles to ensure coherency
-        ARM9_FetchCycles(ARM9, 0);
-    }
     else
     {
-        // TODO: prefetch abort
+        const struct ARM9_MPUPerms perms = ARM9_RegionLookup(ARM9, addr, ARM9->ARM.Privileged);
         // CHECKME: is this before or after cache streaming is checked for
-        if (false)
+        if (!perms.Exec)
         {
             ARM9_FetchCycles(ARM9, 1);
             ARM9->ARM.Instr[2] = (struct ARM_Instr){.Raw = 0xBE00, // encode bkpt as a minor hack to avoid needing dedicated prefetch abort handling.
@@ -248,8 +399,13 @@ void ARM9_InstrRead16(struct ARM946ES* ARM9, const u32 addr)
             return;
         }
         else
-        {
-            instr = ARM9_InstrRead(ARM9, addr);
+        { 
+            if (ARM9_ProgressCacheStream(&ARM9->ARM.Timestamp, &ARM9->IStream, &instr, ARM9->ARM.CodeSeq))
+            {
+                // add dummy cycles to ensure coherency
+                ARM9_FetchCycles(ARM9, 0);
+            }
+            else instr = ARM9_InstrRead(ARM9, addr, perms);
 
             if (addr & 2)
             {
@@ -287,7 +443,11 @@ u32 ARM9_DataRead(struct ARM946ES* ARM9, const u32 addr, const u32 mask, bool* s
         *seq = false;
     }
 
-    // TODO: CACHE STREAMING HANDLING
+    u32 ret;
+    if (ARM9_ProgressCacheStream(&ARM9->MemTimestamp, &ARM9->DStream, &ret, *seq))
+    {
+        return ret;
+    }
 
     // handle contention
     // CHECKME: does this apply to aborts?
@@ -295,7 +455,8 @@ u32 ARM9_DataRead(struct ARM946ES* ARM9, const u32 addr, const u32 mask, bool* s
     if (ARM9->MemTimestamp < ARM9->DataContTS)
         ARM9->MemTimestamp = ARM9->DataContTS;
 
-    if (false) // TODO: Data Aborts
+    const struct ARM9_MPUPerms perms = ARM9_RegionLookup(ARM9, addr, ARM9->ARM.Privileged);
+    if (!perms.Read) // TODO: Data Aborts
     {
         *dabt = true;
     }
@@ -313,9 +474,11 @@ u32 ARM9_DataRead(struct ARM946ES* ARM9, const u32 addr, const u32 mask, bool* s
         *seq = true;
         return MemoryRead(32, ARM9->DTCM, addr, ARM9_ITCMSize);
     }
-    else if (false)
+    else if (perms.DCache)
     {
-        // dcache
+        ret = ARM9_DCacheReadLookup(ARM9, addr);
+        *seq = true;
+        return ret;
     }
 
     if (false)
@@ -329,7 +492,7 @@ u32 ARM9_DataRead(struct ARM946ES* ARM9, const u32 addr, const u32 mask, bool* s
 
     // note: Technically the initial load in SWP(B) is atomic, but I dont think that actually matters in any way?
     // So I dont think we actually need to handle anything here?
-    u32 ret = ARM9_AHBRead(ARM9, &ARM9->MemTimestamp /*not quite sure how I want to handle this yet?*/, addr, mask, false, seq);
+    ret = ARM9_AHBRead(ARM9, &ARM9->MemTimestamp /*not quite sure how I want to handle this yet?*/, addr, mask, false, seq);
 
     *seq = true;
     return ret;
@@ -367,7 +530,7 @@ void ARM9_DataWrite(struct ARM946ES* ARM9, u32 addr, const u32 val, const u32 ma
         *seq = false;
     }
 
-    // TODO: CACHE STREAMING HANDLING
+    ARM9_ProgressCacheStream(&ARM9->MemTimestamp, &ARM9->DStream, NULL, false);
 
     // handle contention
     // CHECKME: does this apply to aborts?
@@ -376,7 +539,8 @@ void ARM9_DataWrite(struct ARM946ES* ARM9, u32 addr, const u32 val, const u32 ma
     if (ARM9->MemTimestamp < ARM9->DataContTS)
         ARM9->MemTimestamp = ARM9->DataContTS;
 
-    if (false) // TODO: Data Aborts
+    const struct ARM9_MPUPerms perms = ARM9_RegionLookup(ARM9, addr, ARM9->ARM.Privileged);
+    if (!perms.Write) // TODO: Data Aborts
     {
         *dabt = true;
     }
@@ -399,9 +563,10 @@ void ARM9_DataWrite(struct ARM946ES* ARM9, u32 addr, const u32 val, const u32 ma
         *seq = true;
         return;
     }
-    else if (false)
+    else if (perms.DCache && ARM9_DCacheWriteLookup(ARM9, addr, val, mask))
     {
-        // dcache
+        *seq = true;
+        return;
     }
 
     if (false)

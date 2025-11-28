@@ -19,7 +19,8 @@ void ARM9_Init(struct ARM946ES* ARM9, struct Console* sys)
     // 7 indicates no cache streaming in progress
     ARM9->DStream.Prog = 7;
     ARM9->IStream.Prog = 7;
-
+    ARM9->CP15.DCachePRNG = 0x0123456789ABCDEF;
+    ARM9->CP15.ICachePRNG = 0xFEDCBA9876543210;
     // finally something being initialized that isn't a constant!
     // this needs to not be 0, because a lot of logic relies on this timestamp - 1
     //ARM9->MemTimestamp = 1; nvm we dont need this actually i was dumb
@@ -292,6 +293,7 @@ void ARM9_Step(struct ARM946ES* ARM9)
     }
 
     // TEMP: debugging
+    //ARM9_DumpMPU(ARM9);
     //ARM9_Log(ARM9);
 }
 

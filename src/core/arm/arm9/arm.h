@@ -88,7 +88,7 @@ union ARM9_ICacheTagsInternal
     struct
     {
         bool Valid : 1;
-        u32 TagBits : 32 - (CTZ_CONSTEXPR(ARM9_ICacheIndices) + CTZ_CONSTEXPR(ARM9_ICacheAssoc) + 3);
+        u32 TagBits : 32 - (CTZ_CONSTEXPR(ARM9_ICacheIndices) + CTZ_CONSTEXPR(ARM9_ICacheAssoc) + CTZ_CONSTEXPR(ARM9_ICacheLineLength));
     };
 };
 
@@ -102,7 +102,7 @@ union ARM9_ICacheTagsExternal
         u32 AlwaysClear : 2; // Dirty tags do not exist for ICache
         bool Valid : 1;
         u32 Index : CTZ_CONSTEXPR(ARM9_ICacheIndices);
-        u32 TagBits : 32 - (CTZ_CONSTEXPR(ARM9_ICacheIndices) + CTZ_CONSTEXPR(ARM9_ICacheAssoc) + 3);
+        u32 TagBits : 32 - (CTZ_CONSTEXPR(ARM9_ICacheIndices) + CTZ_CONSTEXPR(ARM9_ICacheAssoc) + CTZ_CONSTEXPR(ARM9_ICacheLineLength));
     };
 };
 
@@ -116,7 +116,7 @@ union ARM9_DCacheTagsInternal
         bool DirtyLo : 1; // Lower half of cache line is dirty
         bool DirtyHi : 1; // Upper half of cache line is dirty
         bool Valid : 1;
-        u32 TagBits : 32 - (CTZ_CONSTEXPR(ARM9_DCacheIndices) + CTZ_CONSTEXPR(ARM9_DCacheAssoc) + 3);
+        u32 TagBits : 32 - (CTZ_CONSTEXPR(ARM9_DCacheIndices) + CTZ_CONSTEXPR(ARM9_DCacheAssoc) + CTZ_CONSTEXPR(ARM9_DCacheLineLength));
     };
 };
 
@@ -131,7 +131,7 @@ union ARM9_DCacheTagsExternal
         bool DirtyHi : 1; // Upper half of cache line is dirty
         bool Valid : 1;
         u32 Index : CTZ_CONSTEXPR(ARM9_DCacheIndices);
-        u32 TagBits : 32 - (CTZ_CONSTEXPR(ARM9_DCacheIndices) + CTZ_CONSTEXPR(ARM9_DCacheAssoc) + 3);
+        u32 TagBits : 32 - (CTZ_CONSTEXPR(ARM9_DCacheIndices) + CTZ_CONSTEXPR(ARM9_DCacheAssoc) + CTZ_CONSTEXPR(ARM9_DCacheLineLength));
     };
 };
 
@@ -187,6 +187,55 @@ struct ARM9_WriteBuffer
     u8 FIFOFillPtr;
     u8 FIFODrainPtr;
 };
+
+struct ARM9_MPUPerms
+{
+    bool Read : 1;
+    bool Write : 1;
+    bool Exec : 1;
+    bool ICache : 1;
+    bool DCache : 1;
+    bool Buffer : 1;
+};
+
+#define ARM9_ICacheSetLookup \
+    /* TODO: consider unhardcoding this shit */ \
+    /* isolate index */ \
+    u32 index = (addr & 0x000007E0) >> 3; \
+    /* isolate tag and set valid bit */ \
+    /* this will be used for lookup */ \
+    u32 tagcmp = (addr >> 10) | 1; \
+     \
+    /* lookup valid set */ \
+    u8 set = ARM9_ICacheAssoc; \
+    for (unsigned i = 0; i < ARM9_ICacheAssoc; i++) \
+    { \
+        if (ARM9->ITagRAM[index+i].Raw == tagcmp) \
+        { \
+            set = i; \
+            break; \
+        } \
+    }
+
+#define ARM9_DCacheSetLookup \
+    /* TODO: consider unhardcoding this shit */ \
+    /* isolate index */ \
+    u32 index = (addr & 0x000003E0) >> 3; \
+    /* isolate tag and set valid bit */ \
+    /* this will be used for lookup */ \
+    u32 tagcmp = (addr >> 9) | 1; \
+     \
+    /* lookup valid set */ \
+    u8 set = ARM9_DCacheAssoc; \
+    for (unsigned i = 0; i < ARM9_DCacheAssoc; i++) \
+    { \
+        /* note: we need to shift out the dirty flags before comparing */ \
+        if ((ARM9->DTagRAM[index+i].Raw >> 2) == tagcmp) \
+        { \
+            set = i; \
+            break; \
+        } \
+    }
 
 /*
     arm9 invalid modes:
@@ -251,7 +300,6 @@ struct ARM946ES
         u8 WriteBufferConfig; // "This register only applies to data accesses." WHAT DOES THAT EVEN MEAN?????
         u32 DataPermsReg;
         u32 InstrPermsReg;
-        //u32 MPURegionCR[8];
         union ARM9_RegionCR MPURegionCR[8];
         union ARM9_CacheLockdownCR DCacheLockdownCR;
         union ARM9_CacheLockdownCR ICacheLockdownCR;
@@ -264,6 +312,12 @@ struct ARM946ES
         u8 ITCMShift;
         u64 DTCMReadBase;
         u64 DTCMWriteBase;
+        alignas(sizeof(u8)*8) struct ARM9_MPUPerms MPURegionPermsUser[8];
+        alignas(sizeof(u32)*8) u32 MPURegionBase[8];
+        alignas(sizeof(u32)*8) u32 MPURegionMask[8];
+        alignas(sizeof(u8)*8) struct ARM9_MPUPerms MPURegionPermsPriv[8];
+        u64 DCachePRNG;
+        u64 ICachePRNG;
     } CP15; // Coprocessor 15; System Control.
     MEMORY(DTCM, ARM9_DTCMSize);
     MEMORY(ITCM, ARM9_ITCMSize);
@@ -343,3 +397,8 @@ void ARM9_Uncond(struct ARM* cpu, const struct ARM_Instr instr_data); // idk whe
 
 void ARM9_ConfigureITCM(struct ARM946ES* ARM9);
 void ARM9_ConfigureDTCM(struct ARM946ES* ARM9);
+void ARM9_ConfigureMPURegionSize(struct ARM946ES* ARM9, const u8 rgn);
+void ARM9_ConfigureMPURegionPerms(struct ARM946ES* ARM9);
+
+// Logging
+void ARM9_DumpMPU(const struct ARM946ES* ARM9);

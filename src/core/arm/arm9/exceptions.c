@@ -113,6 +113,26 @@ void ARM9_Reset(struct ARM946ES* ARM9, const bool itcm, const bool hivec)
     // reset all this junk.
     ARM9_ConfigureITCM(ARM9);
     ARM9_ConfigureDTCM(ARM9);
+    for (int i = 0; i < 8; i++)
+        ARM9_ConfigureMPURegionSize(ARM9, i);
+
+    ARM9_ConfigureMPURegionPerms(ARM9);
+
+    // cheat to encode mpu off perms in rgn 7
+    ARM9->CP15.MPURegionPermsPriv[7].Read = true;
+    ARM9->CP15.MPURegionPermsPriv[7].Write = true;
+    ARM9->CP15.MPURegionPermsPriv[7].Exec = true;
+    ARM9->CP15.MPURegionPermsPriv[7].DCache = false;
+    ARM9->CP15.MPURegionPermsPriv[7].ICache = false;
+    ARM9->CP15.MPURegionPermsPriv[7].Buffer = false;
+    ARM9->CP15.MPURegionPermsUser[7].Read = true;
+    ARM9->CP15.MPURegionPermsUser[7].Write = true;
+    ARM9->CP15.MPURegionPermsUser[7].Exec = true;
+    ARM9->CP15.MPURegionPermsUser[7].DCache = false;
+    ARM9->CP15.MPURegionPermsUser[7].ICache = false;
+    ARM9->CP15.MPURegionPermsUser[7].Buffer = false;
+    ARM9->CP15.MPURegionBase[7] = 0;
+    ARM9->CP15.MPURegionMask[7] = 0;
 
     cpu->CpuSleeping = 0;
 
