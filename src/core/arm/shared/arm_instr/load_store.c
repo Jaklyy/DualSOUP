@@ -34,6 +34,7 @@ void ARM_LoadStore(struct ARM* cpu, const struct ARM_Instr instr_data)
 
     // worth noting that unlike the thumb version this doesn't enforce word alignment for pc
     u32 addr = ARM_GetReg(instr.Rn);
+    u32 baserestore = addr;
     u32 offset;
 
     // calculate offset
@@ -143,13 +144,13 @@ void ARM_LoadStore(struct ARM* cpu, const struct ARM_Instr instr_data)
 
     ARM_StepPC(cpu, false);
 
+    bool seq = false;
+    bool dabt = false;
     if (instr.Load)
     {
         // Load
         u32 val;
         u32 interlock = 0;
-        bool seq = false;
-        bool dabt = false;
         if (cpu->CPUID == ARM7ID)
         {
             // TODO
@@ -188,29 +189,30 @@ void ARM_LoadStore(struct ARM* cpu, const struct ARM_Instr instr_data)
             // TODO: data abort
         }
 
-        // rotate result right based on lsb of address.
-        val = ROR32(val, (addr&3) * 8);
-
-        if (instr.Byte)
+        if (!dabt)
         {
-            val &= 0xFF;
-        }
+            // rotate result right based on lsb of address.
+            val = ROR32(val, (addr&3) * 8);
 
-        // loads can interwork on arm9 when the disable bit is clear.
-        if ((instr.Rd == 15) && ARM_CanLoadInterwork)
-        {
-            ARM_SetThumb(cpu, val & 1);
-        }
+            if (instr.Byte)
+            {
+                val &= 0xFF;
+            }
 
-        ARM_SetReg(instr.Rd, val, interlock, interlock+1);
+            // loads can interwork on arm9 when the disable bit is clear.
+            if ((instr.Rd == 15) && ARM_CanLoadInterwork)
+            {
+                ARM_SetThumb(cpu, val & 1);
+            }
+
+            ARM_SetReg(instr.Rd, val, interlock, interlock+1);
+        }
     }
     else
     {
         // Store
         u32 val = ARM_GetReg(instr.Rd);
         u32 mask;
-        bool seq = false;
-        bool dabt = false;
 
         if (instr.Byte)
         {
@@ -232,6 +234,13 @@ void ARM_LoadStore(struct ARM* cpu, const struct ARM_Instr instr_data)
             // TODO: Data abort
         }
     }
+
+    if (dabt)
+    {
+        ARM_SetReg(instr.Rn, baserestore, 0, 0);
+        ARM9_DataAbort(ARM9Cast);
+    }
+
     // oh yeah restore this too.
     cpu->Privileged = oldpriv;
 }
@@ -294,6 +303,7 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
     }
 
     u32 addr = ARM_GetReg(instr.Rn);
+    u32 baserestore = addr;
     u32 offset;
     if (instr.Immediate)
     {
@@ -354,6 +364,8 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
 
     ARM_StepPC(cpu, false);
 
+    bool seq = false;
+    bool dabt = false;
     switch(opcode)
     {
     case 0b001: // STRH
@@ -361,8 +373,6 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
         // Store
         u32 val = ARM_GetReg(instr.Rd);
 
-        bool seq = false;
-        bool dabt = false;
         u32 mask;
         val = ROL32(val, (addr & 2) * 8);
         mask = ROL32(u16_max, ((addr & 2) * 8));
@@ -383,8 +393,6 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
     case 0b111: // LDRSH
     {
         u32 val;
-        bool seq = false;
-        bool dabt = false;
         if (cpu->CPUID == ARM7ID)
         {
             u32 mask = u16_max << ((addr & 2) * 8);
@@ -421,20 +429,21 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
                 val = ((s32)(s16)val);
         }
 
-        // loads can interwork on arm9 when the disable bit is clear.
-        if ((instr.Rd == 15) && ARM_CanLoadInterwork)
+        if (!dabt)
         {
-            ARM_SetThumb(cpu, val & 1);
-        }
+            // loads can interwork on arm9 when the disable bit is clear.
+            if ((instr.Rd == 15) && ARM_CanLoadInterwork)
+            {
+                ARM_SetThumb(cpu, val & 1);
+            }
 
-        ARM_SetReg(instr.Rd, val, 1, 2);
+            ARM_SetReg(instr.Rd, val, 1, 2);
+        }
         break;
     }
     case 0b110: // LDRSB
     {
         u32 val;
-        bool seq = false;
-        bool dabt = false;
         if (cpu->CPUID == ARM7ID)
         {
             u32 mask = u16_max << ((addr & 3) * 8);
@@ -470,16 +479,25 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
             val = (s8)val;
         }
 
-        // loads can interwork on arm9 when the disable bit is clear.
-        if ((instr.Rd == 15) && ARM_CanLoadInterwork)
+        if (!dabt)
         {
-            ARM_SetThumb(cpu, val & 1);
-        }
+            // loads can interwork on arm9 when the disable bit is clear.
+            if ((instr.Rd == 15) && ARM_CanLoadInterwork)
+            {
+                ARM_SetThumb(cpu, val & 1);
+            }
 
-        ARM_SetReg(instr.Rd, val, 1, 2);
+            ARM_SetReg(instr.Rd, val, 1, 2);
+        }
         break;
     }
-    default: LogPrint(LOG_ALWAYS, "INVALID LOAD/STORE MISC OPCODE!!!!!!!\n"); break;
+    default: CrashSpectacularly("INVALID LOAD/STORE MISC OPCODE!!!!!!!\n"); break;
+    }
+
+    if (dabt)
+    {
+        ARM_SetReg(instr.Rn, baserestore, 0, 0);
+        ARM9_DataAbort(ARM9Cast);
     }
 }
 
@@ -530,6 +548,7 @@ void ARM_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
     if (instr.S) CrashSpectacularly("UNIMPLEMENTED LDM/STM!!!! %08lX @ %08lX\n", instr_data.Raw, cpu->PC);
 
     u32 addr = ARM_GetReg(instr.Rn);
+    u32 baserestore = addr;
 
     unsigned nregs = stdc_count_ones((u16)instr.RList);
 
@@ -586,13 +605,16 @@ void ARM_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
                     ARM_SetReg(instr.Rn, wbaddr, 0, 0);
             }
 
-            // loads can interwork on arm9 when the disable bit is clear.
-            if ((reg == 15) && ARM_CanLoadInterwork)
+            if (!dabt)
             {
-                ARM_SetThumb(cpu, val & 1);
-            }
+                // loads can interwork on arm9 when the disable bit is clear.
+                if ((reg == 15) && ARM_CanLoadInterwork)
+                {
+                    ARM_SetThumb(cpu, val & 1);
+                }
 
-            ARM_SetReg(reg, val, 1, 1);
+                ARM_SetReg(reg, val, 1, 1);
+            }
 
             // increment address
             addr += 4;
@@ -635,6 +657,7 @@ void ARM_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
     {
         if (cpu->CPUID == ARM9ID)
         {
+            // CHECKME: does this occur if it data aborted?
             // not an interlock but close enough
             ARM9_InterlockStall(ARM9Cast, 1);
             // writeback seems to always occur after the first fetch
@@ -648,6 +671,12 @@ void ARM_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
     {
         cpu->Timestamp += 1;
         cpu->CodeSeq = false;
+    }
+
+    if (dabt)
+    {
+        ARM_SetReg(instr.Rn, baserestore, 0, 0);
+        ARM9_DataAbort(ARM9Cast);
     }
 }
 

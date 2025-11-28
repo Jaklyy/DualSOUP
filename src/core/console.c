@@ -13,7 +13,7 @@
 
 
 // TODO: this function probably shouldn't manage memory on its own?
-struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7)
+struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, void* pad)
 {
     if (sys == nullptr)
     {
@@ -63,6 +63,7 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7)
     {
         LogPrint(LOG_ALWAYS, "FATAL: Coroutine handle allocation failed.\n");
         free(sys); // probably a good idea to not leak memory, just in case.
+        free(sys->HandleARM9);
         return nullptr;
     }
 
@@ -74,9 +75,11 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7)
 
         if (num != 1)
         {
-            LogPrint(LOG_ALWAYS, "ERROR: ARM9 BIOS did not load properly. This will cause issues!!!\n");
-            // TODO: this should probably return an error code to the frontend.
-            exit(EXIT_FAILURE);
+            LogPrint(LOG_ALWAYS, "FATAL: ARM9 BIOS did not load properly.\n");
+            free(sys); // probably a good idea to not leak memory, just in case.
+            free(sys->HandleARM9);
+            free(sys->HandleARM7);
+            return nullptr;
         }
     }
 
@@ -86,10 +89,21 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7)
 
         if (num != 1)
         {
-            LogPrint(LOG_ALWAYS, "ERROR: ARM7 BIOS did not load properly. This will cause issues!!!\n");
-            // TODO: this should probably return an error code to the frontend.
-            exit(EXIT_FAILURE);
+            LogPrint(LOG_ALWAYS, "FATAL: ARM7 BIOS did not load properly.\n");
+            free(sys); // probably a good idea to not leak memory, just in case.
+            free(sys->HandleARM9);
+            free(sys->HandleARM7);
+            return nullptr;
         }
+    }
+
+    if (mtx_init(&sys->FrameBufferMutex, mtx_plain) != thrd_success)
+    {
+            LogPrint(LOG_ALWAYS, "FATAL: Mutex Allocation failed.\n");
+            free(sys); // probably a good idea to not leak memory, just in case.
+            free(sys->HandleARM9);
+            free(sys->HandleARM7);
+            return nullptr;
     }
 
     for (int i = 0; i < Sched_MAX; i++)
@@ -114,6 +128,8 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7)
     sys->DMA7.ChannelTimestamps[1] = timestamp_max;
     sys->DMA7.ChannelTimestamps[2] = timestamp_max;
     sys->DMA7.ChannelTimestamps[3] = timestamp_max;
+
+    sys->Pad = pad;
 
     Console_Reset(sys);
 
@@ -169,11 +185,6 @@ void Console_DirectBoot(struct Console* sys, FILE* rom)
     free(arry);
     }
 
-    memset(&sys->AHB7, 0, sizeof(sys->AHB7));
-    memset(&sys->AHB9, 0, sizeof(sys->AHB9));
-    memset(&sys->BusMR, 0, sizeof(sys->BusMR));
-
-
     ARM9_SetPC(&sys->ARM9, vars[1], 0);
     ARM7_SetPC(&sys->ARM7, vars[5]);
 }
@@ -186,7 +197,7 @@ void Console_Reset(struct Console* sys)
     // TODO: reset dma?
 }
 
-void Console_MainLoop(struct Console* sys)
+int Console_MainLoop(struct Console* sys)
 {
     Scheduler_UpdateTargets(sys);
     while(true)
@@ -196,6 +207,7 @@ void Console_MainLoop(struct Console* sys)
 
         Scheduler_Run(sys);
     }
+    return 0;
 }
 
 timestamp Console_GetARM7Cur(struct Console* sys)

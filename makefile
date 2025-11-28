@@ -7,6 +7,10 @@ OBJDIR := /obj
 
 SRCDIR := src
 
+LIBDIRS := /usr/local/libc
+
+LIBS := -lSDL3
+
 CC := clang
 CFLAGS := -MP -MMD -std=gnu23 -fwrapv -Wimplicit-fallthrough -Wall -Wextra -Werror=implicit-fallthrough
 
@@ -39,7 +43,7 @@ $(BUILDDIR)$(OBJDIR)/%.o: %.c
 	@$(CC) -c -o $@ $< $(CFLAGS)
 
 $(BUILDDIR)/DualSOUP: $(OBJS)
-	@$(CC) -o $@ $^ $(CFLAGS)
+	@$(CC) -o $@ $^ $(CFLAGS) -L$(LIBDIRS) $(LIBS)
 
 .PHONY: clean
 clean:

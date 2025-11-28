@@ -1,3 +1,4 @@
+#include <SDL3/SDL.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include "../core/utils.h"
@@ -79,3 +80,41 @@ cothread_t CR_Active()
 {
     return co_active();
 }
+
+u16 Input_PollMain(void* pad)
+{
+    if (pad == NULL)
+        return 0x03FF;
+
+    u16 inputs = 0;
+    inputs |= !SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_EAST) << 0;
+    inputs |= !SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_SOUTH) << 1;
+    inputs |= !SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_BACK) << 2;
+    inputs |= !SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_START) << 3;
+    inputs |= !SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_RIGHT) << 4;
+    inputs |= !SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_LEFT) << 5;
+    inputs |= !SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_UP) << 6;
+    inputs |= !SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN) << 7;
+    inputs |= !SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER) << 6;
+    inputs |= !SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER) << 7;
+    printf("%04hX\n", inputs);
+    return inputs;
+}
+
+u16 Input_PollExtra(void* pad)
+{
+    if (pad == NULL)
+        return 0x003F;
+
+    u16 inputs = (1<<2) | (1<<4) | (1<<5)
+               | (1<<3) // debug
+               | (1<<6) // pen
+               | (0<<7); // fold
+
+    inputs |= !SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_NORTH) << 0;
+    inputs |= !SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_WEST) << 1;
+    printf("%04hX\n", inputs);
+    return inputs;
+}
+
+

@@ -8,7 +8,7 @@
 void ARM9_DumpMPU(const struct ARM946ES* ARM9)
 {
     for (int i = 0; i < 8; i++)
-        LogPrint(0, "MPU%i: %08lX %08lX %02X %02X\n", i, ARM9->CP15.MPURegionBase[i], ARM9->CP15.MPURegionMask[i], ARM9->CP15.MPURegionPermsUser[i], ARM9->CP15.MPURegionPermsPriv[i]);
+        LogPrint(LOG_ARM9, "MPU%i: %08lX %08lX %02X %02X\n", i, ARM9->CP15.MPURegionBase[i], ARM9->CP15.MPURegionMask[i], ARM9->CP15.MPURegionPermsUser[i], ARM9->CP15.MPURegionPermsPriv[i]);
 }
 
 void ARM9_ConfigureITCM(struct ARM946ES* ARM9)

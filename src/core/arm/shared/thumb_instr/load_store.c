@@ -40,7 +40,10 @@ void STR(struct ARM* cpu, const u32 addr, const u8 rd, const int width)
         // TODO: data abort
     }
 
-    ARM_SetReg(rd, val, 0, 0);
+    if (dabt)
+    {
+        ARM9_DataAbort(ARM9Cast);
+    }
 }
 
 void LDR(struct ARM* cpu, const u32 addr, const u8 rd, const int width, const bool signext)
@@ -102,13 +105,20 @@ void LDR(struct ARM* cpu, const u32 addr, const u8 rd, const int width, const bo
             val = ((width == width8) ? ((s32)(s8)val) : ((s32)(s16)val));
     }
 
-    // loads can interwork on arm9 when the disable bit is clear.
-    if ((rd == 15) && ARM_CanLoadInterwork)
+    if (!dabt)
     {
-        ARM_SetThumb(cpu, val & 1);
-    }
+        // loads can interwork on arm9 when the disable bit is clear.
+        if ((rd == 15) && ARM_CanLoadInterwork)
+        {
+            ARM_SetThumb(cpu, val & 1);
+        }
 
-    ARM_SetReg(rd, val, interlock, interlock+1);
+        ARM_SetReg(rd, val, interlock, interlock+1);
+    }
+    else
+    {
+        ARM9_DataAbort(ARM9Cast);
+    }
 }
 
 union THUMB_LoadStoreReg_Decode
@@ -352,8 +362,16 @@ void THUMB_Push(struct ARM* cpu, const struct ARM_Instr instr_data)
         cpu->CodeSeq = false;
     }
 
-    // note: should technically be done after first iteration for arm7, but sp can't be in rlist so we can cheat
-    ARM_SetReg(13, wbaddr, 0, 0);
+
+    if (!dabt)
+    {
+        // note: should technically be done after first iteration for arm7, but sp can't be in rlist so we can cheat
+        ARM_SetReg(13, wbaddr, 0, 0);
+    }
+    else
+    {
+        ARM9_DataAbort(ARM9Cast);
+    }
 }
 
 s8 THUMB9_Push_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
@@ -418,8 +436,11 @@ void THUMB_Pop(struct ARM* cpu, const struct ARM_Instr instr_data)
         {
             val = ARM9_DataRead32(ARM9Cast, addr, &seq, &dabt);
         }
-        ARM_SetReg(reg, val, 1, 1);
 
+        if (!dabt)
+        {
+            ARM_SetReg(reg, val, 1, 1);
+        }
         // increment address
         addr += 4;
 
@@ -440,13 +461,16 @@ void THUMB_Pop(struct ARM* cpu, const struct ARM_Instr instr_data)
             val = ARM9_DataRead32(ARM9Cast, addr, &seq, &dabt);
         }
 
-        // loads can interwork on arm9 when the disable bit is clear.
-        if (ARM_CanLoadInterwork)
+        if (!dabt)
         {
-            ARM_SetThumb(cpu, val & 1);
-        }
+            // loads can interwork on arm9 when the disable bit is clear.
+            if (ARM_CanLoadInterwork)
+            {
+                ARM_SetThumb(cpu, val & 1);
+            }
 
-        ARM_SetReg(15, val, 1, 1);
+            ARM_SetReg(15, val, 1, 1);
+        }
     }
     else if (nregs == 1)
     {
@@ -462,8 +486,15 @@ void THUMB_Pop(struct ARM* cpu, const struct ARM_Instr instr_data)
         cpu->CodeSeq = false;
     }
 
-    // note: should technically be done after first iteration for arm7, but sp can't be in rlist so we can cheat
-    ARM_SetReg(13, wbaddr, 0, 0);
+    if (!dabt)
+    {
+        // note: should technically be done after first iteration for arm7, but sp can't be in rlist so we can cheat
+        ARM_SetReg(13, wbaddr, 0, 0);
+    }
+    else
+    {
+        ARM9_DataAbort(ARM9Cast);
+    }
 }
 
 s8 THUMB9_Pop_Interlocks(struct ARM946ES* ARM9, [[maybe_unused]] const struct ARM_Instr instr_data)
@@ -492,6 +523,7 @@ void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
     const union THUMB_LoadStoreMultiple_Decode instr = {.Raw = instr_data.Raw};
 
     u32 addr = ARM_GetReg(instr.Rn);
+    u32 baserestore = addr;
 
     unsigned nregs = stdc_count_ones((u8)instr.RList);
 
@@ -537,13 +569,17 @@ void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
                     ARM_SetReg(instr.Rn, wbaddr, 0, 0);
             }
 
-            // loads can interwork on arm9 when the disable bit is clear.
-            if ((reg == 15) && ARM_CanLoadInterwork)
-            {
-                ARM_SetThumb(cpu, val & 1);
-            }
 
-            ARM_SetReg(reg, val, 1, 1);
+            if (!dabt)
+            {
+                // loads can interwork on arm9 when the disable bit is clear.
+                if ((reg == 15) && ARM_CanLoadInterwork)
+                {
+                    ARM_SetThumb(cpu, val & 1);
+                }
+
+                ARM_SetReg(reg, val, 1, 1);
+            }
 
             // increment address
             addr += 4;
@@ -598,6 +634,12 @@ void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
     {
         cpu->Timestamp += 1;
         cpu->CodeSeq = false;
+    }
+
+    if (dabt)
+    {
+        ARM_SetReg(instr.Rn, baserestore, 0, 0);
+        ARM9_DataAbort(ARM9Cast);
     }
 }
 

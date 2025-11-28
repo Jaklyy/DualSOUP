@@ -3,6 +3,19 @@
 
 
 
+
+union TextTileData
+{
+    u16 Raw;
+    struct
+    {
+        u16 TileNum : 10;
+        bool HFlip : 1;
+        bool VFlip : 1;
+        u16 Palette : 4;
+    };
+};
+
 struct PPU
 {
     union
@@ -35,5 +48,27 @@ struct PPU
             bool OBJExtPalEn : 1;
         };
     } DisplayCR;
+
+    union
+    {
+        u16 Raw;
+        struct
+        {
+            u16 BGPriority : 2;
+            u16 CharBase : 4;
+            bool Mosaic : 1;
+            bool Pal256 : 1;
+            u32 ScreenBase : 5;
+            bool ExtPalSlot : 1; // bg0/bg1
+            u32 ScreenSize : 2;
+        };
+        struct
+        {
+            u16 : 13;
+            bool OverflowWrap : 1; 
+        };
+    } BGCR[4];
 };
 
+struct Console;
+void PPU_RenderScanline(struct Console* sys, bool B, const u16 y);

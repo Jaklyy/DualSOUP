@@ -3,6 +3,7 @@
 #include "scheduler.h"
 #include "console.h"
 #include "utils.h"
+#include "ppu/ppu.h"
 
 
 
@@ -11,7 +12,20 @@ void LCD_HBlank(struct Console* sys, timestamp now)
 {
     // set hblank flag
     sys->DispStatRO.HBlank = true;
-
+    if (sys->VCount < 192)
+    {
+        if (sys->VCount == 0)
+        {
+            mtx_lock(&sys->FrameBufferMutex);
+        }
+        PPU_RenderScanline(sys, false, sys->VCount);
+        PPU_RenderScanline(sys, true, sys->VCount);
+        if (sys->VCount == 191)
+        {
+            mtx_unlock(&sys->FrameBufferMutex);
+            sys->Blitted = true;
+        }
+    }
     // schedule hblank
     Schedule_Event(sys, LCD_Scanline, Sched_Scanline, now + (HBlank_Cycles*2));
 }

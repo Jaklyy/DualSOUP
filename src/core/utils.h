@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <stdbit.h>
 #include "../frontend/coroutine.h"
+#include <stdio.h>
 
 
 
@@ -82,14 +83,14 @@ union { \
 } name;
 
 #define MemoryRead(accesssize, memory, addr, memsize) \
-    (((accesssize) == 32)   ? (memory.b##32)[(((addr) & (memsize-1))/sizeof(u32))] \
-    : (((accesssize) == 16) ? (memory.b##16)[(((addr) & (memsize-1))/sizeof(u16))] \
-                            : (memory.b##8) [(((addr) & (memsize-1))/sizeof(u8 ))]))
+    (((accesssize) == 32)   ? (memory.b##32)[(((addr) & ((memsize)-1))/sizeof(u32))] \
+    : (((accesssize) == 16) ? (memory.b##16)[(((addr) & ((memsize)-1))/sizeof(u16))] \
+                            : (memory.b##8) [(((addr) & ((memsize)-1))/sizeof(u8 ))]))
 
 #define MemoryWrite(accesssize, memory, addr, memsize, write, mask) \
-    (((accesssize) == 32)   ? ((memory.b##32)[(((addr) & (memsize-1))/sizeof(u32))] = (((memory.b##32)[(((addr) & (memsize-1))/sizeof(u32))] & ~(mask)) | (write) & (mask))) \
-    : (((accesssize) == 16) ? ((memory.b##16)[(((addr) & (memsize-1))/sizeof(u16))] = (((memory.b##16)[(((addr) & (memsize-1))/sizeof(u16))] & ~(mask)) | (write) & (mask))) \
-                            : ((memory.b##8) [(((addr) & (memsize-1))/sizeof(u8) )] = (((memory.b##8) [(((addr) & (memsize-1))/sizeof(u8) )] & ~(mask)) | (write) & (mask)))))
+    (((accesssize) == 32)   ? ((memory.b##32)[(((addr) & ((memsize)-1))/sizeof(u32))] = (((memory.b##32)[(((addr) & ((memsize)-1))/sizeof(u32))] & ~(mask)) | ((write) & (mask)))) \
+    : (((accesssize) == 16) ? ((memory.b##16)[(((addr) & ((memsize)-1))/sizeof(u16))] = (((memory.b##16)[(((addr) & ((memsize)-1))/sizeof(u16))] & ~(mask)) | ((write) & (mask)))) \
+                            : ((memory.b##8) [(((addr) & ((memsize)-1))/sizeof(u8) )] = (((memory.b##8) [(((addr) & ((memsize)-1))/sizeof(u8) )] & ~(mask)) | ((write) & (mask))))))
 
 
 enum CPU_IDs : u8
@@ -115,6 +116,8 @@ enum LoggingLevels : u64
     LOG_ODD     = (1<<4 ), // Program doing something weird that isn't inherently bad...?
     LOG_EXCEP   = (1<<5 ), // Hardware error handler has been triggered. Probably means the software has crashed.
     LOG_BUG     = (1<<6 ), // Program is triggering hardware bugs.
+    LOG_VRAM    = (1<<7 ), // vram
+    LOG_PPU     = (1<<8 ), // ppu stuff
 };
 
 #define LOG_CPUID (1 << cpu->CPUID)
@@ -134,10 +137,10 @@ enum LoggingLevels : u64
     return (val >> ror) | (val << (32-ror));
 }
 
-[[nodiscard]] inline u32 ROL32(const u32 val, u8 ror)
+[[nodiscard]] inline u32 ROL32(const u32 val, u8 rol)
 {
-    ror &= 0x1F; // do this to hopefully avoid undefined behavior.
-    return (val << ror) | (val >> (32-ror));
+    rol &= 0x1F; // do this to hopefully avoid undefined behavior.
+    return (val << rol) | (val >> (32-rol));
 }
 
 // TODO: should this be per thread?
@@ -156,3 +159,6 @@ coroutine CR_Create(void (*func)(void*), void* param);
 void CR_Free(coroutine handle);
 void CR_Switch(coroutine handle);
 cothread_t CR_Active();
+
+u16 Input_PollExtra(void* pad);
+u16 Input_PollMain(void* pad);

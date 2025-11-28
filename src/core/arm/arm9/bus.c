@@ -224,7 +224,6 @@ u32 ARM9_DCacheReadLookup(struct ARM946ES* ARM9, const u32 addr)
     if (set < ARM9_DCacheAssoc)
     {
         // use set to lookup into icache
-        LogPrint(0, "LOG: %i %i %08lX\n", index, set, ARM9->DTagRAM[index|set].Raw);
         ARM9->MemTimestamp += 1;
         return ARM9->DCache.b32[((index | set)<<3) | ((addr/4) & 0x7)];
     }

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdatomic.h>
+#include <threads.h>
 #include <stdio.h>
 #include "bus/io.h"
 #include "utils.h"
@@ -10,6 +12,7 @@
 #include "timer/timer.h"
 #include "scheduler.h"
 #include "irq.h"
+#include "ppu/ppu.h"
 
 
 // system clocks
@@ -185,6 +188,29 @@ struct Console
         };
     } ExtMemCR_Shared;
 
+    union
+    {
+        u16 Raw;
+        struct
+        {
+            bool LCDPower : 1; // might be able to damage lcds?
+            bool PPUAPower : 1;
+            bool GPURasterizerPower : 1;
+            bool GPUGeometryPower : 1;
+            u16 : 5;
+            bool PPUBPower : 1;
+            u16 : 5;
+            bool AOnBottom : 1;
+        };
+    } PowerControl9;
+
+    void* Pad;
+
+    struct PPU PPU_A;
+    struct PPU PPU_B;
+
+    alignas(HOST_CACHEALIGN) u32 Framebuffer[2][192][256];
+
     alignas(HOST_CACHEALIGN)
     // FCRAM
     MEMORY(MainRAM,     MainRAM_Size);
@@ -207,17 +233,20 @@ struct Console
     // BIOS
     MEMORY(NTRBios9,    NTRBios9_Size);
     MEMORY(NTRBios7,    NTRBios7_Size);
+    alignas(HOST_CACHEALIGN)
+    volatile bool Blitted;
+    mtx_t FrameBufferMutex;
 };
 
 // initialize a console to a clean state.
 // if a nullptr is passed then it will allocate and initialize a console from scratch.
 // otherwise it will re-initialize an already allocated struct.
 // returns success or failure.
-struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7);
+struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, void* pad);
 // emulate a hardware reset.
 void Console_Reset(struct Console* sys);
 // actually run the emulation.
-void Console_MainLoop(struct Console* sys);
+int Console_MainLoop(struct Console* sys);
 
 void Console_DirectBoot(struct Console* sys, FILE* rom);
 

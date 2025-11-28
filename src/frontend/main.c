@@ -1,3 +1,7 @@
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_events.h>
+#include <SDL3/SDL_render.h>
+#include <threads.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include "../core/console.h"
@@ -6,10 +10,14 @@
 #include "../core/arm/arm9/arm.h"
 
 
-int main()
-{
-    LogMask = u64_max; // temp
 
+
+mtx_t init;
+volatile bool initflag;
+
+int Core_Init(void* pass)
+{
+    volatile void** mailbox = pass;
     // init arm luts
     ARM9_InitInstrLUT();
     THUMB9_InitInstrLUT();
@@ -31,11 +39,14 @@ int main()
     }
 
     // initialize main emulator state struct
-    struct Console* sys = Console_Init(nullptr, ntr9, ntr7);
+    struct Console* sys = Console_Init(nullptr, ntr9, ntr7, mailbox[0]);
     if (sys == nullptr)
     {
         return EXIT_FAILURE;
     }
+
+    mailbox[1] = sys;
+    initflag = true;
 
     fclose(ntr9);
     fclose(ntr7);
@@ -49,30 +60,93 @@ int main()
     }
 
     Console_DirectBoot(sys, ztst);
-    //ARM9_Log(&sys->ARM9);
-
     Console_MainLoop(sys);
 
-    // TEMP: debugging
-    /*for (int i = 0; i < 2; i++)
+    return 0;
+}
+
+int main()
+{
+    LogMask = 0;//u64_max; // temp
+
+    // TODO investigate: SDL_HINT_TIMER_RESOLUTION
+    SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD | SDL_INIT_EVENTS))
     {
-        if (i == 0)
-        {
-            sys->ARM9.ARM.CPSR.Flags = 0;
-            sys->ARM9.ARM.CPSR.QSticky = 0;
-        }
-        else
-        {
-            sys->ARM9.ARM.CPSR.Flags = 0xF;
-            sys->ARM9.ARM.CPSR.QSticky = 1;
-        }
-        sys->ARM9.ARM.R[5] = 0x80000000;
-        sys->ARM9.ARM.R[6] = 65;
-        //sys->ARM9.ARM.CPSR.Carry = 1;
-        sys->ARM9.ARM.Instr[1].Raw = 0xE1B02655;
+        printf("SDLINIT ERROR!!!\n");
+        return EXIT_FAILURE;
+    }
 
-        Console_MainLoop(sys);
-    }*/
+    SDL_Window* win;
+    SDL_Renderer* ren;
 
-    return EXIT_SUCCESS;
+    if (!SDL_CreateWindowAndRenderer("DualSOUP", 256, 192*2, 0, &win, &ren))
+    {
+        printf("window/renderer init failure :(\n");
+        return EXIT_FAILURE;
+    }
+
+    int num;
+    SDL_JoystickID* joysticks = SDL_GetGamepads(&num);
+    printf("joysticks: %i\n", num);
+
+    SDL_Gamepad* pad = NULL;
+    if (num)
+    {
+        pad = SDL_OpenGamepad(joysticks[0]);
+    }
+
+    thrd_t emu;
+    volatile void* mailbox[2] = {pad, 0};
+
+    initflag = false;
+    mtx_init(&init, mtx_plain);
+    mtx_lock(&init);
+    if (thrd_create(&emu, Core_Init, mailbox) != thrd_success)
+    {
+        printf("thread init failure :(\n");
+        return EXIT_FAILURE;
+    }
+
+    while(initflag == false);
+
+    mtx_unlock(&init);
+    struct Console* sys = (void*)mailbox[1];
+
+    SDL_Texture* blit = SDL_CreateTexture(ren, SDL_PIXELFORMAT_XBGR8888, SDL_TEXTUREACCESS_STREAMING, 256, 192*2);
+    SDL_Event evts;
+    u8* buffer;
+    while(true)
+    {
+        SDL_PollEvent(&evts);
+        switch(evts.type)
+        {
+            case SDL_EVENT_QUIT:
+                return EXIT_SUCCESS;
+            default:
+                break;
+        }
+
+        if (sys->Blitted)
+        {
+            mtx_lock(&sys->FrameBufferMutex);
+            int pitch;
+            SDL_LockTexture(blit, NULL, (void**)&buffer, &pitch);
+            for (int s = 0; s < 2; s++)
+                for (int y = 0; y < 192; y++)
+                    for (int x = 0; x < pitch/4; x++)
+                        for (int b = 0; b < 4; b++)
+                        {
+                            if (b == 4) continue;
+                            buffer[(s*192*pitch)+(y*pitch)+(x*pitch/256)+b] = (((((sys->Framebuffer[s][y][x] >> (b*6)) & 0x3F) * 0xFF) / 0x3F));
+                        }
+            SDL_UnlockTexture(blit);
+            mtx_unlock(&sys->FrameBufferMutex);
+            SDL_RenderTexture(ren, blit, NULL, NULL);
+            SDL_RenderPresent(ren);
+            sys->Blitted = false;
+        }
+
+    }
 }

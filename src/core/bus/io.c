@@ -23,6 +23,12 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask)
         case 0x00'01'00 ... 0x00'01'0C:
             return Timer_IOReadHandler(sys->Timers7, sys->AHB7.Timestamp, addr);
 
+        case 0x00'01'30:
+            return Input_PollMain(sys->Pad);
+
+        case 0x00'01'34:
+            return Input_PollMain(sys->Pad) << 16;
+
         case 0x00'01'80: // ipcsync
             return sys->IPCSyncDataTo7
                     | (sys->IPCSyncDataTo9 << 8)
@@ -44,14 +50,13 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask)
                    | sys->WRAMCR << 8;
 
         default:
-            LogPrint(LOG_ARM7 | LOG_UNIMP, "UNIMPLEMENTED IO7 READ: %08lX %08lX\n", addr, mask);
+            LogPrint(LOG_ARM7 | LOG_UNIMP, "UNIMPLEMENTED IO7 READ: %08lX %08lX @ %08lX\n", addr, mask, sys->ARM7.ARM.PC);
             return 0;
     }
 }
 
 void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mask)
 {
-    LogPrint(0, "%08lX %08lX %08lX\n", addr, val, sys->ARM7.ARM.PC);
     switch(addr & 0xFF'FF'FC)
     {
         case 0x00'00'04:
@@ -103,18 +108,18 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             break;
 
         case 0x00'02'08: // IME
-            sys->IME7 = val & 1 & mask;
+            MaskedWrite(sys->IME7, val, mask & 1);
             break;
         case 0x00'02'10: // IE
-            sys->IE7 = val & mask & 0x01DF3FFF;
+            MaskedWrite(sys->IE7, val, mask & 0x01DF3FFF);
             break;
         case 0x00'02'14: // IF
             Scheduler_RunEventManual(sys, sys->AHB7.Timestamp, Sched_IF7Update, false);
-            sys->IF7 &= (~val) & mask;
+            sys->IF7 &= ~(val & mask);
             break;
 
         default:
-            LogPrint(LOG_ARM7 | LOG_UNIMP, "UNIMPLEMENTED IO7 WRITE: %08lX %08lX %08lX\n", addr, val, mask);
+            LogPrint(LOG_ARM7 | LOG_UNIMP, "UNIMPLEMENTED IO7 WRITE: %08lX %08lX %08lX @ %08lX\n", addr, val, mask, sys->ARM7.ARM.PC);
             break;
     }
 }
@@ -123,6 +128,10 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask)
 {
     switch (addr & 0xFF'FF'FC)
     {
+
+        case 0x00'00'00:
+            return sys->PPU_A.DisplayCR.Raw;
+
         case 0x00'00'04:
             Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Sched_Scanline, true);
             return (sys->VCount << 16) | sys->DispStatRO.Raw |  sys->DispStatRW.Raw;
@@ -135,6 +144,9 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask)
 
         case 0x00'01'00 ... 0x00'01'0C:
             return Timer_IOReadHandler(sys->Timers9, sys->AHB9.Timestamp, addr);
+
+        case 0x00'01'30:
+            return Input_PollMain(sys->Pad);
 
         // IPC
         case 0x00'01'80: // ipcsync
@@ -163,8 +175,21 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask)
         case 0x00'02'48:
             return sys->VRAMCR[7].Raw | (sys->VRAMCR[8].Raw << 8);
 
+        case 0x00'03'04:
+            return sys->PowerControl9.Raw;
+
+        case 0x00'10'00:
+            return sys->PPU_B.DisplayCR.Raw;
+
+        case 0x00'10'08:
+            return sys->PPU_B.BGCR[0].Raw | (sys->PPU_B.BGCR[1].Raw << 16);
+            break;
+        case 0x00'10'0C:
+            return sys->PPU_B.BGCR[2].Raw | (sys->PPU_B.BGCR[3].Raw << 16);
+            break;
+
         default:
-            LogPrint(LOG_ARM9 | LOG_UNIMP, "UNIMPLEMENTED IO9 READ: %08lX %08lX\n", addr, mask);
+            LogPrint(LOG_ARM9 | LOG_UNIMP, "UNIMPLEMENTED IO9 READ: %08lX %08lX @ %08lX\n", addr, mask, sys->ARM9.ARM.PC);
             return 0;
     }
 }
@@ -173,9 +198,14 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
 {
     switch (addr & 0xFF'FF'FC)
     {
+        case 0x00'00'00:
+            printf("%08X %08X\n", val, mask);
+            MaskedWrite(sys->PPU_A.DisplayCR.Raw, val, mask);
+            break;
+
         case 0x00'00'04:
             Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Sched_Scanline, true);
-            sys->DispStatRW.Raw = val & mask & 0xB8;
+            MaskedWrite(sys->DispStatRW.Raw, val, mask & 0xB8);
 
             // TODO VCount Match Settings.
 
@@ -234,14 +264,14 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             break;
 
         case 0x00'02'08: // IME
-            sys->IME9 = val & 1 & mask;
+            MaskedWrite(sys->IME9, val, mask & 1);
             break;
         case 0x00'02'10: // IE
-            sys->IE9 = val & mask & 0x003F3F7F;
+            MaskedWrite(sys->IE9, val, mask & 0x003F3F7F);
             break;
         case 0x00'02'14: // IF
             Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Sched_IF9Update, true);
-            sys->IF9 &= (~val) & mask;
+            sys->IF9 &= ~(val & mask);
             break;
 
         // VRAM/WRAM Control
@@ -298,6 +328,24 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             }
             break;
         }
+
+        case 0x00'03'04:
+            MaskedWrite(sys->PowerControl9.Raw, val, mask & 0x820F);
+            break;
+
+        case 0x00'10'00:
+            MaskedWrite(sys->PPU_B.DisplayCR.Raw, val, mask);
+            break;
+
+        case 0x00'10'08:
+            MaskedWrite(sys->PPU_B.BGCR[0].Raw, val, mask);
+            MaskedWrite(sys->PPU_B.BGCR[1].Raw, val>>16, mask>>16);
+            break;
+        case 0x00'10'0C:
+            MaskedWrite(sys->PPU_B.BGCR[2].Raw, val, mask);
+            MaskedWrite(sys->PPU_B.BGCR[3].Raw, val>>16, mask>>16);
+            break;
+
 
 
         default:

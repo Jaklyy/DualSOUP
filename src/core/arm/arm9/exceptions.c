@@ -142,13 +142,13 @@ void ARM9_Reset(struct ARM946ES* ARM9, const bool itcm, const bool hivec)
 void ARM9_RaiseUDF(struct ARM* ARM, const struct ARM_Instr instr_data, const int execycles, const int memcycles)
 {
     struct ARM946ES* ARM9 = (struct ARM946ES*)ARM;
-
-    CrashSpectacularly("FARK %08lX\n", cpu->PC);
-
     if (cpu->CPSR.Thumb)
         LogPrint(LOG_ARM9 | LOG_EXCEP, "THUMB9 - UNDEF INSTR: %04X @ %08X\n", instr_data.Raw, cpu->PC);
     else
         LogPrint(LOG_ARM9 | LOG_EXCEP, "ARM9 - UNDEF INSTR: %08X @ %08X\n", instr_data.Raw, cpu->PC);
+
+
+    CrashSpectacularly("FARK %08lX\n", cpu->PC);
 
     // addr of next instr
     u32 oldpc = cpu->PC - (cpu->CPSR.Thumb ? 2 : 4);
