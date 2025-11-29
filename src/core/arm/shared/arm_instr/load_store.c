@@ -545,17 +545,18 @@ void ARM_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
     union ARM_LoadStoreMultiple_Decode instr = {.Raw = instr_data.Raw};
 
     bool preinc = instr.PreInc ^ (!instr.Up);
-    if (instr.S) CrashSpectacularly("UNIMPLEMENTED LDM/STM!!!! %08lX @ %08lX\n", instr_data.Raw, cpu->PC);
 
     u32 addr = ARM_GetReg(instr.Rn);
     u32 baserestore = addr;
 
     unsigned nregs = stdc_count_ones((u16)instr.RList);
+    u16 rlist = instr.RList;
 
-    // TODO: handle empty Rlist
+    // TODO: empty RList timings
     if (!instr.RList)
     {
-        CrashSpectacularly("EMPTY RLIST POP!!!\n");
+        nregs = 16;
+        if (cpu->CPUID == ARM7ID) rlist = 0x8000; // idk why, it just is.
     }
 
     // arm9 timings are input as 0 since they will be added during the actual fetch
@@ -576,7 +577,9 @@ void ARM_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
 
     if (preinc) addr += 4;
 
-    u16 rlist = instr.RList;
+    // TODO: this instruction does weird shit after exec with the banked variant, at least on arm7.
+    // CHECKME: this instruction might do weird shit with writeback and banked regs.
+    u8 oldmode = cpu->CPSR.Mode;
 
     bool seq = false;
     bool dabt = false;
@@ -613,7 +616,18 @@ void ARM_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
                     ARM_SetThumb(cpu, val & 1);
                 }
 
-                ARM_SetReg(reg, val, 1, 1);
+                if (instr.S && reg == 15)
+                {
+                    ARM_RestoreSPSR;
+                }
+
+                if (instr.S && !(instr.RList >> 15)) // dumb way to do this
+                    ARM_SetMode(cpu, ARMMode_USR);
+
+                ARM_SetReg(reg, val, 1, 2);
+
+                if (instr.S && !(instr.RList >> 15)) // dumb way to do this
+                    ARM_SetMode(cpu, oldmode);
             }
 
             // increment address
@@ -629,7 +643,15 @@ void ARM_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
             unsigned reg = stdc_trailing_zeros(rlist);
 
             // write
+
+            if (instr.S && !(instr.RList >> 15)) // dumb way to do this
+                ARM_SetMode(cpu, ARMMode_USR);
+
             u32 val = ARM_GetReg(reg);
+
+            if (instr.S && !(instr.RList >> 15)) // dumb way to do this
+                ARM_SetMode(cpu, oldmode);
+
             if (cpu->CPUID == ARM7ID)
             {
                 ARM7_BusWrite(ARM7Cast, addr, val, u32_max, false, &seq);
@@ -653,7 +675,7 @@ void ARM_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
         }
     }
 
-    if (nregs == 1)
+    if (nregs == 1 || !instr.RList) // empty r-list behavior is a guess.
     {
         if (cpu->CPUID == ARM9ID)
         {
@@ -694,5 +716,103 @@ s8 ARM9_LoadStoreMultiple_Interlocks(struct ARM946ES* ARM9, const struct ARM_Ins
         ARM9_CheckInterlocks(ARM9, &stall, reg, 1, true);
     }
 
+    return stall;
+}
+
+union ARM_Swap_Decode
+{
+    u32 Raw;
+    struct
+    {
+        u32 Rm : 4;
+        u32 : 8;
+        u32 Rd : 4;
+        u32 Rn : 4;
+        u32 : 2;
+        bool Byte : 1;
+    };
+};
+
+void ARM_Swap(struct ARM* cpu, const struct ARM_Instr instr_data)
+{
+    const union ARM_Swap_Decode instr = {.Raw = instr_data.Raw};
+
+    u32 addr = ARM_GetReg(instr.Rn);
+    u32 store = ARM_GetReg(instr.Rm);
+
+    bool dabt = false;
+    bool seq = false;
+    u32 load;
+    int interlock;
+
+    u32 mask;
+
+    if (instr.Byte)
+    {
+        store = ROL32(store, (addr & 3) * 8);
+        mask = ROL32(u8_max, ((addr & 3) * 8));
+    }
+    else mask = u32_max;
+
+    // arm9 timings are input as 0 since they will be added during the actual fetch
+    ARM_ExeCycles(1, 1, 0);
+
+    ARM_StepPC(cpu, false);
+
+    if (cpu->CPUID == ARM7ID)
+    {
+        load = ARM7_BusRead(ARM7Cast, addr, mask, &seq);
+        cpu->CodeSeq = false;
+    }
+    else
+    {
+        load = ((instr.Byte) ? ARM9_DataRead8(ARM9Cast, addr, &seq, &dabt)
+                            : ARM9_DataRead32(ARM9Cast, addr, &seq, &dabt));
+
+        // RORing the result takes an extra cycle
+        // masking out bits also incurs the extra cycle, so it always applies to byte accesses.
+        interlock = ((instr.Byte || (addr & 3)) ? 2 : 1);
+    }
+
+    if (!dabt)
+    {
+        if (cpu->CPUID == ARM7ID)
+        {
+            ARM7_BusWrite(ARM7Cast, addr, store, mask, false, &seq);
+            cpu->CodeSeq = false;
+
+            // load writeback occurs here.
+            cpu->Timestamp += 1;
+        }
+        else
+        {
+            ARM9_DataWrite(ARM9Cast, addr, store, mask, false, true, &seq, &dabt);
+        }
+
+        // rotate result right based on lsb of address.
+        load = ROR32(load, (addr&3) * 8);
+
+        if (instr.Byte)
+        {
+            load &= 0xFF;
+        }
+
+        // loads can interwork on arm9 when the disable bit is clear.
+        if ((instr.Rd == 15) && ARM_CanLoadInterwork)
+        {
+            ARM_SetThumb(cpu, load & 1);
+        }
+        ARM_SetReg(instr.Rd, load, interlock, interlock+1);
+    }
+}
+
+s8 ARM9_Swap_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
+{
+    const union ARM_Swap_Decode instr = {.Raw = instr_data.Raw};
+    s8 stall = 0;
+
+    ARM9_CheckInterlocks(ARM9, &stall, instr.Rn, 0, false);
+
+    // checkme: i dont think the store can interlock?
     return stall;
 }

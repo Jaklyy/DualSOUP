@@ -40,7 +40,7 @@ void ARM7_InitInstrLUT()
         CHECK (0001'0110'0001, 1111'1111'1111, CLZ)
         CHECK (0001'0000'1000, 1111'1001'1001, UNIMPL) // signed multiplies
         // load/store extension space
-        CHECK (0001'0000'1001, 1111'1011'1111, UNIMPL) // swp
+        CHECK (0001'0000'1001, 1111'1011'1111, Swap) // swp
         //CHECK (0001'1000'1001, 1111'1000'1111, UNIMPL) // ldrex/strex (and variants)
         CHECK (0000'0000'1001, 1110'0000'1001, LoadStoreMisc)
         // explicitly defined undefined space

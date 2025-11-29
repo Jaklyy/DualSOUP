@@ -125,7 +125,7 @@ void ARM_MSR(struct ARM* cpu, const struct ARM_Instr instr_data)
     ARM_StepPC(cpu, false);
 
     // handle timings... here we go....
-    if (cpu->CPUID == ARM9ID && (instr.Control || instr.Extension || instr.Status || instr.UseSPSR))
+    if ((cpu->CPUID == ARM9ID) && (instr.Control || instr.Extension || instr.Status || instr.UseSPSR))
     {
         // yes that is actually how it works.
         // no i dont know why it cares about the extension or status bits?
@@ -137,7 +137,9 @@ void ARM_MSR(struct ARM* cpu, const struct ARM_Instr instr_data)
         ARM_ExeCycles(1, 1, 1);
     }
 
+    printf("%04X\n", cpu->CPSR.Mode);
     ((instr.UseSPSR) ? ARM_SetSPSR((union ARM_PSR){.Raw = psr}) : ARM_SetCPSR(cpu, psr));
+    printf("%04X\n", cpu->CPSR.Mode);
 }
 
 s8 ARM9_MSR_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)

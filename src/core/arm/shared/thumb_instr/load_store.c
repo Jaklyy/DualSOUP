@@ -295,18 +295,24 @@ void THUMB_Push(struct ARM* cpu, const struct ARM_Instr instr_data)
     u32 addr = ARM_GetReg(13);
     unsigned nregs = stdc_count_ones(instr.FullRList);
 
-    // TODO: handle empty Rlist
-    if (nregs == 0)
+    u16 rlist = instr.RList;
+
+    // TODO: empty RList timings
+    if (!instr.FullRList)
     {
-        CrashSpectacularly("EMPTY RLIST PUSH!!!\n");
+        nregs = 16;
+        if (cpu->CPUID == ARM7ID) rlist = 0x8000; // idk why, it just is.
+    }
+
+    if (instr.Link)
+    {
+        rlist |= 0x4000;
     }
 
     // arm9 timings are input as 0 since they will be added during the actual fetch
     ARM_ExeCycles(1, 0, 0);
 
     ARM_StepPC(cpu, true);
-
-    u8 rlist = instr.RList;
 
     // push is encoded as a decrementing before variant
     u32 wbaddr = (addr -= nregs*4);
@@ -334,22 +340,7 @@ void THUMB_Push(struct ARM* cpu, const struct ARM_Instr instr_data)
         rlist &= (~1)<<reg;
     }
 
-    // push has a special encoding for pushing the link register
-    if (instr.Link)
-    {
-        // write
-        u32 val = ARM_GetReg(14);
-        if (cpu->CPUID == ARM7ID)
-        {
-            ARM7_BusWrite(ARM7Cast, addr, val, u32_max, false, &seq);
-        }
-        else
-        {
-            ARM9_DataWrite(ARM9Cast, addr, val, u32_max, false, false, &seq, &dabt);
-        }
-    }
-
-    if (nregs == 1)
+    if (nregs == 1 || !instr.FullRList)
     {
         // not an interlock but close enough
         if (cpu->CPUID == ARM9ID)
@@ -403,18 +394,24 @@ void THUMB_Pop(struct ARM* cpu, const struct ARM_Instr instr_data)
     u32 addr = ARM_GetReg(13);
     unsigned nregs = stdc_count_ones(instr.FullRList);
 
-    // TODO: handle empty Rlist
+    u16 rlist = instr.RList;
+
+    // TODO: empty RList timings
     if (!instr.FullRList)
     {
-        CrashSpectacularly("EMPTY RLIST POP!!!\n");
+        nregs = 16;
+        if (cpu->CPUID == ARM7ID) rlist = 0x8000; // idk why, it just is.
+    }
+
+    if (instr.Link)
+    {
+        rlist |= 0x8000;
     }
 
     // arm9 timings are input as 0 since they will be added during the actual fetch
     ARM_ExeCycles(1, 0, 0);
 
     ARM_StepPC(cpu, true);
-
-    u8 rlist = instr.RList;
 
     // pop is encoded as an incrementing after variant
     u32 wbaddr = addr + (nregs*4);
@@ -439,7 +436,13 @@ void THUMB_Pop(struct ARM* cpu, const struct ARM_Instr instr_data)
 
         if (!dabt)
         {
-            ARM_SetReg(reg, val, 1, 1);
+            // loads can interwork on arm9 when the disable bit is clear.
+            if ((reg == 15) && ARM_CanLoadInterwork)
+            {
+                ARM_SetThumb(cpu, val & 1);
+            }
+
+            ARM_SetReg(reg, val, 1, 2);
         }
         // increment address
         addr += 4;
@@ -447,32 +450,7 @@ void THUMB_Pop(struct ARM* cpu, const struct ARM_Instr instr_data)
         rlist &= (~1)<<reg;
     }
 
-    // push has a special encoding for pushing the link register
-    if (instr.Link)
-    {
-        // read
-        u32 val;
-        if (cpu->CPUID == ARM7ID)
-        {
-            val = ARM7_BusRead(ARM7Cast, addr, u32_max, &seq);
-        }
-        else
-        {
-            val = ARM9_DataRead32(ARM9Cast, addr, &seq, &dabt);
-        }
-
-        if (!dabt)
-        {
-            // loads can interwork on arm9 when the disable bit is clear.
-            if (ARM_CanLoadInterwork)
-            {
-                ARM_SetThumb(cpu, val & 1);
-            }
-
-            ARM_SetReg(15, val, 1, 1);
-        }
-    }
-    else if (nregs == 1)
+    if (nregs == 1 || !instr.FullRList)
     {
         // not an interlock but close enough
         if (cpu->CPUID == ARM9ID)
@@ -525,12 +503,15 @@ void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
     u32 addr = ARM_GetReg(instr.Rn);
     u32 baserestore = addr;
 
+    u16 rlist = instr.RList;
+
     unsigned nregs = stdc_count_ones((u8)instr.RList);
 
-    // TODO: handle empty Rlist
+    // TODO: empty RList timings
     if (!instr.RList)
     {
-        CrashSpectacularly("EMPTY RLIST POP!!!\n");
+        nregs = 16;
+        if (cpu->CPUID == ARM7ID) rlist = 0x8000; // idk why, it just is.
     }
 
     // arm9 timings are input as 0 since they will be added during the actual fetch
@@ -539,8 +520,6 @@ void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
     ARM_StepPC(cpu, true);
 
     u32 wbaddr = addr + (nregs*4);
-
-    u8 rlist = instr.RList;
 
     bool seq = false;
     bool dabt = false;
@@ -565,7 +544,7 @@ void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
                 val = ARM9_DataRead32(ARM9Cast, addr, &seq, &dabt);
 
                 // base writeback before last access
-                if (reg == 7-stdc_leading_zeros((u8)instr.RList))
+                if (reg == 15-stdc_leading_zeros((u8)instr.RList))
                     ARM_SetReg(instr.Rn, wbaddr, 0, 0);
             }
 
@@ -578,7 +557,7 @@ void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
                     ARM_SetThumb(cpu, val & 1);
                 }
 
-                ARM_SetReg(reg, val, 1, 1);
+                ARM_SetReg(reg, val, 1, 2);
             }
 
             // increment address
@@ -608,7 +587,7 @@ void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
                 ARM9_DataWrite(ARM9Cast, addr, val, u32_max, false, false, &seq, &dabt);
 
                 // base writeback before last access
-                if (reg == 7-stdc_leading_zeros((u8)instr.RList))
+                if (reg == 15-stdc_leading_zeros((u8)instr.RList))
                     ARM_SetReg(instr.Rn, wbaddr, 0, 0);
             }
             // increment address
@@ -618,7 +597,7 @@ void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
         }
     }
 
-    if (nregs == 1)
+    if (nregs == 1 || !instr.RList)
     {
         // not an interlock but close enough
         if (cpu->CPUID == ARM9ID)

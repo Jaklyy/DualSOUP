@@ -98,7 +98,7 @@ void ARM9_InitInstrLUT()
         CHECK9(0001'0010'0111, 1111'1111'1111, PrefetchAbort) // bkpt | we're reusing bkpt as a faster way to handle prefetch aborts
         CHECK (0001'0000'1000, 1111'1001'1001, UNIMPL) // signed multiplies
         // load/store extension space
-        CHECK (0001'0000'1001, 1111'1011'1111, UNIMPL) // swp
+        CHECK (0001'0000'1001, 1111'1011'1111, Swap) // swp
         //CHECK (0001'1000'1001, 1111'1000'1111, UNIMPL) // ldrex/strex (and variants)
         CHECK (0000'0000'1001, 1110'0000'1001, LoadStoreMisc)
         // explicitly defined undefined space
