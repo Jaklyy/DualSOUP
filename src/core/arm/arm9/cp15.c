@@ -502,7 +502,6 @@ void ARM9_MCR_15(struct ARM946ES* ARM9, const u16 cmd, const u32 val)
     case ARM_CoprocReg(1, 15, 1, 0):
     default:
     {
-        ARM9_Log(ARM9);
         LogPrint(LOG_ARM9 | LOG_UNIMP, "ARM9 - UNIMPLEMENTED MCR CMD: %04lX %08lX %08lX @ %08lX\n", cmd, val, ARM9->ARM.Instr[0].Raw, ARM9->ARM.PC);
         // CHECKME: this is a placeholder basically.
         ARM9_ExecuteCycles(ARM9, 2, 1);

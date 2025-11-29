@@ -61,7 +61,7 @@ void ARM_LoadStore(struct ARM* cpu, const struct ARM_Instr instr_data)
             u32 shift = instr.ShiftImm;
             if (shift == 0) shift = 32;
 
-            offset = ((u64)offset >> instr.ShiftImm);
+            offset = ((u64)offset >> shift);
             break;
         }
         case 2: // asr
@@ -69,7 +69,7 @@ void ARM_LoadStore(struct ARM* cpu, const struct ARM_Instr instr_data)
             u32 shift = instr.ShiftImm;
             if (shift == 0) shift = 32;
 
-            offset = ((s64)(s32)offset >> instr.ShiftImm);
+            offset = ((s64)(s32)offset >> shift);
             break;
         }
         case 3: // ror/rrx

@@ -38,10 +38,10 @@ void PPU_RenderScanline(struct Console* sys, bool B, const u16 y)
             break;
         case 2:
         {
-            u32 addr = ppu->DisplayCR.VRAMSel * KiB(128);
+            u32 addr = (ppu->DisplayCR.VRAMSel * KiB(128)) + (256*y*2);
             for (int x = 0; x < 256; x++)
             {
-                sys->Framebuffer[B][y][x] = RGB555to666(VRAM_LCD(sys, addr, 0xFFFFFFFF, false, false, 0, false) >> ((addr & 2)*16));
+                sys->Framebuffer[B][y][x] = RGB555to666(VRAM_LCD(sys, addr&~3, 0xFFFFFFFF, false, false, 0, false) >> ((addr & 2)*8));
                 addr += 2;
             }
             return;

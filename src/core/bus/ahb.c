@@ -142,7 +142,6 @@ u32 VRAM_LCD(struct Console* sys, const u32 addr, const u32 mask, const bool seq
             if ((sys->VRAMCR[0].Raw & 0x87) == 0x80)
             {
                 VRAMRET(VRAM_A)
-                //if (write) printf("pc: %X\n", sys->ARM9.ARM.PC);
             }
             break;
 

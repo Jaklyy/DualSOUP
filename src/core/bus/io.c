@@ -199,7 +199,6 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
     switch (addr & 0xFF'FF'FC)
     {
         case 0x00'00'00:
-            printf("%08X %08X\n", val, mask);
             MaskedWrite(sys->PPU_A.DisplayCR.Raw, val, mask);
             break;
 

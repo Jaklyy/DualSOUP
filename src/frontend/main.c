@@ -28,46 +28,47 @@ int Core_Init(void* pass)
     if (ntr9 == NULL)
     {
         printf("no ntr arm9 bios :(\n");
-        return EXIT_FAILURE;
+        exit(EXIT_FAILURE);
     }
 
     FILE* ntr7 = fopen("ntr7.bin", "rb");
     if (ntr7 == NULL)
     {
         printf("no ntr arm7 bios :(\n");
+        exit(EXIT_FAILURE);
+    }
+
+    FILE* ztst = fopen((char*)mailbox[1], "rb");
+    if (ztst == NULL)
+    {
+        printf("no ztst :(\n");
+        mailbox[3] = (void*)true;
+        initflag = true;
         return EXIT_FAILURE;
     }
 
     // initialize main emulator state struct
-    struct Console* sys = Console_Init(nullptr, ntr9, ntr7, mailbox[0]);
+    struct Console* sys = Console_Init(nullptr, ntr9, ntr7, (void*)mailbox[0]);
     if (sys == nullptr)
     {
-        return EXIT_FAILURE;
+        exit(EXIT_FAILURE);
     }
 
-    mailbox[1] = sys;
+    mailbox[2] = sys;
     initflag = true;
 
     fclose(ntr9);
     fclose(ntr7);
-    //ARM9_Log(&sys->ARM9);
-
-    FILE* ztst = fopen("ztst.nds", "rb");
-    if (ztst == NULL)
-    {
-        printf("no ztst :(\n");
-        return EXIT_FAILURE;
-    }
 
     Console_DirectBoot(sys, ztst);
     Console_MainLoop(sys);
 
-    return 0;
+    return EXIT_SUCCESS;
 }
 
 int main()
 {
-    LogMask = 0;//u64_max; // temp
+    LogMask = u64_max; // temp
 
     // TODO investigate: SDL_HINT_TIMER_RESOLUTION
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
@@ -98,21 +99,9 @@ int main()
     }
 
     thrd_t emu;
-    volatile void* mailbox[2] = {pad, 0};
-
-    initflag = false;
-    mtx_init(&init, mtx_plain);
-    mtx_lock(&init);
-    if (thrd_create(&emu, Core_Init, mailbox) != thrd_success)
-    {
-        printf("thread init failure :(\n");
-        return EXIT_FAILURE;
-    }
-
-    while(initflag == false);
+    struct Console* sys = nullptr;
 
     mtx_unlock(&init);
-    struct Console* sys = (void*)mailbox[1];
 
     SDL_Texture* blit = SDL_CreateTexture(ren, SDL_PIXELFORMAT_XBGR8888, SDL_TEXTUREACCESS_STREAMING, 256, 192*2);
     SDL_Event evts;
@@ -124,28 +113,57 @@ int main()
         {
             case SDL_EVENT_QUIT:
                 return EXIT_SUCCESS;
+            case SDL_EVENT_DROP_FILE:
+            {
+                printf("%s\n", ((SDL_DropEvent*)&evts)->data);
+                initflag = false;
+                mtx_init(&init, mtx_plain);
+                mtx_lock(&init);
+                volatile void* mailbox[4] = {pad, (volatile void*)((SDL_DropEvent*)&evts)->data, 0, 0};
+                if (thrd_create(&emu, Core_Init, mailbox) != thrd_success)
+                {
+                    printf("thread init failure :(\n");
+                    return EXIT_FAILURE;
+                }
+
+                while(initflag == false);
+
+                if ((bool)mailbox[3])
+                    break;
+
+                sys = (void*)mailbox[2];
+                break;
+            }
             default:
                 break;
         }
 
-        if (sys->Blitted)
+        if (sys)
         {
-            mtx_lock(&sys->FrameBufferMutex);
-            int pitch;
-            SDL_LockTexture(blit, NULL, (void**)&buffer, &pitch);
-            for (int s = 0; s < 2; s++)
-                for (int y = 0; y < 192; y++)
-                    for (int x = 0; x < pitch/4; x++)
-                        for (int b = 0; b < 4; b++)
-                        {
-                            if (b == 4) continue;
-                            buffer[(s*192*pitch)+(y*pitch)+(x*pitch/256)+b] = (((((sys->Framebuffer[s][y][x] >> (b*6)) & 0x3F) * 0xFF) / 0x3F));
-                        }
-            SDL_UnlockTexture(blit);
-            mtx_unlock(&sys->FrameBufferMutex);
-            SDL_RenderTexture(ren, blit, NULL, NULL);
+            if (sys->Blitted)
+            {
+                mtx_lock(&sys->FrameBufferMutex);
+                int pitch;
+                SDL_LockTexture(blit, NULL, (void**)&buffer, &pitch);
+                for (int s = 0; s < 2; s++)
+                    for (int y = 0; y < 192; y++)
+                        for (int x = 0; x < pitch/4; x++)
+                            for (int b = 0; b < 4; b++)
+                            {
+                                if (b == 4) continue;
+                                buffer[(s*192*pitch)+(y*pitch)+(x*pitch/256)+b] = (((((sys->Framebuffer[s][y][x] >> (b*6)) & 0x3F) * 0xFF) / 0x3F));
+                            }
+                SDL_UnlockTexture(blit);
+                mtx_unlock(&sys->FrameBufferMutex);
+                SDL_RenderTexture(ren, blit, NULL, NULL);
+                SDL_RenderPresent(ren);
+                sys->Blitted = false;
+            }
+        }
+        else
+        {
+            SDL_RenderClear(ren);
             SDL_RenderPresent(ren);
-            sys->Blitted = false;
         }
 
     }

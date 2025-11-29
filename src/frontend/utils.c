@@ -95,9 +95,8 @@ u16 Input_PollMain(void* pad)
     inputs |= !SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_LEFT) << 5;
     inputs |= !SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_UP) << 6;
     inputs |= !SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN) << 7;
-    inputs |= !SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER) << 6;
-    inputs |= !SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER) << 7;
-    printf("%04hX\n", inputs);
+    inputs |= !SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER) << 8;
+    inputs |= !SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER) << 9;
     return inputs;
 }
 
@@ -113,7 +112,6 @@ u16 Input_PollExtra(void* pad)
 
     inputs |= !SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_NORTH) << 0;
     inputs |= !SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_WEST) << 1;
-    printf("%04hX\n", inputs);
     return inputs;
 }
 

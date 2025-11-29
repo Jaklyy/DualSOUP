@@ -471,7 +471,7 @@ u32 ARM9_DataRead(struct ARM946ES* ARM9, const u32 addr, const u32 mask, bool* s
     {
         ARM9->MemTimestamp += 1;
         *seq = true;
-        return MemoryRead(32, ARM9->DTCM, addr, ARM9_ITCMSize);
+        return MemoryRead(32, ARM9->DTCM, addr, ARM9_DTCMSize);
     }
     else if (perms.DCache)
     {

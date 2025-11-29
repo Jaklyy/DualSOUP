@@ -54,18 +54,41 @@ void ARM_DataProc(struct ARM* cpu, const struct ARM_Instr instr_data)
     // due to pipelining(?), pc is incremented after the first cycle
     // so accessing pc via Rn with these variants gets addr + 12
     u32 rn_val;
-    bool twocycle;
     bool carry_out = flags_out.Carry;
+
+    if ((instr.Opcode & 0b1101) != 0b1101) // NOT mov or mvn
+        rn_val = ARM_GetReg(instr.Rn);
 
     if (instr.Immediate) // Immediate
     {
-        twocycle = false;
         shifter_out = ARM_ROR(instr.Imm8, instr.RotateImm*2, &carry_out);
+        ARM_StepPC(cpu, false);
+        ARM_ExeCycles(1, 1, 1);
     }
     else // register
     {
+        u32 rs_val;
+
+        // Reg shift Reg variants are two cycles long due to needing to fetch more inputs.
+        // order of operations for them is as follows:
+        // Rn && Rs fetched
+        // PC increments
+        // Rm fetched
+        if (instr.ShiftType & 0x1)
+        {
+            rs_val = ARM_GetReg(instr.Rs);
+            ARM_StepPC(cpu, false);
+            ARM_ExeCycles(2, 2, 1);
+        }
+
         u64 rm_val = ARM_GetReg(instr.Rm);
-        twocycle = instr.ShiftType & 0x1;
+
+        if (!(instr.ShiftType & 0x1))
+        {
+            ARM_StepPC(cpu, false);
+            ARM_ExeCycles(1, 1, 1);
+        }
+
         switch(instr.ShiftType)
         {
         case 0: // reg / lsl imm
@@ -75,7 +98,7 @@ void ARM_DataProc(struct ARM* cpu, const struct ARM_Instr instr_data)
         }
         case 1: // lsl reg
         {
-            rm_val = ARM_LSL(rm_val, ARM_GetReg(instr.Rs), &carry_out);
+            rm_val = ARM_LSL(rm_val, rs_val, &carry_out);
             break;
         }
         case 2: // lsr imm
@@ -88,7 +111,7 @@ void ARM_DataProc(struct ARM* cpu, const struct ARM_Instr instr_data)
         }
         case 3: // lsr reg
         {
-            rm_val = ARM_LSR(rm_val, ARM_GetReg(instr.Rs), &carry_out);
+            rm_val = ARM_LSR(rm_val, rs_val, &carry_out);
             break;
         }
         case 4: // asr imm
@@ -101,7 +124,7 @@ void ARM_DataProc(struct ARM* cpu, const struct ARM_Instr instr_data)
         }
         case 5: // asr reg
         {
-            rm_val = ARM_ASR(rm_val, ARM_GetReg(instr.Rs), &carry_out);
+            rm_val = ARM_ASR(rm_val, rs_val, &carry_out);
             break;
         }
         case 6: // ror imm / rrx
@@ -119,23 +142,13 @@ void ARM_DataProc(struct ARM* cpu, const struct ARM_Instr instr_data)
         }
         case 7: // ror reg
         {
-            rm_val = ARM_ROR(rm_val, ARM_GetReg(instr.Rs), &carry_out);
+            rm_val = ARM_ROR(rm_val, rs_val, &carry_out);
             break;
         }
         }
         shifter_out = rm_val;
     }
     flags_out.Carry = carry_out; 
-
-    // two cycle variants increment pc before fetching rn
-    if (twocycle) ARM_StepPC(cpu, false);
-
-    if ((instr.Opcode & 0b1101) != 0b1101) // NOT mov or mvn
-        rn_val = ARM_GetReg(instr.Rn);
-
-    if (!twocycle) ARM_StepPC(cpu, false);
-
-    ARM_ExeCycles(1+twocycle, 1+twocycle, 1);
 
     // the actual data processing part of the data processing instruction
     u32 alu_out;
@@ -197,7 +210,7 @@ void ARM_DataProc(struct ARM* cpu, const struct ARM_Instr instr_data)
                 // SPSR is NOT restored.
                 ARM_SetReg(instr.Rd, alu_out, 0, 0);
             }
-            else // ARM7ID
+            else // ARM7ID && ARM9 normal instrs
             {
                 // yes, this also happens for tst/teq/cmp/cmn
                 // yes, that complicates things *greatly*
