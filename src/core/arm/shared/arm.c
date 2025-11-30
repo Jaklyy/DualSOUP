@@ -66,29 +66,29 @@ void ARM_BankSwap(struct ARM* cpu, const u8 newmode)
         switch(mode[i])
         {
         case ARMMode_FIQ:
-            memcpy(cpy, &cpu->FIQ_Bank, 7*4);
-            memcpy(&cpu->FIQ_Bank, &cpu->R[8], 7*4);
-            memcpy(&cpu->SP, &cpy, 7*4);
+            memcpy(cpy, &cpu->FIQ_Bank, 7*sizeof(u32));
+            memcpy(&cpu->FIQ_Bank, &cpu->R[8], 7*sizeof(u32));
+            memcpy(&cpu->R[8], &cpy, 7*sizeof(u32));
             break;
         case ARMMode_IRQ:
-            memcpy(cpy, &cpu->IRQ_Bank, 2*4);
-            memcpy(&cpu->IRQ_Bank, &cpu->SP, 2*4);
-            memcpy(&cpu->SP, &cpy, 2*4);
+            memcpy(cpy, &cpu->IRQ_Bank, 2*sizeof(u32));
+            memcpy(&cpu->IRQ_Bank, &cpu->SP, 2*sizeof(u32));
+            memcpy(&cpu->SP, &cpy, 2*sizeof(u32));
             break;
         case ARMMode_SWI:
-            memcpy(cpy, &cpu->SWI_Bank, 2*4);
-            memcpy(&cpu->SWI_Bank, &cpu->SP, 2*4);
-            memcpy(&cpu->SP, &cpy, 2*4);
+            memcpy(cpy, &cpu->SWI_Bank, 2*sizeof(u32));
+            memcpy(&cpu->SWI_Bank, &cpu->SP, 2*sizeof(u32));
+            memcpy(&cpu->SP, &cpy, 2*sizeof(u32));
             break;
         case ARMMode_ABT:
-            memcpy(cpy, &cpu->ABT_Bank, 2*4);
-            memcpy(&cpu->ABT_Bank, &cpu->SP, 2*4);
-            memcpy(&cpu->SP, &cpy, 2*4);
+            memcpy(cpy, &cpu->ABT_Bank, 2*sizeof(u32));
+            memcpy(&cpu->ABT_Bank, &cpu->SP, 2*sizeof(u32));
+            memcpy(&cpu->SP, &cpy, 2*sizeof(u32));
             break;
         case ARMMode_UND:
-            memcpy(cpy, &cpu->UND_Bank, 2*4);
-            memcpy(&cpu->UND_Bank, &cpu->SP, 2*4);
-            memcpy(&cpu->SP, &cpy, 2*4);
+            memcpy(cpy, &cpu->UND_Bank, 2*sizeof(u32));
+            memcpy(&cpu->UND_Bank, &cpu->SP, 2*sizeof(u32));
+            memcpy(&cpu->SP, &cpy, 2*sizeof(u32));
             break;
         case ARMMode_USR:
         case ARMMode_SYS:

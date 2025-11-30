@@ -126,26 +126,148 @@ void ARM9_AHBWrite(struct ARM946ES* ARM9, timestamp* ts, const u32 addr, const u
 }
 
 
-void ARM9_RunWriteBuffer(struct ARM946ES* ARM9, const timestamp until)
+void ARM9_RunWriteBuffer(struct ARM946ES* ARM9, timestamp* until, const bool blocking)
+{
+    struct ARM9_WriteBuffer* buf = &ARM9->WBuffer;
+/*
+    // is it empty and not working?
+    if (buf->FIFOFillPtr == 16 && !buf->Latched)
+    {
+        if (blocking && (*until < buf->NextStep))
+            *until = buf->NextStep;
+
+        return;
+    }
+    // is it time to run the write buffer?
+    if (*until > buf->NextStep)
+    {
+        if (!blocking)
+            return;
+    }
+*/
+        //printf("FLUCK %i %i, %i %i, %li %li\n", buf->FIFOFillPtr, buf->FIFODrainPtr, buf->Latched, buf->BufferSeq, *until, buf->NextStep);
+    // check latched fifo data.
+    if (buf->Latched)
+    {
+        /*if (buf->AddrLatched)
+        {
+            buf->CurAddr = buf->NextAddr;
+            buf->AddrLatched = false;
+            buf->BufferSeq = false;
+        }*/
+        u32 mask = 0;
+        u32 val = buf->FIFOEntry[16].Data;
+        u8 flag = buf->FIFOEntry[16].Flags;
+        if (flag == A9WB_8)
+        {
+            mask = u8_max << ((buf->CurAddr & 0x3) * 8);
+        }
+        else if (flag == A9WB_16)
+        {
+            mask = u16_max << ((buf->CurAddr & 0x2) * 8);
+        }
+        else if (flag == A9WB_32)
+        {
+            mask = u32_max;
+        }
+        else CrashSpectacularly("EXPLOSION\n");
+
+        printf("WR %08X %08X\n", val, buf->CurAddr);
+        ARM9_AHBWrite(ARM9, &buf->NextStep, buf->CurAddr, val, mask, false, &buf->BufferSeq);
+        buf->BufferSeq = true;
+        // increment latched address
+        // this is always correct in practice since the arm9 doesn't support 8/16 bit sequentials
+        buf->CurAddr += 4;
+        buf->Latched = false;
+    }
+
+    // check if buffer is empty *now*
+    if (buf->FIFOFillPtr != 16)
+    {
+        // CHECKME: do these actually both fetch in 1 cycle? probably not, right?
+        // latch new values
+        if (buf->FIFOEntry[buf->FIFODrainPtr].Flags == A9WB_Addr)
+        {
+            buf->CurAddr = buf->FIFOEntry[buf->FIFODrainPtr].Data;
+            //buf->AddrLatched = true;
+            buf->NextStep++; // this is probably wrong but shouldn't matter i think?
+            buf->BufferSeq = false;
+            buf->Latched = false;
+            //printf("UPDATE %08X %08X\n", buf->FIFOEntry[buf->FIFODrainPtr].Data, buf->CurAddr);
+        }
+        else
+        {
+            buf->FIFOEntry[16].Data = buf->FIFOEntry[buf->FIFODrainPtr].Data;
+            buf->FIFOEntry[16].Flags = buf->FIFOEntry[buf->FIFODrainPtr].Flags;
+            buf->Latched = true;
+        }
+        buf->FIFODrainPtr = (buf->FIFODrainPtr + 1) % 16;
+
+        // indicate fifo empty if empty
+        if (buf->FIFODrainPtr == buf->FIFOFillPtr)
+            buf->FIFOFillPtr = 16;
+    }
+}
+
+//printf("%i %i, %i %i, %li %li\n", buf->FIFOFillPtr, buf->FIFODrainPtr, buf->Latched, buf->BufferSeq, *until, buf->NextStep);
+
+void ARM9_CatchUpWriteBuffer(struct ARM946ES* ARM9, timestamp* until)
 {
     struct ARM9_WriteBuffer* buf = &ARM9->WBuffer;
 
-    buf->NextStep;
+    while ((buf->FIFOFillPtr != 16 || buf->Latched) && ((*until > buf->NextStep) || buf->BufferSeq))
+    {
+        ARM9_RunWriteBuffer(ARM9, until, false);
+    }
+}
 
+void ARM9_DrainWriteBuffer(struct ARM946ES* ARM9, timestamp* until)
+{
+    struct ARM9_WriteBuffer* buf = &ARM9->WBuffer;
 
-    switch(buf->FIFOEntry[buf->FIFODrainPtr].Flags)
+    // loop until write buffer is empty
+    while (buf->FIFOFillPtr != 16 || buf->Latched)
     {
-    case A9WB_Addr:
+        ARM9_RunWriteBuffer(ARM9, until, true);
+    }
+    if (*until < buf->NextStep)
+        *until = buf->NextStep;
+}
+
+void ARM9_FillWriteBuffer(struct ARM946ES* ARM9, timestamp* now, u32 val, u8 flag)
+{
+    struct ARM9_WriteBuffer* buf = &ARM9->WBuffer;
+
+    // is fifo full?
+    if (buf->FIFOFillPtr == buf->FIFODrainPtr)
     {
-        buf->CurAddr = buf->FIFOEntry[buf->FIFODrainPtr].Data;
-        buf->FIFODrainPtr = (buf->FIFODrainPtr + 1) % 16;
-        break;
+        while (buf->FIFOFillPtr == buf->FIFODrainPtr)
+        {
+            ARM9_RunWriteBuffer(ARM9, now, true);
+        }
+        if (*now < buf->NextStep)
+            *now = buf->NextStep;
     }
-    default:
+    else
     {
-        break;
+        ARM9_CatchUpWriteBuffer(ARM9, now);
     }
+
+    // if fifo was empty reinitialize the ptrs and update timestamp
+    if (buf->FIFOFillPtr == 16)
+    {
+        if (buf->NextStep < *now)
+            buf->NextStep = *now;
+
+        buf->FIFOFillPtr = 0;
+        buf->FIFODrainPtr = 0;
     }
+
+    //printf("FLAG %08X %i; %i %i\n", val, flag, buf->FIFOFillPtr, buf->FIFODrainPtr);
+    buf->FIFOEntry[buf->FIFOFillPtr].Data = val;
+    buf->FIFOEntry[buf->FIFOFillPtr].Flags = flag;
+
+    buf->FIFOFillPtr = (buf->FIFOFillPtr + 1) % 16;
 }
 
 // xorshift algorithm i stole from wikipedia:
@@ -188,6 +310,7 @@ u32 ARM9_ICacheLookup(struct ARM946ES* ARM9, const u32 addr)
     ARM9->ITagRAM[index+set].TagBits = (tagcmp >> 1);
 
     // begin cache streaming
+    ARM9_CatchUpWriteBuffer(ARM9, &ARM9->ARM.Timestamp);
 
     // CHECKME: can you read from icache mid-stream with test commands?
     bool seq = false;
@@ -245,6 +368,7 @@ u32 ARM9_DCacheReadLookup(struct ARM946ES* ARM9, const u32 addr)
     ARM9->DTagRAM[index|set].TagBits = (tagcmp >> 1);
 
     // begin cache streaming
+    ARM9_DrainWriteBuffer(ARM9, &ARM9->MemTimestamp);
 
     // CHECKME: can you read from icache mid-stream with test commands?
     bool seq = false;
@@ -326,6 +450,7 @@ u32 ARM9_InstrRead(struct ARM946ES* ARM9, const u32 addr, const struct ARM9_MPUP
 
     // TODO: run write buffer here (not drain)
     // instruction accesses never drain write buffer.
+    ARM9_CatchUpWriteBuffer(ARM9, &ARM9->ARM.Timestamp);
 
     // external bus
     bool seq = false; // instruction accesses are always nonsequential
@@ -455,9 +580,13 @@ u32 ARM9_DataRead(struct ARM946ES* ARM9, const u32 addr, const u32 mask, bool* s
         ARM9->MemTimestamp = ARM9->DataContTS;
 
     const struct ARM9_MPUPerms perms = ARM9_RegionLookup(ARM9, addr, ARM9->ARM.Privileged);
-    if (!perms.Read) // TODO: Data Aborts
+    if (!perms.Read)
     {
+        LogPrint(LOG_ARM9|LOG_EXCEP, "DATA ABORT: READ FROM: %08X\n", addr);
+        ARM9->MemTimestamp += 1;
         *dabt = true;
+        *seq = true;
+        return 0;
     }
     else if (ARM9_ITCMTryRead(ARM9, addr))
     {
@@ -480,13 +609,15 @@ u32 ARM9_DataRead(struct ARM946ES* ARM9, const u32 addr, const u32 mask, bool* s
         return ret;
     }
 
-    if (false)
+    if (perms.DCache || perms.Buffer)
     {
         // if bufferable then we need to drain write buffer
+        ARM9_DrainWriteBuffer(ARM9, &ARM9->MemTimestamp);
     }
     else
     {
         // otherwise we simply run the write buffer
+        ARM9_CatchUpWriteBuffer(ARM9, &ARM9->MemTimestamp);
     }
 
     // note: Technically the initial load in SWP(B) is atomic, but I dont think that actually matters in any way?
@@ -539,9 +670,13 @@ void ARM9_DataWrite(struct ARM946ES* ARM9, u32 addr, const u32 val, const u32 ma
         ARM9->MemTimestamp = ARM9->DataContTS;
 
     const struct ARM9_MPUPerms perms = ARM9_RegionLookup(ARM9, addr, ARM9->ARM.Privileged);
-    if (!perms.Write) // TODO: Data Aborts
+    if (!perms.Write)
     {
+        LogPrint(LOG_ARM9|LOG_EXCEP, "DATA ABORT: WRITE TO: %08X\n", addr);
+        ARM9->MemTimestamp += 1;
         *dabt = true;
+        *seq = true;
+        return;
     }
     else if (ARM9_ITCMTryWrite(ARM9, addr))
     {
@@ -568,16 +703,36 @@ void ARM9_DataWrite(struct ARM946ES* ARM9, u32 addr, const u32 val, const u32 ma
         return;
     }
 
-    if (false)
+    // atomic flag checked for since swp doesn't use the write buffer.
+    if ((perms.DCache || perms.Buffer) && !atomic)
     {
+        u32 size = stdc_count_ones(mask);
+        if (size == 8)
+        {
+            size = A9WB_8;
+        }
+        else if (size == 16)
+        {
+            size = A9WB_16;
+        }
+        else if (size == 32)
+        {
+            size = A9WB_32;
+        }
+        else CrashSpectacularly("%08X\n", mask);
+
+        //printf("ADDR %08X %i\n", addr, size);
         // if bufferable then we need to write to the write buffer
+        ARM9_FillWriteBuffer(ARM9, &ARM9->MemTimestamp, addr, A9WB_Addr);
+        //printf("VAL %08X %i\n", val, size);
+        ARM9_FillWriteBuffer(ARM9, &ARM9->MemTimestamp, val, size);
     }
     else
     {
         // otherwise we need to drain write buffer
+        ARM9_DrainWriteBuffer(ARM9, &ARM9->MemTimestamp);
+        ARM9_AHBWrite(ARM9, &ARM9->MemTimestamp /*not quite sure how I want to handle this yet?*/, addr, val, mask, atomic, seq);
     }
-
-    ARM9_AHBWrite(ARM9, &ARM9->MemTimestamp /*not quite sure how I want to handle this yet?*/, addr, val, mask, atomic, seq);
 
     *seq = true;
 }

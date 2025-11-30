@@ -169,8 +169,8 @@ enum ARM9_WriteBufferFlags : u8
 {
     A9WB_8,
     A9WB_16,
-    A9WB_32,
     A9WB_Addr,
+    A9WB_32,
 };
 
 struct ARM9_WriteBuffer
@@ -181,10 +181,13 @@ struct ARM9_WriteBuffer
     {
         u32 Data;
         u8 Flags;
-    } FIFOEntry[16];
+    } FIFOEntry[17]; // 16 is for latched
     u32 CurAddr;
-    u32 LatchedData;
-    u8 FIFOFillPtr;
+    u32 NextAddr;
+    bool Latched;
+    bool AddrLatched;
+    bool BufferSeq;
+    u8 FIFOFillPtr; // 16 means empty
     u8 FIFODrainPtr;
 };
 
@@ -399,6 +402,11 @@ void ARM9_ConfigureITCM(struct ARM946ES* ARM9);
 void ARM9_ConfigureDTCM(struct ARM946ES* ARM9);
 void ARM9_ConfigureMPURegionSize(struct ARM946ES* ARM9, const u8 rgn);
 void ARM9_ConfigureMPURegionPerms(struct ARM946ES* ARM9);
+
+// write buffer
+void ARM9_CatchUpWriteBuffer(struct ARM946ES* ARM9, timestamp* until);
+void ARM9_DrainWriteBuffer(struct ARM946ES* ARM9, timestamp* until);
+void ARM9_FillWriteBuffer(struct ARM946ES* ARM9, timestamp* now, u32 val, u8 flag);
 
 // Logging
 void ARM9_DumpMPU(const struct ARM946ES* ARM9);

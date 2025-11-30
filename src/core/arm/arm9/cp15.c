@@ -160,8 +160,6 @@ void ARM9_ConfigureMPURegionPerms(struct ARM946ES* ARM9)
     }
 }
 
-u32 ARM9_AHBRead(struct ARM946ES* ARM9, timestamp* ts, const u32 addr, const u32 mask, const bool atomic, bool* seq);
-void ARM9_AHBWrite(struct ARM946ES* ARM9, timestamp* ts, const u32 addr, const u32 val, const u32 mask, const bool atomic, bool* seq);
 bool ARM9_ProgressCacheStream(timestamp* ts, struct ARM9_CacheStream* stream, u32* ret, const bool seq);
 
 // CHECKME: does flushing cache clean the tag ram and/or cache line entirely?
@@ -225,20 +223,21 @@ void DCache_CleanLine(struct ARM946ES* ARM9, const u32 idxset)
     u32 addr = (ARM9->DTagRAM[idxset].TagBits << 10) | (idxset >> 2 << 5);
     if (ARM9->DTagRAM[idxset].DirtyLo)
     {
-        // TODO: Buffer this
+        ARM9_FillWriteBuffer(ARM9, &ARM9->MemTimestamp, addr, A9WB_Addr);
+        seq = true;
         for (int i = 0; i < 4; i++)
         {
-            ARM9_AHBWrite(ARM9, &ARM9->MemTimestamp, addr, ARM9->DCache.b32[(idxset<<3)+(i*4)], u32_max, false, &seq);
-            seq = true;
+            ARM9_FillWriteBuffer(ARM9, &ARM9->MemTimestamp, ARM9->DCache.b32[(idxset<<3)+(i*sizeof(u32))], A9WB_32);
+
         }
     }
     if (ARM9->DTagRAM[idxset].DirtyHi)
     {
-        // TODO: Buffer this
+        if (!seq)
+            ARM9_FillWriteBuffer(ARM9, &ARM9->MemTimestamp, addr+(4*sizeof(u32)), A9WB_Addr);
         for (int i = 4; i < 8; i++)
         {
-            ARM9_AHBWrite(ARM9, &ARM9->MemTimestamp, addr, ARM9->DCache.b32[(idxset<<3)+(i*4)], u32_max, false, &seq);
-            seq = true;
+            ARM9_FillWriteBuffer(ARM9, &ARM9->MemTimestamp, ARM9->DCache.b32[(idxset<<3)+(i*sizeof(u32))], A9WB_32);
         }
     }
     ARM9->DTagRAM[idxset].DirtyLo = false;
@@ -250,9 +249,21 @@ void DCache_CleanFlushLine(struct ARM946ES* ARM9, const u32 idxset)
     // TODO: TIMINGS
     // TODO: IMPROVE CACHE STREAMING HANDLING
 
-    DCache_CleanLine(ARM9, idxset);
-    // TODO: ERRATA
-    ARM9->DTagRAM[idxset].Valid = false;
+    // CHECKME: does this errata emulation all check out?
+    if (ARM9->DTagRAM[idxset].DirtyLo || ARM9->DTagRAM[idxset].DirtyHi)
+    {
+        DCache_CleanLine(ARM9, idxset);
+        ARM9->DTagRAM[idxset].Valid = false;
+    }
+    else if (ARM9->WBuffer.FIFOFillPtr != ARM9->WBuffer.FIFODrainPtr)
+    {
+        ARM9->DTagRAM[idxset].Valid = false;
+    }
+    else
+    {
+        // when the write buffer is full and the line is already clean the line will not properly be marked invalid
+        LogPrint(LOG_ARM9|LOG_BUG, "ARM9 ERRATA TRIGGERED: DCACHE CLEAN+FLUSH FAILED TO FLUSH CLEAN LINE DUE TO FULL WRITE BUFFER!\n");
+    }
 }
 
 void DCache_CleanIdxSet(struct ARM946ES* ARM9, const u32 val)
@@ -303,6 +314,7 @@ void DCache_CleanFlushAddr(struct ARM946ES* ARM9, const u32 addr)
         DCache_CleanFlushLine(ARM9, index | set);
     }
 }
+
 
 
 void ARM9_MCR_15(struct ARM946ES* ARM9, const u16 cmd, const u32 val)
@@ -452,6 +464,9 @@ void ARM9_MCR_15(struct ARM946ES* ARM9, const u16 cmd, const u32 val)
     case ARM_CoprocReg(0, 7, 10, 2): // clean dcache line by index + segment
         DCache_CleanFlushIdxSet(ARM9, val);
         break;
+    case ARM_CoprocReg(0, 7, 10, 4): // drain write buffer
+        ARM9_DrainWriteBuffer(ARM9, &ARM9->MemTimestamp);
+        break;
     case ARM_CoprocReg(0, 7, 13, 1): // prefetch icache line
         ICache_Prefetch(ARM9, val);
         break;
@@ -462,13 +477,13 @@ void ARM9_MCR_15(struct ARM946ES* ARM9, const u16 cmd, const u32 val)
         DCache_CleanFlushIdxSet(ARM9, val);
         break;
 
-    case ARM_CoprocReg(0, 7, 0, 4): // wait for interrupt
-    case ARM_CoprocReg(0, 15, 8, 2): // wait for interrupt
-
-    case ARM_CoprocReg(0, 7, 10, 4): // drain write buffer
-
     case ARM_CoprocReg(0, 13, 0, 1): // pid
     case ARM_CoprocReg(0, 13, 1, 1): // pid
+        ARM9->CP15.TraceProcIdReg = val;
+        break;
+
+    case ARM_CoprocReg(0, 7, 0, 4): // wait for interrupt
+    case ARM_CoprocReg(0, 15, 8, 2): // wait for interrupt
 
     // BIST
     case ARM_CoprocReg(0, 15, 0, 0): // test state

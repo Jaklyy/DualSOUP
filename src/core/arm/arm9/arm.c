@@ -246,6 +246,7 @@ void ARM9_Step(struct ARM946ES* ARM9)
 {
     // step the pipeline.
     ARM_PipelineStep(cpu);
+    ARM9_CatchUpWriteBuffer(ARM9, &ARM9->ARM.Timestamp);
 
     if (cpu->CPSR.Thumb)
     {

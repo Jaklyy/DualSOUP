@@ -775,7 +775,7 @@ u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
         else [[fallthrough]];
 
     default: // Unmapped Device;
-        LogPrint(LOG_ODD|LOG_ARM9, "NTR_AHB9: %i bit read from unmapped memory at 0x%08X? Something went wrong?\n", width, addr);
+        LogPrint(LOG_ODD|LOG_ARM9,"NTR_AHB9: %i bit read from unmapped memory at 0x%08X? Something went wrong?\n", width, addr);
         if (timings)
         {
             Timing32(&sys->AHB9);

@@ -96,6 +96,9 @@ void ARM9_Reset(struct ARM946ES* ARM9, const bool itcm, const bool hivec)
     }
 
     // TODO: MURDER WRITE BUFFER CONTENTS HERE
+    ARM9->WBuffer.FIFOFillPtr = 16;
+    ARM9->WBuffer.Latched = false;
+    ARM9->WBuffer.BufferSeq = false;
 
     // reset state unspecified.
     // ARM946E-S manual says "all cp15 reg bits that're both defined and contain state are reset to 0 on reset assertion unless stated otherwise"
@@ -242,6 +245,8 @@ void ARM9_DataAbort(struct ARM946ES* ARM9)
 {
     LogPrint(LOG_ARM9 | LOG_EXCEP, "%s9 - DATA ABT @ %08X\n", (cpu->CPSR.Thumb ? "THUMB" : "ARM"), cpu->PC);
 
+    ARM9_DumpMPU(ARM9);
+    CrashSpectacularly("FARK %08lX\n", cpu->PC);
     // lr is aborted instr + 8
     // CHECKME: what happens if the abort was from an exception return LDM? (SPSR was restored?)
     u32 oldpc = cpu->PC + ((cpu->CPSR.Thumb) ? 4 : 0);

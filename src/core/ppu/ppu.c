@@ -62,7 +62,7 @@ void PPU_RenderScanline(struct Console* sys, bool B, const u16 y)
     for (int x = 0; x < 256; x++)
     {
         u32 tileaddr = screenbase+((x / 8) * 2);
-        union TextTileData tile = {.Raw = VRAM_BGB(sys, tileaddr, 0xFFFFFFFF, false, false, 0, false) >> ((tileaddr & 2)*16)};
+        union TextTileData tile = {.Raw = VRAM_BGB(sys, tileaddr&~3, 0xFFFFFFFF, false, false, 0, false) >> ((tileaddr & 2)*8)};
         u16* pal = palbase + tile.Palette;
 
         u32 pixeladdr = tilebase + (tile.TileNum * 32) + ((x%8) / 2);

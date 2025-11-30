@@ -295,10 +295,12 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
 
     u32 opcode = instr.OpcodeLo | instr.OpcodeHi << 2;
 
-    if ((opcode == 0b011 || opcode == 0b010) && instr.Rd & 1)
+    if ((opcode == 0b011 || opcode == 0b010) && ((instr.Rd & 1) || (cpu->CPUID == ARM7ID)))
     {
         // strd and ldrd with "unaligned" Rd raise UDF
         // TODO: Does this interlock? I think it might...?
+
+        // TODO: how does this actually work on ARM7?
         return ARM_RaiseUDF;
     }
 
@@ -330,8 +332,8 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
         addr = wbaddr;
     }
 
-    // actually writeback
-    if (instr.Writeback || (!instr.PreIndex))
+    // actually writeback; NOTE: ldrd/strd do writeback elsewhere on arm9
+    if ((instr.Writeback || (!instr.PreIndex)) && (opcode != 0b010) && (opcode != 0b011))
     {
         if (instr.Rn == 15)
         {
@@ -386,6 +388,58 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
         {
             ARM9_DataWrite(ARM9Cast, addr, val, mask, false, false, &seq, &dabt);
             // TODO: Data abort
+        }
+        break;
+    }
+    case 0b010: // LDRD
+    case 0b011: // STRD
+    {
+        // these are actually both implemented as ldm/stm on arm9!
+        if (opcode == 0b010) // LOAD
+        {
+            u32 val = ARM9_DataRead32(ARM9Cast, addr, &seq, &dabt);
+            if (!dabt)
+            {
+                ARM_SetReg(instr.Rd, val, 1, 2);
+            }
+        }
+        else
+        {
+            u32 val = ARM_GetReg(instr.Rd);
+            ARM9_DataWrite(ARM9Cast, addr, val, u32_max, false, false, &seq, &dabt);
+        }
+
+        if (opcode == 0b010) // LOAD
+        {
+            u32 val = ARM9_DataRead32(ARM9Cast, addr+4, &seq, &dabt);
+
+            // actually writeback now
+            ARM_SetReg(instr.Rn, wbaddr, 0, 0);
+
+            if (!dabt)
+            {
+                if (((instr.Rd+1) == 15) && ARM_CanLoadInterwork)
+                {
+                    ARM_SetThumb(cpu, val & 1);
+                }
+
+                // bit 22... still does this for some reason.
+                if (instr.Immediate && ((instr.Rd+1) == 15))
+                {
+                    ARM_RestoreSPSR;
+                }
+
+                ARM_SetReg(instr.Rd+1, val, 1, 2);
+            }
+        }
+        else
+        {
+            u32 val = ARM_GetReg(instr.Rd+1);
+
+            // actually writeback now
+            ARM_SetReg(instr.Rn, wbaddr, 0, 0);
+
+            ARM9_DataWrite(ARM9Cast, addr+4, val, u32_max, false, false, &seq, &dabt);
         }
         break;
     }
@@ -786,7 +840,7 @@ void ARM_Swap(struct ARM* cpu, const struct ARM_Instr instr_data)
         }
         else
         {
-            ARM9_DataWrite(ARM9Cast, addr, store, mask, false, true, &seq, &dabt);
+            ARM9_DataWrite(ARM9Cast, addr, store, mask, true, true, &seq, &dabt);
         }
 
         // rotate result right based on lsb of address.
