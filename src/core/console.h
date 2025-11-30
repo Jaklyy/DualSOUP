@@ -229,6 +229,42 @@ struct Console
         };
     } PowerControl9;
 
+    union
+    {
+        u16 Raw;
+        struct
+        {
+            u16 DivMode : 2;
+            u16 : 12;
+            bool DivByZero : 1;
+            bool Busy : 1;
+        };
+    } DivCR;
+
+    union
+    {
+        s32 b32[2];
+        s64 b64;
+    } DivNum;
+
+    union
+    {
+        s32 b32[2];
+        s64 b64;
+    } DivDen;
+
+    union
+    {
+        s32 b32[2];
+        s64 b64;
+    } DivQuo;
+
+    union
+    {
+        s32 b32[2];
+        s64 b64;
+    } DivRem;
+
     struct IPCFIFO IPCFIFO7;
     struct IPCFIFO IPCFIFO9;
 

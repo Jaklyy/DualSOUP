@@ -141,6 +141,73 @@ void IPC_FIFOCRWrite(struct Console* sys, const u32 val, const u32 mask, bool a9
     }
 }
 
+void IO9_FinishDiv(struct Console* sys, timestamp now)
+{
+    s64 num;
+    s64 den;
+    if (sys->DivCR.DivMode & 1) // 64/32
+    {
+        num = sys->DivNum.b64;
+        den = sys->DivDen.b32[0];
+    }
+    else if (sys->DivCR.DivMode & 2) // 64/64
+    {
+        num = sys->DivNum.b64;
+        den = sys->DivDen.b64;
+    }
+    else // 32/32
+    {
+        num = sys->DivNum.b32[0];
+        den = sys->DivDen.b32[0];
+    }
+
+    if (den == 0)
+    {
+        if (sys->DivCR.DivMode == 0)
+        {
+            sys->DivQuo.b64 = ((num<0) ? 1 : -1) ^ 0xFFFFFFFF00000000;
+        }
+        else
+        {
+            sys->DivQuo.b64 = ((num<0) ? 1 : -1);
+        }
+        sys->DivRem.b64 = num;
+    }
+    else
+    {
+        // TIL: division can overflow and dividers really dont like it.
+        if ((sys->DivCR.DivMode == 0) && ((s32)num == (s32)-0x80000000) && (den == -1))
+        {
+            sys->DivQuo.b64 = 0x80000000; // idk why
+            sys->DivRem.b64 = 0;
+        }
+        else if ((num == (s64)-0x8000000000000000) && (den == -1))
+        {
+            sys->DivQuo.b64 = 0x8000000000000000;
+            sys->DivRem.b64 = 0;
+        }
+        else
+        {
+            sys->DivQuo.b64 = (num / den);
+            sys->DivRem.b64 = (num % den);
+        }
+    }
+    // CHECKME: test divide by 0 timings. (when is flag set? is it full length?)
+    sys->DivCR.DivByZero = !sys->DivDen.b64;
+    sys->DivCR.Busy = false;
+
+    printf("quo: %lX rem: %lX\n", sys->DivQuo.b64, sys->DivRem.b64);
+    Schedule_Event(sys, IO9_FinishDiv, Sched_Divider, timestamp_max);
+}
+
+void IO9_StartDiv(struct Console* sys)
+{
+    sys->DivQuo.b64 = 0;
+    sys->DivRem.b64 = 0;
+    Schedule_Event(sys, IO9_FinishDiv, Sched_Divider, sys->AHB9.Timestamp + ((sys->DivCR.DivMode == 0 ) ? 18 : 34));
+    sys->DivCR.Busy = true;
+}
+
 
 u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask)
 {
@@ -328,6 +395,27 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask)
         case 0x00'02'48:
             return sys->VRAMCR[7].Raw | (sys->VRAMCR[8].Raw << 8);
 
+
+        case 0x00'02'80:
+            return sys->DivCR.Raw;
+
+        case 0x00'02'90:
+            return sys->DivNum.b32[0];
+        case 0x00'02'94:
+            return sys->DivNum.b32[1];
+        case 0x00'02'98:
+            return sys->DivDen.b32[0];
+        case 0x00'02'9C:
+            return sys->DivDen.b32[1];
+        case 0x00'02'A0:
+            return sys->DivQuo.b32[0];
+        case 0x00'02'A4:
+            return sys->DivQuo.b32[1];
+        case 0x00'02'A8:
+            return sys->DivRem.b32[0];
+        case 0x00'02'AC:
+            return sys->DivRem.b32[1];
+
         case 0x00'03'04:
             return sys->PowerControl9.Raw;
 
@@ -489,6 +577,30 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             }
             break;
         }
+
+
+        case 0x00'02'80:
+            MaskedWrite(sys->DivCR.Raw, val, mask & 0x3);
+            IO9_StartDiv(sys);
+            break;
+
+        case 0x00'02'90:
+            MaskedWrite(sys->DivNum.b32[0], val, mask);
+            IO9_StartDiv(sys);
+            break;
+        case 0x00'02'94:
+            MaskedWrite(sys->DivNum.b32[1], val, mask);
+            IO9_StartDiv(sys);
+            break;
+        case 0x00'02'98:
+            MaskedWrite(sys->DivDen.b32[0], val, mask);
+            IO9_StartDiv(sys);
+            break;
+        case 0x00'02'9C:
+            MaskedWrite(sys->DivDen.b32[1], val, mask);
+            IO9_StartDiv(sys);
+            break;
+
 
         case 0x00'03'04:
             MaskedWrite(sys->PowerControl9.Raw, val, mask & 0x820F);

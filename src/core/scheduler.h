@@ -10,6 +10,7 @@ enum Scheduler_Events : u8
 {
     Sched_DMA9,
     Sched_IF9Update,
+    Sched_Divider,
 
     Sched_DMA7,
     Sched_IF7Update,
