@@ -1,5 +1,6 @@
 #include <stdbit.h>
 #include <stddef.h>
+#include <stdckdint.h>
 #include "../../../utils.h"
 #include "../arm.h"
 #include "../inc.h"
@@ -509,5 +510,170 @@ s8 ARM9_SatMath_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_d
 
     ARM9_CheckInterlocks(ARM9, &stall, instr.Rm, 0, false);
     ARM9_CheckInterlocks(ARM9, &stall, instr.Rn, 0, false);
+    return stall;
+}
+
+
+union ARM_HalfwordMul_Decode
+{
+    u32 Raw;
+    struct
+    {
+        u32 Rm : 4;
+        u32 : 1;
+        bool X : 1;
+        bool Y : 1;
+        u32 : 1;
+        u32 Rs : 4;
+        u32 Rn : 4;
+        u32 Rd : 4;
+        u32 : 1;
+        u32 Opcode : 2;
+    };
+};
+
+void ARM_HalfwordMul(struct ARM* cpu, const struct ARM_Instr instr_data)
+{
+    const union ARM_HalfwordMul_Decode instr = {.Raw = instr_data.Raw};
+
+    bool oplong;
+    bool opacc;
+    bool opword;
+    u64 acc;
+    s64 mul_out;
+    s32 rm_val;
+    s32 rs_val;
+    int memlen;
+    switch(instr.Opcode)
+    {
+    case 0: // smla<x><y>
+    {
+        oplong = false;
+        opword = false;
+        opacc = true;
+        memlen = 1;
+        break;
+    }
+    case 1: // smlaw<y> / smulw<y>
+    {
+        printf("meow\n");
+        oplong = false;
+        opword = true;
+        opacc = !instr.X;
+        memlen = 1;
+        break;
+    }
+    case 2: // smlal<x><y>
+    {
+        oplong = true;
+        opword = false;
+        opacc = true;
+        memlen = 1;
+        break;
+    }
+    case 3: // smul<x><y>
+    {
+        oplong = false;
+        opword = false;
+        opacc = false;
+        memlen = 2;
+        break;
+    }
+    }
+
+    rm_val = ARM_GetReg(instr.Rm);
+    if (!opword)
+    {
+        rm_val = (s32)(s16)(rm_val >> (16*instr.X));
+    }
+    rs_val = (s32)(s16)(ARM_GetReg(instr.Rs) >> (16*instr.Y));
+
+    ARM_StepPC(cpu, false);
+    ARM_ExeCycles(0, 1, memlen);
+
+    mul_out = rm_val * rs_val;
+
+    if (opword) mul_out >>= 16;
+
+    if (opacc)
+    {
+        acc = ARM_GetReg(instr.Rn);
+        if (oplong)
+        {
+            acc |= (u64)ARM_GetReg(instr.Rd) << 32;
+        }
+
+        if (!oplong)
+        {
+            s32 acc_out;
+            cpu->CPSR.QSticky |= ckd_add(&acc_out, (s32)mul_out, (s32)acc);
+            mul_out = acc_out;
+        }
+        else
+        {
+            mul_out += acc;
+        }
+    }
+
+    printf("mul_out %08lX %li %i\n", mul_out, mul_out, cpu->CPSR.QSticky);
+
+    // A7/9: registers are written back in the order: RdLo -> RdHi
+    if (oplong)
+    {
+        if (instr.Rn != 15) // multiplies fail writeback to pc
+        {
+            // checkme: interlocks?
+            ARM_SetReg(instr.Rn, mul_out, 0, 0);
+        }
+        // sort of silly way to keep this compatible w/ short muls
+        mul_out >>= 32;
+    }
+
+    if (instr.Rd != 15) // multiplies fail writeback to pc
+    {
+        ARM_SetReg(instr.Rd, mul_out, 1, 1);
+    }
+}
+
+s8 ARM9_HalfwordMul_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
+{
+    const union ARM_HalfwordMul_Decode instr = {.Raw = instr_data.Raw};
+    s8 stall = 0;
+    bool oplong;
+    bool opacc;
+    switch(instr.Opcode)
+    {
+    case 0: // smla<x><y>
+    {
+        oplong = false;
+        opacc = true;
+        break;
+    }
+    case 1: // smlaw<y> / smulw<y>
+    {
+        oplong = false;
+        opacc = !instr.X;
+        break;
+    }
+    case 2: // smlal<x><y>
+    {
+        oplong = true;
+        opacc = true;
+        break;
+    }
+    case 3: // smul<x><y>
+    {
+        oplong = false;
+        opacc = true;
+        break;
+    }
+    }
+
+    ARM9_CheckInterlocks(ARM9, &stall, instr.Rm, 0, false);
+    ARM9_CheckInterlocks(ARM9, &stall, instr.Rs, 0, false);
+    // CHECKME: accumulate interlock timings and port.
+    if (opacc) ARM9_CheckInterlocks(ARM9, &stall, instr.Rn, 1, true);
+    if (oplong) ARM9_CheckInterlocks(ARM9, &stall, instr.Rd, 1, true);
+
     return stall;
 }

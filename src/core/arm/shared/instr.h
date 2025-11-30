@@ -20,6 +20,7 @@ void ARM_Mul(struct ARM* cpu, const struct ARM_Instr instr_data);
 // v5+
 void ARM_CLZ(struct ARM* cpu, const struct ARM_Instr instr_data); 
 void ARM_SatMath(struct ARM* cpu, const struct ARM_Instr instr_data);
+void ARM_HalfwordMul(struct ARM* cpu, const struct ARM_Instr instr_data);
 
 
 // coprocessor

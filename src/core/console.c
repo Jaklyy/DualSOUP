@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include "console.h"
 #include "arm/arm9/arm.h"
+#include "arm/shared/arm.h"
 #include "dma/dma.h"
 #include "scheduler.h"
 #include "utils.h"
@@ -145,6 +146,15 @@ void Console_DirectBoot(struct Console* sys, FILE* rom)
     sys->ExtMemCR_Shared.MRSomething1 = true;
     sys->ExtMemCR_Shared.MRSomething2 = true;
     sys->ExtMemCR_Shared.MRPriority = true; // ARM7
+
+    ARM_SetMode((struct ARM*)&sys->ARM9, ARMMode_SYS);
+    ARM_SetMode((struct ARM*)&sys->ARM7, ARMMode_SYS);
+    sys->ARM9.ARM.SP = 0x03002F7C;
+    sys->ARM9.ARM.IRQ_Bank.R[0] = 0x03003F80;
+    sys->ARM9.ARM.SWI_Bank.R[0] = 0x03003FC0;
+    sys->ARM7.ARM.SP = 0x0380FD80;
+    sys->ARM7.ARM.IRQ_Bank.R[0] = 0x0380FF80;
+    sys->ARM7.ARM.SWI_Bank.R[0] = 0x0380FFC0;
 
     fseek(rom, 0x20, SEEK_SET);
     u32 vars[8];

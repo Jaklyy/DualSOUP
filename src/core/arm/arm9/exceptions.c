@@ -219,6 +219,9 @@ void ARM9_PrefetchAbort(struct ARM* ARM, const struct ARM_Instr instr_data)
             LogPrint(LOG_ARM9 | LOG_EXCEP, "ARM9 - BKPT: %08X @ %08X\n", instr_data.Raw, cpu->PC);
     }
 
+    ARM9_DumpMPU(ARM9);
+    CrashSpectacularly("FARK %08lX\n", cpu->PC);
+
     // lr is aborted instruction + 4
     u32 oldpc = cpu->PC - ((cpu->CPSR.Thumb) ? 0 : 4);
     union ARM_PSR oldcpsr = cpu->CPSR;

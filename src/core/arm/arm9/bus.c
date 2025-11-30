@@ -125,6 +125,7 @@ void ARM9_AHBWrite(struct ARM946ES* ARM9, timestamp* ts, const u32 addr, const u
     *ts = ((*ts - 1) << ((ARM9->BoostedClock) ? 2 : 1)) + 1;
 }
 
+#define wb
 
 void ARM9_RunWriteBuffer(struct ARM946ES* ARM9, timestamp* until, const bool blocking)
 {
@@ -172,7 +173,7 @@ void ARM9_RunWriteBuffer(struct ARM946ES* ARM9, timestamp* until, const bool blo
         }
         else CrashSpectacularly("EXPLOSION\n");
 
-        printf("WR %08X %08X\n", val, buf->CurAddr);
+        //printf("WR %08X %08X\n", val, buf->CurAddr);
         ARM9_AHBWrite(ARM9, &buf->NextStep, buf->CurAddr, val, mask, false, &buf->BufferSeq);
         buf->BufferSeq = true;
         // increment latched address
@@ -213,16 +214,19 @@ void ARM9_RunWriteBuffer(struct ARM946ES* ARM9, timestamp* until, const bool blo
 
 void ARM9_CatchUpWriteBuffer(struct ARM946ES* ARM9, timestamp* until)
 {
+#ifdef wb
     struct ARM9_WriteBuffer* buf = &ARM9->WBuffer;
 
     while ((buf->FIFOFillPtr != 16 || buf->Latched) && ((*until > buf->NextStep) || buf->BufferSeq))
     {
         ARM9_RunWriteBuffer(ARM9, until, false);
     }
+#endif
 }
 
 void ARM9_DrainWriteBuffer(struct ARM946ES* ARM9, timestamp* until)
 {
+#ifdef wb
     struct ARM9_WriteBuffer* buf = &ARM9->WBuffer;
 
     // loop until write buffer is empty
@@ -232,12 +236,14 @@ void ARM9_DrainWriteBuffer(struct ARM946ES* ARM9, timestamp* until)
     }
     if (*until < buf->NextStep)
         *until = buf->NextStep;
+#endif
 }
 
 void ARM9_FillWriteBuffer(struct ARM946ES* ARM9, timestamp* now, u32 val, u8 flag)
 {
     struct ARM9_WriteBuffer* buf = &ARM9->WBuffer;
 
+#ifdef wb
     // is fifo full?
     if (buf->FIFOFillPtr == buf->FIFODrainPtr)
     {
@@ -268,6 +274,31 @@ void ARM9_FillWriteBuffer(struct ARM946ES* ARM9, timestamp* now, u32 val, u8 fla
     buf->FIFOEntry[buf->FIFOFillPtr].Flags = flag;
 
     buf->FIFOFillPtr = (buf->FIFOFillPtr + 1) % 16;
+#else
+    if (flag == A9WB_Addr)
+    {
+        buf->CurAddr = val;
+    }
+    else
+    {
+        u32 mask;
+        if (flag == A9WB_8)
+        {
+            mask = u8_max << ((buf->CurAddr & 0x3) * 8);
+        }
+        else if (flag == A9WB_16)
+        {
+            mask = u16_max << ((buf->CurAddr & 0x2) * 8);
+        }
+        else if (flag == A9WB_32)
+        {
+            mask = u32_max;
+        }
+        else CrashSpectacularly("EXPLOSION\n");
+        ARM9_AHBWrite(ARM9, now, buf->CurAddr, val, mask, false, &buf->BufferSeq);
+        buf->CurAddr+=4;
+    }
+#endif
 }
 
 // xorshift algorithm i stole from wikipedia:
@@ -480,6 +511,7 @@ void ARM9_InstrRead32(struct ARM946ES* ARM9, const u32 addr)
     // CHECKME: is this before or after cache streaming is checked for
     if (!perms.Exec)
     {
+        ARM9_Log(ARM9);
         ARM9_FetchCycles(ARM9, 1);
 
         ARM9->ARM.Instr[2] = (struct ARM_Instr){.Raw = 0xE1200070, // encode bkpt as a minor hack to avoid needing dedicated prefetch abort handling.
@@ -515,6 +547,7 @@ void ARM9_InstrRead16(struct ARM946ES* ARM9, const u32 addr)
         // CHECKME: is this before or after cache streaming is checked for
         if (!perms.Exec)
         {
+            ARM9_Log(ARM9);
             ARM9_FetchCycles(ARM9, 1);
             ARM9->ARM.Instr[2] = (struct ARM_Instr){.Raw = 0xBE00, // encode bkpt as a minor hack to avoid needing dedicated prefetch abort handling.
                                                     .Aborted = true,
@@ -582,6 +615,7 @@ u32 ARM9_DataRead(struct ARM946ES* ARM9, const u32 addr, const u32 mask, bool* s
     const struct ARM9_MPUPerms perms = ARM9_RegionLookup(ARM9, addr, ARM9->ARM.Privileged);
     if (!perms.Read)
     {
+        ARM9_Log(ARM9);
         LogPrint(LOG_ARM9|LOG_EXCEP, "DATA ABORT: READ FROM: %08X\n", addr);
         ARM9->MemTimestamp += 1;
         *dabt = true;
@@ -672,6 +706,7 @@ void ARM9_DataWrite(struct ARM946ES* ARM9, u32 addr, const u32 val, const u32 ma
     const struct ARM9_MPUPerms perms = ARM9_RegionLookup(ARM9, addr, ARM9->ARM.Privileged);
     if (!perms.Write)
     {
+        ARM9_Log(ARM9);
         LogPrint(LOG_ARM9|LOG_EXCEP, "DATA ABORT: WRITE TO: %08X\n", addr);
         ARM9->MemTimestamp += 1;
         *dabt = true;

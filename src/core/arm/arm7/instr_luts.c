@@ -35,24 +35,17 @@ void ARM7_InitInstrLUT()
         CHECK (0000'0000'1001, 1111'0000'1111, Mul)
         // control/dsp extension space
         CHECK (0001'0000'0000, 1111'1011'1111, MRS) // mrs
-        CHECK (0001'0010'0000, 1111'1011'1111, MSR) // msr (reg)
         CHECK (0001'0010'0001, 1111'1111'1101, BranchExchange) // b(l)x (reg)
-        CHECK (0001'0110'0001, 1111'1111'1111, CLZ)
-        CHECK (0001'0000'1000, 1111'1001'1001, UNIMPL) // signed multiplies
+        CHECK (0011'0010'0000, 1111'1011'0000, MSR) // msr (imm)
+        CHECK (0001'0010'0000, 1111'1011'1111, MSR) // msr (reg)
         // load/store extension space
         CHECK (0001'0000'1001, 1111'1011'1111, Swap) // swp
-        //CHECK (0001'1000'1001, 1111'1000'1111, UNIMPL) // ldrex/strex (and variants)
         CHECK (0000'0000'1001, 1110'0000'1001, LoadStoreMisc)
         // explicitly defined undefined space
         CHECK7(0111'1111'1111, 1111'1111'1111, UndefinedInstruction)
         // coproc extension space
         CHECK (1100'0001'0000, 1111'0001'0000, LDC) // ldc
         CHECK (1100'0000'0000, 1111'0001'0000, UNIMPL) // stc
-        CHECK (1100'0000'0000, 1111'1010'0000, UNIMPL) // coprocessor? - checkme: longer undef?
-        // data processing
-        CHECK (0000'0000'0000, 1100'0000'0000, DataProc)
-        // load/store
-        CHECK (0100'0000'0000, 1100'0000'0000, LoadStore)
         // coprocessor data processing
         CHECK (1110'0000'0000, 1111'0000'0001, UNIMPL) // cdp - checkme: longer undef?
         // coprocessor register transfers
@@ -63,7 +56,11 @@ void ARM7_InitInstrLUT()
         // branch
         CHECK (1010'0000'0000, 1110'0000'0000, Branch) // b/bl
         CHECK7(1111'0000'0000, 1111'0000'0000, SoftwareInterrupt)
-        CHECK (1110'0000'0000, 1111'0000'0000, UNIMPL) // coprocessor instruction - checkme: longer undef?
+        // data processing
+        CHECK (0000'0000'0000, 1100'0000'0000, DataProc)
+        // load/store
+        CHECK (0100'0000'0000, 1100'0000'0000, LoadStore)
+
         CHECK7(0000'0000'0000, 0000'0000'0000, UndefinedInstruction)
         unreachable();
     }

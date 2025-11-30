@@ -91,24 +91,23 @@ void ARM9_InitInstrLUT()
         CHECK (0000'0000'1001, 1111'0000'1111, Mul)
         // control/dsp extension space
         CHECK (0001'0000'0000, 1111'1011'1111, MRS) // mrs
-        CHECK (0001'0010'0000, 1111'1011'1111, MSR) // msr (reg)
         CHECK (0001'0010'0001, 1111'1111'1101, BranchExchange) // b(l)x (reg)
+        CHECK (0011'0010'0000, 1111'1011'0000, MSR) // msr (imm)
+        CHECK (0001'0010'0000, 1111'1011'1111, MSR) // msr (reg)
         CHECK (0001'0110'0001, 1111'1111'1111, CLZ)
         CHECK (0001'0000'0101, 1111'1001'1111, SatMath)
         CHECK9(0001'0010'0111, 1111'1111'1111, PrefetchAbort) // bkpt | we're reusing bkpt as a faster way to handle prefetch aborts
-        CHECK (0001'0000'1000, 1111'1001'1001, UNIMPL) // signed multiplies
+        CHECK (0001'0000'1000, 1111'1001'1001, HalfwordMul) // halfword multiplies
         // load/store extension space
         CHECK (0001'0000'1001, 1111'1011'1111, Swap) // swp
-        //CHECK (0001'1000'1001, 1111'1000'1111, UNIMPL) // ldrex/strex (and variants)
         CHECK (0000'0000'1001, 1110'0000'1001, LoadStoreMisc)
         // explicitly defined undefined space
         CHECK9(0111'1111'1111, 1111'1111'1111, UndefinedInstruction)
         // coproc extension space
-        CHECK (1100'0001'0000, 1111'0001'0000, LDC) // ldc
-        CHECK (1100'0000'0000, 1111'0001'0000, UNIMPL) // stc
+        CHECK (1100'0001'0000, 1110'0001'0000, LDC) // ldc
+        CHECK (1100'0000'0000, 1110'0001'0000, UNIMPL) // stc
         CHECK (1100'0100'0000, 1111'1111'0000, UNIMPL) // mcrr
         CHECK (1100'0101'0000, 1111'1111'0000, UNIMPL) // mrrc
-        CHECK (1100'0000'0000, 1111'1010'0000, UNIMPL) // coprocessor? - checkme: longer undef?
         // data processing
         CHECK (0000'0000'0000, 1100'0000'0000, DataProc)
         // load/store
@@ -123,7 +122,7 @@ void ARM9_InitInstrLUT()
         // branch
         CHECK (1010'0000'0000, 1110'0000'0000, Branch) // b/bl
         CHECK9(1111'0000'0000, 1111'0000'0000, SoftwareInterrupt)
-        CHECK (1110'0000'0000, 1111'0000'0000, UNIMPL) // coprocessor instruction - checkme: longer undef?
+
         CHECK9(0000'0000'0000, 0000'0000'0000, UndefinedInstruction)
         unreachable();
     }
@@ -144,7 +143,7 @@ void THUMB9_Misc(struct ARM* ARM, const struct ARM_Instr instr_data)
     CHECK(0000'0000'0, 1111'0000'0, _AdjustSP) // adjust sp
     CHECK(0100'0000'0, 1110'0000'0, _Push) // push
     CHECK(1100'0000'0, 1110'0000'0, _Pop) // pop
-    CHECK(1110'0000'0, 1110'0000'0, 9_PrefetchAbort)
+    CHECK(1110'0000'0, 1111'0000'0, 9_PrefetchAbort) // bkpt
     CHECK(0000'0000'0, 0000'0000'0, 9_UndefinedInstruction)
     unreachable();
 }

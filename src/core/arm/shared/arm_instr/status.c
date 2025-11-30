@@ -56,8 +56,8 @@ void ARM_MSR(struct ARM* cpu, const struct ARM_Instr instr_data)
 
     if (instr.UseImmediate)
     {
-        bool* dummy = 0; // we dont care about the carry out...
-        input = ARM_ROR(instr.Imm, instr.RotateImm, dummy);
+        bool dummy; // we dont care about the carry out...
+        input = ARM_ROR(instr.Imm, instr.RotateImm*2, &dummy);
     }
     else
     {
@@ -97,7 +97,7 @@ void ARM_MSR(struct ARM* cpu, const struct ARM_Instr instr_data)
     psr = (psr & ~updatemask) | (input & updatemask);
 
     // check if thumb bit was messed with (dont ask me why arm didn't just mask this bit out...)
-    if ((instr.UseSPSR) && ((psr ^ oldpsr) & 0x20))
+    if ((!instr.UseSPSR) && ((psr ^ oldpsr) & 0x20))
     {
         if (cpu->CPUID == ARM9ID)
         {
@@ -136,6 +136,8 @@ void ARM_MSR(struct ARM* cpu, const struct ARM_Instr instr_data)
     {
         ARM_ExeCycles(1, 1, 1);
     }
+
+    printf("MSR: %08X\n", psr);
 
     ((instr.UseSPSR) ? ARM_SetSPSR((union ARM_PSR){.Raw = psr}) : ARM_SetCPSR(cpu, psr));
 }
