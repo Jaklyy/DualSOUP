@@ -1,3 +1,4 @@
+#include <string.h>
 #include "../utils.h"
 #include "../dma/dma.h"
 #include "../console.h"
@@ -5,9 +6,141 @@
 
 
 
+bool AHB9_SyncWith7GTE(struct Console* sys);
+bool AHB9_SyncWith7GT(struct Console* sys);
+bool AHB7_SyncWith9GTE(struct Console* sys);
+bool AHB7_SyncWith9GT(struct Console* sys);
 
 // TODO: Regs im 99% confident about:
 // Timers
+
+u32 IPC_FIFORead(struct Console* sys, const u32 mask, const bool a9)
+{
+    struct IPCFIFO* send = ((a9) ? &sys->IPCFIFO7 : &sys->IPCFIFO9);
+    struct IPCFIFO* recv = ((a9) ? &sys->IPCFIFO9 : &sys->IPCFIFO7);
+    timestamp ts = ((a9) ? sys->AHB9.Timestamp : sys->AHB7.Timestamp);
+
+    u32 ret;
+    // CHECKME: do both sides need to be enabled for it to work?
+    // CHECKME: halfword/byte accesses?
+    if (recv->CR.EnableFIFOs)
+    {
+        // return last value.
+        if (recv->CR.RecvFIFOEmpty)
+        {
+            recv->CR.Error = true;
+            return recv->FIFO[(recv->DrainPtr-1) % 16];
+        }
+
+        ret = recv->FIFO[recv->DrainPtr];
+
+        // no longer full
+        if (recv->CR.RecvFIFOFull)
+        {
+            recv->CR.RecvFIFOFull = false;
+            send->CR.SendFIFOFull = false;
+        }
+
+        recv->DrainPtr = (recv->DrainPtr + 1) % 16;
+
+        // now empty
+        if (recv->FillPtr == recv->DrainPtr)
+        {
+            recv->CR.RecvFIFOEmpty = true;
+            send->CR.SendFIFOEmpty = true;
+            // send irq
+            if (send->CR.SendFIFOEmptyIRQ)
+            {
+                Console_ScheduleIRQs(sys, IRQ_IPCFIFOEmpty, !a9, ts);
+            }
+        }
+    }
+    else
+    {
+        // return oldest value.
+        ret = recv->FIFO[recv->DrainPtr];
+    }
+    return ret;
+}
+
+void IPC_FIFOWrite(struct Console* sys, const u32 val, const u32 mask, const bool a9)
+{
+    struct IPCFIFO* send = ((a9) ? &sys->IPCFIFO7 : &sys->IPCFIFO9);
+    struct IPCFIFO* recv = ((a9) ? &sys->IPCFIFO9 : &sys->IPCFIFO7);
+    timestamp ts = ((a9) ? sys->AHB9.Timestamp : sys->AHB7.Timestamp);
+
+    // CHECKME: do both sides need to be enabled for it to work?
+    // CHECKME: halfword/byte accesses?
+    if (recv->CR.EnableFIFOs)
+    {
+        // CHECKME: does this write just get ignored or overwrite?
+        if (recv->CR.SendFIFOFull)
+        {
+            recv->CR.Error = true;
+            return;
+        }
+
+        MaskedWrite(send->FIFO[send->FillPtr], val, mask);
+
+        // no longer empty
+        if (recv->CR.SendFIFOEmpty)
+        {
+            send->CR.RecvFIFOEmpty = false;
+            recv->CR.SendFIFOEmpty = false;
+            // send irq
+            if (send->CR.RecvFIFONotEmptyIRQ)
+            {
+                Console_ScheduleIRQs(sys, IRQ_IPCFIFONotEmpty, !a9, ts);
+            }
+        }
+
+        send->FillPtr = (send->FillPtr + 1) % 16;
+
+        // now full
+        if (send->FillPtr == send->DrainPtr)
+        {
+            send->CR.RecvFIFOFull = true;
+            recv->CR.SendFIFOFull = true;
+        }
+    }
+}
+
+void IPC_FIFOCRWrite(struct Console* sys, const u32 val, const u32 mask, bool a9)
+{
+    struct IPCFIFO* send = ((a9) ? &sys->IPCFIFO7 : &sys->IPCFIFO9);
+    struct IPCFIFO* recv = ((a9) ? &sys->IPCFIFO9 : &sys->IPCFIFO7);
+    timestamp ts = ((a9) ? sys->AHB9.Timestamp : sys->AHB7.Timestamp);
+
+    if (a9) AHB9_SyncWith7GT(sys);
+    else    AHB7_SyncWith9GT(sys);
+
+    MaskedWrite(recv->CR.Raw, val, mask & 0x8404);
+
+    // FIFO Flush; CHECKME: does this need power?
+    if (mask & val & 1<<3)
+    {
+        memset(send->FIFO, 0, sizeof(sys->IPCFIFO7));
+        recv->CR.SendFIFOEmpty = true;
+        send->CR.RecvFIFOEmpty = true;
+        recv->CR.SendFIFOFull = false;
+        send->CR.RecvFIFOFull = false;
+        send->FillPtr = 0;
+        send->DrainPtr = 0;
+        // send irq
+        if (send->CR.SendFIFOEmptyIRQ)
+        {
+            Console_ScheduleIRQs(sys, IRQ_IPCFIFOEmpty, !a9, ts);
+        }
+    }
+
+    // ack error
+    if (mask & val & (1<<14))
+    {
+        printf("ack %08X %08X!\n", val, recv->CR.Raw);
+        recv->CR.Error = false;
+    }
+}
+
 
 u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask)
 {
@@ -30,9 +163,13 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask)
             return Input_PollMain(sys->Pad) << 16;
 
         case 0x00'01'80: // ipcsync
+            AHB7_SyncWith9GT(sys);
             return sys->IPCSyncDataTo7
                     | (sys->IPCSyncDataTo9 << 8)
                     | (sys->IPCSyncIRQEnableTo7 << 14);
+        case 0x00'01'84:
+            AHB7_SyncWith9GT(sys);
+            return sys->IPCFIFO7.CR.Raw;
 
         case 0x00'02'04: // External Memory Control
             return sys->ExtMemCR_Shared.Raw | sys->ExtMemCR_7.Raw;
@@ -48,6 +185,9 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask)
         case 0x00'02'40: // VRAM/WRAM Status
             return ((sys->VRAMCR[2].Raw & 0x87) == 0x82) | (((sys->VRAMCR[3].Raw & 0x87) == 0x82) << 1)
                    | sys->WRAMCR << 8;
+
+        case 0x10'00'00:
+            return IPC_FIFORead(sys, mask, false);
 
         default:
             LogPrint(LOG_ARM7 | LOG_UNIMP, "UNIMPLEMENTED IO7 READ: %08lX %08lX @ %08lX\n", addr, mask, sys->ARM7.ARM.PC);
@@ -86,14 +226,15 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
 
         case 0x00'01'80: // ipcsync
         {
+            AHB7_SyncWith9GT(sys);
             if (mask & 0xF00)
             {
                 sys->IPCSyncDataTo9 = (val >> 8) & 0xF;
             }
 
-            if (val & mask & (1<<13))
+            if ((val & mask & (1<<13)) && sys->IPCSyncIRQEnableTo9)
             {
-                // TODO IRQ
+                Console_ScheduleIRQs(sys, IRQ_IPCSync, true, sys->AHB7.Timestamp);
             }
 
             if (mask & (1<<14))
@@ -102,6 +243,13 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             }
             break;
         }
+
+        case 0x00'01'84:
+            IPC_FIFOCRWrite(sys, val, mask, false);
+            break;
+        case 0x00'01'88:
+            IPC_FIFOWrite(sys, val, mask, false);
+            break;
 
         case 0x00'02'04: // exmemcnt
             MaskedWrite(sys->ExtMemCR_7.Raw, val, mask & 0x7F);
@@ -150,9 +298,14 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask)
 
         // IPC
         case 0x00'01'80: // ipcsync
+            AHB9_SyncWith7GT(sys);
             return sys->IPCSyncDataTo9
                     | (sys->IPCSyncDataTo7 << 8)
                     | (sys->IPCSyncIRQEnableTo9 << 14);
+        case 0x00'01'84:
+            AHB9_SyncWith7GT(sys);
+        printf("read! %08X!\n", sys->IPCFIFO9.CR.Raw);
+            return sys->IPCFIFO9.CR.Raw;
 
         case 0x00'02'04: // External Memory Control
             return sys->ExtMemCR_Shared.Raw | sys->ExtMemCR_9.Raw;
@@ -183,10 +336,11 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask)
 
         case 0x00'10'08:
             return sys->PPU_B.BGCR[0].Raw | (sys->PPU_B.BGCR[1].Raw << 16);
-            break;
         case 0x00'10'0C:
             return sys->PPU_B.BGCR[2].Raw | (sys->PPU_B.BGCR[3].Raw << 16);
-            break;
+
+        case 0x10'00'00:
+            return IPC_FIFORead(sys, mask, true);
 
         default:
             LogPrint(LOG_ARM9 | LOG_UNIMP, "UNIMPLEMENTED IO9 READ: %08lX %08lX @ %08lX\n", addr, mask, sys->ARM9.ARM.PC);
@@ -232,22 +386,30 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
 
         case 0x00'01'80: // ipcsync
         {
+            AHB9_SyncWith7GT(sys);
             if (mask & 0xF00)
             {
                 sys->IPCSyncDataTo7 = (val >> 8) & 0xF;
             }
 
-            if (mask & (1<<13))
+            if ((val & mask & (1<<13)) && sys->IPCSyncIRQEnableTo7)
             {
-                // TODO IRQ
+                Console_ScheduleIRQs(sys, IRQ_IPCSync, false, sys->AHB9.Timestamp);
             }
 
-            if (val & mask & (1<<14))
+            if (mask & (1<<14))
             {
                 sys->IPCSyncIRQEnableTo9 = val & (1<<14);
             }
             break;
         }
+
+        case 0x00'01'84:
+            IPC_FIFOCRWrite(sys, val, mask, true);
+            break;
+        case 0x00'01'88:
+            IPC_FIFOWrite(sys, val, mask, true);
+            break;
 
         case 0x00'02'04: // exmemcnt
             MaskedWrite(sys->ExtMemCR_9.Raw, val, mask & 0x7F);

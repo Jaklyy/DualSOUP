@@ -74,6 +74,31 @@ union VRAMCR
     };
 };
 
+
+struct IPCFIFO
+{
+    union 
+    {
+        u16 Raw;
+        struct
+        {
+            bool SendFIFOEmpty : 1;
+            bool SendFIFOFull : 1;
+            bool SendFIFOEmptyIRQ : 1;
+            u16 : 5;
+            bool RecvFIFOEmpty : 1;
+            bool RecvFIFOFull : 1;
+            bool RecvFIFONotEmptyIRQ : 1;
+            u16 : 3;
+            bool Error : 1;
+            bool EnableFIFOs : 1;
+        };
+    } CR;
+    s8 FillPtr;
+    s8 DrainPtr;
+    u32 FIFO[16];
+};
+
 struct Console
 {
     struct ARM946ES ARM9;
@@ -203,6 +228,9 @@ struct Console
             bool AOnBottom : 1;
         };
     } PowerControl9;
+
+    struct IPCFIFO IPCFIFO7;
+    struct IPCFIFO IPCFIFO9;
 
     void* Pad;
 
