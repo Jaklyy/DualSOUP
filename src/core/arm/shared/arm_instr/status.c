@@ -137,7 +137,6 @@ void ARM_MSR(struct ARM* cpu, const struct ARM_Instr instr_data)
         ARM_ExeCycles(1, 1, 1);
     }
 
-    printf("MSR: %08X\n", psr);
 
     ((instr.UseSPSR) ? ARM_SetSPSR((union ARM_PSR){.Raw = psr}) : ARM_SetCPSR(cpu, psr));
 }

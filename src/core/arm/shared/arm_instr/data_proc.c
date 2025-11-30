@@ -556,7 +556,6 @@ void ARM_HalfwordMul(struct ARM* cpu, const struct ARM_Instr instr_data)
     }
     case 1: // smlaw<y> / smulw<y>
     {
-        printf("meow\n");
         oplong = false;
         opword = true;
         opacc = !instr.X;
@@ -614,8 +613,6 @@ void ARM_HalfwordMul(struct ARM* cpu, const struct ARM_Instr instr_data)
             mul_out += acc;
         }
     }
-
-    printf("mul_out %08lX %li %i\n", mul_out, mul_out, cpu->CPSR.QSticky);
 
     // A7/9: registers are written back in the order: RdLo -> RdHi
     if (oplong)
