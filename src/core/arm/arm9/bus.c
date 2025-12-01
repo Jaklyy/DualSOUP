@@ -198,7 +198,7 @@ void ARM9_CatchUpWriteBuffer(struct ARM946ES* ARM9, timestamp* until)
 #ifdef wb
     struct ARM9_WriteBuffer* buf = &ARM9->WBuffer;
 
-    while ((buf->FIFOFillPtr != 16 || buf->Latched) && ((*until > buf->NextStep) || buf->BufferSeq))
+    while((buf->FIFOFillPtr != 16 || buf->Latched) && ((*until > buf->NextStep) || buf->BufferSeq))
     {
         ARM9_RunWriteBuffer(ARM9);
     }
@@ -211,7 +211,7 @@ void ARM9_DrainWriteBuffer(struct ARM946ES* ARM9, timestamp* until)
     struct ARM9_WriteBuffer* buf = &ARM9->WBuffer;
 
     // loop until write buffer is empty
-    while (buf->FIFOFillPtr != 16 || buf->Latched)
+    while(buf->FIFOFillPtr != 16 || buf->Latched)
     {
         ARM9_RunWriteBuffer(ARM9);
     }
@@ -228,7 +228,7 @@ void ARM9_FillWriteBuffer(struct ARM946ES* ARM9, timestamp* now, u32 val, u8 fla
     // is fifo full?
     if (buf->FIFOFillPtr == buf->FIFODrainPtr)
     {
-        while (buf->FIFOFillPtr == buf->FIFODrainPtr)
+        while(buf->FIFOFillPtr == buf->FIFODrainPtr)
         {
             ARM9_RunWriteBuffer(ARM9);
         }

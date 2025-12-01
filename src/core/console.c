@@ -241,7 +241,7 @@ timestamp Console_GetARM9Cur(struct Console* sys)
 
 void Console_SyncWith7GTE(struct Console* sys, timestamp now)
 {
-    while (now >= Console_GetARM7Cur(sys))
+    while(now >= Console_GetARM7Cur(sys))
     {
         CR_Switch(sys->HandleARM7);
     }
@@ -249,7 +249,7 @@ void Console_SyncWith7GTE(struct Console* sys, timestamp now)
 
 void Console_SyncWith7GT(struct Console* sys, timestamp now)
 {
-    while (now > Console_GetARM7Cur(sys))
+    while(now > Console_GetARM7Cur(sys))
     {
         CR_Switch(sys->HandleARM7);
     }
@@ -257,7 +257,7 @@ void Console_SyncWith7GT(struct Console* sys, timestamp now)
 
 void Console_SyncWith9GTE(struct Console* sys, timestamp now)
 {
-    while (now >= Console_GetARM9Cur(sys))
+    while(now >= Console_GetARM9Cur(sys))
     {
         CR_Switch(sys->HandleARM9);
     }
@@ -265,7 +265,7 @@ void Console_SyncWith9GTE(struct Console* sys, timestamp now)
 
 void Console_SyncWith9GT(struct Console* sys, timestamp now)
 {
-    while (now > Console_GetARM9Cur(sys))
+    while(now > Console_GetARM9Cur(sys))
     {
         CR_Switch(sys->HandleARM9);
     }
