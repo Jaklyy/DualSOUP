@@ -166,8 +166,7 @@ void ARM7_Step(struct ARM7TDMI* ARM7)
 {
     if (cpu->CpuSleeping)
     {
-        cpu->Timestamp = cpu->Sys->ARM7Target;
-        return;
+        CR_Switch(cpu->Sys->HandleMain);
     }
 
     // step the pipeline.

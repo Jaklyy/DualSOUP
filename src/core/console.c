@@ -1,6 +1,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <sys/types.h>
 #include "console.h"
 #include "arm/arm9/arm.h"
 #include "arm/shared/arm.h"
@@ -215,6 +216,7 @@ void Console_Reset(struct Console* sys)
 
 timestamp Console_GetARM7Cur(struct Console* sys)
 {
+    if (sys->ARM7.ARM.DeadAsleep) return timestamp_max;
     timestamp ts = sys->ARM7.ARM.Timestamp;
     if (ts < sys->AHB7.Timestamp)
         ts = sys->AHB7.Timestamp;
@@ -226,7 +228,8 @@ timestamp Console_GetARM7Cur(struct Console* sys)
 
 timestamp Console_GetARM9Cur(struct Console* sys)
 {
-    timestamp ts = sys->ARM9.ARM.Timestamp/2;
+    if (sys->ARM9.ARM.DeadAsleep) return timestamp_max;
+    timestamp ts = sys->ARM9.ARM.Timestamp >> ((sys->ARM9.BoostedClock) ? 2 : 1);
 
     if (ts < sys->AHB9.Timestamp)
         ts = sys->AHB9.Timestamp;
@@ -288,7 +291,9 @@ void IF9_Update(struct Console* sys, timestamp now)
     if (sys->ARM9.ARM.CpuSleeping && sys->IME9 && (sys->IE9 & sys->IF9))
     {
         sys->ARM9.ARM.CpuSleeping = 0;
-        sys->ARM9.ARM.Timestamp = now / 2;
+        sys->ARM9.ARM.Timestamp = now >> ((sys->ARM9.BoostedClock) ? 2 : 1);
+        ARM9_ExecuteCycles(&sys->ARM9, 1, 1);
+        sys->ARM9.ARM.CodeSeq = false;
     }
     Schedule_Event(sys, IF9_Update, Sched_IF9Update, next);
 }
@@ -313,6 +318,8 @@ void IF7_Update(struct Console* sys, timestamp now)
     {
         sys->ARM7.ARM.CpuSleeping = 0;
         sys->ARM7.ARM.Timestamp = now;
+        ARM7_ExecuteCycles(&sys->ARM7, 1);
+        sys->ARM7.ARM.CodeSeq = false;
     }
     Schedule_Event(sys, IF7_Update, Sched_IF7Update, next);
 }
@@ -350,8 +357,17 @@ int Console_MainLoop(struct Console* sys)
     Scheduler_UpdateTargets(sys);
     while(true)
     {
-        CR_Switch(sys->HandleARM9);
-        CR_Switch(sys->HandleARM7);
+        if (!sys->ARM9.ARM.DeadAsleep)
+            CR_Switch(sys->HandleARM9);
+        if (!sys->ARM7.ARM.DeadAsleep)
+            CR_Switch(sys->HandleARM7);
+
+
+        // do this to make the scheduler behave maybe?
+        if (sys->ARM9.ARM.DeadAsleep)
+            ARM9_ExecuteCycles(&sys->ARM9, (sys->ARM9Target - sys->ARM9.ARM.Timestamp)+1, 1);
+        if (sys->ARM7.ARM.DeadAsleep)
+            ARM7_ExecuteCycles(&sys->ARM7, (sys->ARM7Target - sys->ARM7.ARM.Timestamp)+1);
 
         Scheduler_Run(sys);
     }

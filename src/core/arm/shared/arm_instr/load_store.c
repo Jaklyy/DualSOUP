@@ -179,9 +179,10 @@ void ARM_LoadStore(struct ARM* cpu, const struct ARM_Instr instr_data)
         }
         else
         {
+            timestamp oldts = ARM9Cast->MemTimestamp;
             val = ((instr.Byte) ? ARM9_DataRead8(ARM9Cast, addr, &seq, &dabt)
                                 : ARM9_DataRead32(ARM9Cast, addr, &seq, &dabt));
-
+            ARM9_FixupLoadStore(ARM9Cast, 1, ARM9Cast->MemTimestamp - oldts);
             // RORing the result takes an extra cycle
             // masking out bits also incurs the extra cycle, so it always applies to byte accesses.
             interlock = ((instr.Byte || (addr & 3)) ? 2 : 1);
@@ -228,8 +229,9 @@ void ARM_LoadStore(struct ARM* cpu, const struct ARM_Instr instr_data)
         }
         else
         {
-
+            timestamp oldts = ARM9Cast->MemTimestamp;
             ARM9_DataWrite(ARM9Cast, addr, val, mask, false, true, &seq, &dabt);
+            ARM9_FixupLoadStore(ARM9Cast, 1, ARM9Cast->MemTimestamp - oldts);
 
             // TODO: Data abort
         }
@@ -386,8 +388,9 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
         }
         else
         {
+            timestamp oldts = ARM9Cast->MemTimestamp;
             ARM9_DataWrite(ARM9Cast, addr, val, mask, false, false, &seq, &dabt);
-            // TODO: Data abort
+            ARM9_FixupLoadStore(ARM9Cast, 1, ARM9Cast->MemTimestamp - oldts);
         }
         break;
     }
@@ -397,7 +400,9 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
         // these are actually both implemented as ldm/stm on arm9!
         if (opcode == 0b010) // LOAD
         {
+            timestamp oldts = ARM9Cast->MemTimestamp;
             u32 val = ARM9_DataRead32(ARM9Cast, addr, &seq, &dabt);
+            ARM9_FixupLoadStore(ARM9Cast, 2, ARM9Cast->MemTimestamp - oldts);
             if (!dabt)
             {
                 ARM_SetReg(instr.Rd, val, 1, 2);
@@ -406,12 +411,16 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
         else
         {
             u32 val = ARM_GetReg(instr.Rd);
+            timestamp oldts = ARM9Cast->MemTimestamp;
             ARM9_DataWrite(ARM9Cast, addr, val, u32_max, false, false, &seq, &dabt);
+            ARM9_FixupLoadStore(ARM9Cast, 2, ARM9Cast->MemTimestamp - oldts);
         }
 
         if (opcode == 0b010) // LOAD
         {
+            timestamp oldts = ARM9Cast->MemTimestamp;
             u32 val = ARM9_DataRead32(ARM9Cast, addr+4, &seq, &dabt);
+            ARM9_FixupLoadStore(ARM9Cast, 2, ARM9Cast->MemTimestamp - oldts);
 
             // actually writeback now
             if (instr.Writeback || (!instr.PreIndex))
@@ -441,7 +450,9 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
             if (instr.Writeback || (!instr.PreIndex))
                 ARM_SetReg(instr.Rn, wbaddr, 0, 0);
 
+            timestamp oldts = ARM9Cast->MemTimestamp;
             ARM9_DataWrite(ARM9Cast, addr+4, val, u32_max, false, false, &seq, &dabt);
+            ARM9_FixupLoadStore(ARM9Cast, 2, ARM9Cast->MemTimestamp - oldts);
         }
         break;
     }
@@ -475,7 +486,9 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
         }
         else
         {
+            timestamp oldts = ARM9Cast->MemTimestamp;
             val = ARM9_DataRead16(ARM9Cast, addr, &seq, &dabt);
+            ARM9_FixupLoadStore(ARM9Cast, 1, ARM9Cast->MemTimestamp - oldts);
             // TODO: data abort
 
             // Note: ARM9 doesn't ROR weirdly for LDRH
@@ -493,7 +506,7 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
                 ARM_SetThumb(cpu, val & 1);
             }
 
-            ARM_SetReg(instr.Rd, val, 1, 2);
+            ARM_SetReg(instr.Rd, val, 2, 3);
         }
         break;
     }
@@ -525,7 +538,9 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
         }
         else
         {
+            timestamp oldts = ARM9Cast->MemTimestamp;
             val = ARM9_DataRead8(ARM9Cast, addr, &seq, &dabt);
+            ARM9_FixupLoadStore(ARM9Cast, 1, ARM9Cast->MemTimestamp - oldts);
             // TODO: data abort
 
             // rotate result right based on lsb of address.
@@ -543,7 +558,7 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
                 ARM_SetThumb(cpu, val & 1);
             }
 
-            ARM_SetReg(instr.Rd, val, 1, 2);
+            ARM_SetReg(instr.Rd, val, 2, 3);
         }
         break;
     }
@@ -570,7 +585,7 @@ s8 ARM9_LoadStoreMisc_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr i
         ARM9_CheckInterlocks(ARM9, &stall, instr.Rm, 0, false);
     }
     // str
-    if (instr.OpcodeHi == 0 && ((instr.OpcodeLo == 0b00) || (instr.OpcodeLo == 0b11)))
+    if (instr.OpcodeHi == 0 && ((instr.OpcodeLo == 0b01) || (instr.OpcodeLo == 0b11)))
     {
         ARM9_CheckInterlocks(ARM9, &stall, instr.Rd, 1, true);
     }
@@ -608,6 +623,10 @@ void ARM_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
     unsigned nregs = stdc_count_ones((u16)instr.RList);
     u16 rlist = instr.RList;
 
+    unsigned truenregs = nregs;
+    timestamp oldts;
+    if (cpu->CPUID == ARM9ID) oldts = ARM9Cast->MemTimestamp;
+
     // TODO: empty RList timings
     if (!instr.RList)
     {
@@ -616,7 +635,7 @@ void ARM_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
     }
 
     // arm9 timings are input as 0 since they will be added during the actual fetch
-    ARM_ExeCycles(1, 0, 0);
+    ARM_ExeCycles(1, 1, 0);
 
     ARM_StepPC(cpu, false);
 
@@ -639,6 +658,7 @@ void ARM_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
 
     bool seq = false;
     bool dabt = false;
+    bool earlyfix = false;
     if (instr.Load)
     {
         while(rlist)
@@ -679,6 +699,12 @@ void ARM_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
 
                 if (instr.S && !(instr.RList >> 15)) // dumb way to do this
                     ARM_SetMode(cpu, ARMMode_USR);
+
+                if ((cpu->CPUID == ARM9ID) && (reg == 15))
+                {
+                    ARM9_FixupLoadStore(ARM9Cast, truenregs, ARM9Cast->MemTimestamp - oldts);
+                    earlyfix = true;
+                }
 
                 ARM_SetReg(reg, val, 1, 2);
 
@@ -730,6 +756,9 @@ void ARM_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
             rlist &= (~1)<<reg;
         }
     }
+
+    if (cpu->CPUID == ARM9ID && !earlyfix)
+        ARM9_FixupLoadStore(ARM9Cast, truenregs, ARM9Cast->MemTimestamp - oldts);
 
     if (nregs == 1 || !instr.RList) // empty r-list behavior is a guess.
     {
@@ -814,6 +843,8 @@ void ARM_Swap(struct ARM* cpu, const struct ARM_Instr instr_data)
     ARM_ExeCycles(1, 1, 0);
 
     ARM_StepPC(cpu, false);
+    timestamp oldts;
+    if (cpu->CPUID == ARM9ID) oldts = ARM9Cast->MemTimestamp;
 
     if (cpu->CPUID == ARM7ID)
     {
@@ -829,6 +860,7 @@ void ARM_Swap(struct ARM* cpu, const struct ARM_Instr instr_data)
         // masking out bits also incurs the extra cycle, so it always applies to byte accesses.
         interlock = ((instr.Byte || (addr & 3)) ? 2 : 1);
     }
+    if (cpu->CPUID == ARM9ID) ARM9_FixupLoadStore(ARM9Cast, 2, ARM9Cast->MemTimestamp - oldts);
 
     if (!dabt)
     {

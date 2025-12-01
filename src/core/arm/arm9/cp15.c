@@ -227,8 +227,7 @@ void DCache_CleanLine(struct ARM946ES* ARM9, const u32 idxset)
         seq = true;
         for (int i = 0; i < 4; i++)
         {
-            ARM9_FillWriteBuffer(ARM9, &ARM9->MemTimestamp, ARM9->DCache.b32[(idxset<<3)+(i*sizeof(u32))], A9WB_32);
-
+            ARM9_FillWriteBuffer(ARM9, &ARM9->MemTimestamp, ARM9->DCache.b32[(idxset<<3)+i], A9WB_32);
         }
     }
     if (ARM9->DTagRAM[idxset].DirtyHi)
@@ -237,7 +236,7 @@ void DCache_CleanLine(struct ARM946ES* ARM9, const u32 idxset)
             ARM9_FillWriteBuffer(ARM9, &ARM9->MemTimestamp, addr+(4*sizeof(u32)), A9WB_Addr);
         for (int i = 4; i < 8; i++)
         {
-            ARM9_FillWriteBuffer(ARM9, &ARM9->MemTimestamp, ARM9->DCache.b32[(idxset<<3)+(i*sizeof(u32))], A9WB_32);
+            ARM9_FillWriteBuffer(ARM9, &ARM9->MemTimestamp, ARM9->DCache.b32[(idxset<<3)+i], A9WB_32);
         }
     }
     ARM9->DTagRAM[idxset].DirtyLo = false;
@@ -249,6 +248,7 @@ void DCache_CleanFlushLine(struct ARM946ES* ARM9, const u32 idxset)
     // TODO: TIMINGS
     // TODO: IMPROVE CACHE STREAMING HANDLING
 
+    printf("idxset %X\n", idxset);
     // CHECKME: does this errata emulation all check out?
     if (ARM9->DTagRAM[idxset].DirtyLo || ARM9->DTagRAM[idxset].DirtyHi)
     {
@@ -272,7 +272,7 @@ void DCache_CleanIdxSet(struct ARM946ES* ARM9, const u32 val)
     // TODO: IMPROVE CACHE STREAMING HANDLING
     ARM9_ProgressCacheStream(&ARM9->MemTimestamp, &ARM9->DStream, NULL, false);
 
-    u32 idxset = (val >> 30) | ((val >> 5) & 0x1F);
+    u32 idxset = (val >> 30) | (((val >> 5) & 0x1F) << 2);
 
     DCache_CleanLine(ARM9, idxset);
 }
@@ -283,11 +283,10 @@ void DCache_CleanFlushIdxSet(struct ARM946ES* ARM9, const u32 val)
     // TODO: IMPROVE CACHE STREAMING HANDLING
     ARM9_ProgressCacheStream(&ARM9->MemTimestamp, &ARM9->DStream, NULL, false);
 
-    u32 idxset = (val >> 30) | ((val >> 5) & 0x1F);
+    printf("val %08X\n", val);
+    u32 idxset = (val >> 30) | (((val >> 5) & 0x1F) << 2);
 
-    DCache_CleanLine(ARM9, idxset);
-    // TODO: ERRATA
-    ARM9->DTagRAM[idxset].Valid = false;
+    DCache_CleanFlushLine(ARM9, idxset);
 }
 
 void DCache_CleanAddr(struct ARM946ES* ARM9, const u32 addr)
@@ -296,6 +295,7 @@ void DCache_CleanAddr(struct ARM946ES* ARM9, const u32 addr)
     // TODO: IMPROVE CACHE STREAMING HANDLING
     ARM9_ProgressCacheStream(&ARM9->MemTimestamp, &ARM9->DStream, NULL, false);
     ARM9_DCacheSetLookup
+
     if (set < ARM9_DCacheAssoc)
     {
         DCache_CleanLine(ARM9, index | set);
@@ -398,7 +398,7 @@ void ARM9_MCR_15(struct ARM946ES* ARM9, const u16 cmd, const u32 val)
         ARM9->CP15.DataPermsReg = 0;
         for (int i = 0; i < 8; i++)
         {
-            ARM9->CP15.DataPermsReg |= (val & (3<<(i*2)) << (0xF<<(i*4)));
+            ARM9->CP15.DataPermsReg |= ((val & (3<<(i*2))) << (i*2));
         }
         ARM9_ConfigureMPURegionPerms(ARM9);
         // CHECKME: this is untested
@@ -468,7 +468,7 @@ void ARM9_MCR_15(struct ARM946ES* ARM9, const u16 cmd, const u32 val)
         DCache_CleanAddr(ARM9, val);
         break;
     case ARM_CoprocReg(0, 7, 10, 2): // clean dcache line by index + segment
-        DCache_CleanFlushIdxSet(ARM9, val);
+        DCache_CleanIdxSet(ARM9, val);
         break;
     case ARM_CoprocReg(0, 7, 10, 4): // drain write buffer
         ARM9_DrainWriteBuffer(ARM9, &ARM9->MemTimestamp);

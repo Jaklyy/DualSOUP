@@ -486,11 +486,11 @@ u32 Bus_MainRAM_Read(struct Console* sys, struct AHB* buscur, const bool bus9, u
 
             if (mask == u32_max)
             {
-                buscur->Timestamp += 5;
+                buscur->Timestamp += 6;
             }
             else // 8 / 16
             {
-                buscur->Timestamp += 4;
+                buscur->Timestamp += 5;
             }
         }
         else // sequential
@@ -499,11 +499,22 @@ u32 Bus_MainRAM_Read(struct Console* sys, struct AHB* buscur, const bool bus9, u
             {
                 // this takes 2 cycles, but it can appear to take 1 cycle under certain situations,
                 // due to main ram having the ability to prefetch slightly ahead if the burst is held but not immediately read from. (identified with 32 bit dma)
+                if (hold)
+                {
+                    if (buscur->Timestamp < (busmr->LastAccessTS + 2))
+                    {
+                        buscur->Timestamp = (busmr->LastAccessTS + 2);
+                    }
+                    else
+                    {
+                        buscur->Timestamp += 1;
+                    }
+                }
+                else
+                {
+                    buscur->Timestamp += 2;
+                }
 
-                buscur->Timestamp += 1;
-
-                if (hold && buscur->Timestamp < (busmr->LastAccessTS + 2))
-                    buscur->Timestamp = (busmr->LastAccessTS + 2);
             }
             else // 8 / 16
             {
@@ -511,6 +522,7 @@ u32 Bus_MainRAM_Read(struct Console* sys, struct AHB* buscur, const bool bus9, u
                 buscur->Timestamp += 1;
             }
         }
+
         if (hold) busmr->LastAccessTS = buscur->Timestamp;
         busmr->BusyTS = buscur->Timestamp + 3;
     }
@@ -590,11 +602,11 @@ void Bus_MainRAM_Write(struct Console* sys, struct AHB* buscur, const bool bus9,
 
             if (stdc_count_ones(mask) == 16)
             {
-                buscur->Timestamp += 2;
+                buscur->Timestamp += 3;
             }
             else // 8 / 32
             {
-                buscur->Timestamp += 3;
+                buscur->Timestamp += 4;
             }
         }
         else // sequential
@@ -608,7 +620,7 @@ void Bus_MainRAM_Write(struct Console* sys, struct AHB* buscur, const bool bus9,
                 buscur->Timestamp += 1;
             }
         }
-        busmr->BusyTS = buscur->Timestamp + ((stdc_count_ones(mask) == 16) ? 6 : 5);
+        busmr->BusyTS = buscur->Timestamp + ((stdc_count_ones(mask) == 8) ? 4 : 5);
     }
 
     MemoryWrite(32, sys->MainRAM, addr, MainRAM_Size, val, mask);

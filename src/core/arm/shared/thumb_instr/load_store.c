@@ -16,7 +16,7 @@ enum
 void STR(struct ARM* cpu, const u32 addr, const u8 rd, const int width)
 {
     // arm9 timings are input as 0 since they will be added during the actual fetch
-    ARM_ExeCycles(1, 0, 0);
+    ARM_ExeCycles(1, 1, 0);
 
     ARM_StepPC(cpu, true);
 
@@ -36,7 +36,9 @@ void STR(struct ARM* cpu, const u32 addr, const u8 rd, const int width)
     }
     else
     {
+        timestamp oldts = ARM9Cast->MemTimestamp;
         ARM9_DataWrite(ARM9Cast, addr, val, mask, false, true, &seq, &dabt);
+        ARM9_FixupLoadStore(ARM9Cast, 1, ARM9Cast->MemTimestamp - oldts);
         // TODO: data abort
     }
 
@@ -49,7 +51,7 @@ void STR(struct ARM* cpu, const u32 addr, const u8 rd, const int width)
 void LDR(struct ARM* cpu, const u32 addr, const u8 rd, const int width, const bool signext)
 {
     // arm9 timings are input as 0 since they will be added during the actual fetch
-    ARM_ExeCycles(1, 0, 0);
+    ARM_ExeCycles(1, 1, 0);
 
     ARM_StepPC(cpu, true);
 
@@ -82,9 +84,11 @@ void LDR(struct ARM* cpu, const u32 addr, const u8 rd, const int width, const bo
     }
     else
     {
+        timestamp oldts = ARM9Cast->MemTimestamp;
         if (width == width32) val = ARM9_DataRead32(ARM9Cast, addr, &seq, &dabt);
         if (width == width16) val = ARM9_DataRead16(ARM9Cast, addr, &seq, &dabt);
         if (width == width8 ) val = ARM9_DataRead8 (ARM9Cast, addr, &seq, &dabt);
+        ARM9_FixupLoadStore(ARM9Cast, 1, ARM9Cast->MemTimestamp - oldts);
         // TODO: data abort
 
         // RORing the result takes an extra cycle
@@ -295,6 +299,10 @@ void THUMB_Push(struct ARM* cpu, const struct ARM_Instr instr_data)
     u32 addr = ARM_GetReg(13);
     unsigned nregs = stdc_count_ones(instr.FullRList);
 
+    unsigned truenregs = nregs;
+    timestamp oldts;
+    if (cpu->CPUID == ARM9ID) oldts = ARM9Cast->MemTimestamp;
+
     u16 rlist = instr.RList;
 
     // TODO: empty RList timings
@@ -310,7 +318,7 @@ void THUMB_Push(struct ARM* cpu, const struct ARM_Instr instr_data)
     }
 
     // arm9 timings are input as 0 since they will be added during the actual fetch
-    ARM_ExeCycles(1, 0, 0);
+    ARM_ExeCycles(1, 1, 0);
 
     ARM_StepPC(cpu, true);
 
@@ -319,7 +327,6 @@ void THUMB_Push(struct ARM* cpu, const struct ARM_Instr instr_data)
 
     bool seq = false;
     bool dabt = false;
-
     while(rlist)
     {
         unsigned reg = stdc_trailing_zeros(rlist);
@@ -339,6 +346,9 @@ void THUMB_Push(struct ARM* cpu, const struct ARM_Instr instr_data)
 
         rlist &= (~1)<<reg;
     }
+
+    if (cpu->CPUID == ARM9ID)
+        ARM9_FixupLoadStore(ARM9Cast, truenregs, ARM9Cast->MemTimestamp - oldts);
 
     if (nregs == 1 || !instr.FullRList)
     {
@@ -396,6 +406,10 @@ void THUMB_Pop(struct ARM* cpu, const struct ARM_Instr instr_data)
 
     u16 rlist = instr.RList;
 
+    unsigned truenregs = nregs;
+    timestamp oldts;
+    if (cpu->CPUID == ARM9ID) oldts = ARM9Cast->MemTimestamp;
+
     // TODO: empty RList timings
     if (!instr.FullRList)
     {
@@ -409,7 +423,7 @@ void THUMB_Pop(struct ARM* cpu, const struct ARM_Instr instr_data)
     }
 
     // arm9 timings are input as 0 since they will be added during the actual fetch
-    ARM_ExeCycles(1, 0, 0);
+    ARM_ExeCycles(1, 1, 0);
 
     ARM_StepPC(cpu, true);
 
@@ -418,7 +432,7 @@ void THUMB_Pop(struct ARM* cpu, const struct ARM_Instr instr_data)
 
     bool seq = false;
     bool dabt = false;
-
+    bool earlyfix = false;
     while(rlist)
     {
         unsigned reg = stdc_trailing_zeros(rlist);
@@ -442,6 +456,12 @@ void THUMB_Pop(struct ARM* cpu, const struct ARM_Instr instr_data)
                 ARM_SetThumb(cpu, val & 1);
             }
 
+            if ((cpu->CPUID == ARM9ID) && (reg == 15))
+            {
+                ARM9_FixupLoadStore(ARM9Cast, truenregs, ARM9Cast->MemTimestamp - oldts);
+                earlyfix = true;
+            }
+
             ARM_SetReg(reg, val, 1, 2);
         }
         // increment address
@@ -449,6 +469,9 @@ void THUMB_Pop(struct ARM* cpu, const struct ARM_Instr instr_data)
 
         rlist &= (~1)<<reg;
     }
+
+    if (cpu->CPUID == ARM9ID && !earlyfix)
+        ARM9_FixupLoadStore(ARM9Cast, truenregs, ARM9Cast->MemTimestamp - oldts);
 
     if (nregs == 1 || !instr.FullRList)
     {
@@ -504,8 +527,11 @@ void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
     u32 baserestore = addr;
 
     u16 rlist = instr.RList;
-
     unsigned nregs = stdc_count_ones((u8)instr.RList);
+
+    unsigned truenregs = nregs;
+    timestamp oldts;
+    if (cpu->CPUID == ARM9ID) oldts = ARM9Cast->MemTimestamp;
 
     // TODO: empty RList timings
     if (!instr.RList)
@@ -513,9 +539,10 @@ void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
         nregs = 16;
         if (cpu->CPUID == ARM7ID) rlist = 0x8000; // idk why, it just is.
     }
+    const u16 rlistinit = rlist;
 
     // arm9 timings are input as 0 since they will be added during the actual fetch
-    ARM_ExeCycles(1, 0, 0);
+    ARM_ExeCycles(1, 1, 0);
 
     ARM_StepPC(cpu, true);
 
@@ -523,6 +550,7 @@ void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
 
     bool seq = false;
     bool dabt = false;
+    bool earlyfix = false;
     if (instr.Load)
     {
         while(rlist)
@@ -536,7 +564,7 @@ void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
                 val = ARM7_BusRead(ARM7Cast, addr, u32_max, &seq);
 
                 // base writeback after first access
-                if (reg == stdc_trailing_zeros((u8)instr.RList))
+                if (reg == stdc_trailing_zeros(rlistinit))
                     ARM_SetReg(instr.Rn, wbaddr, 0, 0);
             }
             else
@@ -544,7 +572,7 @@ void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
                 val = ARM9_DataRead32(ARM9Cast, addr, &seq, &dabt);
 
                 // base writeback before last access
-                if (reg == 15-stdc_leading_zeros((u8)instr.RList))
+                if (reg == 15-stdc_leading_zeros(rlistinit))
                     ARM_SetReg(instr.Rn, wbaddr, 0, 0);
             }
 
@@ -555,6 +583,12 @@ void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
                 if ((reg == 15) && ARM_CanLoadInterwork)
                 {
                     ARM_SetThumb(cpu, val & 1);
+                }
+
+                if ((cpu->CPUID == ARM9ID) && (reg == 15))
+                {
+                    ARM9_FixupLoadStore(ARM9Cast, truenregs, ARM9Cast->MemTimestamp - oldts);
+                    earlyfix = true;
                 }
 
                 ARM_SetReg(reg, val, 1, 2);
@@ -579,7 +613,7 @@ void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
                 ARM7_BusWrite(ARM7Cast, addr, val, u32_max, false, &seq);
 
                 // base writeback after first access
-                if (reg == stdc_trailing_zeros((u8)instr.RList))
+                if (reg == stdc_trailing_zeros(rlistinit))
                     ARM_SetReg(instr.Rn, wbaddr, 0, 0);
             }
             else
@@ -587,7 +621,7 @@ void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
                 ARM9_DataWrite(ARM9Cast, addr, val, u32_max, false, false, &seq, &dabt);
 
                 // base writeback before last access
-                if (reg == 15-stdc_leading_zeros((u8)instr.RList))
+                if (reg == (15-stdc_leading_zeros(rlistinit)))
                     ARM_SetReg(instr.Rn, wbaddr, 0, 0);
             }
             // increment address
@@ -596,6 +630,9 @@ void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
             rlist &= (~1)<<reg;
         }
     }
+
+    if (cpu->CPUID == ARM9ID && !earlyfix)
+        ARM9_FixupLoadStore(ARM9Cast, truenregs, ARM9Cast->MemTimestamp - oldts);
 
     if (nregs == 1 || !instr.RList)
     {

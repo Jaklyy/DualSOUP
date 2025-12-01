@@ -14,7 +14,7 @@ void Scheduler_UpdateTargets(struct Console* sys)
         if (next > sys->Sched.EventTimes[i])
             next = sys->Sched.EventTimes[i];
     }
-    if (ckd_mul(&sys->ARM9Target, next, 2))
+    if (ckd_mul(&sys->ARM9Target, next, sys->ARM9.BoostedClock ? 4 : 2))
         sys->ARM9Target = timestamp_max;
 
     sys->ARM7Target = next;

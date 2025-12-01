@@ -191,9 +191,10 @@ void ARM9_ExecuteCycles(struct ARM946ES* ARM9, const int execute, const int memo
     cpu->CodeSeq = true;
 }
 
-void ARM9_ExecuteOnly(struct ARM946ES* ARM9, const int execute)
+void ARM9_FixupLoadStore(struct ARM946ES* ARM9, const int execute, const int memdiff)
 {
-    // TODO
+    cpu->Timestamp += execute - 1;
+    ARM9_UpdateInterlocks(ARM9, memdiff);
 }
 
 #define ILCheck(size, x) \
@@ -247,15 +248,24 @@ if (!ARM9_CheckInterrupts(ARM9)) \
 */
 void ARM9_Step(struct ARM946ES* ARM9)
 {
-    ARM9_CatchUpWriteBuffer(ARM9, &ARM9->ARM.Timestamp);
-
     if (cpu->CpuSleeping)
     {
         //printf("9zzzz\n");
-        cpu->Timestamp = cpu->Sys->ARM9Target;
-
-        return;
+        // probably slow; but ensures write buffer drains properly.
+        if (ARM9->WBuffer.FIFOFillPtr != 16)
+        {
+            ARM9_CatchUpWriteBuffer(ARM9, &cpu->Timestamp);
+            ARM9_ExecuteCycles(ARM9, 1, 1);
+            return;
+        }
+        else
+        {
+            CR_Switch(cpu->Sys->HandleMain);
+            cpu->DeadAsleep = true;
+        }
     }
+
+    ARM9_CatchUpWriteBuffer(ARM9, &cpu->Timestamp);
 
     // step the pipeline.
     ARM_PipelineStep(cpu);

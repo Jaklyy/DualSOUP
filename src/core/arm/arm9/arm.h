@@ -387,6 +387,8 @@ void ARM9_CheckInterlocks(struct ARM946ES* ARM9, s8* stall, const int reg, const
 void ARM9_FetchCycles(struct ARM946ES* ARM9, const int fetch);
 // add execute and memory stage cycles.
 void ARM9_ExecuteCycles(struct ARM946ES* ARM9, const int execute, const int memory);
+// use after a load/store family instruction to fix up the timings
+void ARM9_FixupLoadStore(struct ARM946ES* ARM9, const int execute, const int memdiff);
 
 void ARM9_InstrRead32(struct ARM946ES* ARM9, u32 addr); // arm
 void ARM9_InstrRead16(struct ARM946ES* ARM9, const u32 addr); // thumb

@@ -1,5 +1,6 @@
 #include "arm.h"
 #include "../../bus/ahb.h"
+#include <stdbit.h>
 
 
 
@@ -127,7 +128,7 @@ void ARM9_AHBWrite(struct ARM946ES* ARM9, timestamp* ts, const u32 addr, const u
 
 #define wb
 
-void ARM9_RunWriteBuffer(struct ARM946ES* ARM9, const bool blocking)
+void ARM9_RunWriteBuffer(struct ARM946ES* ARM9)
 {
     struct ARM9_WriteBuffer* buf = &ARM9->WBuffer;
 
@@ -199,7 +200,7 @@ void ARM9_CatchUpWriteBuffer(struct ARM946ES* ARM9, timestamp* until)
 
     while ((buf->FIFOFillPtr != 16 || buf->Latched) && ((*until > buf->NextStep) || buf->BufferSeq))
     {
-        ARM9_RunWriteBuffer(ARM9, false);
+        ARM9_RunWriteBuffer(ARM9);
     }
 #endif
 }
@@ -212,7 +213,7 @@ void ARM9_DrainWriteBuffer(struct ARM946ES* ARM9, timestamp* until)
     // loop until write buffer is empty
     while (buf->FIFOFillPtr != 16 || buf->Latched)
     {
-        ARM9_RunWriteBuffer(ARM9, true);
+        ARM9_RunWriteBuffer(ARM9);
     }
     if (*until < buf->NextStep)
         *until = buf->NextStep;
@@ -229,7 +230,7 @@ void ARM9_FillWriteBuffer(struct ARM946ES* ARM9, timestamp* now, u32 val, u8 fla
     {
         while (buf->FIFOFillPtr == buf->FIFODrainPtr)
         {
-            ARM9_RunWriteBuffer(ARM9, true);
+            ARM9_RunWriteBuffer(ARM9);
         }
         if (*now < buf->NextStep)
             *now = buf->NextStep;
@@ -303,7 +304,7 @@ u32 ARM9_ICacheLookup(struct ARM946ES* ARM9, const u32 addr)
 
         // TODO: add contention cycle
         ARM9_FetchCycles(ARM9, 1);
-        return ARM9->ICache.b32[((index | set)<<3) | ((addr/4) & 0x7)];
+        return ARM9->ICache.b32[((index | set)<<3) | ((addr/sizeof(u32)) & 0x7)];
     }
 
     // cache line fill time, oh boy.
@@ -325,7 +326,7 @@ u32 ARM9_ICacheLookup(struct ARM946ES* ARM9, const u32 addr)
     // CHECKME: can you read from icache mid-stream with test commands?
     bool seq = false;
     timestamp time = ARM9->ARM.Timestamp;
-    unsigned waittil = (addr / 4) & 0x7;
+    unsigned waittil = (addr / sizeof(u32)) & 0x7;
     u32 actualaddr = addr & ~0x1F;
     for (unsigned i = 0; i < 8; i++)
     {
@@ -344,7 +345,7 @@ u32 ARM9_ICacheLookup(struct ARM946ES* ARM9, const u32 addr)
         }
     }
     ARM9_FetchCycles(ARM9, 0); // dummy to ensure coherency.
-    return ARM9->ICache.b32[((index | set)<<3) | ((addr/4) & 0x7)];
+    return ARM9->ICache.b32[((index | set)<<3) | ((addr/sizeof(u32)) & 0x7)];
 }
 
 void DCache_CleanLine(struct ARM946ES* ARM9, const u32 idxset);
@@ -358,7 +359,8 @@ u32 ARM9_DCacheReadLookup(struct ARM946ES* ARM9, const u32 addr)
     {
         // use set to lookup into icache
         ARM9->MemTimestamp += 1;
-        return ARM9->DCache.b32[((index | set)<<3) | ((addr/4) & 0x7)];
+        u32 val = ARM9->DCache.b32[((index | set)<<3) | ((addr/sizeof(u32)) & 0x7)];
+        return val;
     }
 
     // cache line fill time, oh boy.
@@ -383,7 +385,7 @@ u32 ARM9_DCacheReadLookup(struct ARM946ES* ARM9, const u32 addr)
     // CHECKME: can you read from icache mid-stream with test commands?
     bool seq = false;
     timestamp time = ARM9->MemTimestamp;
-    unsigned waittil = (addr / 4) & 0x7;
+    unsigned waittil = (addr / sizeof(u32)) & 0x7;
     u32 actualaddr = addr & ~0x1F;
     for (unsigned i = 0; i < 8; i++)
     {
@@ -401,10 +403,10 @@ u32 ARM9_DCacheReadLookup(struct ARM946ES* ARM9, const u32 addr)
             ARM9->DStream.Times[i] = time;
         }
     }
-    return ARM9->DCache.b32[((index | set)<<3) | ((addr/4) & 0x7)];
+    return ARM9->DCache.b32[((index | set)<<3) | ((addr/sizeof(u32)) & 0x7)];
 }
 
-bool ARM9_DCacheWriteLookup(struct ARM946ES* ARM9, const u32 addr, const u32 val, const u32 mask)
+bool ARM9_DCacheWriteLookup(struct ARM946ES* ARM9, const u32 addr, const u32 val, const u32 mask, const bool bufferable)
 {
     ARM9_DCacheSetLookup
 
@@ -415,9 +417,20 @@ bool ARM9_DCacheWriteLookup(struct ARM946ES* ARM9, const u32 addr, const u32 val
 
         // CHECKME: does this actually contention?
         ARM9->DataContTS = ARM9->MemTimestamp + 1;
-        ARM9->MemTimestamp += 1;
-        MaskedWrite(ARM9->DCache.b32[((index | set)<<3) | ((addr/4) & 0x7)], val, mask);
-        return true;
+
+        MaskedWrite(ARM9->DCache.b32[((index | set)<<3) | ((addr/sizeof(u32)) & 0x7)], val, mask);
+
+        if (!bufferable)
+        {
+            ARM9->MemTimestamp += 1;
+            if (addr & 0x10)
+                ARM9->DTagRAM[index | set].DirtyHi = true;
+            else
+                ARM9->DTagRAM[index | set].DirtyLo = true;
+
+            return true;
+        }
+        // fall through to writebuffer
     }
     return false;
 }
@@ -711,7 +724,7 @@ void ARM9_DataWrite(struct ARM946ES* ARM9, u32 addr, const u32 val, const u32 ma
         *seq = true;
         return;
     }
-    else if (perms.DCache && ARM9_DCacheWriteLookup(ARM9, addr, val, mask))
+    else if (perms.DCache && ARM9_DCacheWriteLookup(ARM9, addr, val, mask, perms.Buffer))
     {
         *seq = true;
         return;
@@ -735,6 +748,7 @@ void ARM9_DataWrite(struct ARM946ES* ARM9, u32 addr, const u32 val, const u32 ma
         }
         else CrashSpectacularly("%08X\n", mask);
 
+        ARM9->DataContTS = ARM9->MemTimestamp + 1;
         // if bufferable then we need to write to the write buffer
         ARM9_FillWriteBuffer(ARM9, &ARM9->MemTimestamp, addr, A9WB_Addr);
         ARM9_FillWriteBuffer(ARM9, &ARM9->MemTimestamp, val, size);
