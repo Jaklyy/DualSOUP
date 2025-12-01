@@ -146,9 +146,9 @@ enum LoggingLevels : u64
 // TODO: should this be per thread?
 extern u64 LogMask;
 // printf but with support for filtering out the noise
-void LogPrint(const u64 logtype, const char* str, ...);
+void LogPrint(const u64 logtype, const char* str, ...) __attribute__ ((format (printf, 2, 3)));
 // logprint but with more crashing to desktop
-void CrashSpectacularly(const char* str, ...);
+void CrashSpectacularly(const char* str, ...) __attribute__ ((format (printf, 1, 2)));
 
 // coroutine stuff
 

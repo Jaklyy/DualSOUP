@@ -8,7 +8,7 @@
 void ARM9_DumpMPU(const struct ARM946ES* ARM9)
 {
     for (int i = 0; i < 8; i++)
-        LogPrint(LOG_ARM9, "MPU%i: %08lX %08lX %02X %02X\n", i, ARM9->CP15.MPURegionBase[i], ARM9->CP15.MPURegionMask[i], ARM9->CP15.MPURegionPermsUser[i], ARM9->CP15.MPURegionPermsPriv[i]);
+        LogPrint(LOG_ARM9, "MPU%i: %08X %08X %02X %02X\n", i, ARM9->CP15.MPURegionBase[i], ARM9->CP15.MPURegionMask[i], *(u8*)&ARM9->CP15.MPURegionPermsUser[i], *(u8*)&ARM9->CP15.MPURegionPermsPriv[i]);
 }
 
 void ARM9_ConfigureITCM(struct ARM946ES* ARM9)
@@ -248,7 +248,6 @@ void DCache_CleanFlushLine(struct ARM946ES* ARM9, const u32 idxset)
     // TODO: TIMINGS
     // TODO: IMPROVE CACHE STREAMING HANDLING
 
-    printf("idxset %X\n", idxset);
     // CHECKME: does this errata emulation all check out?
     if (ARM9->DTagRAM[idxset].DirtyLo || ARM9->DTagRAM[idxset].DirtyHi)
     {
@@ -283,7 +282,6 @@ void DCache_CleanFlushIdxSet(struct ARM946ES* ARM9, const u32 val)
     // TODO: IMPROVE CACHE STREAMING HANDLING
     ARM9_ProgressCacheStream(&ARM9->MemTimestamp, &ARM9->DStream, NULL, false);
 
-    printf("val %08X\n", val);
     u32 idxset = (val >> 30) | (((val >> 5) & 0x1F) << 2);
 
     DCache_CleanFlushLine(ARM9, idxset);
@@ -520,7 +518,7 @@ void ARM9_MCR_15(struct ARM946ES* ARM9, const u16 cmd, const u32 val)
     case ARM_CoprocReg(1, 15, 1, 0):
     default:
     {
-        LogPrint(LOG_ARM9 | LOG_UNIMP, "ARM9 - UNIMPLEMENTED MCR CMD: %04lX %08lX %08lX @ %08lX\n", cmd, val, ARM9->ARM.Instr[0].Raw, ARM9->ARM.PC);
+        LogPrint(LOG_ARM9 | LOG_UNIMP, "ARM9 - UNIMPLEMENTED MCR CMD: %04hX %08X %08X @ %08X\n", cmd, val, ARM9->ARM.Instr[0].Raw, ARM9->ARM.PC);
         // CHECKME: this is a placeholder basically.
         ARM9_ExecuteCycles(ARM9, 2, 1);
         break;

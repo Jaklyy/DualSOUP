@@ -151,7 +151,7 @@ void ARM9_RaiseUDF(struct ARM* ARM, const struct ARM_Instr instr_data, const int
         LogPrint(LOG_ARM9 | LOG_EXCEP, "ARM9 - UNDEF INSTR: %08X @ %08X\n", instr_data.Raw, cpu->PC);
 
 
-    CrashSpectacularly("FARK %08lX\n", cpu->PC);
+    CrashSpectacularly("FARK %08X\n", cpu->PC);
 
     // addr of next instr
     u32 oldpc = cpu->PC - (cpu->CPSR.Thumb ? 2 : 4);
@@ -220,7 +220,7 @@ void ARM9_PrefetchAbort(struct ARM* ARM, const struct ARM_Instr instr_data)
     }
 
     ARM9_DumpMPU(ARM9);
-    CrashSpectacularly("FARK %08lX\n", cpu->PC);
+    CrashSpectacularly("FARK %08X\n", cpu->PC);
 
     // lr is aborted instruction + 4
     u32 oldpc = cpu->PC - ((cpu->CPSR.Thumb) ? 0 : 4);
@@ -249,7 +249,7 @@ void ARM9_DataAbort(struct ARM946ES* ARM9)
     LogPrint(LOG_ARM9 | LOG_EXCEP, "%s9 - DATA ABT @ %08X\n", (cpu->CPSR.Thumb ? "THUMB" : "ARM"), cpu->PC);
 
     ARM9_DumpMPU(ARM9);
-    CrashSpectacularly("FARK %08lX\n", cpu->PC);
+    CrashSpectacularly("FARK %08X\n", cpu->PC);
     // lr is aborted instr + 8
     // CHECKME: what happens if the abort was from an exception return LDM? (SPSR was restored?)
     u32 oldpc = cpu->PC + ((cpu->CPSR.Thumb) ? 4 : 0);

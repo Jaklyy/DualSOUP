@@ -310,7 +310,7 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask)
             return IPC_FIFORead(sys, mask, false);
 
         default:
-            LogPrint(LOG_ARM7 | LOG_UNIMP, "UNIMPLEMENTED IO7 READ: %08lX %08lX @ %08lX\n", addr, mask, sys->ARM7.ARM.PC);
+            LogPrint(LOG_ARM7 | LOG_UNIMP, "UNIMPLEMENTED IO7 READ: %08X %08X @ %08X\n", addr, mask, sys->ARM7.ARM.PC);
             return 0;
     }
 }
@@ -419,7 +419,7 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             break;
 
         default:
-            LogPrint(LOG_ARM7 | LOG_UNIMP, "UNIMPLEMENTED IO7 WRITE: %08lX %08lX %08lX @ %08lX\n", addr, val, mask, sys->ARM7.ARM.PC);
+            LogPrint(LOG_ARM7 | LOG_UNIMP, "UNIMPLEMENTED IO7 WRITE: %08X %08X %08X @ %08X\n", addr, val, mask, sys->ARM7.ARM.PC);
             break;
     }
 }
@@ -540,7 +540,7 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask)
             return IPC_FIFORead(sys, mask, true);
 
         default:
-            LogPrint(LOG_ARM9 | LOG_UNIMP, "UNIMPLEMENTED IO9 READ: %08lX %08lX @ %08lX\n", addr, mask, sys->ARM9.ARM.PC);
+            LogPrint(LOG_ARM9 | LOG_UNIMP, "UNIMPLEMENTED IO9 READ: %08X %08X @ %08X\n", addr, mask, sys->ARM9.ARM.PC);
             return 0;
     }
 }
@@ -750,7 +750,7 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
 
 
         default:
-            LogPrint(LOG_ARM9 | LOG_UNIMP, "UNIMPLEMENTED IO9 WRITE: %08lX %08lX %08lX @ %08lX\n", addr, val, mask, sys->ARM9.ARM.PC);
+            LogPrint(LOG_ARM9 | LOG_UNIMP, "UNIMPLEMENTED IO9 WRITE: %08X %08X %08X @ %08X\n", addr, val, mask, sys->ARM9.ARM.PC);
             break;
     }
 }

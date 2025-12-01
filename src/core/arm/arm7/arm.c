@@ -25,7 +25,7 @@ void ARM7_Log(struct ARM7TDMI* ARM7)
     }
     else
     {
-        LogPrint(LOG_ARM7, "INSTR: %08X ", cpu->Instr[0]);
+        LogPrint(LOG_ARM7, "INSTR: %08X ", cpu->Instr[0].Raw);
     }
     LogPrint(LOG_ARM7, "EXE:%li\n\n", cpu->Timestamp);
 }

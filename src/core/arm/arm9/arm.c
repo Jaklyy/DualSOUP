@@ -25,7 +25,7 @@ void ARM9_Log(struct ARM946ES* ARM9)
     }
     else
     {
-        LogPrint(LOG_ARM9, "INSTR: %08X ", cpu->Instr[0]);
+        LogPrint(LOG_ARM9, "INSTR: %08X ", cpu->Instr[0].Raw);
     }
     LogPrint(LOG_ARM9, "EXE:%li MEM:%li\n\n", cpu->Timestamp, ARM9->MemTimestamp);
 }
