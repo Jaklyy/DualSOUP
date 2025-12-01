@@ -181,6 +181,7 @@ struct ARM
     bool CodeSeq; // should the next code fetch be sequential
     struct ARM_Instr Instr[3]; // prefetch pipeline
     timestamp Timestamp;
+    timestamp MinWakeup;
     struct Console* Sys;
 };
 

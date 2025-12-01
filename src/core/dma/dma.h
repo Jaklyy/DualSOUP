@@ -74,4 +74,4 @@ void DMA7_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 
 void DMA9_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 addr, u32 val, u32 mask);
 u32 DMA_IOReadHandler(struct DMA_Channel* channels, u32 addr);
 void DMA_Schedule(struct Console* sys, struct DMA_Controller* cnt, const bool a9);
-timestamp DMA_CheckNext(struct Console* sys, struct DMA_Controller* cnt, u8* id);
+timestamp DMA_CheckNext(struct DMA_Controller* cnt, u8* id);

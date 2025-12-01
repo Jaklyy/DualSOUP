@@ -488,7 +488,7 @@ void THUMB_AdjustSP(struct ARM* cpu, const struct ARM_Instr instr_data)
     ARM_SetReg(13, alu_out, 0, 0);
 }
 
-s8 THUMB9_AdjustSP_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
+s8 THUMB9_AdjustSP_Interlocks(struct ARM946ES* ARM9, [[maybe_unused]] const struct ARM_Instr instr_data)
 {
     s8 stall = 0;
     // im not sure if this interlock can actually be triggered but it should work in theory?

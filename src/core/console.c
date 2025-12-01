@@ -130,6 +130,11 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, void* 
     sys->DMA7.ChannelTimestamps[2] = timestamp_max;
     sys->DMA7.ChannelTimestamps[3] = timestamp_max;
 
+    sys->IPCFIFO7.CR.RecvFIFOEmpty = true;
+    sys->IPCFIFO7.CR.SendFIFOEmpty = true;
+    sys->IPCFIFO9.CR.RecvFIFOEmpty = true;
+    sys->IPCFIFO9.CR.SendFIFOEmpty = true;
+
     sys->Pad = pad;
 
     Console_Reset(sys);
@@ -141,6 +146,7 @@ void Console_DirectBoot(struct Console* sys, FILE* rom)
 {
     // wram should probably be enabled...?
     sys->WRAMCR = 3;
+    sys->PostFlag = true;
 
     // set main ram bits to be enabled
     sys->ExtMemCR_Shared.MRSomething1 = true;
@@ -243,6 +249,38 @@ timestamp Console_GetARM9Cur(struct Console* sys)
     return ts;
 }
 
+void Console_SyncWith7GTE(struct Console* sys, timestamp now)
+{
+    while (now >= Console_GetARM7Cur(sys))
+    {
+        CR_Switch(sys->HandleARM7);
+    }
+}
+
+void Console_SyncWith7GT(struct Console* sys, timestamp now)
+{
+    while (now > Console_GetARM7Cur(sys))
+    {
+        CR_Switch(sys->HandleARM7);
+    }
+}
+
+void Console_SyncWith9GTE(struct Console* sys, timestamp now)
+{
+    while (now >= Console_GetARM9Cur(sys))
+    {
+        CR_Switch(sys->HandleARM9);
+    }
+}
+
+void Console_SyncWith9GT(struct Console* sys, timestamp now)
+{
+    while (now > Console_GetARM9Cur(sys))
+    {
+        CR_Switch(sys->HandleARM9);
+    }
+}
+
 void IF9_Update(struct Console* sys, timestamp now)
 {
     timestamp time = sys->Sched.EventTimes[Sched_IF9Update];
@@ -256,6 +294,14 @@ void IF9_Update(struct Console* sys, timestamp now)
         }
         if (next > sys->IRQSched9[i])
             next = sys->IRQSched9[i];
+    }
+
+    // wake up cpu
+    // TODO: SCHEDULE THIS INSTEAD
+    if (sys->ARM9.ARM.CpuSleeping && sys->IME9 && (sys->IE9 & sys->IF9))
+    {
+        sys->ARM9.ARM.CpuSleeping = 0;
+        sys->ARM9.ARM.Timestamp = now / 2;
     }
     Schedule_Event(sys, IF9_Update, Sched_IF9Update, next);
 }
@@ -273,6 +319,13 @@ void IF7_Update(struct Console* sys, timestamp now)
         }
         if (next > sys->IRQSched7[i])
             next = sys->IRQSched7[i];
+    }
+    // wake up cpu
+    // TODO: SCHEDULE THIS INSTEAD
+    if (sys->ARM7.ARM.CpuSleeping && (sys->IE7 & sys->IF7))
+    {
+        sys->ARM7.ARM.CpuSleeping = 0;
+        sys->ARM7.ARM.Timestamp = now;
     }
     Schedule_Event(sys, IF7_Update, Sched_IF7Update, next);
 }

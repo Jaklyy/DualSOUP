@@ -2,11 +2,33 @@
 #include "../shared/arm.h"
 #include "../../console.h"
 #include "arm.h"
+#include <stdlib.h>
 
 
 
 
 #define cpu ((struct ARM*)ARM7)
+
+// TEMP: debugging
+void ARM7_Log(struct ARM7TDMI* ARM7)
+{
+    LogPrint(LOG_ARM7, "DUMPING ARM7 STATE:\n");
+    for (int i = 0; i < 16; i++)
+    {
+        LogPrint(LOG_ARM7, "R%2i: %08X ", i, cpu->R[i]);
+    }
+    //LogPrint(LOG_ARM9, "R2:%08X\n", cpu->R[2]);
+    LogPrint(LOG_ARM7, "CPSR:%08X\n", cpu->CPSR.Raw);
+    if (cpu->Instr[0].Flushed)
+    {
+        LogPrint(LOG_ARM7, "INSTR: Flushed. ");
+    }
+    else
+    {
+        LogPrint(LOG_ARM7, "INSTR: %08X ", cpu->Instr[0]);
+    }
+    LogPrint(LOG_ARM7, "EXE:%li\n\n", cpu->Timestamp);
+}
 
 void ARM7_Init(struct ARM7TDMI* ARM7, struct Console* sys)
 {
@@ -73,7 +95,8 @@ u32 ARM7_GetReg(struct ARM7TDMI* ARM7, const int reg)
 
 void ARM7_SetPC(struct ARM7TDMI* ARM7, u32 val)
 {
-    /// branch logic???
+    // TEMP: debugging
+    //ARM7_Log(ARM7);
 
     // arm7 doesn't seem to implement bit0 of program counter
     // doesn't enforce alignment in arm mode either.
@@ -118,8 +141,7 @@ if (!ARM7_CheckInterrupts(ARM7)) \
 
 [[nodiscard]] bool ARM7_CheckInterrupts(struct ARM7TDMI* ARM7)
 {
-    if (ARM7->ARM.Timestamp >= Console_GetARM9Cur(ARM7->ARM.Sys))
-        CR_Switch(ARM7->ARM.Sys->HandleARM9);
+    Console_SyncWith9GT(cpu->Sys, cpu->Timestamp);
 
     // TODO: schedule this instead
     if (cpu->Sys->IME7 && !cpu->CPSR.IRQDisable && (cpu->Sys->IE7 & cpu->Sys->IF7))
@@ -140,29 +162,16 @@ if (!ARM7_CheckInterrupts(ARM7)) \
     else return false;
 }
 
-// TEMP: debugging
-void ARM7_Log(struct ARM7TDMI* ARM7)
-{
-    LogPrint(LOG_ARM7, "DUMPING ARM7 STATE:\n");
-    for (int i = 0; i < 16; i++)
-    {
-        LogPrint(LOG_ARM7, "R%2i: %08X ", i, cpu->R[i]);
-    }
-    //LogPrint(LOG_ARM9, "R2:%08X\n", cpu->R[2]);
-    LogPrint(LOG_ARM7, "CPSR:%08X\n", cpu->CPSR.Raw);
-    if (cpu->Instr[0].Flushed)
-    {
-        LogPrint(LOG_ARM7, "INSTR: Flushed. ");
-    }
-    else
-    {
-        LogPrint(LOG_ARM7, "INSTR: %08X ", cpu->Instr[0]);
-    }
-    LogPrint(LOG_ARM7, "EXE:%li\n\n", cpu->Timestamp);
-}
-
 void ARM7_Step(struct ARM7TDMI* ARM7)
 {
+    if (cpu->CpuSleeping)
+    {
+        cpu->Timestamp = cpu->Sys->ARM7Target;
+
+        printf("7zzzz\n");
+        return;
+    }
+
     // step the pipeline.
     ARM_PipelineStep(cpu);
 
@@ -189,16 +198,13 @@ void ARM7_Step(struct ARM7TDMI* ARM7)
             ARM7_InstrRead32(ARM7, cpu->PC);
 
             // this needs a special check because im stupid and reusing this path for pipeline refills
-            if (!cpu->Instr[0].Flushed && !ARM7_CheckInterrupts(ARM7))
+            if (cpu->Instr[0].Flushed || !ARM7_CheckInterrupts(ARM7))
             {
                 ARM7_ExecuteCycles(ARM7, 1);
+                ARM_StepPC(cpu, false);
             }
-            ARM_StepPC(cpu, false);
         }
     }
-
-    // TEMP: debugging
-    //ARM7_Log(ARM7);
 }
 
 #undef ILCheck
@@ -208,7 +214,7 @@ void ARM7_MainLoop(struct ARM7TDMI* ARM7)
 {
     while(true)
     {
-        if (cpu->Timestamp >= cpu->Sys->ARM7Target)
+        if (cpu->Timestamp > cpu->Sys->ARM7Target)
             CR_Switch(cpu->Sys->HandleMain);
         else
             ARM7_Step(ARM7);

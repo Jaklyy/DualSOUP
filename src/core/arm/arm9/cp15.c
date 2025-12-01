@@ -446,6 +446,12 @@ void ARM9_MCR_15(struct ARM946ES* ARM9, const u16 cmd, const u32 val)
         ARM9_ExecuteCycles(ARM9, 2, 1);
         break;
 
+
+    case ARM_CoprocReg(0, 7, 0, 4): // wait for interrupt
+    case ARM_CoprocReg(0, 15, 8, 2): // wait for interrupt
+        ARM9->ARM.WaitForInterrupt = true;
+        break;
+
     case ARM_CoprocReg(0, 7, 5, 0): // flush icache
         ICache_FlushAll(ARM9);
         break;
@@ -481,9 +487,6 @@ void ARM9_MCR_15(struct ARM946ES* ARM9, const u16 cmd, const u32 val)
     case ARM_CoprocReg(0, 13, 1, 1): // pid
         ARM9->CP15.TraceProcIdReg = val;
         break;
-
-    case ARM_CoprocReg(0, 7, 0, 4): // wait for interrupt
-    case ARM_CoprocReg(0, 15, 8, 2): // wait for interrupt
 
     // BIST
     case ARM_CoprocReg(0, 15, 0, 0): // test state

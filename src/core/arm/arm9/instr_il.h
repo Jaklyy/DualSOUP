@@ -29,6 +29,7 @@
 // coprocessor
 [[nodiscard]] s8 ARM9_MCR_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data);
 [[nodiscard]] s8 ARM9_MRC_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data);
+#define ARM9_MRC_Interlocks ARM9_None_Interlocks
 [[nodiscard]] s8 ARM9_LDC_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data);
 
 // branch

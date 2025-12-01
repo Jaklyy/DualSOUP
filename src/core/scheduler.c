@@ -42,10 +42,8 @@ void Scheduler_Run(struct Console* sys)
 void Scheduler_RunEventManual(struct Console* sys, timestamp time, const u8 event, const u8 a9)
 {
     // need to catch up other components to ensure coherency
-    if (a9 && (time >= Console_GetARM7Cur(sys)))
-        CR_Switch(sys->HandleARM7);
-    if (!a9 && (time >= Console_GetARM9Cur(sys)))
-        CR_Switch(sys->HandleARM9);
+    if (a9) Console_SyncWith7GT(sys, time);
+    else Console_SyncWith9GT(sys, time);
 
     if (time >= sys->Sched.EventTimes[event])
     {

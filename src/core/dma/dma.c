@@ -53,7 +53,7 @@ void DMA_Schedule(struct Console* sys, struct DMA_Controller* cnt, const bool a9
     //    Schedule_Event(sys, DMA7_ScheduledRun, cnt->EvtID, time, false);
 }
 
-timestamp DMA_CheckNext(struct Console* sys, struct DMA_Controller* cnt, u8* id)
+timestamp DMA_CheckNext(struct DMA_Controller* cnt, u8* id)
 {
     timestamp time = timestamp_max;
 

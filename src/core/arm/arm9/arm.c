@@ -9,6 +9,27 @@
 
 #define cpu ((struct ARM*)ARM9)
 
+// TEMP: debugging
+void ARM9_Log(struct ARM946ES* ARM9)
+{
+    LogPrint(LOG_ARM9, "DUMPING ARM9 STATE:\n");
+    for (int i = 0; i < 16; i++)
+    {
+        LogPrint(LOG_ARM9, "R%2i: %08X ", i, cpu->R[i]);
+    }
+    //LogPrint(LOG_ARM9, "R2:%08X\n", cpu->R[2]);
+    LogPrint(LOG_ARM9, "CPSR:%08X\n", cpu->CPSR.Raw);
+    if (cpu->Instr[0].Flushed)
+    {
+        LogPrint(LOG_ARM9, "INSTR: Flushed. ");
+    }
+    else
+    {
+        LogPrint(LOG_ARM9, "INSTR: %08X ", cpu->Instr[0]);
+    }
+    LogPrint(LOG_ARM9, "EXE:%li MEM:%li\n\n", cpu->Timestamp, ARM9->MemTimestamp);
+}
+
 void ARM9_Init(struct ARM946ES* ARM9, struct Console* sys)
 {
     ARM_Init(cpu, sys, ARM9ID);
@@ -109,6 +130,10 @@ void ARM9_InterlockStall(struct ARM946ES* ARM9, const s8 stall)
 
 void ARM9_SetPC(struct ARM946ES* ARM9, u32 addr, const s8 iloffs)
 {
+    // TEMP: debugging
+    //ARM9_DumpMPU(ARM9);
+    //ARM9_Log(ARM9);
+
     // arm9 enforces pc alignment properly for once.
     addr &= ~(cpu->CPSR.Thumb ? 0x1 : 0x3);
     // r15 interlocks must be resolved immediately.
@@ -168,7 +193,7 @@ void ARM9_ExecuteCycles(struct ARM946ES* ARM9, const int execute, const int memo
 
 void ARM9_ExecuteOnly(struct ARM946ES* ARM9, const int execute)
 {
-
+    // TODO
 }
 
 #define ILCheck(size, x) \
@@ -192,8 +217,7 @@ if (!ARM9_CheckInterrupts(ARM9)) \
 [[nodiscard]] bool ARM9_CheckInterrupts(struct ARM946ES* ARM9)
 {
     // TODO: fix for dsi mode
-    if ((ARM9->ARM.Timestamp/2) >= Console_GetARM7Cur(ARM9->ARM.Sys))
-        CR_Switch(ARM9->ARM.Sys->HandleARM7);
+    Console_SyncWith7GT(cpu->Sys, cpu->Timestamp/2);
 
     // todo: schedule this instead
     if (cpu->Sys->IME9 && !cpu->CPSR.IRQDisable && (cpu->Sys->IE9 & cpu->Sys->IF9))
@@ -214,27 +238,6 @@ if (!ARM9_CheckInterrupts(ARM9)) \
     else return false;
 }
 
-// TEMP: debugging
-void ARM9_Log(struct ARM946ES* ARM9)
-{
-    LogPrint(LOG_ARM9, "DUMPING ARM9 STATE:\n");
-    for (int i = 0; i < 16; i++)
-    {
-        LogPrint(LOG_ARM9, "R%2i: %08X ", i, cpu->R[i]);
-    }
-    //LogPrint(LOG_ARM9, "R2:%08X\n", cpu->R[2]);
-    LogPrint(LOG_ARM9, "CPSR:%08X\n", cpu->CPSR.Raw);
-    if (cpu->Instr[0].Flushed)
-    {
-        LogPrint(LOG_ARM9, "INSTR: Flushed. ");
-    }
-    else
-    {
-        LogPrint(LOG_ARM9, "INSTR: %08X ", cpu->Instr[0]);
-    }
-    LogPrint(LOG_ARM9, "EXE:%li MEM:%li\n\n", cpu->Timestamp, ARM9->MemTimestamp);
-}
-
 /*  order of operations:
     1. pipeline is stepped
     2. interlocks are stalled for
@@ -244,9 +247,18 @@ void ARM9_Log(struct ARM946ES* ARM9)
 */
 void ARM9_Step(struct ARM946ES* ARM9)
 {
+    ARM9_CatchUpWriteBuffer(ARM9, &ARM9->ARM.Timestamp);
+
+    if (cpu->CpuSleeping)
+    {
+        printf("9zzzz\n");
+        cpu->Timestamp = cpu->Sys->ARM9Target;
+
+        return;
+    }
+
     // step the pipeline.
     ARM_PipelineStep(cpu);
-    ARM9_CatchUpWriteBuffer(ARM9, &ARM9->ARM.Timestamp);
 
     if (cpu->CPSR.Thumb)
     {
@@ -285,17 +297,13 @@ void ARM9_Step(struct ARM946ES* ARM9)
             ARM9_InstrRead32(ARM9, cpu->PC);
 
             // this needs a special check because im stupid and reusing this path for pipeline refills
-            if (!cpu->Instr[0].Flushed && !ARM9_CheckInterrupts(ARM9))
+            if (cpu->Instr[0].Flushed || !ARM9_CheckInterrupts(ARM9))
             {
                 ARM9_ExecuteCycles(ARM9, 1, 1);
+                ARM_StepPC(cpu, false);
             }
-            ARM_StepPC(cpu, false);
         }
     }
-
-    // TEMP: debugging
-    //ARM9_DumpMPU(ARM9);
-    //ARM9_Log(ARM9);
 }
 
 #undef ILCheck
@@ -305,7 +313,7 @@ void ARM9_MainLoop(struct ARM946ES* ARM9)
 {
     while(true)
     {
-        if (cpu->Timestamp >= cpu->Sys->ARM9Target)
+        if (cpu->Timestamp > cpu->Sys->ARM9Target)
             CR_Switch(cpu->Sys->HandleMain);
         else
             ARM9_Step(ARM9);

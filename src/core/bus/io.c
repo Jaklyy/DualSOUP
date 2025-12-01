@@ -6,19 +6,18 @@
 
 
 
-bool AHB9_SyncWith7GTE(struct Console* sys);
-bool AHB9_SyncWith7GT(struct Console* sys);
-bool AHB7_SyncWith9GTE(struct Console* sys);
-bool AHB7_SyncWith9GT(struct Console* sys);
 
 // TODO: Regs im 99% confident about:
 // Timers
 
-u32 IPC_FIFORead(struct Console* sys, const u32 mask, const bool a9)
+u32 IPC_FIFORead(struct Console* sys, [[maybe_unused]] const u32 mask, const bool a9)
 {
     struct IPCFIFO* send = ((a9) ? &sys->IPCFIFO7 : &sys->IPCFIFO9);
     struct IPCFIFO* recv = ((a9) ? &sys->IPCFIFO9 : &sys->IPCFIFO7);
     timestamp ts = ((a9) ? sys->AHB9.Timestamp : sys->AHB7.Timestamp);
+
+    if (a9) Console_SyncWith7GT(sys, ts);
+    else    Console_SyncWith9GT(sys, ts);
 
     u32 ret;
     // CHECKME: do both sides need to be enabled for it to work?
@@ -68,6 +67,8 @@ void IPC_FIFOWrite(struct Console* sys, const u32 val, const u32 mask, const boo
     struct IPCFIFO* send = ((a9) ? &sys->IPCFIFO7 : &sys->IPCFIFO9);
     struct IPCFIFO* recv = ((a9) ? &sys->IPCFIFO9 : &sys->IPCFIFO7);
     timestamp ts = ((a9) ? sys->AHB9.Timestamp : sys->AHB7.Timestamp);
+    if (a9) Console_SyncWith7GT(sys, ts);
+    else    Console_SyncWith9GT(sys, ts);
 
     // CHECKME: do both sides need to be enabled for it to work?
     // CHECKME: halfword/byte accesses?
@@ -76,7 +77,6 @@ void IPC_FIFOWrite(struct Console* sys, const u32 val, const u32 mask, const boo
         // CHECKME: does this write just get ignored or overwrite?
         if (recv->CR.SendFIFOFull)
         {
-            recv->CR.Error = true;
             return;
         }
 
@@ -111,15 +111,15 @@ void IPC_FIFOCRWrite(struct Console* sys, const u32 val, const u32 mask, bool a9
     struct IPCFIFO* recv = ((a9) ? &sys->IPCFIFO9 : &sys->IPCFIFO7);
     timestamp ts = ((a9) ? sys->AHB9.Timestamp : sys->AHB7.Timestamp);
 
-    if (a9) AHB9_SyncWith7GT(sys);
-    else    AHB7_SyncWith9GT(sys);
+    if (a9) Console_SyncWith7GT(sys, ts);
+    else    Console_SyncWith9GT(sys, ts);
 
     MaskedWrite(recv->CR.Raw, val, mask & 0x8404);
 
     // FIFO Flush; CHECKME: does this need power?
-    if (mask & val & 1<<3)
+    if (mask & val & (1<<3))
     {
-        memset(send->FIFO, 0, sizeof(sys->IPCFIFO7));
+        memset(send->FIFO, 0, sizeof(sys->IPCFIFO7.FIFO));
         recv->CR.SendFIFOEmpty = true;
         send->CR.RecvFIFOEmpty = true;
         recv->CR.SendFIFOFull = false;
@@ -136,12 +136,12 @@ void IPC_FIFOCRWrite(struct Console* sys, const u32 val, const u32 mask, bool a9
     // ack error
     if (mask & val & (1<<14))
     {
-        printf("ack %08X %08X!\n", val, recv->CR.Raw);
         recv->CR.Error = false;
     }
+
 }
 
-void IO9_FinishDiv(struct Console* sys, timestamp now)
+void IO9_FinishDiv(struct Console* sys, [[maybe_unused]] timestamp now)
 {
     s64 num;
     s64 den;
@@ -196,7 +196,6 @@ void IO9_FinishDiv(struct Console* sys, timestamp now)
     sys->DivCR.DivByZero = !sys->DivDen.b64;
     sys->DivCR.Busy = false;
 
-    printf("quo: %lX rem: %lX\n", sys->DivQuo.b64, sys->DivRem.b64);
     Schedule_Event(sys, IO9_FinishDiv, Sched_Divider, timestamp_max);
 }
 
@@ -204,8 +203,57 @@ void IO9_StartDiv(struct Console* sys)
 {
     sys->DivQuo.b64 = 0;
     sys->DivRem.b64 = 0;
-    Schedule_Event(sys, IO9_FinishDiv, Sched_Divider, sys->AHB9.Timestamp + ((sys->DivCR.DivMode == 0 ) ? 18 : 34));
     sys->DivCR.Busy = true;
+    Schedule_Event(sys, IO9_FinishDiv, Sched_Divider, sys->AHB9.Timestamp + ((sys->DivCR.DivMode == 0 ) ? 18 : 34));
+}
+
+// algorithm stolen from melonds which links this so im linking it too, sue me.
+// one could also do this with 80 bit floats, but that's less portable.
+// http://stackoverflow.com/questions/1100090/looking-for-an-efficient-integer-square-root-algorithm-for-arm-thumb2
+void IO9_FinishSqrt(struct Console* sys, [[maybe_unused]] timestamp now)
+{
+    u64 val;
+    u32 res = 0;
+    u64 rem = 0;
+    u32 prod = 0;
+    int nbits, topshift;
+    if (sys->SqrtCR.Use64Bits)
+    {
+        val = sys->SqrtParam.b64;
+        nbits = 32;
+        topshift = 62;
+    }
+    else
+    {
+        val = sys->SqrtParam.b32[0];
+        nbits = 16;
+        topshift = 30;
+    }
+
+    for (int i = 0; i < nbits; i++)
+    {
+        rem = (rem << 2) + ((val >> topshift) & 0x3);
+        val <<= 2;
+        res <<= 1;
+
+        prod = (res << 1) + 1;
+        if (rem >= prod)
+        {
+            rem -= prod;
+            res++;
+        }
+    }
+
+    sys->SqrtRes = res;
+    sys->SqrtCR.Busy = false;
+    Schedule_Event(sys, IO9_FinishSqrt, Sched_Sqrt, timestamp_max);
+}
+
+void IO9_StartSqrt(struct Console* sys)
+{
+    sys->SqrtRes = 0;
+    sys->SqrtCR.Busy = true;
+    Schedule_Event(sys, IO9_FinishSqrt, Sched_Sqrt, sys->AHB9.Timestamp + 13);
 }
 
 
@@ -230,15 +278,16 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask)
             return Input_PollMain(sys->Pad) << 16;
 
         case 0x00'01'80: // ipcsync
-            AHB7_SyncWith9GT(sys);
+            Console_SyncWith9GT(sys, sys->AHB7.Timestamp);
             return sys->IPCSyncDataTo7
                     | (sys->IPCSyncDataTo9 << 8)
                     | (sys->IPCSyncIRQEnableTo7 << 14);
         case 0x00'01'84:
-            AHB7_SyncWith9GT(sys);
+            Console_SyncWith9GT(sys, sys->AHB7.Timestamp);
             return sys->IPCFIFO7.CR.Raw;
 
         case 0x00'02'04: // External Memory Control
+            Console_SyncWith9GT(sys, sys->AHB7.Timestamp);
             return sys->ExtMemCR_Shared.Raw | sys->ExtMemCR_7.Raw;
 
         case 0x00'02'08: // IME
@@ -250,8 +299,12 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask)
             return sys->IF7;
 
         case 0x00'02'40: // VRAM/WRAM Status
+            Console_SyncWith9GT(sys, sys->AHB7.Timestamp);
             return ((sys->VRAMCR[2].Raw & 0x87) == 0x82) | (((sys->VRAMCR[3].Raw & 0x87) == 0x82) << 1)
                    | sys->WRAMCR << 8;
+
+        case 0x00'03'00:
+            return sys->PostFlag;
 
         case 0x10'00'00:
             return IPC_FIFORead(sys, mask, false);
@@ -293,7 +346,7 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
 
         case 0x00'01'80: // ipcsync
         {
-            AHB7_SyncWith9GT(sys);
+            Console_SyncWith9GT(sys, sys->AHB7.Timestamp);
             if (mask & 0xF00)
             {
                 sys->IPCSyncDataTo9 = (val >> 8) & 0xF;
@@ -333,6 +386,35 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             sys->IF7 &= ~(val & mask);
             break;
 
+        case 0x00'03'00:
+            // TODO: bios prot
+            if (mask & 0x1) // post flag
+            {
+                Console_SyncWith9GT(sys, sys->AHB7.Timestamp);
+                sys->PostFlag |= val & 0x1;
+            }
+            if (mask & 0xC000) // wait control
+            {
+                switch((val >> 14) & 0x3)
+                {
+                case 0: // does nothing
+                    LogPrint(LOG_ARM7|LOG_ODD, "A7 wrote nothing to HaltCR...?\n");
+                    break;
+                case 1: // GBA
+                    LogPrint(LOG_ARM7|LOG_UNIMP, "But nobody came...\n\n\n...GBA mode unsupported, sorry!\n");
+                    sys->ARM7.ARM.WaitForInterrupt = true;
+                    break;
+                case 2: // halt
+                    sys->ARM7.ARM.WaitForInterrupt = true;
+                    break;
+                case 3: // sleep
+                    LogPrint(LOG_ARM7|LOG_UNIMP, "I dont really know what sleep does but it's not in yet!\n");
+                    sys->ARM7.ARM.WaitForInterrupt = true;
+                    break;
+                }
+            }
+            break;
+
         default:
             LogPrint(LOG_ARM7 | LOG_UNIMP, "UNIMPLEMENTED IO7 WRITE: %08lX %08lX %08lX @ %08lX\n", addr, val, mask, sys->ARM7.ARM.PC);
             break;
@@ -343,7 +425,6 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask)
 {
     switch (addr & 0xFF'FF'FC)
     {
-
         case 0x00'00'00:
             return sys->PPU_A.DisplayCR.Raw;
 
@@ -365,13 +446,12 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask)
 
         // IPC
         case 0x00'01'80: // ipcsync
-            AHB9_SyncWith7GT(sys);
+            Console_SyncWith7GT(sys, sys->AHB9.Timestamp);
             return sys->IPCSyncDataTo9
                     | (sys->IPCSyncDataTo7 << 8)
                     | (sys->IPCSyncIRQEnableTo9 << 14);
         case 0x00'01'84:
-            AHB9_SyncWith7GT(sys);
-        printf("read! %08X!\n", sys->IPCFIFO9.CR.Raw);
+            Console_SyncWith7GT(sys, sys->AHB9.Timestamp);
             return sys->IPCFIFO9.CR.Raw;
 
         case 0x00'02'04: // External Memory Control
@@ -397,24 +477,46 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask)
 
 
         case 0x00'02'80:
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Sched_Divider, true);
             return sys->DivCR.Raw;
 
         case 0x00'02'90:
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Sched_Divider, true);
             return sys->DivNum.b32[0];
         case 0x00'02'94:
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Sched_Divider, true);
             return sys->DivNum.b32[1];
         case 0x00'02'98:
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Sched_Divider, true);
             return sys->DivDen.b32[0];
         case 0x00'02'9C:
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Sched_Divider, true);
             return sys->DivDen.b32[1];
         case 0x00'02'A0:
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Sched_Divider, true);
             return sys->DivQuo.b32[0];
         case 0x00'02'A4:
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Sched_Divider, true);
             return sys->DivQuo.b32[1];
         case 0x00'02'A8:
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Sched_Divider, true);
             return sys->DivRem.b32[0];
         case 0x00'02'AC:
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Sched_Divider, true);
             return sys->DivRem.b32[1];
+        case 0x00'02'B0:
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Sched_Divider, true);
+            return sys->SqrtCR.Raw;
+        case 0x00'02'B4:
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Sched_Divider, true);
+            return sys->SqrtRes;
+        case 0x00'02'B8:
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Sched_Divider, true);
+            return sys->SqrtParam.b32[0];
+        case 0x00'02'BC:
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Sched_Divider, true);
+            return sys->SqrtParam.b32[1];
+
 
         case 0x00'03'04:
             return sys->PowerControl9.Raw;
@@ -426,6 +528,10 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask)
             return sys->PPU_B.BGCR[0].Raw | (sys->PPU_B.BGCR[1].Raw << 16);
         case 0x00'10'0C:
             return sys->PPU_B.BGCR[2].Raw | (sys->PPU_B.BGCR[3].Raw << 16);
+
+        case 0x00'03'00:
+            Console_SyncWith7GT(sys, sys->AHB9.Timestamp);
+            return sys->PostFlag | (sys->PostFlagA9Bit << 1);
 
         case 0x10'00'00:
             return IPC_FIFORead(sys, mask, true);
@@ -474,7 +580,7 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
 
         case 0x00'01'80: // ipcsync
         {
-            AHB9_SyncWith7GT(sys);
+            Console_SyncWith7GT(sys, sys->AHB9.Timestamp);
             if (mask & 0xF00)
             {
                 sys->IPCSyncDataTo7 = (val >> 8) & 0xF;
@@ -500,6 +606,7 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             break;
 
         case 0x00'02'04: // exmemcnt
+            Console_SyncWith7GT(sys, sys->AHB9.Timestamp);
             MaskedWrite(sys->ExtMemCR_9.Raw, val, mask & 0x7F);
             bool membit1 = sys->ExtMemCR_Shared.MRSomething1;
             bool membit2 = sys->ExtMemCR_Shared.MRSomething2;
@@ -537,10 +644,12 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             }
             if (mask & 0x00FF0000)
             {
+                Console_SyncWith7GT(sys, sys->AHB9.Timestamp);
                 sys->VRAMCR[2].Raw = (val >> 16) & 0x9F;
             }
             if (mask & 0xFF000000)
             {
+                Console_SyncWith7GT(sys, sys->AHB9.Timestamp);
                 sys->VRAMCR[3].Raw = (val >> 24) & 0x9F;
             }
             break;
@@ -579,11 +688,11 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
         }
 
 
+        // division
         case 0x00'02'80:
             MaskedWrite(sys->DivCR.Raw, val, mask & 0x3);
             IO9_StartDiv(sys);
             break;
-
         case 0x00'02'90:
             MaskedWrite(sys->DivNum.b32[0], val, mask);
             IO9_StartDiv(sys);
@@ -599,6 +708,19 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
         case 0x00'02'9C:
             MaskedWrite(sys->DivDen.b32[1], val, mask);
             IO9_StartDiv(sys);
+            break;
+        // square root
+        case 0x00'02'B0:
+            MaskedWrite(sys->SqrtCR.Raw, val, mask & 1);
+            IO9_StartSqrt(sys);
+            break;
+        case 0x00'02'B8:
+            MaskedWrite(sys->SqrtParam.b32[0], val, mask);
+            IO9_StartSqrt(sys);
+            break;
+        case 0x00'02'BC:
+            MaskedWrite(sys->SqrtParam.b32[1], val, mask);
+            IO9_StartSqrt(sys);
             break;
 
 
@@ -619,6 +741,9 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             MaskedWrite(sys->PPU_B.BGCR[3].Raw, val>>16, mask>>16);
             break;
 
+        case 0x00'03'00:
+            if (mask & 2) sys->PostFlagA9Bit = val & 2;
+            break;
 
 
         default:

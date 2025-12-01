@@ -200,7 +200,7 @@ void ARM_DataProc(struct ARM* cpu, const struct ARM_Instr instr_data)
                 case 11: str = "CMN"; break;
                 default: str = "Jakly, why is there an error in your error handler?"; break;
                 }
-                LogPrint(LOG_CPUID | LOG_ODD, "ARM%i: Executing %s with Rd == 15: %08X\n", CPUIDtoCPUNum, instr_data.Raw);
+                LogPrint(LOG_CPUID | LOG_ODD, "ARM%i: Executing %s with Rd == 15: %08X\n", CPUIDtoCPUNum, str, instr_data.Raw);
             }
 
             if ((cpu->CPUID == ARM9ID) && ((instr.Opcode & 0b1100) == 0b1000)) // tst/teq/cmp/cmn

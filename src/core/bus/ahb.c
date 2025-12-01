@@ -48,46 +48,6 @@
             TODO: test aborted accesses; data aborts shouldn't matter, but prefetch aborts might.
 */
 
-bool AHB9_SyncWith7GTE(struct Console* sys)
-{
-    if (sys->AHB9.Timestamp >= Console_GetARM7Cur(sys))
-    {
-        CR_Switch(sys->HandleARM7);
-        return false;
-    }
-    else return true;
-}
-
-bool AHB9_SyncWith7GT(struct Console* sys)
-{
-    if (sys->AHB9.Timestamp > Console_GetARM7Cur(sys))
-    {
-        CR_Switch(sys->HandleARM7);
-        return false;
-    }
-    else return true;
-}
-
-bool AHB7_SyncWith9GTE(struct Console* sys)
-{
-    if (sys->AHB7.Timestamp >= Console_GetARM9Cur(sys))
-    {
-        CR_Switch(sys->HandleARM9);
-        return false;
-    }
-    else return true;
-}
-
-bool AHB7_SyncWith9GT(struct Console* sys)
-{
-    if (sys->AHB7.Timestamp > Console_GetARM9Cur(sys))
-    {
-        CR_Switch(sys->HandleARM9);
-        return false;
-    }
-    else return true;
-}
-
 void Timing16(struct AHB* bus, const u32 mask)
 {
     bus->Timestamp += ((mask == u32_max) ? 2 : 1);
@@ -132,6 +92,8 @@ static inline void AddWriteContention(struct AHB* bus, const u8 device)
         ret = MemoryRead(32, sys-> x , addr, x##_Size); \
     } \
 
+// Thanks to Arisotura for some notes on vram bank mirroring.
+// I never would've guessed that they mirror so weirdly.
 u32 VRAM_LCD(struct Console* sys, const u32 addr, const u32 mask, const bool seq, const bool write, const u32 val, const bool timings)
 {
     bool any = false;
@@ -245,43 +207,43 @@ u32 VRAM_BGA(struct Console* sys, const u32 addr, const u32 mask, const bool seq
     if ((sys->VRAMCR[0].Raw & 0x87) == 0x81)
     {
         u32 base = (sys->VRAMCR[0].Offset * 0x20000);
-        u32 index = addr & 0x70000;
+        u32 index = addr & 0x60000;
         VRAMRET(VRAM_A)
     }
     if ((sys->VRAMCR[1].Raw & 0x87) == 0x81)
     {
         u32 base = (sys->VRAMCR[1].Offset * 0x20000);
-        u32 index = addr & 0x70000;
+        u32 index = addr & 0x60000;
         VRAMRET(VRAM_B)
     }
     if ((sys->VRAMCR[2].Raw & 0x87) == 0x81)
     {
         u32 base = (sys->VRAMCR[2].Offset * 0x20000);
-        u32 index = addr & 0x70000;
+        u32 index = addr & 0x60000;
         VRAMRET(VRAM_C)
     }
     if ((sys->VRAMCR[3].Raw & 0x87) == 0x81)
     {
         u32 base = (sys->VRAMCR[3].Offset * 0x20000);
-        u32 index = addr & 0x70000;
+        u32 index = addr & 0x60000;
         VRAMRET(VRAM_D)
     }
     if ((sys->VRAMCR[4].Raw & 0x87) == 0x81)
     {
         u32 base = 0;
-        u32 index = addr & 0x78000;
+        u32 index = addr & 0x70000;
         VRAMRET(VRAM_E)
     }
     if ((sys->VRAMCR[5].Raw & 0x87) == 0x81)
     {
         u32 base = (((sys->VRAMCR[5].Offset & 1) * 0x4000) + ((sys->VRAMCR[5].Offset >> 1) * 0x10000));
-        u32 index = addr & 0x7E000;
+        u32 index = addr & 0x74000;
         VRAMRET(VRAM_F)
     }
     if ((sys->VRAMCR[6].Raw & 0x87) == 0x81)
     {
         u32 base = (((sys->VRAMCR[6].Offset & 1) * 0x4000) + ((sys->VRAMCR[6].Offset >> 1) * 0x10000));
-        u32 index = addr & 0x7E000;
+        u32 index = addr & 0x74000;
         VRAMRET(VRAM_G)
     }
     if (!any)
@@ -302,31 +264,31 @@ u32 VRAM_OBJA(struct Console* sys, const u32 addr, const u32 mask, const bool se
     if ((sys->VRAMCR[0].Raw & 0x87) == 0x82)
     {
         u32 base = (sys->VRAMCR[0].Offset * 0x20000);
-        u32 index = addr & 0x30000;
+        u32 index = addr & 0x20000;
         VRAMRET(VRAM_A)
     }
     if ((sys->VRAMCR[1].Raw & 0x87) == 0x82)
     {
         u32 base = (sys->VRAMCR[1].Offset * 0x20000);
-        u32 index = addr & 0x30000;
+        u32 index = addr & 0x20000;
         VRAMRET(VRAM_B)
     }
     if ((sys->VRAMCR[4].Raw & 0x87) == 0x82)
     {
         u32 base = 0;
-        u32 index = addr & 0x38000;
+        u32 index = addr & 0x30000;
         VRAMRET(VRAM_E)
     }
     if ((sys->VRAMCR[5].Raw & 0x87) == 0x82)
     {
         u32 base = (((sys->VRAMCR[5].Offset & 1) * 0x4000) + ((sys->VRAMCR[5].Offset >> 1) * 0x10000));
-        u32 index = addr & 0x3E000;
+        u32 index = addr & 0x34000;
         VRAMRET(VRAM_F)
     }
     if ((sys->VRAMCR[6].Raw & 0x87) == 0x82)
     {
         u32 base = (((sys->VRAMCR[6].Offset & 1) * 0x4000) + ((sys->VRAMCR[6].Offset >> 1) * 0x10000));
-        u32 index = addr & 0x3E000;
+        u32 index = addr & 0x34000;
         VRAMRET(VRAM_G)
     }
     if (!any)
@@ -347,19 +309,19 @@ u32 VRAM_BGB(struct Console* sys, const u32 addr, const u32 mask, const bool seq
     if ((sys->VRAMCR[2].Raw & 0x87) == 0x84)
     {
         u32 base = 0;
-        u32 index = addr & 0x10000;
+        u32 index = 0;
         VRAMRET(VRAM_C)
     }
     if ((sys->VRAMCR[7].Raw & 0x87) == 0x81)
     {
         u32 base = 0;
-        u32 index = addr & 0x1C000;
+        u32 index = addr & 0x8000;
         VRAMRET(VRAM_H)
     }
     if ((sys->VRAMCR[8].Raw & 0x87) == 0x81)
     {
         u32 base = 0x8000;
-        u32 index = addr & 0x1E000;
+        u32 index = addr & 0x8000;
         VRAMRET(VRAM_I)
     }
     if (!any)
@@ -380,13 +342,13 @@ u32 VRAM_OBJB(struct Console* sys, const u32 addr, const u32 mask, const bool se
     if ((sys->VRAMCR[3].Raw & 0x87) == 0x84)
     {
         u32 base = 0;
-        u32 index = addr & 0x10000;
+        u32 index = 0;
         VRAMRET(VRAM_C)
     }
     if ((sys->VRAMCR[8].Raw & 0x87) == 0x82)
     {
         u32 base = 0;
-        u32 index = addr & 0x1E000;
+        u32 index = 0;
         VRAMRET(VRAM_I)
     }
     if (!any)
@@ -404,16 +366,17 @@ u32 VRAM_ARM7(struct Console* sys, const u32 addr, const u32 mask, const bool se
 {
     u32 ret = 0;
     bool any = false;
+    if (timings) Console_SyncWith9GT(sys, sys->AHB7.Timestamp);
     if ((sys->VRAMCR[2].Raw & 0x87) == 0x82)
     {
         u32 base = (sys->VRAMCR[2].Offset * 0x20000);
-        u32 index = addr & 0x10000;
+        u32 index = addr & 0x20000;
         VRAMRET(VRAM_C)
     }
     if ((sys->VRAMCR[3].Raw & 0x87) == 0x82)
     {
         u32 base = (sys->VRAMCR[3].Offset * 0x20000);
-        u32 index = addr & 0x10000;
+        u32 index = addr & 0x20000;
         VRAMRET(VRAM_D)
     }
     if (!any)
@@ -490,14 +453,14 @@ u32 Bus_MainRAM_Read(struct Console* sys, struct AHB* buscur, const bool bus9, u
             if (sys->ExtMemCR_Shared.MRPriority)
             {
                 // arm7 has priority
-                if (bus9) AHB9_SyncWith7GTE(sys);
-                else      AHB7_SyncWith9GT (sys);
+                if (bus9) Console_SyncWith7GTE(sys, buscur->Timestamp);
+                else      Console_SyncWith9GT (sys, buscur->Timestamp);
             }
             else
             {
                 // arm9 has priority
-                if (bus9) AHB9_SyncWith7GT (sys);
-                else      AHB7_SyncWith9GTE(sys);
+                if (bus9) Console_SyncWith7GT (sys, buscur->Timestamp);
+                else      Console_SyncWith9GTE(sys, buscur->Timestamp);
             }
 
             // if main ram is still busy the accessing bus needs to wait until it's available to begin a new burst to it
@@ -594,14 +557,14 @@ void Bus_MainRAM_Write(struct Console* sys, struct AHB* buscur, const bool bus9,
             if (sys->ExtMemCR_Shared.MRPriority)
             {
                 // arm7 has priority
-                if (bus9) AHB9_SyncWith7GTE(sys);
-                else       AHB7_SyncWith9GT (sys);
+                if (bus9) Console_SyncWith7GTE(sys, buscur->Timestamp);
+                else       Console_SyncWith9GT (sys, buscur->Timestamp);
             }
             else
             {
                 // arm9 has priority
-                if (bus9) AHB9_SyncWith7GT (sys);
-                else      AHB7_SyncWith9GTE(sys);
+                if (bus9) Console_SyncWith7GT (sys, buscur->Timestamp);
+                else      Console_SyncWith9GTE(sys, buscur->Timestamp);
             }
 
             // if main ram is still busy the accessing bus needs to wait until it's available to begin a new burst to it
@@ -953,21 +916,21 @@ bool AHB9_NegOwnership(struct Console* sys, timestamp* cur, const u8 priority, c
     struct AHB* bus = &sys->AHB9;
 
     // ensure component is caught up to bus
-    if (*cur < sys->AHB9.Timestamp) *cur = sys->AHB9.Timestamp;
+    if (*cur < bus->Timestamp) *cur = bus->Timestamp;
 
     // check if anything else is able to run
     u8 id = priority;
-    if (!atomic && (*cur >= DMA_CheckNext(sys, &sys->DMA9, &id)))
+    if (!atomic && (*cur >= DMA_CheckNext(&sys->DMA9, &id)))
     {
         DMA_Run(sys, &sys->DMA9, id, true);
 
         // catch up component to bus again; otherwise catch bus up to component
-        if (*cur < sys->AHB9.Timestamp) *cur = sys->AHB9.Timestamp;
-        else sys->AHB9.Timestamp = *cur;
+        if (*cur < bus->Timestamp) *cur = bus->Timestamp;
+        else bus->Timestamp = *cur;
 
         return false;
     }
-    if (sys->AHB9.Timestamp < *cur) sys->AHB9.Timestamp = *cur;
+    if (bus->Timestamp < *cur) bus->Timestamp = *cur;
 
     return true;
 }
@@ -1008,6 +971,7 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
     case 0x030: // Shared WRAM
         if (timings)
         {
+            Console_SyncWith9GT(sys, sys->AHB7.Timestamp);
             WriteContention(&sys->AHB7, Dev_WRAM, *seq);
             Timing32(&sys->AHB7);
         }
@@ -1110,6 +1074,7 @@ void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
     case 0x030: // Shared WRAM
         if (timings)
         {
+            Console_SyncWith9GT(sys, sys->AHB7.Timestamp);
             WriteContention(&sys->AHB7, Dev_WRAM, *seq);
             Timing32(&sys->AHB7);
             AddWriteContention(&sys->AHB7, Dev_WRAM);

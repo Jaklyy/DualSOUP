@@ -127,26 +127,10 @@ void ARM9_AHBWrite(struct ARM946ES* ARM9, timestamp* ts, const u32 addr, const u
 
 #define wb
 
-void ARM9_RunWriteBuffer(struct ARM946ES* ARM9, timestamp* until, const bool blocking)
+void ARM9_RunWriteBuffer(struct ARM946ES* ARM9, const bool blocking)
 {
     struct ARM9_WriteBuffer* buf = &ARM9->WBuffer;
-/*
-    // is it empty and not working?
-    if (buf->FIFOFillPtr == 16 && !buf->Latched)
-    {
-        if (blocking && (*until < buf->NextStep))
-            *until = buf->NextStep;
 
-        return;
-    }
-    // is it time to run the write buffer?
-    if (*until > buf->NextStep)
-    {
-        if (!blocking)
-            return;
-    }
-*/
-        //printf("FLUCK %i %i, %i %i, %li %li\n", buf->FIFOFillPtr, buf->FIFODrainPtr, buf->Latched, buf->BufferSeq, *until, buf->NextStep);
     // check latched fifo data.
     if (buf->Latched)
     {
@@ -173,7 +157,6 @@ void ARM9_RunWriteBuffer(struct ARM946ES* ARM9, timestamp* until, const bool blo
         }
         else CrashSpectacularly("EXPLOSION\n");
 
-        //printf("WR %08X %08X\n", val, buf->CurAddr);
         ARM9_AHBWrite(ARM9, &buf->NextStep, buf->CurAddr, val, mask, false, &buf->BufferSeq);
         buf->BufferSeq = true;
         // increment latched address
@@ -194,7 +177,6 @@ void ARM9_RunWriteBuffer(struct ARM946ES* ARM9, timestamp* until, const bool blo
             buf->NextStep++; // this is probably wrong but shouldn't matter i think?
             buf->BufferSeq = false;
             buf->Latched = false;
-            //printf("UPDATE %08X %08X\n", buf->FIFOEntry[buf->FIFODrainPtr].Data, buf->CurAddr);
         }
         else
         {
@@ -210,8 +192,6 @@ void ARM9_RunWriteBuffer(struct ARM946ES* ARM9, timestamp* until, const bool blo
     }
 }
 
-//printf("%i %i, %i %i, %li %li\n", buf->FIFOFillPtr, buf->FIFODrainPtr, buf->Latched, buf->BufferSeq, *until, buf->NextStep);
-
 void ARM9_CatchUpWriteBuffer(struct ARM946ES* ARM9, timestamp* until)
 {
 #ifdef wb
@@ -219,7 +199,7 @@ void ARM9_CatchUpWriteBuffer(struct ARM946ES* ARM9, timestamp* until)
 
     while ((buf->FIFOFillPtr != 16 || buf->Latched) && ((*until > buf->NextStep) || buf->BufferSeq))
     {
-        ARM9_RunWriteBuffer(ARM9, until, false);
+        ARM9_RunWriteBuffer(ARM9, false);
     }
 #endif
 }
@@ -232,7 +212,7 @@ void ARM9_DrainWriteBuffer(struct ARM946ES* ARM9, timestamp* until)
     // loop until write buffer is empty
     while (buf->FIFOFillPtr != 16 || buf->Latched)
     {
-        ARM9_RunWriteBuffer(ARM9, until, true);
+        ARM9_RunWriteBuffer(ARM9, true);
     }
     if (*until < buf->NextStep)
         *until = buf->NextStep;
@@ -249,7 +229,7 @@ void ARM9_FillWriteBuffer(struct ARM946ES* ARM9, timestamp* now, u32 val, u8 fla
     {
         while (buf->FIFOFillPtr == buf->FIFODrainPtr)
         {
-            ARM9_RunWriteBuffer(ARM9, now, true);
+            ARM9_RunWriteBuffer(ARM9, true);
         }
         if (*now < buf->NextStep)
             *now = buf->NextStep;
@@ -269,7 +249,6 @@ void ARM9_FillWriteBuffer(struct ARM946ES* ARM9, timestamp* now, u32 val, u8 fla
         buf->FIFODrainPtr = 0;
     }
 
-    //printf("FLAG %08X %i; %i %i\n", val, flag, buf->FIFOFillPtr, buf->FIFODrainPtr);
     buf->FIFOEntry[buf->FIFOFillPtr].Data = val;
     buf->FIFOEntry[buf->FIFOFillPtr].Flags = flag;
 
@@ -656,7 +635,7 @@ u32 ARM9_DataRead(struct ARM946ES* ARM9, const u32 addr, const u32 mask, bool* s
 
     // note: Technically the initial load in SWP(B) is atomic, but I dont think that actually matters in any way?
     // So I dont think we actually need to handle anything here?
-    ret = ARM9_AHBRead(ARM9, &ARM9->MemTimestamp /*not quite sure how I want to handle this yet?*/, addr, mask, false, seq);
+    ret = ARM9_AHBRead(ARM9, &ARM9->MemTimestamp, addr, mask, false, seq);
 
     *seq = true;
     return ret;
@@ -756,17 +735,15 @@ void ARM9_DataWrite(struct ARM946ES* ARM9, u32 addr, const u32 val, const u32 ma
         }
         else CrashSpectacularly("%08X\n", mask);
 
-        //printf("ADDR %08X %i\n", addr, size);
         // if bufferable then we need to write to the write buffer
         ARM9_FillWriteBuffer(ARM9, &ARM9->MemTimestamp, addr, A9WB_Addr);
-        //printf("VAL %08X %i\n", val, size);
         ARM9_FillWriteBuffer(ARM9, &ARM9->MemTimestamp, val, size);
     }
     else
     {
         // otherwise we need to drain write buffer
         ARM9_DrainWriteBuffer(ARM9, &ARM9->MemTimestamp);
-        ARM9_AHBWrite(ARM9, &ARM9->MemTimestamp /*not quite sure how I want to handle this yet?*/, addr, val, mask, atomic, seq);
+        ARM9_AHBWrite(ARM9, &ARM9->MemTimestamp, addr, val, mask, atomic, seq);
     }
 
     *seq = true;

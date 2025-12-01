@@ -114,6 +114,7 @@ struct Console
     coroutine HandleMain;
     coroutine HandleARM9;
     coroutine HandleARM7;
+    void* Pad;
 
     timestamp ARM9Target;
     timestamp ARM7Target;
@@ -132,9 +133,12 @@ struct Console
 
     bool IME9;
     bool IME7;
+    bool trace;
 
     alignas(u32) union VRAMCR VRAMCR[9];
     u8 WRAMCR;
+    bool PostFlag;
+    bool PostFlagA9Bit;
     u32 IE9;
     u32 IF9;
     u32 IE7;
@@ -265,10 +269,27 @@ struct Console
         s64 b64;
     } DivRem;
 
+    union
+    {
+        s32 b32[2];
+        s64 b64;
+    } SqrtParam;
+
+    u32 SqrtRes;
+
+    union
+    {
+        u16 Raw;
+        struct
+        {
+            bool Use64Bits : 1;
+            u16 : 14;
+            bool Busy : 1;
+        };
+    } SqrtCR;
+
     struct IPCFIFO IPCFIFO7;
     struct IPCFIFO IPCFIFO9;
-
-    void* Pad;
 
     struct PPU PPU_A;
     struct PPU PPU_B;
@@ -318,3 +339,7 @@ void Console_DirectBoot(struct Console* sys, FILE* rom);
 void Console_ScheduleIRQs(struct Console* sys, const u8 irq, const bool a9, timestamp time);
 timestamp Console_GetARM7Cur(struct Console* sys);
 timestamp Console_GetARM9Cur(struct Console* sys);
+void Console_SyncWith7GTE(struct Console* sys, timestamp now);
+void Console_SyncWith7GT(struct Console* sys, timestamp now);
+void Console_SyncWith9GTE(struct Console* sys, timestamp now);
+void Console_SyncWith9GT(struct Console* sys, timestamp now);

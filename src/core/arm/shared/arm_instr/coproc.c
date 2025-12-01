@@ -203,12 +203,6 @@ void ARM_MRC(struct ARM* cpu, const struct ARM_Instr instr_data)
     }
 }
 
-s8 ARM9_MRC_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
-{
-    // it just dont
-    return 0;
-}
-
 union ARM_LDC_Decode
 {
     u32 Raw;
