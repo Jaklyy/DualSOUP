@@ -772,7 +772,6 @@ void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
     switch(addr >> 24) // check most signficant byte
     {
     case 0x02: // Main RAM
-        if (addr < 0x02000100) LogPrint(LOG_ALWAYS, "MRLOG9: %i %08X\n", val, val);
         Bus_MainRAM_Write(sys, &sys->AHB9, true, addr, val, mask, atomic, seq, timings);
         break;
 
@@ -1067,7 +1066,6 @@ void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
 
     case 0x020: // Main RAM
     case 0x028: // Main RAM
-        if (addr < 0x02000100) LogPrint(LOG_ALWAYS, "MRLOG7: %i %08X\n", val, val);
         Bus_MainRAM_Write(sys, &sys->AHB7, false, addr, val, mask, atomic, seq, timings);
         break;
 

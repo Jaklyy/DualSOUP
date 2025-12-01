@@ -414,7 +414,8 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
             u32 val = ARM9_DataRead32(ARM9Cast, addr+4, &seq, &dabt);
 
             // actually writeback now
-            ARM_SetReg(instr.Rn, wbaddr, 0, 0);
+            if (instr.Writeback || (!instr.PreIndex))
+                ARM_SetReg(instr.Rn, wbaddr, 0, 0);
 
             if (!dabt)
             {
@@ -437,7 +438,8 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
             u32 val = ARM_GetReg(instr.Rd+1);
 
             // actually writeback now
-            ARM_SetReg(instr.Rn, wbaddr, 0, 0);
+            if (instr.Writeback || (!instr.PreIndex))
+                ARM_SetReg(instr.Rn, wbaddr, 0, 0);
 
             ARM9_DataWrite(ARM9Cast, addr+4, val, u32_max, false, false, &seq, &dabt);
         }

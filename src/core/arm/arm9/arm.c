@@ -251,7 +251,7 @@ void ARM9_Step(struct ARM946ES* ARM9)
 
     if (cpu->CpuSleeping)
     {
-        printf("9zzzz\n");
+        //printf("9zzzz\n");
         cpu->Timestamp = cpu->Sys->ARM9Target;
 
         return;
@@ -313,7 +313,7 @@ void ARM9_MainLoop(struct ARM946ES* ARM9)
 {
     while(true)
     {
-        if (cpu->Timestamp > cpu->Sys->ARM9Target)
+        if (cpu->Timestamp >= cpu->Sys->ARM9Target)
             CR_Switch(cpu->Sys->HandleMain);
         else
             ARM9_Step(ARM9);

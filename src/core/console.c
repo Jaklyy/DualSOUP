@@ -213,19 +213,6 @@ void Console_Reset(struct Console* sys)
     // TODO: reset dma?
 }
 
-int Console_MainLoop(struct Console* sys)
-{
-    Scheduler_UpdateTargets(sys);
-    while(true)
-    {
-        CR_Switch(sys->HandleARM9);
-        CR_Switch(sys->HandleARM7);
-
-        Scheduler_Run(sys);
-    }
-    return 0;
-}
-
 timestamp Console_GetARM7Cur(struct Console* sys)
 {
     timestamp ts = sys->ARM7.ARM.Timestamp;
@@ -356,4 +343,17 @@ void Console_ScheduleIRQs(struct Console* sys, const u8 irq, const bool a9, time
         Schedule_Event(sys, IF9_Update, Sched_IF9Update, time);
     else
         Schedule_Event(sys, IF7_Update, Sched_IF7Update, time);
+}
+
+int Console_MainLoop(struct Console* sys)
+{
+    Scheduler_UpdateTargets(sys);
+    while(true)
+    {
+        CR_Switch(sys->HandleARM9);
+        CR_Switch(sys->HandleARM7);
+
+        Scheduler_Run(sys);
+    }
+    return 0;
 }

@@ -103,8 +103,8 @@ void THUMB_AddSub(struct ARM* cpu, const struct ARM_Instr instr_data)
     if (instr.Subtract) alu_out = ARM_SUB_RSB(rn_val, rm_val, &flags_out);
     else                alu_out = ARM_ADD    (rn_val, rm_val, &flags_out);
 
-    flags_out.Negative = rm_val >> 31;
-    flags_out.Zero = !rm_val;
+    flags_out.Negative = alu_out >> 31;
+    flags_out.Zero = !alu_out;
 
     // these instructions set flags
     cpu->CPSR.Flags = flags_out.Raw;

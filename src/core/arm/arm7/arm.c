@@ -167,8 +167,6 @@ void ARM7_Step(struct ARM7TDMI* ARM7)
     if (cpu->CpuSleeping)
     {
         cpu->Timestamp = cpu->Sys->ARM7Target;
-
-        printf("7zzzz\n");
         return;
     }
 
@@ -214,7 +212,7 @@ void ARM7_MainLoop(struct ARM7TDMI* ARM7)
 {
     while(true)
     {
-        if (cpu->Timestamp > cpu->Sys->ARM7Target)
+        if (cpu->Timestamp >= cpu->Sys->ARM7Target)
             CR_Switch(cpu->Sys->HandleMain);
         else
             ARM7_Step(ARM7);
