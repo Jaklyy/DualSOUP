@@ -125,19 +125,19 @@ enum LoggingLevels : u64
 
 #define MaskedWrite(dest, write, mask) ((dest) = (((dest) & ~(mask)) | ((write) & (mask))))
 
-[[nodiscard]] inline bool PatternMatch(const struct Pattern pattern, const u32 bits)
+[[nodiscard]] static inline bool PatternMatch(const struct Pattern pattern, const u32 bits)
 {
     return ((bits & pattern.mask) == pattern.cmp);
 }
 
 // for some reason there isn't a rotate right function i can use...?
-[[nodiscard]] inline u32 ROR32(const u32 val, u8 ror)
+[[nodiscard]] static inline u32 ROR32(const u32 val, u8 ror)
 {
     ror &= 0x1F; // do this to hopefully avoid undefined behavior.
     return (val >> ror) | (val << (32-ror));
 }
 
-[[nodiscard]] inline u32 ROL32(const u32 val, u8 rol)
+[[nodiscard]] static inline u32 ROL32(const u32 val, u8 rol)
 {
     rol &= 0x1F; // do this to hopefully avoid undefined behavior.
     return (val << rol) | (val >> (32-rol));
