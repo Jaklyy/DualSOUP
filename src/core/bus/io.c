@@ -1,6 +1,6 @@
 #include <string.h>
 #include "../utils.h"
-#include "../dma/dma.h"
+#include "../io/dma.h"
 #include "../console.h"
 
 
@@ -306,6 +306,9 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask)
         case 0x00'03'00:
             return sys->PostFlag;
 
+        case 0x00'03'04:
+            return sys->PowerCR7.Raw;
+
         case 0x10'00'00:
             return IPC_FIFORead(sys, mask, false);
 
@@ -418,6 +421,10 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             }
             break;
 
+        case 0x00'03'04:
+            MaskedWrite(sys->PowerCR7.Raw, val, mask & 0x3);
+            break;
+
         default:
             LogPrint(LOG_ARM7 | LOG_UNIMP, "UNIMPLEMENTED IO7 WRITE: %08X %08X %08X @ %08X\n", addr, val, mask, sys->ARM7.ARM.PC);
             break;
@@ -522,7 +529,7 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask)
 
 
         case 0x00'03'04:
-            return sys->PowerControl9.Raw;
+            return sys->PowerCR9.Raw;
 
         case 0x00'10'00:
             return sys->PPU_B.DisplayCR.Raw;
@@ -727,8 +734,13 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             break;
 
 
+
+        case 0x00'03'00:
+            if (mask & 2) sys->PostFlagA9Bit = val & 2;
+            break;
+
         case 0x00'03'04:
-            MaskedWrite(sys->PowerControl9.Raw, val, mask & 0x820F);
+            MaskedWrite(sys->PowerCR9.Raw, val, mask & 0x820F);
             break;
 
         case 0x00'10'00:
@@ -742,10 +754,6 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
         case 0x00'10'0C:
             MaskedWrite(sys->PPU_B.BGCR[2].Raw, val, mask);
             MaskedWrite(sys->PPU_B.BGCR[3].Raw, val>>16, mask>>16);
-            break;
-
-        case 0x00'03'00:
-            if (mask & 2) sys->PostFlagA9Bit = val & 2;
             break;
 
 

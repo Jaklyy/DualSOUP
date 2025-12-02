@@ -5,10 +5,10 @@
 #include "console.h"
 #include "arm/arm9/arm.h"
 #include "arm/shared/arm.h"
-#include "dma/dma.h"
+#include "io/dma.h"
 #include "scheduler.h"
 #include "utils.h"
-#include "video.h"
+#include "video/video.h"
 #include "bus/io.h"
 
 

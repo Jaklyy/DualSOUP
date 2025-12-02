@@ -1,10 +1,10 @@
 #include <SDL3/SDL_timer.h>
 #include "video.h"
-#include "bus/io.h"
-#include "scheduler.h"
-#include "console.h"
-#include "utils.h"
-#include "ppu/ppu.h"
+#include "../bus/io.h"
+#include "../scheduler.h"
+#include "../console.h"
+#include "../utils.h"
+#include "ppu.h"
 
 
 

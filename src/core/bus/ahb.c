@@ -1,7 +1,7 @@
 #include <stdbit.h>
 #include "ahb.h"
 #include "../utils.h"
-#include "../dma/dma.h"
+#include "../io/dma.h"
 #include "../console.h"
 #include "io.h"
 
@@ -694,7 +694,7 @@ u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
 
     case 0x05: // 2D GPU Palette
         // TODO: 2d gpu contention timings
-        if (!((addr & 0x400) ? sys->PowerControl9.PPUBPower : sys->PowerControl9.PPUAPower))
+        if (!((addr & 0x400) ? sys->PowerCR9.PPUBPower : sys->PowerCR9.PPUAPower))
         {
             LogPrint(LOG_ARM9|LOG_ODD, "DISABLED PALETTE WRITE?\n");
             if (timings)
@@ -721,7 +721,7 @@ u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
 
     case 0x07: // 2D GPU OAM
         // TODO: 2d gpu contention timings
-        if (!((addr & 0x400) ? sys->PowerControl9.PPUBPower : sys->PowerControl9.PPUAPower))
+        if (!((addr & 0x400) ? sys->PowerCR9.PPUBPower : sys->PowerCR9.PPUAPower))
         {
             LogPrint(LOG_ARM9|LOG_ODD, "DISABLED OAM WRITE?\n");
             if (timings)
@@ -833,7 +833,7 @@ void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
 
     case 0x05: // 2D GPU Palette
         // TODO: 2d gpu contention timings
-        if (!((addr & 0x400) ? sys->PowerControl9.PPUBPower : sys->PowerControl9.PPUAPower) || (width == 8))
+        if (!((addr & 0x400) ? sys->PowerCR9.PPUBPower : sys->PowerCR9.PPUAPower) || (width == 8))
         {
             (width == 8) ? LogPrint(LOG_ARM9|LOG_ODD, "8 BIT PALETTE WRITE?\n") : LogPrint(LOG_ARM9|LOG_ODD, "DISABLED PALETTE WRITE?\n");
             if (timings)
@@ -872,7 +872,7 @@ void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
 
     case 0x07: // 2D GPU OAM
         // TODO: 2d gpu contention timings
-        if (!((addr & 0x400) ? sys->PowerControl9.PPUBPower : sys->PowerControl9.PPUAPower) || (width == 8))
+        if (!((addr & 0x400) ? sys->PowerCR9.PPUBPower : sys->PowerCR9.PPUAPower) || (width == 8))
         {
             (width == 8) ? LogPrint(LOG_ARM9|LOG_ODD, "8 BIT OAM WRITE?\n") : LogPrint(LOG_ARM9|LOG_ODD, "DISABLED OAM WRITE?\n");
             if (timings)
@@ -1027,6 +1027,10 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
         }
         ret = IO7_Read(sys, addr, mask);
         break;
+    case 0x048: // WiFi
+        LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented READ%i: WiFi\n", width);
+        ret = 0;
+        break;
 
     case 0x060: // VRAM
     case 0x068: // VRAM
@@ -1128,7 +1132,9 @@ void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
         }
         IO7_Write(sys, addr, val, mask);
         break;
-    case 0x048: // 
+    case 0x048: // WiFi
+        LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented WRITE%i: WiFi\n", width);
+        break;
 
     case 0x060: // VRAM
     case 0x068: // VRAM

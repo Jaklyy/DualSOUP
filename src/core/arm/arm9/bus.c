@@ -316,9 +316,11 @@ u32 ARM9_ICacheLookup(struct ARM946ES* ARM9, const u32 addr)
 
     // roll for a set
     if (ARM9->CP15.CR.CacheRR)
-        LogPrint(LOG_ARM9 | LOG_UNIMP, "ARM9 ICACHE ROUND ROBIN MODE UNIMPLEMENTED\n");
-
-    set = ARM9_CachePRNG(&ARM9->CP15.ICachePRNG) & 3;
+    {
+        ARM9->CP15.ICachePRNG += 1; // CHECKME: how does this actually tick the prng?
+        set = ARM9->CP15.ICachePRNG & 3;
+    }
+    else set = ARM9_CachePRNG(&ARM9->CP15.ICachePRNG) & 3;
 
     // update tag ram
     // CHECKME: is this actually done immediately?
@@ -372,9 +374,11 @@ u32 ARM9_DCacheReadLookup(struct ARM946ES* ARM9, const u32 addr)
 
     // roll for a set
     if (ARM9->CP15.CR.CacheRR)
-        LogPrint(LOG_ARM9 | LOG_UNIMP, "ARM9 DCACHE ROUND ROBIN MODE UNIMPLEMENTED\n");
-
-    set = ARM9_CachePRNG(&ARM9->CP15.DCachePRNG) & 3;
+    {
+        ARM9->CP15.DCachePRNG += 1; // CHECKME: how does this actually tick the prng?
+        set = ARM9->CP15.DCachePRNG & 3;
+    }
+    else set = ARM9_CachePRNG(&ARM9->CP15.DCachePRNG) & 3;
 
     // CHECKME: is it clean -> fill or fill -> clean?
     // i would assume the former? because the other sounds hard to implement

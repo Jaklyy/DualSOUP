@@ -7,12 +7,12 @@
 #include "utils.h"
 #include "arm/arm9/arm.h"
 #include "arm/arm7/arm.h"
-#include "dma/dma.h"
+#include "io/dma.h"
 #include "bus/ahb.h"
-#include "timer/timer.h"
+#include "io/timer.h"
 #include "scheduler.h"
 #include "irq.h"
-#include "ppu/ppu.h"
+#include "video/ppu.h"
 
 
 // system clocks
@@ -229,7 +229,17 @@ struct Console
             u16 : 5;
             bool AOnBottom : 1;
         };
-    } PowerControl9;
+    } PowerCR9;
+
+    union
+    {
+        u8 Raw;
+        struct
+        {
+            bool SpeakerPower : 1;
+            bool WifiPower : 1;
+        };
+    } PowerCR7;
 
     union
     {
