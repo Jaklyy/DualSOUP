@@ -114,7 +114,6 @@ struct Console
     coroutine HandleMain;
     coroutine HandleARM9;
     coroutine HandleARM7;
-    void* Pad;
 
     timestamp ARM9Target;
     timestamp ARM7Target;
@@ -133,7 +132,6 @@ struct Console
 
     bool IME9;
     bool IME7;
-    bool trace;
 
     alignas(u32) union VRAMCR VRAMCR[9];
     u8 WRAMCR;
@@ -319,8 +317,11 @@ struct Console
     MEMORY(NTRBios9,    NTRBios9_Size);
     MEMORY(NTRBios7,    NTRBios7_Size);
     alignas(HOST_CACHEALIGN)
-    volatile bool Blitted;
+
+    void* Pad;
     mtx_t FrameBufferMutex;
+    volatile bool Blitted;
+    volatile bool KillThread;
 };
 
 // initialize a console to a clean state.
@@ -331,7 +332,7 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, void* 
 // emulate a hardware reset.
 void Console_Reset(struct Console* sys);
 // actually run the emulation.
-int Console_MainLoop(struct Console* sys);
+void Console_MainLoop(struct Console* sys);
 
 void Console_DirectBoot(struct Console* sys, FILE* rom);
 

@@ -389,7 +389,7 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
         else
         {
             timestamp oldts = ARM9Cast->MemTimestamp;
-            ARM9_DataWrite(ARM9Cast, addr, val, mask, false, false, &seq, &dabt);
+            ARM9_DataWrite(ARM9Cast, addr, val, mask, false, true, &seq, &dabt);
             ARM9_FixupLoadStore(ARM9Cast, 1, ARM9Cast->MemTimestamp - oldts);
         }
         break;

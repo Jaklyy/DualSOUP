@@ -12,7 +12,7 @@ LIBDIRS := /usr/local/libc
 LIBS := -lSDL3
 
 CC := clang
-CFLAGS := -MP -MMD -std=gnu23 -fwrapv -Wimplicit-fallthrough -Wall -Wextra -Werror=implicit-fallthrough
+CFLAGS := -MP -MMD -std=gnu23 -fwrapv -Wimplicit-fallthrough -Wall -Wextra -Werror=implicit-fallthrough -Isrc
 
 ifeq ($(DEB), 1) # debug build
 	BUILDDIR := $(DEBDIR)
@@ -20,6 +20,7 @@ ifeq ($(DEB), 1) # debug build
 	CFLAGS += -march=x86-64-v3
 else
 ifeq ($(SAN), 1) # debug w/ sanitizers
+    bool wow;
 	BUILDDIR := $(SANDIR)
 	CFLAGS += -g  -Og -fsanitize=undefined -fsanitize=address
 	CFLAGS += -march=x86-64-v3
@@ -38,13 +39,19 @@ OBJS := $(shell find $(SRCDIR) -name '*.c')
 OBJS += libs/libco/libco.c
 OBJS := $(patsubst %,$(BUILDDIR)$(OBJDIR)/%,$(OBJS:.c=.o))
 
+DEPS := $(OBJS:.o=.d)
+
 $(BUILDDIR)$(OBJDIR)/%.o: %.c
 	@mkdir -p $(dir $@)
-	@$(CC) -c -o $@ $< $(CFLAGS)
+	@echo $<
+	@$(CC) $(CFLAGS) -c $< -o $@
 
 $(BUILDDIR)/DualSOUP: $(OBJS)
-	@$(CC) -o $@ $^ $(CFLAGS) -L$(LIBDIRS) $(LIBS)
+	@echo linking...
+	@$(CC) $(CFLAGS) $^ -o $@ -L$(LIBDIRS) $(LIBS)
 
 .PHONY: clean
 clean:
 	@rm -rf build build-rel build-deb build-san
+
+-include $(DEPS)

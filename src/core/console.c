@@ -33,6 +33,7 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, void* 
         // de-allocate coroutine handles
         CR_Free(sys->HandleARM9);
         CR_Free(sys->HandleARM7);
+        mtx_destroy(&sys->FrameBufferMutex);
     }
 
     // wipe entire emulator state
@@ -352,11 +353,16 @@ void Console_ScheduleIRQs(struct Console* sys, const u8 irq, const bool a9, time
         Schedule_Event(sys, IF7_Update, Sched_IF7Update, time);
 }
 
-int Console_MainLoop(struct Console* sys)
+void Console_MainLoop(struct Console* sys)
 {
     Scheduler_UpdateTargets(sys);
     while(true)
     {
+        if (sys->KillThread)
+        {
+            return;
+        }
+
         if (!sys->ARM9.ARM.DeadAsleep)
             CR_Switch(sys->HandleARM9);
         if (!sys->ARM7.ARM.DeadAsleep)
@@ -371,5 +377,5 @@ int Console_MainLoop(struct Console* sys)
 
         Scheduler_Run(sys);
     }
-    return 0;
+    return;
 }

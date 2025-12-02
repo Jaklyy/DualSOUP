@@ -302,8 +302,12 @@ u32 ARM9_ICacheLookup(struct ARM946ES* ARM9, const u32 addr)
     {
         // use set to lookup into icache
 
-        // TODO: add contention cycle
+        if (ARM9->ARM.Timestamp < ARM9->InstrContTS)
+            ARM9->ARM.Timestamp += 1;
+
         ARM9_FetchCycles(ARM9, 1);
+        ARM9->InstrContTS = ARM9->ARM.Timestamp;
+
         return ARM9->ICache.b32[((index | set)<<3) | ((addr/sizeof(u32)) & 0x7)];
     }
 
@@ -455,14 +459,20 @@ bool ARM9_ProgressCacheStream(timestamp* ts, struct ARM9_CacheStream* stream, u3
     return true;
 }
 
+// CHECKME: need better research on how p. abt, cache streaming, and ahb accesses interact with i.bus contention and data itcm deference
+
 // always 32 bit
 u32 ARM9_InstrRead(struct ARM946ES* ARM9, const u32 addr, const struct ARM9_MPUPerms perms)
 {
     // itcm
     if (ARM9_ITCMTryRead(ARM9, addr))
     {
-        // TODO: add contention cycle
+        if (ARM9->ARM.Timestamp < ARM9->InstrContTS)
+            ARM9->ARM.Timestamp += 1;
+
         ARM9_FetchCycles(ARM9, 1);
+        ARM9->InstrContTS = ARM9->ARM.Timestamp;
+
         return MemoryRead(32, ARM9->ITCM, addr, ARM9_ITCMSize);
     }
 
@@ -528,7 +538,11 @@ void ARM9_InstrRead16(struct ARM946ES* ARM9, const u32 addr)
     {
         // CHECKME: can this prefetch abort somehow?
 
+        if (ARM9->ARM.Timestamp < ARM9->InstrContTS)
+            ARM9->ARM.Timestamp += 1;
+
         ARM9_FetchCycles(ARM9, 1);
+        ARM9->InstrContTS = ARM9->ARM.Timestamp;
 
         // use latched halfword
         instr = ARM9->LatchedHalfword;
@@ -617,8 +631,11 @@ u32 ARM9_DataRead(struct ARM946ES* ARM9, const u32 addr, const u32 mask, bool* s
     else if (ARM9_ITCMTryRead(ARM9, addr))
     {
         // TODO: make deferrable...?
-        // TODO: cause contention
+        if (ARM9->MemTimestamp <= ARM9->InstrContTS)
+            ARM9->MemTimestamp += 1;
+
         ARM9->MemTimestamp += 1;
+        ARM9->InstrContTS = ARM9->MemTimestamp;
         *seq = true;
         return MemoryRead(32, ARM9->ITCM, addr, ARM9_ITCMSize);
     }
@@ -692,8 +709,8 @@ void ARM9_DataWrite(struct ARM946ES* ARM9, u32 addr, const u32 val, const u32 ma
     // CHECKME: does this apply to aborts?
     // CHECKME: this does actually apply to writes, right?
     // CHECKME: This does apply to itcm right?
-    if (ARM9->MemTimestamp < ARM9->DataContTS)
-        ARM9->MemTimestamp = ARM9->DataContTS;
+    //if (ARM9->MemTimestamp < ARM9->DataContTS)
+    //    ARM9->MemTimestamp = ARM9->DataContTS;
 
     const struct ARM9_MPUPerms perms = ARM9_RegionLookup(ARM9, addr, ARM9->ARM.Privileged);
     if (!perms.Write)
@@ -707,13 +724,30 @@ void ARM9_DataWrite(struct ARM946ES* ARM9, u32 addr, const u32 val, const u32 ma
     }
     else if (ARM9_ITCMTryWrite(ARM9, addr))
     {
-        // TODO: make deferrable
-        // TODO: cause contention
-        // CHECKME: Does this cause data bus contention?
-        MemoryWrite(32, ARM9->ITCM, addr, ARM9_ITCMSize, val, mask);
-        ARM9->MemTimestamp += 1;
-        *seq = true;
-        return;
+        // itcm writes (and presumably reads too but those matter less) are reordered after the arm9 instruction bus goes;
+        // this doesn't apply to instructions like ldm/stm since those start sequential burst and the instr read can't begin until later on in the instruction
+        // (internal buses wont interrupt other internal buses)
+        // this does apply to swp interestingly enough.
+        if (deferrable)
+        {
+            ARM9->DeferredWrite = true;
+            ARM9->DeferredAddr = addr; // this truncates the addr, but that's fine.
+            ARM9->DeferredVal = val;
+            ARM9->DeferredMask = mask;
+            *seq = true;
+        }
+        else
+        {
+            if (ARM9->MemTimestamp <= ARM9->InstrContTS)
+                ARM9->MemTimestamp += 1;
+
+            // CHECKME: Does this cause data bus contention too?
+            MemoryWrite(32, ARM9->ITCM, addr, ARM9_ITCMSize, val, mask);
+            ARM9->MemTimestamp += 1;
+            ARM9->InstrContTS = ARM9->MemTimestamp;
+            *seq = true;
+            return;
+        }
     }
     else if (ARM9_DTCMTryWrite(ARM9, addr))
     {
@@ -761,4 +795,25 @@ void ARM9_DataWrite(struct ARM946ES* ARM9, u32 addr, const u32 val, const u32 ma
     }
 
     *seq = true;
+}
+
+void ARM9_DeferredITCMWrite(struct ARM946ES* ARM9)
+{
+    if (!ARM9->DeferredWrite) return;
+    // CHECKME: Does this cause data bus contention too?
+    MemoryWrite(32, ARM9->ITCM, ARM9->DeferredAddr, ARM9_ITCMSize, ARM9->DeferredVal, ARM9->DeferredMask);
+
+    timestamp old = ARM9->MemTimestamp;
+    if (ARM9->MemTimestamp <= ARM9->InstrContTS)
+        ARM9->MemTimestamp += 1;
+
+    ARM9->MemTimestamp += 1;
+    ARM9->InstrContTS = ARM9->MemTimestamp;
+
+    ARM9->DeferredWrite = false;
+
+    // these probably need to run again
+    // jakly why did you make the timing logic so convoluted and unintuitive?
+    ARM9_UpdateInterlocks(ARM9, ARM9->MemTimestamp - old);
+    ARM9_FetchCycles(ARM9, 0);
 }

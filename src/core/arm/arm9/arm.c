@@ -197,23 +197,26 @@ void ARM9_FixupLoadStore(struct ARM946ES* ARM9, const int execute, const int mem
     ARM9_UpdateInterlocks(ARM9, memdiff);
 }
 
+void ARM9_DeferredITCMWrite(struct ARM946ES* ARM9);
+
 #define ILCheck(size, x) \
-/* Step 1: Handle interlocks. */ \
-s8 stall = x (ARM9, instr); \
-if (stall) \
-{ \
-    ARM9_InterlockStall(ARM9, stall); \
-}
+    /* Step 1: Handle interlocks. */ \
+    s8 stall = x (ARM9, instr); \
+    if (stall) \
+    { \
+        ARM9_InterlockStall(ARM9, stall); \
+    }
 
 #define FetchIRQExec(size, x) \
-/* Step 2: Fetch upcoming instruction. */ \
-ARM9_InstrRead##size (ARM9, cpu->PC); \
-/* Step 3: Check if an IRQ should be raised. */ \
-if (!ARM9_CheckInterrupts(ARM9)) \
-{ \
-    /* Step 4: Execute the next instruction. */ \
-    x ; \
-}
+    /* Step 2: Fetch upcoming instruction. */ \
+    ARM9_InstrRead##size (ARM9, cpu->PC); \
+    ARM9_DeferredITCMWrite(ARM9); \
+    /* Step 3: Check if an IRQ should be raised. */ \
+    if (!ARM9_CheckInterrupts(ARM9)) \
+    { \
+        /* Step 4: Execute the next instruction. */ \
+        x ; \
+    }
 
 [[nodiscard]] bool ARM9_CheckInterrupts(struct ARM946ES* ARM9)
 {
@@ -255,13 +258,13 @@ void ARM9_Step(struct ARM946ES* ARM9)
         if (ARM9->WBuffer.FIFOFillPtr != 16)
         {
             ARM9_CatchUpWriteBuffer(ARM9, &cpu->Timestamp);
-            ARM9_ExecuteCycles(ARM9, 1, 1);
+            ARM9_ExecuteCycles(ARM9, 2, 1);
             return;
         }
         else
         {
-            CR_Switch(cpu->Sys->HandleMain);
             cpu->DeadAsleep = true;
+            CR_Switch(cpu->Sys->HandleMain);
         }
     }
 

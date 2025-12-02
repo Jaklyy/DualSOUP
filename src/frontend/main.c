@@ -7,7 +7,6 @@
 #include "../core/console.h"
 #include "../core/arm/arm9/instr_luts.h"
 #include "../core/arm/arm7/instr_luts.h"
-#include "../core/arm/arm9/arm.h"
 
 
 
@@ -48,7 +47,7 @@ int Core_Init(void* pass)
     }
 
     // initialize main emulator state struct
-    struct Console* sys = Console_Init(nullptr, ntr9, ntr7, (void*)mailbox[0]);
+    struct Console* sys = Console_Init((struct Console*)mailbox[2], ntr9, ntr7, (void*)mailbox[0]);
     if (sys == nullptr)
     {
         exit(EXIT_FAILURE);
@@ -62,6 +61,8 @@ int Core_Init(void* pass)
 
     Console_DirectBoot(sys, ztst);
     Console_MainLoop(sys);
+
+    sys->KillThread = false;
 
     return EXIT_SUCCESS;
 }
@@ -98,6 +99,7 @@ int main()
         pad = SDL_OpenGamepad(joysticks[0]);
     }
 
+    bool threadexists = false;
     thrd_t emu;
     struct Console* sys = nullptr;
 
@@ -116,11 +118,17 @@ int main()
                 return EXIT_SUCCESS;
             case SDL_EVENT_DROP_FILE:
             {
+                if (threadexists)
+                {
+                    sys->KillThread = true;
+                    while(sys->KillThread);
+                }
+
                 printf("%s\n", ((SDL_DropEvent*)&evts)->data);
                 initflag = false;
                 mtx_init(&init, mtx_plain);
                 mtx_lock(&init);
-                volatile void* mailbox[4] = {pad, (volatile void*)((SDL_DropEvent*)&evts)->data, 0, 0};
+                volatile void* mailbox[4] = {pad, (volatile void*)((SDL_DropEvent*)&evts)->data, sys, 0};
                 if (thrd_create(&emu, Core_Init, mailbox) != thrd_success)
                 {
                     printf("thread init failure :(\n");
@@ -133,6 +141,8 @@ int main()
                     break;
 
                 sys = (void*)mailbox[2];
+
+                threadexists = true;
                 break;
             }
             default:

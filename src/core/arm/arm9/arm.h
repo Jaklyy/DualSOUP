@@ -271,10 +271,14 @@ struct ARM946ES
                         *   Checkme: Is it faster to do this branchless?
                         *   Checkme: Can 3DS get an 8x or 1x clock multiplier with some jank?
                         */
+    u32 DeferredMask;
     timestamp MemTimestamp; // used for memory stage and data bus tracking
     timestamp LastBusTime;
     timestamp DataContTS; // data bus contention timestamp
     timestamp InstrContTS; // instr bus contention timestamp
+    bool DeferredWrite;
+    u16 DeferredAddr;
+    u32 DeferredVal;
     struct
     {
         union
