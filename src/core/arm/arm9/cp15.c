@@ -359,20 +359,6 @@ void ARM9_MCR_15(struct ARM946ES* ARM9, const u16 cmd, const u32 val)
         break;
     }
 
-    case ARM_CoprocReg(0, 9, 1, 0): // dtcm reg
-        ARM9->CP15.DTCMCR.Raw = val & 0xFFFFF03E;
-        ARM9_ConfigureDTCM(ARM9);
-        // CHECKME: this needs more testing
-        ARM9_ExecuteCycles(ARM9, 2, 1);
-        break;
-
-    case ARM_CoprocReg(0, 9, 1, 1): // itcm reg
-        ARM9->CP15.ITCMCR.Raw = val & 0x3E;
-        ARM9_ConfigureITCM(ARM9);
-        // CHECKME: this needs more testing
-        ARM9_ExecuteCycles(ARM9, 2, 1);
-        break;
-
     case ARM_CoprocReg(0, 2, 0, 0): // dcache
         ARM9->CP15.DCacheConfig = val;
         ARM9_ConfigureMPURegionPerms(ARM9);
@@ -479,6 +465,20 @@ void ARM9_MCR_15(struct ARM946ES* ARM9, const u16 cmd, const u32 val)
         break;
     case ARM_CoprocReg(0, 7, 14, 2): // clean + flush dcache line by index + segment
         DCache_CleanFlushIdxSet(ARM9, val);
+        break;
+
+    case ARM_CoprocReg(0, 9, 1, 0): // dtcm reg
+        ARM9->CP15.DTCMCR.Raw = val & 0xFFFFF03E;
+        ARM9_ConfigureDTCM(ARM9);
+        // CHECKME: this needs more testing
+        ARM9_ExecuteCycles(ARM9, 2, 1);
+        break;
+
+    case ARM_CoprocReg(0, 9, 1, 1): // itcm reg
+        ARM9->CP15.ITCMCR.Raw = val & 0x3E;
+        ARM9_ConfigureITCM(ARM9);
+        // CHECKME: this needs more testing
+        ARM9_ExecuteCycles(ARM9, 2, 1);
         break;
 
     case ARM_CoprocReg(0, 13, 0, 1): // pid

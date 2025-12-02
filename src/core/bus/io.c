@@ -2,6 +2,7 @@
 #include "../utils.h"
 #include "../io/dma.h"
 #include "../console.h"
+#include "../sram/flash.h"
 
 
 
@@ -286,6 +287,9 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask)
             Console_SyncWith9GT(sys, sys->AHB7.Timestamp);
             return sys->IPCFIFO7.CR.Raw;
 
+        case 0x00'01'C0:
+            return sys->SPICR.Raw | (sys->SPIOut << 16);
+
         case 0x00'02'04: // External Memory Control
             Console_SyncWith9GT(sys, sys->AHB7.Timestamp);
             return sys->ExtMemCR_Shared.Raw | sys->ExtMemCR_7.Raw;
@@ -313,7 +317,7 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask)
             return IPC_FIFORead(sys, mask, false);
 
         default:
-            LogPrint(LOG_ARM7 | LOG_UNIMP, "UNIMPLEMENTED IO7 READ: %08X %08X @ %08X\n", addr, mask, sys->ARM7.ARM.PC);
+            LogPrint(LOG_ARM7 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO7 READ: %08X %08X @ %08X\n", addr, mask, sys->ARM7.ARM.PC);
             return 0;
     }
 }
@@ -374,6 +378,28 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             IPC_FIFOWrite(sys, val, mask, false);
             break;
 
+        case 0x00'01'C0:
+            MaskedWrite(sys->SPICR.Raw, val, mask & 0xCF83);
+            if (mask & 0xFF0000)
+            {
+                switch(sys->SPICR.DeviceSelect)
+                {
+                case 0:
+                    LogPrint(LOG_ARM7|LOG_UNIMP, "POWMAN UNIMPLEMENTED!\n");
+                    break;
+                case 1:
+                    LogPrint(LOG_ARM7|LOG_UNIMP, "TSC UNIMPLEMENTED!\n");
+                    break;
+                case 2:
+                    sys->SPIOut = Flash_CMDSend(&sys->Firmware, val>>16, sys->SPICR.ChipSelect);
+                    break;
+                case 3:
+                    LogPrint(LOG_ARM7|LOG_UNIMP, "spi RESERVED????????????\n");
+                    break;
+                }
+            }
+            break;
+
         case 0x00'02'04: // exmemcnt
             MaskedWrite(sys->ExtMemCR_7.Raw, val, mask & 0x7F);
             break;
@@ -426,7 +452,7 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             break;
 
         default:
-            LogPrint(LOG_ARM7 | LOG_UNIMP, "UNIMPLEMENTED IO7 WRITE: %08X %08X %08X @ %08X\n", addr, val, mask, sys->ARM7.ARM.PC);
+            LogPrint(LOG_ARM7 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO7 WRITE: %08X %08X %08X @ %08X\n", addr, val, mask, sys->ARM7.ARM.PC);
             break;
     }
 }
@@ -547,7 +573,7 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask)
             return IPC_FIFORead(sys, mask, true);
 
         default:
-            LogPrint(LOG_ARM9 | LOG_UNIMP, "UNIMPLEMENTED IO9 READ: %08X %08X @ %08X\n", addr, mask, sys->ARM9.ARM.PC);
+            LogPrint(LOG_ARM9 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO9 READ: %08X %08X @ %08X\n", addr, mask, sys->ARM9.ARM.PC);
             return 0;
     }
 }
@@ -758,7 +784,7 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
 
 
         default:
-            LogPrint(LOG_ARM9 | LOG_UNIMP, "UNIMPLEMENTED IO9 WRITE: %08X %08X %08X @ %08X\n", addr, val, mask, sys->ARM9.ARM.PC);
+            LogPrint(LOG_ARM9 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO9 WRITE: %08X %08X %08X @ %08X\n", addr, val, mask, sys->ARM9.ARM.PC);
             break;
     }
 }

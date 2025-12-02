@@ -10,12 +10,13 @@
 #include "utils.h"
 #include "video/video.h"
 #include "bus/io.h"
+#include "sram/flash.h"
 
 
 
 
 // TODO: this function probably shouldn't manage memory on its own?
-struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, void* pad)
+struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* firmware, void* pad)
 {
     if (sys == nullptr)
     {
@@ -34,6 +35,7 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, void* 
         CR_Free(sys->HandleARM9);
         CR_Free(sys->HandleARM7);
         mtx_destroy(&sys->FrameBufferMutex);
+        Flash_Cleanup(&sys->Firmware);
     }
 
     // wipe entire emulator state
@@ -70,6 +72,14 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, void* 
         return nullptr;
     }
 
+    if (!Flash_Init(&sys->Firmware, firmware, true))
+    {
+        free(sys); // probably a good idea to not leak memory, just in case.
+        free(sys->HandleARM9);
+        free(sys->HandleARM7);
+        return nullptr;
+    }
+
     int num; 
     // allocate any internal or external ROMs
     if (ntr9 != NULL)
@@ -82,6 +92,7 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, void* 
             free(sys); // probably a good idea to not leak memory, just in case.
             free(sys->HandleARM9);
             free(sys->HandleARM7);
+            Flash_Cleanup(&sys->Firmware);
             return nullptr;
         }
     }
@@ -96,6 +107,7 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, void* 
             free(sys); // probably a good idea to not leak memory, just in case.
             free(sys->HandleARM9);
             free(sys->HandleARM7);
+            Flash_Cleanup(&sys->Firmware);
             return nullptr;
         }
     }
@@ -106,6 +118,7 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, void* 
             free(sys); // probably a good idea to not leak memory, just in case.
             free(sys->HandleARM9);
             free(sys->HandleARM7);
+            Flash_Cleanup(&sys->Firmware);
             return nullptr;
     }
 
@@ -149,11 +162,14 @@ void Console_DirectBoot(struct Console* sys, FILE* rom)
     // wram should probably be enabled...?
     sys->WRAMCR = 3;
     sys->PostFlag = true;
+    sys->PowerCR9.Raw = 0x820F;
 
     // set main ram bits to be enabled
     sys->ExtMemCR_Shared.MRSomething1 = true;
     sys->ExtMemCR_Shared.MRSomething2 = true;
     sys->ExtMemCR_Shared.MRPriority = true; // ARM7
+    sys->ExtMemCR_Shared.GBAPakAccess = true;
+    sys->ExtMemCR_Shared.NDSCardAccess = true;
 
     ARM_SetMode((struct ARM*)&sys->ARM9, ARMMode_SYS);
     ARM_SetMode((struct ARM*)&sys->ARM7, ARMMode_SYS);
@@ -169,7 +185,14 @@ void Console_DirectBoot(struct Console* sys, FILE* rom)
 
     fread(vars, 4*4*2, 1, rom);
 
+    sys->ARM9.ARM.R12 = vars[1];
+    sys->ARM9.ARM.R14 = vars[1];
+    sys->ARM7.ARM.R12 = vars[5];
+    sys->ARM7.ARM.R14 = vars[5];
+
     fseek(rom, vars[0], SEEK_SET);
+
+    // load arm9 rom
     {
         if (vars[3] > MiB(512)) return;
     timestamp nop;
@@ -186,6 +209,8 @@ void Console_DirectBoot(struct Console* sys, FILE* rom)
     }
     free(arry);
     }
+
+    // load arm7 rom
     {
         if (vars[7] > MiB(512)) return;
     timestamp nop;
@@ -202,6 +227,50 @@ void Console_DirectBoot(struct Console* sys, FILE* rom)
     }
     free(arry);
     }
+
+    sys->ARM9.CP15.CR.DTCMEnable = true;
+    sys->ARM9.CP15.DTCMCR.Raw = 0x0300000A;
+    ARM9_ConfigureDTCM(&sys->ARM9);
+
+    // load header
+    fseek(rom, 0, SEEK_SET);
+    fread(&sys->MainRAM.b8[0x27FFE00 & (MainRAM_Size-1)], 0x170*sizeof(u32), 1, rom);
+
+    // "load" chipid
+    sys->MainRAM.b32[(0x27FF800 & (MainRAM_Size-1))/sizeof(u32)] = 0x01010101;
+    sys->MainRAM.b32[(0x27FF804 & (MainRAM_Size-1))/sizeof(u32)] = 0x01010101;
+    sys->MainRAM.b32[(0x27FFC00 & (MainRAM_Size-1))/sizeof(u32)] = 0x01010101;
+    sys->MainRAM.b32[(0x27FFC04 & (MainRAM_Size-1))/sizeof(u32)] = 0x01010101;
+
+    // header checksum
+    fseek(rom, 0x15E, SEEK_SET);
+    fread(&sys->MainRAM.b8[0x27FF808 & (MainRAM_Size-1)], 2, 1, rom);
+    fseek(rom, 0x15E, SEEK_SET);
+    fread(&sys->MainRAM.b8[0x27FFC08 & (MainRAM_Size-1)], 2, 1, rom);
+    // secure area checksum
+    fseek(rom, 0x15E, SEEK_SET);
+    fread(&sys->MainRAM.b8[0x27FF80A & (MainRAM_Size-1)], 2, 1, rom);
+    fseek(rom, 0x15E, SEEK_SET);
+    fread(&sys->MainRAM.b8[0x27FFC0A & (MainRAM_Size-1)], 2, 1, rom);
+
+    // idk
+    sys->MainRAM.b16[(0x27FF850 & (MainRAM_Size-1))/sizeof(u16)] = 0x5835;
+    sys->MainRAM.b16[(0x27FFC10 & (MainRAM_Size-1))/sizeof(u16)] = 0x5835;
+    sys->MainRAM.b16[(0x27FFC30 & (MainRAM_Size-1))/sizeof(u16)] = 0xFFFF;
+    sys->MainRAM.b16[(0x27FFC40 & (MainRAM_Size-1))/sizeof(u16)] = 0x0001;
+
+    u16 usersettings = (sys->Firmware.RAM[0x20] | (sys->Firmware.RAM[0x21] << 8))*8;
+
+    sys->MainRAM.b32[((0x27FF864) & (MainRAM_Size-1))/4] = 0;
+    sys->MainRAM.b32[((0x27FF868) & (MainRAM_Size-1))/4] = usersettings;
+
+    sys->MainRAM.b16[((0x27FF874) & (MainRAM_Size-1))/2] = (sys->Firmware.RAM[0x26] | (sys->Firmware.RAM[0x27] << 8));
+
+    sys->MainRAM.b16[((0x27FF876) & (MainRAM_Size-1))/2] = (sys->Firmware.RAM[4] | (sys->Firmware.RAM[5] << 8));
+
+    for (int i = 0; i < (0x70*4); i++)
+        sys->MainRAM.b8[((0x27FFC80 + i) & (MainRAM_Size-1))] = sys->Firmware.RAM[usersettings+i];
+
 
     ARM9_SetPC(&sys->ARM9, vars[1], 0);
     ARM7_SetPC(&sys->ARM7, vars[5]);

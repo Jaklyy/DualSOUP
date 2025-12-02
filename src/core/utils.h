@@ -118,6 +118,8 @@ enum LoggingLevels : u64
     LOG_BUG     = (1<<6 ), // Program is triggering hardware bugs.
     LOG_VRAM    = (1<<7 ), // vram
     LOG_PPU     = (1<<8 ), // ppu stuff
+    LOG_FLASH   = (1<<9 ), // flash
+    LOG_IO      = (1<<10), // ahb mmapped io
 };
 
 #define LOG_CPUID (1 << cpu->CPUID)

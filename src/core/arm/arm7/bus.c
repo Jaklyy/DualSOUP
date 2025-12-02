@@ -8,7 +8,7 @@ u32 ARM7_BusRead(struct ARM7TDMI* ARM7, const u32 addr, const u32 mask, bool* se
 {
     u32 val = AHB7_Read(ARM7->ARM.Sys, &ARM7->ARM.Timestamp, addr, mask, false, false, seq, true);
     *seq = true;
-    return val;
+    return val & mask;
 }
 
 void ARM7_BusWrite(struct ARM7TDMI* ARM7, const u32 addr, const u32 val, const u32 mask, const u32 atomic, bool* seq)

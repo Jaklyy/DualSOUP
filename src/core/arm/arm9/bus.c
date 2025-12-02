@@ -649,19 +649,19 @@ u32 ARM9_DataRead(struct ARM946ES* ARM9, const u32 addr, const u32 mask, bool* s
         ARM9->MemTimestamp += 1;
         ARM9->InstrContTS = ARM9->MemTimestamp;
         *seq = true;
-        return MemoryRead(32, ARM9->ITCM, addr, ARM9_ITCMSize);
+        return MemoryRead(32, ARM9->ITCM, addr, ARM9_ITCMSize) & mask;
     }
     else if (ARM9_DTCMTryRead(ARM9, addr))
     {
         ARM9->MemTimestamp += 1;
         *seq = true;
-        return MemoryRead(32, ARM9->DTCM, addr, ARM9_DTCMSize);
+        return MemoryRead(32, ARM9->DTCM, addr, ARM9_DTCMSize) & mask;
     }
     else if (perms.DCache)
     {
         ret = ARM9_DCacheReadLookup(ARM9, addr);
         *seq = true;
-        return ret;
+        return ret & mask;
     }
 
     if (perms.DCache || perms.Buffer)
@@ -680,7 +680,7 @@ u32 ARM9_DataRead(struct ARM946ES* ARM9, const u32 addr, const u32 mask, bool* s
     ret = ARM9_AHBRead(ARM9, &ARM9->MemTimestamp, addr, mask, false, seq);
 
     *seq = true;
-    return ret;
+    return ret & mask;
 }
 
 u32 ARM9_DataRead32(struct ARM946ES* ARM9, u32 addr, bool* seq, bool* dabt)

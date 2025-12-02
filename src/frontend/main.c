@@ -38,6 +38,13 @@ int Core_Init(void* pass)
         exit(EXIT_FAILURE);
     }
 
+    FILE* firmware = fopen("firmware.bin", "rb");
+    if (firmware == NULL)
+    {
+        printf("no firmware :(\n");
+        exit(EXIT_FAILURE);
+    }
+
     FILE* ztst = fopen((char*)mailbox[1], "rb");
     if (ztst == NULL)
     {
@@ -48,7 +55,7 @@ int Core_Init(void* pass)
     }
 
     // initialize main emulator state struct
-    struct Console* sys = Console_Init((struct Console*)mailbox[2], ntr9, ntr7, (void*)mailbox[0]);
+    struct Console* sys = Console_Init((struct Console*)mailbox[2], ntr9, ntr7, firmware, (void*)mailbox[0]);
     if (sys == nullptr)
     {
         exit(EXIT_FAILURE);

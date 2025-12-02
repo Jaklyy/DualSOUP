@@ -251,7 +251,7 @@ void ARM9_DataAbort(struct ARM946ES* ARM9)
     CrashSpectacularly("FARK %08X\n", cpu->PC);
     // lr is aborted instr + 8
     // CHECKME: what happens if the abort was from an exception return LDM? (SPSR was restored?)
-    u32 oldpc = cpu->PC + ((cpu->CPSR.Thumb) ? 4 : 0);
+    u32 oldpc = cpu->PC + ((cpu->CPSR.Thumb) ? 2 : -4);
     union ARM_PSR oldcpsr = cpu->CPSR;
 
     ARM_SetMode(cpu, ARMMode_ABT);

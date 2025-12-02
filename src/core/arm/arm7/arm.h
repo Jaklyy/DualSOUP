@@ -68,3 +68,6 @@ void ARM7_ExecuteCycles(struct ARM7TDMI* ARM7, const u32 Execute);
 void ARM7_BusWrite(struct ARM7TDMI* ARM7, const u32 addr, const u32 val, const u32 mask, const u32 atomic, bool* seq);
 void ARM7_InstrRead32(struct ARM7TDMI* ARM7, const u32 addr);
 void ARM7_InstrRead16(struct ARM7TDMI* ARM7, const u32 addr);
+
+// temp
+void ARM7_Log(struct ARM7TDMI* ARM7);

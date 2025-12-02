@@ -97,6 +97,7 @@ void ARM7_SetPC(struct ARM7TDMI* ARM7, u32 val)
 {
     // TEMP: debugging
     //ARM7_Log(ARM7);
+    //printf("%08X\n", val);
 
     // arm7 doesn't seem to implement bit0 of program counter
     // doesn't enforce alignment in arm mode either.
@@ -133,7 +134,7 @@ void ARM7_ExecuteCycles(struct ARM7TDMI* ARM7, const u32 Execute)
 /* Step 2: Fetch upcoming instruction. */ \
 ARM7_InstrRead##size (ARM7, cpu->PC); \
 /* Step 3: Check if an IRQ should be raised. */ \
-if (!ARM7_CheckInterrupts(ARM7)) \
+if (instr.Flushed || !ARM7_CheckInterrupts(ARM7)) \
 { \
     /* Step 4: Execute the next instruction. */ \
     x ; \
@@ -195,7 +196,7 @@ void ARM7_Step(struct ARM7TDMI* ARM7)
             ARM7_InstrRead32(ARM7, cpu->PC);
 
             // this needs a special check because im stupid and reusing this path for pipeline refills
-            if (cpu->Instr[0].Flushed || !ARM7_CheckInterrupts(ARM7))
+            if (instr.Flushed || !ARM7_CheckInterrupts(ARM7))
             {
                 ARM7_ExecuteCycles(ARM7, 1);
                 ARM_StepPC(cpu, false);

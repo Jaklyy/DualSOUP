@@ -743,12 +743,14 @@ u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
 
     case 0x08 ... 0x09: // GBA Cartridge ROM
         LogPrint(LOG_UNIMP|LOG_ARM9, "NTR_AHB9: Unimplemented READ%i: GBAROM\n", width);
-        ret = 0; // TODO
+        ret = (sys->ExtMemCR_Shared.GBAPakAccess ? 0xFFFFFFFF : 0); // TODO
+        Timing32(&sys->AHB9);
         break;
 
     case 0x0A: // GBA Cartridge RAM
         LogPrint(LOG_UNIMP|LOG_ARM9, "NTR_AHB9: Unimplemented READ%i: GBARAM\n", width);
-        ret = 0; // TODO
+        ret = (sys->ExtMemCR_Shared.GBAPakAccess ? 0xFFFFFFFF : 0); // TODO
+        Timing32(&sys->AHB9);
         break;
 
     case 0xFF: // NDS BIOS
@@ -1039,17 +1041,30 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
 
     case 0x080 ... 0x098: // GBA Cartridge ROM
         LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented READ%i: GBAROM\n", width);
-        ret = 0; // TODO
+        ret = (sys->ExtMemCR_Shared.GBAPakAccess ? 0xFFFFFFFF : 0); // TODO
+        Timing32(&sys->AHB9);
         break;
 
     case 0x0A0: // GBA Cartridge RAM
     case 0x0A8: // GBA Cartridge RAM
         LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented READ%i: GBARAM\n", width);
-        ret = 0; // TODO
+        ret = (sys->ExtMemCR_Shared.GBAPakAccess ? 0xFFFFFFFF : 0); // TODO
+        Timing32(&sys->AHB9);
         break;
-
+#if 0
+    case 0xEA0:
+        FILE* file = fopen("log.bin", "wb");
+        for (int i = 0; i < 0x08000000; i+=4)
+        {
+            u32 buf = AHB7_Read(sys, NULL, i, 0xFFFFFFFF, false, false, seq, false);
+            fwrite(&buf, 4, 1, file);
+        }
+        fclose(file);
+        CrashSpectacularly("wow\n");
+        break;
+#endif
     default: // Unmapped Device;
-        LogPrint(LOG_ODD|LOG_ARM7,"NTR_AHB7: %i bit read from unmapped memory at 0x%08X? Something went wrong?\n", width, addr);
+        LogPrint(LOG_ODD|LOG_ARM7, "NTR_AHB7: %i bit read from unmapped memory at 0x%08X? Something went wrong?\n", width, addr);
         if (timings)
         {
             Timing32(&sys->AHB7);

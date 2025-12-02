@@ -212,7 +212,7 @@ void ARM9_DeferredITCMWrite(struct ARM946ES* ARM9);
     ARM9_InstrRead##size (ARM9, cpu->PC); \
     ARM9_DeferredITCMWrite(ARM9); \
     /* Step 3: Check if an IRQ should be raised. */ \
-    if (!ARM9_CheckInterrupts(ARM9)) \
+    if (instr.Flushed || !ARM9_CheckInterrupts(ARM9)) \
     { \
         /* Step 4: Execute the next instruction. */ \
         x ; \
@@ -310,7 +310,7 @@ void ARM9_Step(struct ARM946ES* ARM9)
             ARM9_InstrRead32(ARM9, cpu->PC);
 
             // this needs a special check because im stupid and reusing this path for pipeline refills
-            if (cpu->Instr[0].Flushed || !ARM9_CheckInterrupts(ARM9))
+            if (instr.Flushed || !ARM9_CheckInterrupts(ARM9))
             {
                 ARM9_ExecuteCycles(ARM9, 1, 1);
                 ARM_StepPC(cpu, false);

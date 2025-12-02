@@ -13,6 +13,7 @@
 #include "scheduler.h"
 #include "irq.h"
 #include "video/ppu.h"
+#include "sram/flash.h"
 
 
 // system clocks
@@ -302,6 +303,27 @@ struct Console
     struct PPU PPU_A;
     struct PPU PPU_B;
 
+    Flash Firmware;
+
+    union
+    {
+        u16 Raw;
+        struct
+        {
+            u16 Baudrate : 2;
+            u16 : 5;
+            bool Busy : 1;
+            u16 DeviceSelect : 2;
+            bool TransferSize : 1;
+            bool ChipSelect : 1;
+            u16 : 2;
+            bool IRQ : 1;
+            bool Enable : 1;
+        };
+    } SPICR;
+
+    u8 SPIOut;
+
     //u64 OldTime;
 
     alignas(HOST_CACHEALIGN) u32 Framebuffer[2][192][256];
@@ -340,7 +362,7 @@ struct Console
 // if a nullptr is passed then it will allocate and initialize a console from scratch.
 // otherwise it will re-initialize an already allocated struct.
 // returns success or failure.
-struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, void* pad);
+struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* firmware, void* pad);
 // emulate a hardware reset.
 void Console_Reset(struct Console* sys);
 // actually run the emulation.
