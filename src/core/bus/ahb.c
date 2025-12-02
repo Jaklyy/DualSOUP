@@ -180,7 +180,15 @@ u32 VRAM_LCD(struct Console* sys, const u32 addr, const u32 mask, const bool wri
 #undef VRAMRET
 
 #define VRAMCHECK(x) \
-    if (base == index) regionmask |= (1 << (Dev_##x - Dev_VRAM_A));
+    if (base == index) \
+    { \
+        if (timings) regionmask |= (1 << (Dev_##x - Dev_VRAM_A)); \
+        else \
+        { \
+            if (write) MemoryWrite(32, sys-> x , addr, x##_Size, val, mask); \
+            else ret |= MemoryRead(32, sys-> x , addr, x##_Size); \
+        } \
+    }
 
 #define VRAMRET_INTERNAL(x) \
     if (regionmask & (1 << (Dev_##x - Dev_VRAM_A))) \
@@ -196,17 +204,14 @@ u32 VRAM_LCD(struct Console* sys, const u32 addr, const u32 mask, const bool wri
 
 // this is probably slow but might be needed to do vram timings properly...?
 #define VRAMRET \
-    if (regionmask) \
+    if (timings && (regionmask)) \
     { \
         /* manual contention check for reads */ \
-        if (timings) \
-        { \
             if (!write && (sys->AHB9.Timestamp < sys->AHB9.BusyDeviceTS) && (regionmask & (1 << ((s16)sys->AHB9.BusyDevice - Dev_VRAM_A)))) \
             { \
                 sys->AHB9.Timestamp = sys->AHB9.BusyDeviceTS; \
             } \
             Timing16(&sys->AHB9, mask); \
-        } \
         VRAMRET_INTERNAL(VRAM_A) \
         VRAMRET_INTERNAL(VRAM_B) \
         VRAMRET_INTERNAL(VRAM_C) \
@@ -265,7 +270,7 @@ u32 VRAM_BGA(struct Console* sys, const u32 addr, const u32 mask, const bool wri
         VRAMCHECK(VRAM_G)
     }
     VRAMRET
-    else
+    else if (timings)
     {
         LogPrint(LOG_ARM9|LOG_ODD|LOG_VRAM, "UNMAPPED BG A VRAM ACCESS? %08X %08X\n", val, addr);
         if (timings) Timing32(&sys->AHB9);
@@ -308,7 +313,7 @@ u32 VRAM_OBJA(struct Console* sys, const u32 addr, const u32 mask, const bool wr
         VRAMCHECK(VRAM_G)
     }
     VRAMRET
-    else
+    else if (timings)
     {
         LogPrint(LOG_ARM9|LOG_ODD|LOG_VRAM, "UNMAPPED OBJ A VRAM ACCESS? %08X %08X\n", val, addr);
         if (timings) Timing32(&sys->AHB9);
@@ -339,7 +344,7 @@ u32 VRAM_BGB(struct Console* sys, const u32 addr, const u32 mask, const bool wri
         VRAMCHECK(VRAM_I)
     }
     VRAMRET
-    else
+    else if (timings)
     {
         LogPrint(LOG_ARM9|LOG_ODD|LOG_VRAM, "UNMAPPED BG B VRAM ACCESS? %08X %08X\n", val, addr);
         if (timings) Timing32(&sys->AHB9);
@@ -364,7 +369,7 @@ u32 VRAM_OBJB(struct Console* sys, const u32 addr, const u32 mask, const bool wr
         VRAMCHECK(VRAM_I)
     }
     VRAMRET
-    else
+    else if (timings)
     {
         LogPrint(LOG_ARM9|LOG_ODD|LOG_VRAM, "UNMAPPED OBJ B VRAM ACCESS? %08X %08X\n", val, addr);
         if (timings) Timing32(&sys->AHB9);
@@ -390,7 +395,7 @@ u32 VRAM_ARM7(struct Console* sys, const u32 addr, const u32 mask, const bool wr
         VRAMCHECK(VRAM_D)
     }
     VRAMRET
-    else
+    else if (timings)
     {
         LogPrint(LOG_ARM9|LOG_ODD|LOG_VRAM, "UNMAPPED ARM7 VRAM ACCESS? %08X %08X\n", val, addr);
         if (timings) Timing32(&sys->AHB9);

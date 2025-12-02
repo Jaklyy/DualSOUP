@@ -1,3 +1,4 @@
+#include <SDL3/SDL_timer.h>
 #include "video.h"
 #include "bus/io.h"
 #include "scheduler.h"
@@ -14,17 +15,8 @@ void LCD_HBlank(struct Console* sys, timestamp now)
     sys->DispStatRO.HBlank = true;
     if (sys->VCount < 192)
     {
-        if (sys->VCount == 0)
-        {
-            mtx_lock(&sys->FrameBufferMutex);
-        }
         PPU_RenderScanline(sys, false, sys->VCount);
         PPU_RenderScanline(sys, true, sys->VCount);
-        if (sys->VCount == 191)
-        {
-            mtx_unlock(&sys->FrameBufferMutex);
-            sys->Blitted = true;
-        }
     }
     // schedule hblank
     Schedule_Event(sys, LCD_Scanline, Sched_Scanline, now + (HBlank_Cycles*2));
@@ -39,6 +31,11 @@ void LCD_Scanline(struct Console* sys, timestamp now)
     // this occurs before vcount writes
     if (sys->VCount == 192)
     {
+        /*u64 newtime = SDL_GetPerformanceCounter();
+        double time = ((double)(newtime-sys->OldTime) / SDL_GetPerformanceFrequency()) * 1000.0;
+        if (time > 0.3)
+            printf("%f\n", time);
+        sys->OldTime = newtime;*/
         sys->DispStatRO.Raw = 0b001;
         // schedule irq
         if (sys->DispStatRW.VBlankIRQ)

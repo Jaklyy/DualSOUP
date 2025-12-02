@@ -95,7 +95,6 @@ void ARM9_Reset(struct ARM946ES* ARM9, const bool itcm, const bool hivec)
         ARM9->DTagRAM[i].Valid = false;
     }
 
-    // TODO: MURDER WRITE BUFFER CONTENTS HERE
     ARM9->WBuffer.FIFOFillPtr = 16;
     ARM9->WBuffer.Latched = false;
     ARM9->WBuffer.BufferSeq = false;
@@ -111,7 +110,7 @@ void ARM9_Reset(struct ARM946ES* ARM9, const bool itcm, const bool hivec)
     ARM9->CP15.TraceProcIdReg = 0; // i guess this should be reset too?
     // TODO: BIST stuff is probably reset too.
 
-    // NOTE: Data and instr perms are states to be "undefined"
+    // NOTE: Data and instr perms are stated to be "undefined"
 
     // reset all this junk.
     ARM9_ConfigureITCM(ARM9);

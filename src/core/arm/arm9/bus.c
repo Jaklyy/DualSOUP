@@ -97,6 +97,7 @@ u32 ARM9_AHBRead(struct ARM946ES* ARM9, timestamp* ts, const u32 addr, const u32
     // actually read off of the bus
     u32 ret = AHB9_Read(ARM9->ARM.Sys, ts, addr, mask, atomic, false, seq, true);
     ARM9->LastBusTime = *ts;
+
     // convert clock back
     // the arm9 interacts with the bus on the rising edge of the bus clock so we get the result on the first cycle of the clock.
     // so we do this weird looking thing to get the right effect.
@@ -343,7 +344,7 @@ u32 ARM9_ICacheLookup(struct ARM946ES* ARM9, const u32 addr)
             ARM9->IStream.ReadPtr = &ARM9->ICache.b32[((index | set)<<3) | (i+1)];
             ARM9->IStream.Prog = i;
         }
-        else if (waittil < i)
+        else if (waittil > 0)
         {
             ARM9->IStream.Times[i] = time;
         }
@@ -375,6 +376,9 @@ u32 ARM9_DCacheReadLookup(struct ARM946ES* ARM9, const u32 addr)
 
     set = ARM9_CachePRNG(&ARM9->CP15.DCachePRNG) & 3;
 
+    // CHECKME: is it clean -> fill or fill -> clean?
+    // i would assume the former? because the other sounds hard to implement
+
     // CHECKME: can this trigger the clean+flush errata
     DCache_CleanLine(ARM9, index|set);
 
@@ -398,7 +402,7 @@ u32 ARM9_DCacheReadLookup(struct ARM946ES* ARM9, const u32 addr)
         seq = true;
         if (waittil == i)
         {
-            ARM9->ARM.Timestamp = time;
+            ARM9->MemTimestamp = time;
             ARM9->DStream.ReadPtr = &ARM9->DCache.b32[((index | set)<<3) | (i+1)];
             ARM9->DStream.Prog = i;
         }
@@ -424,7 +428,7 @@ bool ARM9_DCacheWriteLookup(struct ARM946ES* ARM9, const u32 addr, const u32 val
 
         MaskedWrite(ARM9->DCache.b32[((index | set)<<3) | ((addr/sizeof(u32)) & 0x7)], val, mask);
 
-        if (!bufferable)
+        if (bufferable)
         {
             ARM9->MemTimestamp += 1;
             if (addr & 0x10)
@@ -453,9 +457,13 @@ bool ARM9_ProgressCacheStream(timestamp* ts, struct ARM9_CacheStream* stream, u3
         if (*ts < stream->Times[6]) *ts = stream->Times[6];
         return false;
     }
+
+    if (*ts < stream->Times[stream->Prog])
+        *ts = stream->Times[stream->Prog];
+
     *ret = *stream->ReadPtr;
     stream->ReadPtr += 4;
-    stream->Prog++;
+    stream->Prog += 1;
     return true;
 }
 
@@ -735,16 +743,15 @@ void ARM9_DataWrite(struct ARM946ES* ARM9, u32 addr, const u32 val, const u32 ma
             ARM9->DeferredVal = val;
             ARM9->DeferredMask = mask;
             *seq = true;
+            return;
         }
         else
         {
-            if (ARM9->MemTimestamp <= ARM9->InstrContTS)
-                ARM9->MemTimestamp += 1;
+            //if (ARM9->MemTimestamp <= ARM9->InstrContTS)
+            //    ARM9->MemTimestamp += 1;
 
-            // CHECKME: Does this cause data bus contention too?
             MemoryWrite(32, ARM9->ITCM, addr, ARM9_ITCMSize, val, mask);
-            ARM9->MemTimestamp += 1;
-            ARM9->InstrContTS = ARM9->MemTimestamp;
+            //ARM9->MemTimestamp += 1;
             *seq = true;
             return;
         }
@@ -803,17 +810,16 @@ void ARM9_DeferredITCMWrite(struct ARM946ES* ARM9)
     // CHECKME: Does this cause data bus contention too?
     MemoryWrite(32, ARM9->ITCM, ARM9->DeferredAddr, ARM9_ITCMSize, ARM9->DeferredVal, ARM9->DeferredMask);
 
-    timestamp old = ARM9->MemTimestamp;
-    if (ARM9->MemTimestamp <= ARM9->InstrContTS)
-        ARM9->MemTimestamp += 1;
+    //timestamp old = ARM9->MemTimestamp;
+    //if (ARM9->MemTimestamp <= ARM9->InstrContTS)
+    //    ARM9->MemTimestamp += 1;
 
-    ARM9->MemTimestamp += 1;
-    ARM9->InstrContTS = ARM9->MemTimestamp;
+    //ARM9->MemTimestamp += 1;
 
     ARM9->DeferredWrite = false;
 
     // these probably need to run again
     // jakly why did you make the timing logic so convoluted and unintuitive?
-    ARM9_UpdateInterlocks(ARM9, ARM9->MemTimestamp - old);
-    ARM9_FetchCycles(ARM9, 0);
+    //ARM9_UpdateInterlocks(ARM9, ARM9->MemTimestamp - old);
+    //ARM9_FetchCycles(ARM9, 0);
 }

@@ -292,6 +292,8 @@ struct Console
     struct PPU PPU_A;
     struct PPU PPU_B;
 
+    //u64 OldTime;
+
     alignas(HOST_CACHEALIGN) u32 Framebuffer[2][192][256];
 
     alignas(HOST_CACHEALIGN)

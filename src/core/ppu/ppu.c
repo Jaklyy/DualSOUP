@@ -66,12 +66,17 @@ void PPU_RenderScanline(struct Console* sys, bool B, const u16 y)
     }
 
     //u16 x = 0;
-
+    u32 tileaddr;
+    union TextTileData tile;
+    u16* pal;
     for (int x = 0; x < 256; x++)
     {
-        u32 tileaddr = screenbase+((x / 8) * 2);
-        union TextTileData tile = {.Raw = VRAM_BGB(sys, tileaddr&~3, u32_max, false, false, 0, false) >> ((tileaddr & 2)*8)};
-        u16* pal = palbase + (tile.Palette * 16);
+        if ((x%8) == 0)
+        {
+            tileaddr = screenbase+((x / 8) * 2);
+            tile.Raw = VRAM_BGB(sys, tileaddr&~3, u32_max, false, false, 0, false) >> ((tileaddr & 2)*8);
+            pal = palbase + (tile.Palette * 16);
+        }
 
         u32 pixeladdr = tilebase + (tile.TileNum * 32) + ((x%8)/2) + ((y%8)*4);
         u8 color = VRAM_BGB(sys, pixeladdr&~3, u32_max, false, false, 0, false) >> ((pixeladdr&3)*8);

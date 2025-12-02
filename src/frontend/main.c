@@ -1,6 +1,7 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_render.h>
+#include <SDL3/SDL_timer.h>
 #include <threads.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -109,6 +110,9 @@ int main()
     SDL_SetTextureScaleMode(blit, SDL_SCALEMODE_NEAREST); // TODO: SDL_SCALEMODE_PIXELART when 3.4.0 is out?
     SDL_Event evts;
     u8* buffer;
+    //u64 countpersec = ;
+
+    //u64 oldtime = 0;
     while(true)
     {
         SDL_PollEvent(&evts);
@@ -151,9 +155,6 @@ int main()
 
         if (sys)
         {
-            if (sys->Blitted)
-            {
-                mtx_lock(&sys->FrameBufferMutex);
                 int pitch;
                 SDL_LockTexture(blit, NULL, (void**)&buffer, &pitch);
                 for (int s = 0; s < 2; s++)
@@ -165,11 +166,14 @@ int main()
                                 buffer[(s*192*pitch)+(y*pitch)+(x*pitch/256)+b] = (((((sys->Framebuffer[s][y][x] >> (b*6)) & 0x3F) * 0xFF) / 0x3F));
                             }
                 SDL_UnlockTexture(blit);
-                mtx_unlock(&sys->FrameBufferMutex);
                 SDL_RenderTexture(ren, blit, NULL, NULL);
                 SDL_RenderPresent(ren);
-                sys->Blitted = false;
-            }
+
+                /*char newtitle[30];
+
+                snprintf(newtitle, 30, "DualSOUP: %f ms", ((double)(newtime-oldtime) * (1.0 / countpersec)) * 1000);
+                SDL_SetWindowTitle(win, newtitle);
+                oldtime = newtime;*/
         }
         else
         {
