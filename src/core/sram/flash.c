@@ -43,6 +43,33 @@ bool Flash_Init(Flash* flash, FILE* ram, bool writeprot)
     return true;
 }
 
+bool Flash_InitB(Flash* flash, u64 size) // temp
+{
+    if (stdc_count_ones(size) != 1)
+    {
+        LogPrint(LOG_ALWAYS, "FATAL: Firmware Flash size %li is not a power of 2!\n", size);
+        return false;
+    }
+    if (size > 0xFFFFFF)
+    {
+        LogPrint(LOG_ALWAYS, "FATAL: Firmware Flash too big! must be <= 8MiB; currently %li\n", size);
+        return false;
+    }
+    flash->RAMSize = size;
+    flash->RAM = malloc(size);
+    if (flash->RAM == NULL)
+    {
+        LogPrint(LOG_ALWAYS, "FATAL: Firmware Flash allocation failed\n");
+        return false;
+    }
+
+    // TODO: make configurable
+    flash->ID[0] = 1;
+    flash->ID[1] = 1;
+    flash->ID[2] = 1;
+    return true;
+}
+
 void Flash_Cleanup(Flash* flash)
 {
     // TODO: flush changes

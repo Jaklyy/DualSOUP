@@ -305,8 +305,8 @@ void DMA_Run(struct Console* sys, struct DMA_Controller* cnt, u8 id, const bool 
         sys->DMA9.ChannelTimestamps[id] = timestamp_max;
     }
 
-    if (channel->CR.IRQ) // idk
-        ;
+    if (channel->CR.IRQ) // TODO
+        {}
 
     DMA_Schedule(sys, cnt, a9);
 }

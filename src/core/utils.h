@@ -120,6 +120,7 @@ enum LoggingLevels : u64
     LOG_PPU     = (1<<8 ), // ppu stuff
     LOG_FLASH   = (1<<9 ), // flash
     LOG_IO      = (1<<10), // ahb mmapped io
+    LOG_CARD    = (1<<11), // gamecard
 };
 
 #define LOG_CPUID (1 << cpu->CPUID)

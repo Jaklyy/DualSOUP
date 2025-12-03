@@ -14,6 +14,9 @@
 #include "irq.h"
 #include "video/ppu.h"
 #include "sram/flash.h"
+#include "carts/gamecard.h"
+
+
 
 
 // system clocks
@@ -59,6 +62,7 @@ constexpr unsigned VRAM_H_Size      = KiB(32);
 constexpr unsigned VRAM_I_Size      = KiB(16);
 constexpr unsigned Palette_Size     = KiB(2);
 constexpr unsigned OAM_Size         = KiB(2);
+constexpr unsigned WiFiRAM_Size     = KiB(8);
 
 
 
@@ -321,8 +325,69 @@ struct Console
             bool Enable : 1;
         };
     } SPICR;
-
     u8 SPIOut;
+
+    u8 GCSPIOut[2]; // [cpu]
+    union
+    {
+        u16 Raw;
+        struct
+        {
+            u16 Baudrate : 2;
+            u16 : 4;
+            bool ChipSelect : 1;
+            bool Busy : 1;
+            u16 : 5;
+            bool CardSPIMode : 1; // set = spi
+            bool ROMDataReadyIRQ : 1;
+            bool SlotEnable : 1;
+        };
+    } GCSPICR[2]; // [cpu]
+
+    union
+    {
+        u32 Raw;
+        struct
+        {
+            u32 Key1Gap : 13;
+            bool Key2Encryption : 1;
+            bool GodKnows : 1;
+            bool Key2Apply : 1;
+            u32 Key1Gap2 : 6;
+            bool Key2Enable : 1;
+            bool DataReady : 1;
+            u32 NumWords : 3;
+            bool ClockDivider : 1; // 0 = 5; 1 = 8
+            bool Key1GapDummy : 1;
+            bool ReleaseReset : 1;
+            bool Write : 1;
+            bool Start : 1;
+        };
+    } GCROMCR[2]; // [cpu]
+
+    u32 GCROMData[2]; // [cpu]
+
+    union
+    {
+        u64 Raw;
+        struct
+        {
+            u32 Lo;
+            u32 Hi; 
+        };
+    } GCCommandPort[2]; // [cpu]
+
+    union
+    {
+        u64 Raw : 32+7;
+        struct
+        {
+            u32 Lo;
+            u32 Hi : 7; 
+        };
+    } GCS2EncrySeeds[2][2][2]; // [internal = 1][cpu][seed]
+
+    Gamecard Gamecard;
 
     //u64 OldTime;
 
@@ -350,6 +415,7 @@ struct Console
     // BIOS
     MEMORY(NTRBios9,    NTRBios9_Size);
     MEMORY(NTRBios7,    NTRBios7_Size);
+    MEMORY(WiFiRAM,    WiFiRAM_Size);
     alignas(HOST_CACHEALIGN)
 
     void* Pad;
@@ -362,7 +428,7 @@ struct Console
 // if a nullptr is passed then it will allocate and initialize a console from scratch.
 // otherwise it will re-initialize an already allocated struct.
 // returns success or failure.
-struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* firmware, void* pad);
+struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* firmware, FILE* rom, void* pad);
 // emulate a hardware reset.
 void Console_Reset(struct Console* sys);
 // actually run the emulation.

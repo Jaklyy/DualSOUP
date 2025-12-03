@@ -621,7 +621,7 @@ u32 ARM9_DataRead(struct ARM946ES* ARM9, const u32 addr, const u32 mask, bool* s
     u32 ret;
     if (ARM9_ProgressCacheStream(&ARM9->MemTimestamp, &ARM9->DStream, &ret, *seq))
     {
-        return ret;
+        return ret & mask;
     }
 
     // handle contention

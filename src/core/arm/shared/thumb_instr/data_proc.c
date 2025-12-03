@@ -346,7 +346,7 @@ void THUMB_DataProcHiReg(struct ARM* cpu, const struct ARM_Instr instr_data)
 
     const int rd = instr.Rd | (instr.RdHi << 3);
 
-    u32 rd_val;
+    u32 rd_val = 0;
     // MOV/CPY & BX/BLX dont use this reg
     if (instr.Opcode < 2)
     {

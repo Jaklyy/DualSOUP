@@ -54,7 +54,7 @@ void ARM_DataProc(struct ARM* cpu, const struct ARM_Instr instr_data)
     // note: register shift register variants take two cycles, and Rn is accessed on the second cycle
     // due to pipelining(?), pc is incremented after the first cycle
     // so accessing pc via Rn with these variants gets addr + 12
-    u32 rn_val;
+    u32 rn_val = 0;
     bool carry_out = flags_out.Carry;
 
     if ((instr.Opcode & 0b1101) != 0b1101) // NOT mov or mvn
@@ -68,7 +68,7 @@ void ARM_DataProc(struct ARM* cpu, const struct ARM_Instr instr_data)
     }
     else // register
     {
-        u32 rs_val;
+        u32 rs_val = 0;
 
         // Reg shift Reg variants are two cycles long due to needing to fetch more inputs.
         // order of operations for them is as follows:
@@ -90,7 +90,7 @@ void ARM_DataProc(struct ARM* cpu, const struct ARM_Instr instr_data)
             ARM_ExeCycles(1, 1, 1);
         }
 
-        switch(instr.ShiftType)
+        switch(instr.ShiftType & 7)
         {
         case 0: // reg / lsl imm
         {

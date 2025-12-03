@@ -55,7 +55,7 @@ int Core_Init(void* pass)
     }
 
     // initialize main emulator state struct
-    struct Console* sys = Console_Init((struct Console*)mailbox[2], ntr9, ntr7, firmware, (void*)mailbox[0]);
+    struct Console* sys = Console_Init((struct Console*)mailbox[2], ntr9, ntr7, firmware, ztst, (void*)mailbox[0]);
     if (sys == nullptr)
     {
         exit(EXIT_FAILURE);

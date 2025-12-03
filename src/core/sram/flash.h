@@ -21,6 +21,7 @@ typedef struct
     u8 ID[3];
     u8* RAM;
 } Flash;
+bool Flash_InitB(Flash* flash, u64 size); // temp
 
 u8 Flash_CMDSend(Flash* flash, const u8 val, const bool chipsel);
 bool Flash_Init(Flash* flash, FILE* ram, bool writeprot);

@@ -16,7 +16,7 @@
 
 
 // TODO: this function probably shouldn't manage memory on its own?
-struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* firmware, void* pad)
+struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* firmware, FILE* rom, void* pad)
 {
     if (sys == nullptr)
     {
@@ -58,7 +58,7 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
     if (sys->HandleARM9 == cr_null)
     {
         LogPrint(LOG_ALWAYS, "FATAL: Coroutine handle allocation failed.\n");
-        free(sys); // probably a good idea to not leak memory, just in case.
+        free(sys);
         return nullptr;
     }
 
@@ -67,16 +67,26 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
     if (sys->HandleARM7 == cr_null)
     {
         LogPrint(LOG_ALWAYS, "FATAL: Coroutine handle allocation failed.\n");
-        free(sys); // probably a good idea to not leak memory, just in case.
         free(sys->HandleARM9);
+        free(sys); 
         return nullptr;
     }
 
     if (!Flash_Init(&sys->Firmware, firmware, true))
     {
-        free(sys); // probably a good idea to not leak memory, just in case.
         free(sys->HandleARM9);
         free(sys->HandleARM7);
+        free(sys); 
+        return nullptr;
+    }
+
+    // todo: do this elsewhere
+    if (!Gamecard_Init(&sys->Gamecard, rom))
+    {
+        free(sys->HandleARM9);
+        free(sys->HandleARM7);
+        Flash_Cleanup(&sys->Firmware);
+        free(sys); 
         return nullptr;
     }
 
@@ -89,10 +99,11 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
         if (num != 1)
         {
             LogPrint(LOG_ALWAYS, "FATAL: ARM9 BIOS did not load properly.\n");
-            free(sys); // probably a good idea to not leak memory, just in case.
             free(sys->HandleARM9);
             free(sys->HandleARM7);
             Flash_Cleanup(&sys->Firmware);
+            Gamecard_Cleanup(&sys->Gamecard);
+            free(sys); 
             return nullptr;
         }
     }
@@ -104,10 +115,11 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
         if (num != 1)
         {
             LogPrint(LOG_ALWAYS, "FATAL: ARM7 BIOS did not load properly.\n");
-            free(sys); // probably a good idea to not leak memory, just in case.
             free(sys->HandleARM9);
             free(sys->HandleARM7);
             Flash_Cleanup(&sys->Firmware);
+            Gamecard_Cleanup(&sys->Gamecard);
+            free(sys); 
             return nullptr;
         }
     }
@@ -115,10 +127,11 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
     if (mtx_init(&sys->FrameBufferMutex, mtx_plain) != thrd_success)
     {
             LogPrint(LOG_ALWAYS, "FATAL: Mutex Allocation failed.\n");
-            free(sys); // probably a good idea to not leak memory, just in case.
             free(sys->HandleARM9);
             free(sys->HandleARM7);
             Flash_Cleanup(&sys->Firmware);
+            Gamecard_Cleanup(&sys->Gamecard);
+            free(sys);
             return nullptr;
     }
 
@@ -163,6 +176,8 @@ void Console_DirectBoot(struct Console* sys, FILE* rom)
     sys->WRAMCR = 3;
     sys->PostFlag = true;
     sys->PowerCR9.Raw = 0x820F;
+
+    sys->Gamecard.Mode = Key2;
 
     // set main ram bits to be enabled
     sys->ExtMemCR_Shared.MRSomething1 = true;
@@ -440,9 +455,15 @@ void Console_MainLoop(struct Console* sys)
 
         // do this to make the scheduler behave maybe?
         if (sys->ARM9.ARM.DeadAsleep)
+        {
+            printf("a9 sleep\n");
             ARM9_ExecuteCycles(&sys->ARM9, (sys->ARM9Target - sys->ARM9.ARM.Timestamp)+1, 1);
+        }
         if (sys->ARM7.ARM.DeadAsleep)
+        {
+            printf("a7 sleep\n");
             ARM7_ExecuteCycles(&sys->ARM7, (sys->ARM7Target - sys->ARM7.ARM.Timestamp)+1);
+        }
 
         Scheduler_Run(sys);
     }

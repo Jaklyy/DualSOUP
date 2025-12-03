@@ -19,8 +19,8 @@ u32 RGB555to666(u16 color)
         | ((((u32)color >> 10) & 0x1F) << 13); // b
 }
 
-u32 VRAM_LCD(struct Console* sys, const u32 addr, const u32 mask, const bool seq, const bool write, const u32 val, const bool timings);
-u32 VRAM_BGB(struct Console* sys, const u32 addr, const u32 mask, const bool seq, const bool write, const u32 val, const bool timings);
+extern u32 VRAM_LCD(struct Console* sys, const u32 addr, const u32 mask, const bool write, const u32 val, const bool timings);
+extern u32 VRAM_BGB(struct Console* sys, const u32 addr, const u32 mask, const bool write, const u32 val, const bool timings);
 
 void PPU_RenderScanline(struct Console* sys, bool B, const u16 y)
 {
@@ -41,7 +41,7 @@ void PPU_RenderScanline(struct Console* sys, bool B, const u16 y)
             u32 addr = (ppu->DisplayCR.VRAMSel * KiB(128)) + (256*2*y);
             for (int x = 0; x < 256; x++)
             {
-                sys->Framebuffer[B][y][x] = RGB555to666(VRAM_LCD(sys, addr&~3, u32_max, false, false, 0, false) >> ((addr & 2)*8));
+                sys->Framebuffer[B][y][x] = RGB555to666(VRAM_LCD(sys, addr&~3, u32_max, false, 0, false) >> ((addr & 2)*8));
                 addr += 2;
             }
             return;
@@ -74,12 +74,12 @@ void PPU_RenderScanline(struct Console* sys, bool B, const u16 y)
         if ((x%8) == 0)
         {
             tileaddr = screenbase+((x / 8) * 2);
-            tile.Raw = VRAM_BGB(sys, tileaddr&~3, u32_max, false, false, 0, false) >> ((tileaddr & 2)*8);
+            tile.Raw = VRAM_BGB(sys, tileaddr&~3, u32_max, false, 0, false) >> ((tileaddr & 2)*8);
             pal = palbase + (tile.Palette * 16);
         }
 
         u32 pixeladdr = tilebase + (tile.TileNum * 32) + ((x%8)/2) + ((y%8)*4);
-        u8 color = VRAM_BGB(sys, pixeladdr&~3, u32_max, false, false, 0, false) >> ((pixeladdr&3)*8);
+        u8 color = VRAM_BGB(sys, pixeladdr&~3, u32_max, false, 0, false) >> ((pixeladdr&3)*8);
         color = (color >> ((x&1)*4)) & 0xF;
 
         sys->Framebuffer[B][y][x] = RGB565to666(pal[color]);

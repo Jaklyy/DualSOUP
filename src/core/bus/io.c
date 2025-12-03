@@ -3,7 +3,7 @@
 #include "../io/dma.h"
 #include "../console.h"
 #include "../sram/flash.h"
-
+#include "../carts/gamecard.h"
 
 
 
@@ -287,6 +287,9 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask)
             Console_SyncWith9GT(sys, sys->AHB7.Timestamp);
             return sys->IPCFIFO7.CR.Raw;
 
+        case 0x00'01'A0 ... 0x00'01'B8:
+            return Gamecard_IOReadHandler(sys, addr, sys->AHB7.Timestamp, false);
+
         case 0x00'01'C0:
             return sys->SPICR.Raw | (sys->SPIOut << 16);
 
@@ -315,6 +318,9 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask)
 
         case 0x10'00'00:
             return IPC_FIFORead(sys, mask, false);
+
+        case 0x10'00'10:
+            return Gamecard_ROMDataRead(sys, sys->AHB7.Timestamp, false);
 
         default:
             LogPrint(LOG_ARM7 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO7 READ: %08X %08X @ %08X\n", addr, mask, sys->ARM7.ARM.PC);
@@ -376,6 +382,10 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             break;
         case 0x00'01'88:
             IPC_FIFOWrite(sys, val, mask, false);
+            break;
+
+        case 0x00'01'A0 ... 0x00'01'B8:
+            Gamecard_IOWriteHandler(sys, addr, val, mask, sys->AHB7.Timestamp, false);
             break;
 
         case 0x00'01'C0:
@@ -490,6 +500,9 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask)
             Console_SyncWith7GT(sys, sys->AHB9.Timestamp);
             return sys->IPCFIFO9.CR.Raw;
 
+        case 0x00'01'A0 ... 0x00'01'B8:
+            return Gamecard_IOReadHandler(sys, addr, sys->AHB9.Timestamp, true);
+
         case 0x00'02'04: // External Memory Control
             return sys->ExtMemCR_Shared.Raw | sys->ExtMemCR_9.Raw;
 
@@ -571,6 +584,9 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask)
 
         case 0x10'00'00:
             return IPC_FIFORead(sys, mask, true);
+        
+        case 0x10'00'10:
+            return Gamecard_ROMDataRead(sys, sys->AHB9.Timestamp, true);
 
         default:
             LogPrint(LOG_ARM9 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO9 READ: %08X %08X @ %08X\n", addr, mask, sys->ARM9.ARM.PC);
@@ -639,6 +655,10 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             break;
         case 0x00'01'88:
             IPC_FIFOWrite(sys, val, mask, true);
+            break;
+
+        case 0x00'01'A0 ... 0x00'01'B8:
+            Gamecard_IOWriteHandler(sys, addr, val, mask, sys->AHB9.Timestamp, true);
             break;
 
         case 0x00'02'04: // exmemcnt

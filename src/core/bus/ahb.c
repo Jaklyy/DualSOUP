@@ -764,7 +764,10 @@ u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
             ret = MemoryRead(32, sys->NTRBios9, addr, NTRBios9_Size);
             break;
         }
-        else [[fallthrough]];
+        else
+        {
+            [[fallthrough]];
+        }
 
     default: // Unmapped Device;
         LogPrint(LOG_ODD|LOG_ARM9,"NTR_AHB9: %i bit read from unmapped memory at 0x%08X? Something went wrong?\n", width, addr);
@@ -1031,7 +1034,7 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
         break;
     case 0x048: // WiFi
         LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented READ%i: WiFi\n", width);
-        ret = 0;
+        ret = MemoryRead(32, sys->WiFiRAM, addr, WiFiRAM_Size);
         break;
 
     case 0x060: // VRAM
@@ -1149,6 +1152,7 @@ void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
         break;
     case 0x048: // WiFi
         LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented WRITE%i: WiFi\n", width);
+        MemoryWrite(32, sys->WiFiRAM, addr, WiFiRAM_Size, val, mask);
         break;
 
     case 0x060: // VRAM

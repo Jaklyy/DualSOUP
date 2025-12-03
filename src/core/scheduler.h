@@ -17,6 +17,7 @@ enum Scheduler_Events : u8
     Sched_IF7Update,
 
     Sched_Scanline,
+    Sched_Gamecard,
 
     Sched_MAX
 };

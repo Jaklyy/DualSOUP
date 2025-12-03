@@ -624,7 +624,7 @@ void ARM_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
     u16 rlist = instr.RList;
 
     unsigned truenregs = nregs;
-    timestamp oldts;
+    timestamp oldts = 0;
     if (cpu->CPUID == ARM9ID) oldts = ARM9Cast->MemTimestamp;
 
     // TODO: empty RList timings
@@ -757,7 +757,7 @@ void ARM_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
         }
     }
 
-    if (cpu->CPUID == ARM9ID && !earlyfix)
+    if ((cpu->CPUID == ARM9ID) && !earlyfix)
         ARM9_FixupLoadStore(ARM9Cast, truenregs, ARM9Cast->MemTimestamp - oldts);
 
     if (nregs == 1 || !instr.RList) // empty r-list behavior is a guess.
@@ -828,7 +828,7 @@ void ARM_Swap(struct ARM* cpu, const struct ARM_Instr instr_data)
     bool dabt = false;
     bool seq = false;
     u32 load;
-    int interlock;
+    int interlock = 0;
 
     u32 mask;
 
