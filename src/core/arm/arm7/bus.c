@@ -6,6 +6,8 @@
 
 u32 ARM7_BusRead(struct ARM7TDMI* ARM7, const u32 addr, const u32 mask, bool* seq)
 {
+    if (!AHB_NegOwnership(ARM7->ARM.Sys, &ARM7->ARM.Timestamp, false, false))
+        *seq = false;
     u32 val = AHB7_Read(ARM7->ARM.Sys, &ARM7->ARM.Timestamp, addr, mask, false, false, seq, true);
     *seq = true;
     return val & mask;
@@ -13,6 +15,8 @@ u32 ARM7_BusRead(struct ARM7TDMI* ARM7, const u32 addr, const u32 mask, bool* se
 
 void ARM7_BusWrite(struct ARM7TDMI* ARM7, const u32 addr, const u32 val, const u32 mask, const u32 atomic, bool* seq)
 {
+    if (!AHB_NegOwnership(ARM7->ARM.Sys, &ARM7->ARM.Timestamp, atomic, false))
+        *seq = false;
     AHB7_Write(ARM7->ARM.Sys, &ARM7->ARM.Timestamp, addr, val, mask, atomic, seq, true);
     *seq = true;
 }

@@ -388,9 +388,9 @@ struct Console
     } GCS2EncrySeeds[2][2][2]; // [internal = 1][cpu][seed]
 
     Gamecard Gamecard;
-
-    //u64 OldTime;
-
+#ifdef MonitorFPS
+    u64 OldTime;
+#endif
     alignas(HOST_CACHEALIGN) u32 Framebuffer[2][192][256];
 
     alignas(HOST_CACHEALIGN)

@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/types.h>
+#include <threads.h>
 #include "console.h"
 #include "arm/arm9/arm.h"
 #include "arm/shared/arm.h"
@@ -31,113 +32,66 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
     }
     else
     {
-        // de-allocate coroutine handles
+        // de-allocate shit so it can be re-allocated
+        // TODO: dont do this?
         CR_Free(sys->HandleARM9);
         CR_Free(sys->HandleARM7);
         mtx_destroy(&sys->FrameBufferMutex);
+        mtx_destroy(&sys->Sched.SchedulerMtx);
         Flash_Cleanup(&sys->Firmware);
+        Gamecard_Cleanup(&sys->Gamecard);
     }
 
     // wipe entire emulator state
     memset(sys, 0, sizeof(*sys));
+    CR_Start = false;
+
+    // allocate shit
+    bool cr7init = CR_Create(&sys->HandleARM9, (void*)ARM9_MainLoop, &sys->ARM9);
+    bool cr9init = CR_Create(&sys->HandleARM7, (void*)ARM7_MainLoop, &sys->ARM7);
+    bool firminit = Flash_Init(&sys->Firmware, firmware, true);
+    bool gcinit = Gamecard_Init(&sys->Gamecard, rom);
+    sys->HandleMain = CR_Active();
+
+    int num9;
+    if (ntr9 != NULL) num9 = fread(sys->NTRBios9.b8, NTRBios9_Size, 1, ntr9);
+    int num7;
+    if (ntr7 != NULL) num7 = fread(sys->NTRBios7.b8, NTRBios7_Size, 1, ntr7);
+
+    bool mtxinit = (mtx_init(&sys->FrameBufferMutex, mtx_plain) == thrd_success);
+    bool mtxinit2 = (mtx_init(&sys->Sched.SchedulerMtx, mtx_recursive) == thrd_success);
+
+    if ((!cr7init) || (!cr9init)|| (num9 != 1) || (num7 != 1) || !firminit || !gcinit || !mtxinit || !mtxinit2)
+    {
+        // return error messages
+        if ((!cr7init) || (!cr9init))
+            LogPrint(LOG_ALWAYS, "FATAL: Coroutine handle creation failed:%s%s\n", ( cr7init ? " 7": ""), ( cr9init ? " 9": ""));
+        if (!mtxinit || !mtxinit2)
+            LogPrint(LOG_ALWAYS, "FATAL: Mutex init failed.\n");
+        if (num9 != 1)
+            LogPrint(LOG_ALWAYS, "FATAL: ARM9 BIOS did not load properly.\n");
+        if (num7 != 1)
+            LogPrint(LOG_ALWAYS, "FATAL: ARM7 BIOS did not load properly.\n");
+
+        // cleanup ones that actually allocated correctly
+        CR_Free(sys->HandleARM9);
+        CR_Free(sys->HandleARM7);
+        Flash_Cleanup(&sys->Firmware);
+        Gamecard_Cleanup(&sys->Gamecard);
+        if (mtxinit) mtx_destroy(&sys->FrameBufferMutex);
+        if (mtxinit2) mtx_destroy(&sys->Sched.SchedulerMtx);
+        free(sys);
+
+        return nullptr;
+    }
+
+    // init variables
+
     ARM9_Init(&sys->ARM9, sys);
     ARM7_Init(&sys->ARM7, sys);
 
-    // initialize coroutine handles
-    sys->HandleMain = CR_Active();
-
-    if (sys->HandleMain == cr_null)
-    {
-        LogPrint(LOG_ALWAYS, "FATAL: Coroutine handle allocation failed.\n");
-        free(sys); // probably a good idea to not leak memory, just in case.
-        return nullptr;
-    }
-
-    sys->HandleARM9 = CR_Create((void*)ARM9_MainLoop, &sys->ARM9);
-
-    if (sys->HandleARM9 == cr_null)
-    {
-        LogPrint(LOG_ALWAYS, "FATAL: Coroutine handle allocation failed.\n");
-        free(sys);
-        return nullptr;
-    }
-
-    sys->HandleARM7 = CR_Create((void*)ARM7_MainLoop, &sys->ARM7);
-
-    if (sys->HandleARM7 == cr_null)
-    {
-        LogPrint(LOG_ALWAYS, "FATAL: Coroutine handle allocation failed.\n");
-        free(sys->HandleARM9);
-        free(sys); 
-        return nullptr;
-    }
-
-    if (!Flash_Init(&sys->Firmware, firmware, true))
-    {
-        free(sys->HandleARM9);
-        free(sys->HandleARM7);
-        free(sys); 
-        return nullptr;
-    }
-
-    // todo: do this elsewhere
-    if (!Gamecard_Init(&sys->Gamecard, rom))
-    {
-        free(sys->HandleARM9);
-        free(sys->HandleARM7);
-        Flash_Cleanup(&sys->Firmware);
-        free(sys); 
-        return nullptr;
-    }
-
-    int num; 
-    // allocate any internal or external ROMs
-    if (ntr9 != NULL)
-    {
-        num = fread(sys->NTRBios9.b8, NTRBios9_Size, 1, ntr9);
-
-        if (num != 1)
-        {
-            LogPrint(LOG_ALWAYS, "FATAL: ARM9 BIOS did not load properly.\n");
-            free(sys->HandleARM9);
-            free(sys->HandleARM7);
-            Flash_Cleanup(&sys->Firmware);
-            Gamecard_Cleanup(&sys->Gamecard);
-            free(sys); 
-            return nullptr;
-        }
-    }
-
-    if (ntr7 != NULL)
-    {
-        num = fread(sys->NTRBios7.b8, NTRBios7_Size, 1, ntr7);
-
-        if (num != 1)
-        {
-            LogPrint(LOG_ALWAYS, "FATAL: ARM7 BIOS did not load properly.\n");
-            free(sys->HandleARM9);
-            free(sys->HandleARM7);
-            Flash_Cleanup(&sys->Firmware);
-            Gamecard_Cleanup(&sys->Gamecard);
-            free(sys); 
-            return nullptr;
-        }
-    }
-
-    if (mtx_init(&sys->FrameBufferMutex, mtx_plain) != thrd_success)
-    {
-            LogPrint(LOG_ALWAYS, "FATAL: Mutex Allocation failed.\n");
-            free(sys->HandleARM9);
-            free(sys->HandleARM7);
-            Flash_Cleanup(&sys->Firmware);
-            Gamecard_Cleanup(&sys->Gamecard);
-            free(sys);
-            return nullptr;
-    }
-
     for (int i = 0; i < Sched_MAX; i++)
         sys->Sched.EventTimes[i] = timestamp_max;
-
 
     for (int i = 0; i < IRQ_Max; i++)
         sys->IRQSched9[i] = timestamp_max;
@@ -165,6 +119,7 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
 
     sys->Pad = pad;
 
+    // run power on/reset logic
     Console_Reset(sys);
 
     return sys;
@@ -302,9 +257,12 @@ void Console_Reset(struct Console* sys)
 timestamp Console_GetARM7Cur(struct Console* sys)
 {
     if (sys->ARM7.ARM.DeadAsleep) return timestamp_max;
+
     timestamp ts = sys->ARM7.ARM.Timestamp;
+
     if (ts < sys->AHB7.Timestamp)
         ts = sys->AHB7.Timestamp;
+
     if ((ts < sys->Sched.EventTimes[Sched_DMA7]) && (sys->Sched.EventTimes[Sched_DMA7] != timestamp_max))
         ts = sys->Sched.EventTimes[Sched_DMA7];
 
@@ -314,6 +272,7 @@ timestamp Console_GetARM7Cur(struct Console* sys)
 timestamp Console_GetARM9Cur(struct Console* sys)
 {
     if (sys->ARM9.ARM.DeadAsleep) return timestamp_max;
+
     timestamp ts = sys->ARM9.ARM.Timestamp >> ((sys->ARM9.BoostedClock) ? 2 : 1);
 
     if (ts < sys->AHB9.Timestamp)
@@ -321,6 +280,7 @@ timestamp Console_GetARM9Cur(struct Console* sys)
 
     if ((ts < sys->Sched.EventTimes[Sched_DMA9]) && (sys->Sched.EventTimes[Sched_DMA9] != timestamp_max))
         ts = sys->Sched.EventTimes[Sched_DMA9];
+
     return ts;
 }
 
@@ -376,7 +336,7 @@ void IF9_Update(struct Console* sys, timestamp now)
     if (sys->ARM9.ARM.CpuSleeping && sys->IME9 && (sys->IE9 & sys->IF9))
     {
         sys->ARM9.ARM.CpuSleeping = 0;
-        sys->ARM9.ARM.Timestamp = now >> ((sys->ARM9.BoostedClock) ? 2 : 1);
+        sys->ARM9.ARM.Timestamp = now << ((sys->ARM9.BoostedClock) ? 2 : 1);
         ARM9_ExecuteCycles(&sys->ARM9, 1, 1);
         sys->ARM9.ARM.CodeSeq = false;
     }
@@ -439,6 +399,7 @@ void Console_ScheduleIRQs(struct Console* sys, const u8 irq, const bool a9, time
 
 void Console_MainLoop(struct Console* sys)
 {
+    CR_Start = true;
     Scheduler_UpdateTargets(sys);
     while(true)
     {
@@ -447,24 +408,21 @@ void Console_MainLoop(struct Console* sys)
             return;
         }
 
-        if (!sys->ARM9.ARM.DeadAsleep)
-            CR_Switch(sys->HandleARM9);
-        if (!sys->ARM7.ARM.DeadAsleep)
-            CR_Switch(sys->HandleARM7);
+#ifdef UseThreads
+        while (Console_GetARM9Cur(sys) < sys->ARM7Target) ;//printf("9 %li %li 7 %li %li\n", sys->ARM9.ARM.Timestamp, sys->ARM9Target, sys->ARM7.ARM.Timestamp, sys->ARM7Target);
+        while (Console_GetARM7Cur(sys) < sys->ARM7Target) ;//printf("7 %li %li 9 %li %li\n", sys->ARM7.ARM.Timestamp, sys->ARM7Target, sys->ARM9.ARM.Timestamp, sys->ARM9Target);
+#else
 
-
-        // do this to make the scheduler behave maybe?
-        if (sys->ARM9.ARM.DeadAsleep)
+        while((Console_GetARM7Cur(sys) < sys->ARM7Target) || (Console_GetARM9Cur(sys) < sys->ARM7Target))
         {
-            printf("a9 sleep\n");
-            ARM9_ExecuteCycles(&sys->ARM9, (sys->ARM9Target - sys->ARM9.ARM.Timestamp)+1, 1);
+            if (!sys->ARM9.ARM.DeadAsleep && (Console_GetARM9Cur(sys) < sys->ARM7Target))
+                CR_Switch(sys->HandleARM9);
+            if (!sys->ARM7.ARM.DeadAsleep && (Console_GetARM7Cur(sys) < sys->ARM7Target))
+                CR_Switch(sys->HandleARM7);
         }
-        if (sys->ARM7.ARM.DeadAsleep)
-        {
-            printf("a7 sleep\n");
-            ARM7_ExecuteCycles(&sys->ARM7, (sys->ARM7Target - sys->ARM7.ARM.Timestamp)+1);
-        }
-
+        //printf("9 %lu %lu\n", Console_GetARM9Cur(sys), sys->ARM7Target);
+        //printf("7 %lu %lu\n", Console_GetARM7Cur(sys), sys->ARM7Target);
+#endif
         Scheduler_Run(sys);
     }
     return;

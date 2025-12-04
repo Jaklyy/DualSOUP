@@ -31,11 +31,13 @@ void LCD_Scanline(struct Console* sys, timestamp now)
     // this occurs before vcount writes
     if (sys->VCount == 192)
     {
-        /*u64 newtime = SDL_GetPerformanceCounter();
+#ifdef MonitorFPS
+        u64 newtime = SDL_GetPerformanceCounter();
         double time = ((double)(newtime-sys->OldTime) / SDL_GetPerformanceFrequency()) * 1000.0;
-        if (time > 0.3)
+        //if (time > 0.3)
             printf("%f\n", time);
-        sys->OldTime = newtime;*/
+        sys->OldTime = newtime;
+#endif
         sys->DispStatRO.Raw = 0b001;
         // schedule irq
         if (sys->DispStatRW.VBlankIRQ)

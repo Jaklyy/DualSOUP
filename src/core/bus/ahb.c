@@ -585,7 +585,7 @@ void Bus_MainRAM_Write(struct Console* sys, struct AHB* buscur, const bool bus9,
             {
                 // arm7 has priority
                 if (bus9) Console_SyncWith7GTE(sys, buscur->Timestamp);
-                else       Console_SyncWith9GT (sys, buscur->Timestamp);
+                else      Console_SyncWith9GT (sys, buscur->Timestamp);
             }
             else
             {
@@ -938,18 +938,17 @@ void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
 // - arm9 data
 // - arm9 write buffer
 
-bool AHB9_NegOwnership(struct Console* sys, timestamp* cur, const u8 priority, const bool atomic)
+bool AHB_NegOwnership(struct Console* sys, timestamp* cur, const bool atomic, const bool a9)
 {
-    struct AHB* bus = &sys->AHB9;
+    struct AHB* bus = (a9) ? &sys->AHB9 : &sys->AHB7;
 
     // ensure component is caught up to bus
     if (*cur < bus->Timestamp) *cur = bus->Timestamp;
 
     // check if anything else is able to run
-    u8 id = priority;
-    if (!atomic && (*cur >= DMA_CheckNext(&sys->DMA9, &id)))
+    if (!atomic && (*cur >= sys->Sched.EventTimes[(a9) ? Sched_DMA9 : Sched_DMA7]))
     {
-        DMA_Run(sys, &sys->DMA9, id, true);
+        Scheduler_RunEventManual(sys, *cur, (a9) ? Sched_DMA9 : Sched_DMA7, a9);
 
         // catch up component to bus again; otherwise catch bus up to component
         if (*cur < bus->Timestamp) *cur = bus->Timestamp;

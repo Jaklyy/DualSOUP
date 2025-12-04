@@ -1,4 +1,5 @@
 #pragma once
+#include <threads.h>
 #include "utils.h"
 
 
@@ -26,6 +27,8 @@ struct Scheduler
 {
     alignas(HOST_CACHEALIGN) timestamp EventTimes[Sched_MAX];
     void (*EventCallbacks[Sched_MAX]) (struct Console*, timestamp);
+
+    mtx_t SchedulerMtx;
 };
 
 // update targets

@@ -14,6 +14,15 @@ LIBS := -lSDL3
 CC := clang
 CFLAGS := -MP -MMD -std=gnu23 -fwrapv -Wimplicit-fallthrough -Wall -Wextra -Werror=implicit-fallthrough -Isrc
 
+ifeq ($(FPS), 1) # monitor performance
+	CFLAGS += -DMonitorFPS
+endif
+
+ifeq ($(THRD), 1) # use threads instead of coroutines
+	CFLAGS += -DUseThreads
+else
+endif
+
 ifeq ($(DEB), 1) # debug build
 	BUILDDIR := $(DEBDIR)
 	CFLAGS += -g -Og

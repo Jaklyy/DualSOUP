@@ -17,12 +17,6 @@ enum DMA_StartModes : u8
     DMAStart_WiFiIRQ,
 };
 
-struct DMA_TSID
-{
-    timestamp TS;
-    int ID;
-};
-
 union DMA_CR
 {
     u32 Raw;
@@ -63,8 +57,8 @@ struct DMA_Controller
 {
     alignas(sizeof(timestamp[4])) timestamp ChannelTimestamps[4];
     struct DMA_Channel Channels[4];
-    u8 NextDMAID;
-    u8 EvtID;
+    u8 CurMask;
+    s8 NextID;
 };
 
 struct Console;
@@ -73,5 +67,3 @@ void DMA_Run(struct Console* sys, struct DMA_Controller* cnt, u8 id, const bool 
 void DMA7_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 addr, u32 val, const u32 mask);
 void DMA9_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 addr, u32 val, u32 mask);
 u32 DMA_IOReadHandler(struct DMA_Channel* channels, u32 addr);
-void DMA_Schedule(struct Console* sys, struct DMA_Controller* cnt, const bool a9);
-timestamp DMA_CheckNext(struct DMA_Controller* cnt, u8* id);

@@ -65,7 +65,7 @@ void ARM9_AHBAccess(struct ARM946ES* ARM9, timestamp* ts, const bool atomic, boo
 
         // make sure we dont immediately lose bus ownership
         // if we dont lose ownership we don't have to reincur latency
-        if (AHB9_NegOwnership(ARM9->ARM.Sys, ts, AHB9Prio_ARM9, atomic))
+        if (AHB_NegOwnership(ARM9->ARM.Sys, ts, atomic, true))
             return;
         else
             *seq = false;
@@ -75,7 +75,7 @@ void ARM9_AHBAccess(struct ARM946ES* ARM9, timestamp* ts, const bool atomic, boo
         // wait until we're able to take ownership of the ARM9 side bus.
         // once we have ownership we can't lose it until the access fully ends.
         // we also can't lose ownership during an atomic access.
-        if (!AHB9_NegOwnership(ARM9->ARM.Sys, ts, AHB9Prio_ARM9, atomic))
+        if (!AHB_NegOwnership(ARM9->ARM.Sys, ts, atomic, true))
             *seq = false;
     }
 

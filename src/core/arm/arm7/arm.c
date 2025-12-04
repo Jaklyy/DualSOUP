@@ -142,7 +142,7 @@ if (instr.Flushed || !ARM7_CheckInterrupts(ARM7)) \
 
 [[nodiscard]] bool ARM7_CheckInterrupts(struct ARM7TDMI* ARM7)
 {
-    Console_SyncWith9GT(cpu->Sys, cpu->Timestamp);
+    Console_SyncWith9GT(cpu->Sys, Console_GetARM7Cur(cpu->Sys));
 
     // TODO: schedule this instead
     if (cpu->Sys->IME7 && !cpu->CPSR.IRQDisable && (cpu->Sys->IE7 & cpu->Sys->IF7))
@@ -210,12 +210,17 @@ void ARM7_Step(struct ARM7TDMI* ARM7)
 
 void ARM7_MainLoop(struct ARM7TDMI* ARM7)
 {
-    while(true)
+    while(!CR_Start);
+    while(!CR_Kill)
     {
-        if (cpu->Timestamp >= cpu->Sys->ARM7Target)
+        if (Console_GetARM7Cur(cpu->Sys) >= cpu->Sys->ARM7Target)
+        {
             CR_Switch(cpu->Sys->HandleMain);
+        }
         else
+        {
             ARM7_Step(ARM7);
+        }
     }
 }
 

@@ -12,22 +12,30 @@ bool Gamecard_Init(Gamecard* card, FILE* rom)
     fseek(rom, 0, SEEK_END);
     u64 size = ftell(rom);
     fseek(rom, 0, SEEK_SET);
-    if (stdc_count_ones(size) != 1)
+    u64 fauxsize = size;
+    if (stdc_count_ones(fauxsize) != 1)
     {
-        LogPrint(LOG_ALWAYS, "FATAL: Gamecard ROM size %li is not a power of 2!\n", size);
-        return false;
-    }
-    if (size > MiB(512))
+        while (stdc_count_ones(fauxsize) != 1)
+        {
+            fauxsize >>= 1;
+        }
+        fauxsize *= 2;
+    }if (size > MiB(512))
     {
         LogPrint(LOG_ALWAYS, "FATAL: Gamecard ROM too big! must be <= 512MiB; currently %li\n", size);
         return false;
     }
-    card->RomSize = size;
-    card->ROM = malloc(size);
+    card->RomSize = fauxsize;
+    card->ROM = malloc(fauxsize);
     if (card->ROM == NULL)
     {
         LogPrint(LOG_ALWAYS, "FATAL: Gamecard ROM allocation failed\n");
         return false;
+    }
+
+    for (u64 i = size/sizeof(card->ROM[0]); i < fauxsize/sizeof(card->ROM[0]); i++)
+    {
+        card->ROM[i] = 0;
     }
 
     if (fread(card->ROM, card->RomSize, 1, rom) == 0)
@@ -165,6 +173,7 @@ void QueueNextTransfer(struct Console* sys, timestamp cur, const bool a9)
     }
     else
     {
+        sys->GCROMCR[a9].Start = false;
         Schedule_Event(sys, Gamecard_HandleSchedulingROM, Sched_Gamecard, timestamp_max);
     }
 }
@@ -200,7 +209,10 @@ void Gamecard_HandleSchedulingROM(struct Console* sys, timestamp now)
         Schedule_Event(sys, Gamecard_HandleSchedulingROM, Sched_Gamecard, timestamp_max);
     }
     else
+    {
         sys->GCROMData[a9] = card->ReadHandler(card);
+        sys->GCROMCR[a9].DataReady = true;
+    }
 
     QueueNextTransfer(sys, now, a9);
 }
@@ -248,6 +260,7 @@ u32 Gamecard_IOReadHandler(struct Console* sys, u32 addr, timestamp cur, const b
         case 0x00:
             return sys->GCSPICR[a9].Raw | (sys->GCSPIOut[a9] << 16);
         case 0x04:
+            //printf("card %08X %08X\n", addr, sys->GCROMCR[a9].Raw);
             return sys->GCROMCR[a9].Raw;
         default:
             return 0;

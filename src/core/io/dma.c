@@ -5,59 +5,13 @@
 
 
 
-void DMA_ScheduleStart()
-{
-    // we need:
-    // channel mode.
-    // channel timestamp.
-    // update the main scheduler
-    // when the write occured.
-#if 0
-    switch(channel->CurrentMode)
-    {
-        case DMAStart_Immediate:
-        {
-            controller->ChannelTimestamps[curchannel] = /* bus timestamp...? */ + 1;
-        }
-    }
-#endif
-}
-
-void DMA9_ScheduledRun(struct Console* sys)
-{
-    DMA_Run(sys, &sys->DMA9, sys->DMA9.EvtID, true);
-}
-
-void DMA7_ScheduledRun(struct Console* sys)
-{
-    DMA_Run(sys, &sys->DMA7, sys->DMA7.EvtID, false);
-}
-
-void DMA_Schedule(struct Console* sys, struct DMA_Controller* cnt, const bool a9)
-{
-    timestamp time = timestamp_max;
-    int id = 4;
-
-    for (unsigned i = 0; i < 4; i++)
-    {
-        if (time >= cnt->ChannelTimestamps[i])
-        {
-            time = cnt->ChannelTimestamps[i];
-            id = i;
-        }
-    }
-    cnt->NextDMAID = id;
-    //if (a9)
-    //    Schedule_Event(sys, DMA9_ScheduledRun, cnt->EvtID, time, false);
-    //else
-    //    Schedule_Event(sys, DMA7_ScheduledRun, cnt->EvtID, time, false);
-}
-
 timestamp DMA_CheckNext(struct DMA_Controller* cnt, u8* id)
 {
     timestamp time = timestamp_max;
 
-    int max = *id-1;
+    int max = stdc_trailing_zeros(cnt->CurMask) - 1;
+    printf("mask: %02X %i\n", cnt->CurMask, max);
+    if (max > 3) max = 3;
     for (int i = max; i >= 0; i--)
     {
         if (time >= cnt->ChannelTimestamps[i])
@@ -67,6 +21,39 @@ timestamp DMA_CheckNext(struct DMA_Controller* cnt, u8* id)
         }
     }
     return time;
+}
+
+void DMA9_ScheduledRun(struct Console* sys, [[maybe_unused]] timestamp now)
+{
+    coroutine old = CR_Active();
+    CR_Switch(sys->HandleARM9);
+    DMA_Run(sys, &sys->DMA9, sys->DMA9.NextID, true);
+
+    CR_Switch(old);
+}
+
+void DMA7_ScheduledRun(struct Console* sys, [[maybe_unused]] timestamp now)
+{
+    coroutine old = CR_Active();
+    CR_Switch(sys->HandleARM9);
+    DMA_Run(sys, &sys->DMA9, sys->DMA7.NextID, false);
+    CR_Switch(old);
+}
+
+void DMA_Schedule(struct Console* sys, const bool a9)
+{
+    struct DMA_Controller* cnt;
+    if (a9) cnt = &sys->DMA9;
+    else cnt = &sys->DMA7;
+
+    u8 id = -1;
+    timestamp time = DMA_CheckNext(cnt, &id);
+    printf("time %i, %li\n", id, time);
+    cnt->NextID = id;
+    if (a9)
+        Schedule_Event(sys, DMA9_ScheduledRun, Sched_DMA9, time);
+    else
+        Schedule_Event(sys, DMA7_ScheduledRun, Sched_DMA7, time);
 }
 
 void DMA7_Enable(struct Console* sys, struct DMA_Channel* channel, u8 channel_id)
@@ -83,6 +70,7 @@ void DMA7_Enable(struct Console* sys, struct DMA_Channel* channel, u8 channel_id
         sys->DMA7.ChannelTimestamps[channel_id] = sys->AHB7.Timestamp+1;
         break;
     }
+    #if 0
     case 1: // VBlank
     {
         channel->CurrentMode = DMAStart_VBlank;
@@ -100,6 +88,8 @@ void DMA7_Enable(struct Console* sys, struct DMA_Channel* channel, u8 channel_id
         // wifi irq might not actually be real?
         break;
     }
+    #endif
+    default: LogPrint(LOG_UNIMP, "UNIMPLEMENTED DMA7 MODE %i\n", channel->CR.StartMode7); break;
     }
 
     switch(channel->CR.DestCR)
@@ -129,7 +119,7 @@ void DMA7_Enable(struct Console* sys, struct DMA_Channel* channel, u8 channel_id
         channel->DstInc *= 2;
     }
 
-    DMA_Schedule(sys, &sys->DMA7, false);
+    DMA_Schedule(sys, false);
 }
 
 void DMA9_Enable(struct Console* sys, struct DMA_Channel* channel, u8 channel_id)
@@ -146,6 +136,7 @@ void DMA9_Enable(struct Console* sys, struct DMA_Channel* channel, u8 channel_id
         sys->DMA9.ChannelTimestamps[channel_id] = sys->AHB9.Timestamp+1;
         break;
     }
+    #if 0
     case 1: // VBlank
     {
         channel->CurrentMode = DMAStart_VBlank;
@@ -185,6 +176,8 @@ void DMA9_Enable(struct Console* sys, struct DMA_Channel* channel, u8 channel_id
         channel->CurrentMode = DMAStart_3DFIFO;
         break;
     }
+    #endif
+    default: LogPrint(LOG_UNIMP, "UNIMPLEMENTED DMA9 MODE %i\n", channel->CR.StartMode9); break;
     }
 
     switch(channel->CR.DestCR)
@@ -213,13 +206,19 @@ void DMA9_Enable(struct Console* sys, struct DMA_Channel* channel, u8 channel_id
         channel->SrcInc *= 2;
         channel->DstInc *= 2;
     }
-    DMA_Schedule(sys, &sys->DMA9, true);
+    DMA_Schedule(sys, true);
 }
 
 void DMA_Run(struct Console* sys, struct DMA_Controller* cnt, u8 id, const bool a9)
 {
+    printf("run %i\n", id);
     u32 rmask;
     u32 wmask;
+    u64 timecur = sys->DMA9.ChannelTimestamps[id];
+    sys->DMA9.ChannelTimestamps[id] = timestamp_max;
+
+    cnt->CurMask |= 1<<id;
+    DMA_Schedule(sys, a9);
 
     struct DMA_Channel* channel = &cnt->Channels[id];
 
@@ -236,47 +235,43 @@ void DMA_Run(struct Console* sys, struct DMA_Controller* cnt, u8 id, const bool 
     bool wseq = false;
     while(channel->Latched_NumWords > 0)
     {
-        if (a9)
+        if (!AHB_NegOwnership(sys, &timecur, false, a9))
         {
-            if (!AHB9_NegOwnership(sys, &sys->DMA9.ChannelTimestamps[id], id, false))
-            {
-                rseq = false;
-                wseq = false;
-            }
+            rseq = false;
+            wseq = false;
         }
-        timestamp time = cnt->ChannelTimestamps[id];
+        timestamp diff = timecur;
         u32 read;
         if (a9)
         {
-            read = AHB9_Read(sys, &cnt->ChannelTimestamps[id], channel->Latched_SrcAddr, rmask, false, rseq, &rseq, true);
+            read = AHB9_Read(sys, &timecur, channel->Latched_SrcAddr, rmask, false, rseq, &rseq, true);
         }
         else
         {
-            read = AHB7_Read(sys, &cnt->ChannelTimestamps[id], channel->Latched_SrcAddr, rmask, false, rseq, &rseq, true);
+            read = AHB7_Read(sys, &timecur, channel->Latched_SrcAddr, rmask, false, rseq, &rseq, true);
         }
-        time = sys->DMA9.ChannelTimestamps[id] - time;
+        diff = timecur - diff;
 
         channel->Latched_SrcAddr += channel->SrcInc;
-
+        if (!AHB_NegOwnership(sys, &timecur, false, a9))
+        {
+            rseq = false;
+            wseq = false;
+        }
         if (a9)
         {
-            if (!AHB9_NegOwnership(sys, &cnt->ChannelTimestamps[id], id, false))
-            {
-                rseq = false;
-                wseq = false;
-            }
-            AHB9_Write(sys, &cnt->ChannelTimestamps[id], channel->Latched_DstAddr, read, wmask, false, &wseq, true);
+            AHB9_Write(sys, &timecur, channel->Latched_DstAddr, read, wmask, false, &wseq, true);
         }
         else
         {
-            AHB7_Write(sys, &cnt->ChannelTimestamps[id], channel->Latched_DstAddr, read, wmask, false, &wseq, true);
+            AHB7_Write(sys, &timecur, channel->Latched_DstAddr, read, wmask, false, &wseq, true);
         }
         // CHECKME: should this only apply to the actual first?
         if (!rseq)
         {
             // TODO: figure out why exactly this happens?
-            if (time == 1)
-                cnt->ChannelTimestamps[id] +=1;
+            if (diff == 1)
+                timecur +=1;
         }
 
         rseq = (channel->SrcInc > 0);
@@ -297,18 +292,48 @@ void DMA_Run(struct Console* sys, struct DMA_Controller* cnt, u8 id, const bool 
 
     if (channel->CR.Repeat)
     {
-        // reschedule
+        // TODO: reschedule
+        LogPrint(0, "UNIMP: DMA WANTS RESCHEDULE\n");
     }
     else
     {
         channel->CR.Enable = false;
-        sys->DMA9.ChannelTimestamps[id] = timestamp_max;
     }
+    cnt->CurMask &= ~1<<id;
 
     if (channel->CR.IRQ) // TODO
         {}
 
-    DMA_Schedule(sys, cnt, a9);
+    DMA_Schedule(sys, a9);
+}
+
+u32 DMA_IOReadHandler(struct DMA_Channel* channels, u32 addr)
+{
+
+    addr &= 0xFF;
+    addr -= 0xB0;
+    int channel = (addr / 4) / 3;
+    int reg = (addr / 4) % 3;
+
+    struct DMA_Channel* cur = &channels[channel];
+
+    switch(reg)
+    {
+    case 0: // source address
+    {
+        return cur->SrcAddr;
+    }
+    case 1: // destination address
+    {
+        return cur->DstAddr;
+    }
+    case 2: // control register
+    {
+        return cur->CR.Raw;
+    }
+    default:
+        return 0;
+    }
 }
 
 void DMA9_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 addr, u32 val, u32 mask)
@@ -317,6 +342,8 @@ void DMA9_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 
     addr -= 0xB0;
     int channel = (addr / 4) / 3;
     int reg = (addr / 4) % 3;
+
+    printf("chan: %i\n", channel);
 
     struct DMA_Channel* cur = &channels[channel];
 
@@ -350,6 +377,7 @@ void DMA9_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 
             }
             else
             {
+                LogPrint(0, "UNIMP: Stopping DMA9\n");
                 // stopping dma channel
                 // TODO: allegedly under specific circumstances this can lock up the bus?
             }
@@ -359,41 +387,14 @@ void DMA9_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 
     }
 }
 
-u32 DMA_IOReadHandler(struct DMA_Channel* channels, u32 addr)
-{
-
-    addr &= 0xFF;
-    addr -= 0xB0;
-    int channel = (addr / 4) / 3;
-    int reg = (addr / 4) % 3;
-
-    struct DMA_Channel* cur = &channels[channel];
-
-    switch(reg)
-    {
-    case 0: // source address
-    {
-        return cur->SrcAddr;
-    }
-    case 1: // destination address
-    {
-        return cur->DstAddr;
-    }
-    case 2: // control register
-    {
-        return cur->CR.Raw;
-    }
-    default:
-        return 0;
-    }
-}
-
 void DMA7_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 addr, u32 val, const u32 mask)
 {
     addr &= 0xFF;
     addr -= 0xB0;
     int channel = (addr / 4) / 3;
     int reg = (addr / 4) % 3;
+
+    printf("chan7: %i\n", channel);
 
     struct DMA_Channel* cur = &channels[channel];
 
@@ -429,6 +430,7 @@ void DMA7_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 
             }
             else
             {
+                LogPrint(0, "UNIMP: Stopping DMA7\n");
                 // stopping dma channel
                 // TODO: allegedly under specific circumstances this can lock up the bus?
             }

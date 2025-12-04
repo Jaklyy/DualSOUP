@@ -221,7 +221,7 @@ void ARM9_DeferredITCMWrite(struct ARM946ES* ARM9);
 [[nodiscard]] bool ARM9_CheckInterrupts(struct ARM946ES* ARM9)
 {
     // TODO: fix for dsi mode
-    Console_SyncWith7GT(cpu->Sys, cpu->Timestamp/2);
+    Console_SyncWith7GT(cpu->Sys, Console_GetARM9Cur(cpu->Sys));
 
     // todo: schedule this instead
     if (cpu->Sys->IME9 && !cpu->CPSR.IRQDisable && (cpu->Sys->IE9 & cpu->Sys->IF9))
@@ -324,12 +324,17 @@ void ARM9_Step(struct ARM946ES* ARM9)
 
 void ARM9_MainLoop(struct ARM946ES* ARM9)
 {
-    while(true)
+    while (!CR_Start);
+    while(!CR_Kill)
     {
-        if (cpu->Timestamp >= cpu->Sys->ARM9Target)
+        if (Console_GetARM9Cur(cpu->Sys) >= cpu->Sys->ARM7Target)
+        {
             CR_Switch(cpu->Sys->HandleMain);
+        }
         else
+        {
             ARM9_Step(ARM9);
+        }
     }
 }
 

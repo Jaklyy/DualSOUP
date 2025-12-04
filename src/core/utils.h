@@ -45,7 +45,11 @@ typedef uint64_t u64;
 // this might incur a noticeable performance penalty on every single timestamp increment.
 // but it would allow for the system to be infinitely running (mind you 727 years is probably a long enough time already)
 // it may also allow for faster scheduling by being able to pack more scheduler timestamps into a single simd reg?
+#ifdef UseThreads
+typedef volatile uint64_t timestamp;
+#else
 typedef uint64_t timestamp;
+#endif
 #define timestamp_max (UINT64_MAX)
 
 #define KiB(x) ((x) * 1024)
@@ -154,14 +158,17 @@ void LogPrint(const u64 logtype, const char* str, ...) __attribute__ ((format (p
 void CrashSpectacularly(const char* str, ...) __attribute__ ((format (printf, 1, 2)));
 
 // coroutine stuff
+#ifdef UseThreads
+extern volatile bool CR_Kill;
+#else
+constexpr bool CR_Kill = false;
+#endif
+extern volatile bool CR_Start;
 
-// null coroutine
-#define cr_null ((coroutine)0)
-
-coroutine CR_Create(void (*func)(void*), void* param);
+bool CR_Create(coroutine* handle, void (*func)(void*), void* param);
 void CR_Free(coroutine handle);
 void CR_Switch(coroutine handle);
-cothread_t CR_Active();
+coroutine CR_Active();
 
 u16 Input_PollExtra(void* pad);
 u16 Input_PollMain(void* pad);

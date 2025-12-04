@@ -2,7 +2,6 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include "../core/utils.h"
-#include "../../libs/libco/libco.h"
 #include <stdlib.h>
 
 
@@ -36,51 +35,7 @@ void CrashSpectacularly(const char* str, ...)
     exit(EXIT_FAILURE);
 }
 
-// coroutine junk
-
-// internal variable used to pass along parameters to the new cothread
-thread_local void* pass[3];
-
-// internal coroutine startup handler
-void CR_Boot()
-{
-    // im not sure if the compiler is forced to save these...?
-    void* func = pass[0];
-    void* param = pass[1];
-
-    // we only wanted to initalize the thread we dont need to run it *yet*
-    co_switch(pass[2]);
-
-    // jump to saved function using saved parameter
-    ((void (*)(void*))func)((void*)param);
-}
-
-cothread_t CR_Create(void (*func)(void*), void* param)
-{
-    // 2 MiB is probably way more than needed but idc
-    cothread_t cr = co_create(((MiB(2)/8)*sizeof(void*)), CR_Boot);
-    pass[0] = func;
-    pass[1] = param;
-    pass[2] = co_active();
-    co_switch(cr);
-    return cr;
-}
-
-void CR_Free(cothread_t handle)
-{
-    co_delete(handle);
-}
-
-void CR_Switch(cothread_t handle)
-{
-    co_switch(handle);
-}
-
-cothread_t CR_Active()
-{
-    return co_active();
-}
-
+// sdl junk
 u16 Input_PollMain(void* pad)
 {
     if (pad == NULL)
@@ -115,4 +70,83 @@ u16 Input_PollExtra(void* pad)
     return inputs;
 }
 
+// coroutine junk
+
+volatile bool CR_Start = false;
+
+#ifdef UseThreads
+#include <threads.h>
+volatile bool CR_Kill = false;
+
+bool CR_Create(thrd_t* handle, void (*func)(void*), void* param)
+{
+    CR_Start = false;
+    CR_Kill = false;
+    // 2 MiB is probably way more than needed but idc
+    // this cast is almost definitely ub.
+    return (thrd_create(handle, (void*)func, param) == thrd_success);
+}
+
+void CR_Free(thrd_t handle)
+{
+    CR_Kill = true;
+    int dummy;
+    thrd_join(handle, &dummy);
+}
+
+void CR_Switch([[maybe_unused]]thrd_t handle)
+{
+    if (CR_Kill) thrd_exit(1);
+}
+
+thrd_t CR_Active()
+{
+    return (thrd_t)0;
+}
+#else
+#include "../../libs/libco/libco.h"
+
+// internal variable used to pass along parameters to the new cothread
+thread_local void* pass[3];
+
+// internal coroutine startup handler
+void CR_Boot()
+{
+    // im not sure if the compiler is forced to save these...?
+    void* func = pass[0];
+    void* param = pass[1];
+
+    // we only wanted to initalize the thread we dont need to run it *yet*
+    co_switch(pass[2]);
+
+    // jump to saved function using saved parameter
+    ((void (*)(void*))func)((void*)param);
+}
+
+bool CR_Create(cothread_t* handle, void (*func)(void*), void* param)
+{
+    // 2 MiB is probably way more than needed but idc
+    *handle = co_create(((MiB(2)/8)*sizeof(void*)), CR_Boot);
+    pass[0] = func;
+    pass[1] = param;
+    pass[2] = co_active();
+    co_switch(*handle);
+    return *handle != (cothread_t)0;
+}
+
+void CR_Free(cothread_t handle)
+{
+    co_delete(handle);
+}
+
+void CR_Switch(cothread_t handle)
+{
+    co_switch(handle);
+}
+
+cothread_t CR_Active()
+{
+    return co_active();
+}
+#endif
 
