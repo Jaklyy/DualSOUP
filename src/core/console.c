@@ -46,17 +46,18 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
     memset(sys, 0, sizeof(*sys));
     CR_Start = false;
 
-    // allocate shit
-    bool cr7init = CR_Create(&sys->HandleARM9, (void*)ARM9_MainLoop, &sys->ARM9);
-    bool cr9init = CR_Create(&sys->HandleARM7, (void*)ARM7_MainLoop, &sys->ARM7);
-    bool firminit = Flash_Init(&sys->Firmware, firmware, true);
-    bool gcinit = Gamecard_Init(&sys->Gamecard, rom);
-    sys->HandleMain = CR_Active();
 
     int num9;
     if (ntr9 != NULL) num9 = fread(sys->NTRBios9.b8, NTRBios9_Size, 1, ntr9);
     int num7;
     if (ntr7 != NULL) num7 = fread(sys->NTRBios7.b8, NTRBios7_Size, 1, ntr7);
+
+    // allocate shit
+    bool cr7init = CR_Create(&sys->HandleARM9, (void*)ARM9_MainLoop, &sys->ARM9);
+    bool cr9init = CR_Create(&sys->HandleARM7, (void*)ARM7_MainLoop, &sys->ARM7);
+    bool firminit = Flash_Init(&sys->Firmware, firmware, true);
+    bool gcinit = Gamecard_Init(&sys->Gamecard, rom, sys->NTRBios7.b8);
+    sys->HandleMain = CR_Active();
 
     bool mtxinit = (mtx_init(&sys->FrameBufferMutex, mtx_plain) == thrd_success);
     bool mtxinit2 = (mtx_init(&sys->Sched.SchedulerMtx, mtx_recursive) == thrd_success);
@@ -90,7 +91,7 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
     ARM9_Init(&sys->ARM9, sys);
     ARM7_Init(&sys->ARM7, sys);
 
-    for (int i = 0; i < Sched_MAX; i++)
+    for (int i = 0; i < Evt_Max; i++)
         sys->Sched.EventTimes[i] = timestamp_max;
 
     for (int i = 0; i < IRQ_Max; i++)
@@ -100,7 +101,7 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
         sys->IRQSched7[i] = timestamp_max;
 
     // TODO: is this always running?
-    Schedule_Event(sys, LCD_Scanline, Sched_Scanline, 0);
+    Schedule_Event(sys, LCD_Scanline, Evt_Scanline, 0);
 
     sys->DMA9.ChannelTimestamps[0] = timestamp_max;
     sys->DMA9.ChannelTimestamps[1] = timestamp_max;
@@ -254,39 +255,69 @@ void Console_Reset(struct Console* sys)
     // TODO: reset dma?
 }
 
-timestamp Console_GetARM7Cur(struct Console* sys)
+timestamp Console_GetARM7Max(struct Console* sys)
 {
-    if (sys->ARM7.ARM.DeadAsleep) return timestamp_max;
+    if (sys->ARM7.ARM.DeadAsleep && (sys->Sched.EventTimes[Evt_DMA7] != timestamp_max)) timestamp_max;
 
     timestamp ts = sys->ARM7.ARM.Timestamp;
 
     if (ts < sys->AHB7.Timestamp)
         ts = sys->AHB7.Timestamp;
 
-    if ((ts < sys->Sched.EventTimes[Sched_DMA7]) && (sys->Sched.EventTimes[Sched_DMA7] != timestamp_max))
-        ts = sys->Sched.EventTimes[Sched_DMA7];
+    if ((ts < sys->Sched.EventTimes[Evt_DMA7]) && (sys->Sched.EventTimes[Evt_DMA7] != timestamp_max))
+        ts = sys->Sched.EventTimes[Evt_DMA7];
 
     return ts;
 }
 
-timestamp Console_GetARM9Cur(struct Console* sys)
+timestamp Console_GetARM9Max(struct Console* sys)
 {
-    if (sys->ARM9.ARM.DeadAsleep) return timestamp_max;
+    if (sys->ARM9.ARM.DeadAsleep && (sys->Sched.EventTimes[Evt_DMA9] != timestamp_max)) return timestamp_max;
 
     timestamp ts = sys->ARM9.ARM.Timestamp >> ((sys->ARM9.BoostedClock) ? 2 : 1);
 
     if (ts < sys->AHB9.Timestamp)
         ts = sys->AHB9.Timestamp;
 
-    if ((ts < sys->Sched.EventTimes[Sched_DMA9]) && (sys->Sched.EventTimes[Sched_DMA9] != timestamp_max))
-        ts = sys->Sched.EventTimes[Sched_DMA9];
+    if ((ts < sys->Sched.EventTimes[Evt_DMA9]) && (sys->Sched.EventTimes[Evt_DMA9] != timestamp_max))
+        ts = sys->Sched.EventTimes[Evt_DMA9];
+
+    return ts;
+}
+
+timestamp Console_GetARM7Min(struct Console* sys)
+{
+    if (sys->ARM7.ARM.DeadAsleep && (sys->Sched.EventTimes[Evt_DMA7] != timestamp_max)) timestamp_max;
+
+    timestamp ts = sys->ARM7.ARM.Timestamp;
+
+    if (ts > sys->AHB7.Timestamp)
+        ts = sys->AHB7.Timestamp;
+
+    if ((ts > sys->Sched.EventTimes[Evt_DMA7]) && (sys->Sched.EventTimes[Evt_DMA7] != timestamp_max))
+        ts = sys->Sched.EventTimes[Evt_DMA7];
+
+    return ts;
+}
+
+timestamp Console_GetARM9Min(struct Console* sys)
+{
+    if (sys->ARM9.ARM.DeadAsleep && (sys->Sched.EventTimes[Evt_DMA9] != timestamp_max)) return timestamp_max;
+
+    timestamp ts = sys->ARM9.ARM.Timestamp >> ((sys->ARM9.BoostedClock) ? 2 : 1);
+
+    if (ts > sys->AHB9.Timestamp)
+        ts = sys->AHB9.Timestamp;
+
+    if ((ts > sys->Sched.EventTimes[Evt_DMA9]) && (sys->Sched.EventTimes[Evt_DMA9] != timestamp_max))
+        ts = sys->Sched.EventTimes[Evt_DMA9];
 
     return ts;
 }
 
 void Console_SyncWith7GTE(struct Console* sys, timestamp now)
 {
-    while(now >= Console_GetARM7Cur(sys))
+    while(now >= Console_GetARM7Max(sys))
     {
         CR_Switch(sys->HandleARM7);
     }
@@ -294,7 +325,7 @@ void Console_SyncWith7GTE(struct Console* sys, timestamp now)
 
 void Console_SyncWith7GT(struct Console* sys, timestamp now)
 {
-    while(now > Console_GetARM7Cur(sys))
+    while(now > Console_GetARM7Max(sys))
     {
         CR_Switch(sys->HandleARM7);
     }
@@ -302,7 +333,7 @@ void Console_SyncWith7GT(struct Console* sys, timestamp now)
 
 void Console_SyncWith9GTE(struct Console* sys, timestamp now)
 {
-    while(now >= Console_GetARM9Cur(sys))
+    while(now >= Console_GetARM9Max(sys))
     {
         CR_Switch(sys->HandleARM9);
     }
@@ -310,7 +341,7 @@ void Console_SyncWith9GTE(struct Console* sys, timestamp now)
 
 void Console_SyncWith9GT(struct Console* sys, timestamp now)
 {
-    while(now > Console_GetARM9Cur(sys))
+    while(now > Console_GetARM9Max(sys))
     {
         CR_Switch(sys->HandleARM9);
     }
@@ -318,7 +349,7 @@ void Console_SyncWith9GT(struct Console* sys, timestamp now)
 
 void IF9_Update(struct Console* sys, timestamp now)
 {
-    timestamp time = sys->Sched.EventTimes[Sched_IF9Update];
+    timestamp time = sys->Sched.EventTimes[Evt_IF9Update];
     timestamp next = timestamp_max;
     for (int i = 0; i < IRQ_Max; i++)
     {
@@ -340,12 +371,12 @@ void IF9_Update(struct Console* sys, timestamp now)
         ARM9_ExecuteCycles(&sys->ARM9, 1, 1);
         sys->ARM9.ARM.CodeSeq = false;
     }
-    Schedule_Event(sys, IF9_Update, Sched_IF9Update, next);
+    Schedule_Event(sys, IF9_Update, Evt_IF9Update, next);
 }
 
 void IF7_Update(struct Console* sys, timestamp now)
 {
-    timestamp time = sys->Sched.EventTimes[Sched_IF7Update];
+    timestamp time = sys->Sched.EventTimes[Evt_IF7Update];
     timestamp next = timestamp_max;
     for (int i = 0; i < IRQ_Max; i++)
     {
@@ -366,7 +397,7 @@ void IF7_Update(struct Console* sys, timestamp now)
         ARM7_ExecuteCycles(&sys->ARM7, 1);
         sys->ARM7.ARM.CodeSeq = false;
     }
-    Schedule_Event(sys, IF7_Update, Sched_IF7Update, next);
+    Schedule_Event(sys, IF7_Update, Evt_IF7Update, next);
 }
 
 void Console_ScheduleIRQs(struct Console* sys, const u8 irq, const bool a9, timestamp time)
@@ -392,9 +423,9 @@ void Console_ScheduleIRQs(struct Console* sys, const u8 irq, const bool a9, time
     }
 
     if (a9)
-        Schedule_Event(sys, IF9_Update, Sched_IF9Update, time);
+        Schedule_Event(sys, IF9_Update, Evt_IF9Update, time);
     else
-        Schedule_Event(sys, IF7_Update, Sched_IF7Update, time);
+        Schedule_Event(sys, IF7_Update, Evt_IF7Update, time);
 }
 
 void Console_MainLoop(struct Console* sys)
@@ -409,19 +440,21 @@ void Console_MainLoop(struct Console* sys)
         }
 
 #ifdef UseThreads
-        while (Console_GetARM9Cur(sys) < sys->ARM7Target) ;//printf("9 %li %li 7 %li %li\n", sys->ARM9.ARM.Timestamp, sys->ARM9Target, sys->ARM7.ARM.Timestamp, sys->ARM7Target);
-        while (Console_GetARM7Cur(sys) < sys->ARM7Target) ;//printf("7 %li %li 9 %li %li\n", sys->ARM7.ARM.Timestamp, sys->ARM7Target, sys->ARM9.ARM.Timestamp, sys->ARM9Target);
+        while (Console_GetARM9Max(sys) < sys->ARM7Target) ;//printf("9 %li %li 7 %li %li\n", sys->ARM9.ARM.Timestamp, sys->ARM9Target, sys->ARM7.ARM.Timestamp, sys->ARM7Target);
+        while (Console_GetARM7Max(sys) < sys->ARM7Target) ;//printf("7 %li %li 9 %li %li\n", sys->ARM7.ARM.Timestamp, sys->ARM7Target, sys->ARM9.ARM.Timestamp, sys->ARM9Target);
 #else
 
-        while((Console_GetARM7Cur(sys) < sys->ARM7Target) || (Console_GetARM9Cur(sys) < sys->ARM7Target))
+        while((Console_GetARM7Max(sys) < sys->ARM7Target) || (Console_GetARM9Max(sys) < sys->ARM7Target))
         {
-            if (!sys->ARM9.ARM.DeadAsleep && (Console_GetARM9Cur(sys) < sys->ARM7Target))
+            //printf("9 %lu %lu\n", Console_GetARM9Max(sys), sys->ARM7Target);
+            //printf("7 %lu %lu\n", Console_GetARM7Max(sys), sys->ARM7Target);
+            if (Console_GetARM9Max(sys) < sys->ARM7Target)
                 CR_Switch(sys->HandleARM9);
-            if (!sys->ARM7.ARM.DeadAsleep && (Console_GetARM7Cur(sys) < sys->ARM7Target))
+            if (Console_GetARM7Max(sys) < sys->ARM7Target)
                 CR_Switch(sys->HandleARM7);
         }
-        //printf("9 %lu %lu\n", Console_GetARM9Cur(sys), sys->ARM7Target);
-        //printf("7 %lu %lu\n", Console_GetARM7Cur(sys), sys->ARM7Target);
+        //printf("9 %lu %lu\n", Console_GetARM9Max(sys), sys->ARM7Target);
+        //printf("7 %lu %lu\n", Console_GetARM7Max(sys), sys->ARM7Target);
 #endif
         Scheduler_Run(sys);
     }

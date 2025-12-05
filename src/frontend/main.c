@@ -67,7 +67,7 @@ int Core_Init(void* pass)
     fclose(ntr9);
     fclose(ntr7);
 
-    Console_DirectBoot(sys, ztst);
+    //Console_DirectBoot(sys, ztst);
     Console_MainLoop(sys);
 
     sys->KillThread = false;

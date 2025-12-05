@@ -3,9 +3,9 @@
 #include "../bus/io.h"
 #include "../scheduler.h"
 #include "../console.h"
+#include "../io/dma.h"
 #include "../utils.h"
 #include "ppu.h"
-
 
 
 
@@ -15,11 +15,18 @@ void LCD_HBlank(struct Console* sys, timestamp now)
     sys->DispStatRO.HBlank = true;
     if (sys->VCount < 192)
     {
+        StartDMA9(sys, now+2+1, DMAStart_HBlank); // checkme: delay?
         PPU_RenderScanline(sys, false, sys->VCount);
         PPU_RenderScanline(sys, true, sys->VCount);
     }
+    // schedule irq
+    if (sys->DispStatRW.HBlankIRQ)
+    {
+        Console_ScheduleIRQs(sys, IRQ_HBlank, true, now+2); // CHECKME: delay?
+        Console_ScheduleIRQs(sys, IRQ_HBlank, false, now+2); // CHECKME: delay?
+    }
     // schedule hblank
-    Schedule_Event(sys, LCD_Scanline, Sched_Scanline, now + (HBlank_Cycles*2));
+    Schedule_Event(sys, LCD_Scanline, Evt_Scanline, now + (HBlank_Cycles*2));
 }
 
 void LCD_Scanline(struct Console* sys, timestamp now)
@@ -45,6 +52,8 @@ void LCD_Scanline(struct Console* sys, timestamp now)
             Console_ScheduleIRQs(sys, IRQ_VBlank, true, now+2);
             Console_ScheduleIRQs(sys, IRQ_VBlank, false, now+2); // CHECKME: delay correct for arm7 too?
         }
+        StartDMA9(sys, now+2+1, DMAStart_VBlank); // checkme: delay?
+        StartDMA9(sys, now+2+1, DMAStart_VBlank); // checkme: delay?
     }
     else if (sys->VCount == 262)
     {
@@ -62,5 +71,5 @@ void LCD_Scanline(struct Console* sys, timestamp now)
     sys->DispStatRO.VCountMatch = (sys->TargetVCount == sys->VCount);
 
     // schedule hblank
-    Schedule_Event(sys, LCD_HBlank, Sched_Scanline, now + (ActiveRender_Cycles*2));
+    Schedule_Event(sys, LCD_HBlank, Evt_Scanline, now + (ActiveRender_Cycles*2));
 }

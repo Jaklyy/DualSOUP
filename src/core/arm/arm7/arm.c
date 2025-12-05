@@ -142,7 +142,7 @@ if (instr.Flushed || !ARM7_CheckInterrupts(ARM7)) \
 
 [[nodiscard]] bool ARM7_CheckInterrupts(struct ARM7TDMI* ARM7)
 {
-    Console_SyncWith9GT(cpu->Sys, Console_GetARM7Cur(cpu->Sys));
+    Console_SyncWith9GT(cpu->Sys, Console_GetARM7Max(cpu->Sys));
 
     // TODO: schedule this instead
     if (cpu->Sys->IME7 && !cpu->CPSR.IRQDisable && (cpu->Sys->IE7 & cpu->Sys->IF7))
@@ -213,8 +213,13 @@ void ARM7_MainLoop(struct ARM7TDMI* ARM7)
     while(!CR_Start);
     while(!CR_Kill)
     {
-        if (Console_GetARM7Cur(cpu->Sys) >= cpu->Sys->ARM7Target)
+        if (Console_GetARM7Max(cpu->Sys) >= cpu->Sys->ARM7Target)
         {
+            if (cpu->Sys->Sched.EventTimes[Evt_DMA7] <= cpu->Sys->ARM7Target)
+            {
+                printf("%li %li %li %li\n", cpu->Sys->AHB7.Timestamp, cpu->Sys->Sched.EventTimes[Evt_DMA7], cpu->Sys->ARM7Target, cpu->Timestamp);
+                DMA_Run(cpu->Sys, false);
+            }
             CR_Switch(cpu->Sys->HandleMain);
         }
         else

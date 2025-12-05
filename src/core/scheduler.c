@@ -10,7 +10,7 @@
 void Scheduler_UpdateTargets(struct Console* sys)
 {
     timestamp next = timestamp_max;
-    for (int i = 0; i < Sched_MAX; i++)
+    for (int i = 0; i < Evt_Max; i++)
     {
         if (next > sys->Sched.EventTimes[i])
             next = sys->Sched.EventTimes[i];
@@ -23,13 +23,13 @@ void Scheduler_UpdateTargets(struct Console* sys)
 
 void Scheduler_Run(struct Console* sys)
 {
-    u8 nextevt = Sched_MAX;
-    if (sys->ARM7Target == timestamp_max) return;
+    u8 nextevt = Evt_Max;
+    if (sys->ARM7Target == timestamp_max) CrashSpectacularly("FATAL: INVALID SCHEDULER TARGET\n");
 
 #ifdef UseThreads
     mtx_lock(&sys->Sched.SchedulerMtx);
 #endif
-    for (int i = 0; i < Sched_MAX; i++)
+    for (int i = 0; i < Evt_Max; i++)
     {
         if (sys->ARM7Target >= sys->Sched.EventTimes[i])
         {
@@ -37,7 +37,7 @@ void Scheduler_Run(struct Console* sys)
             break;
         }
     }
-    if (nextevt == Sched_MAX) CrashSpectacularly("WHAT\n");
+    if (nextevt == Evt_Max) CrashSpectacularly("WHAT\n");
 
     sys->Sched.EventCallbacks[nextevt](sys, sys->Sched.EventTimes[nextevt]);
     Scheduler_UpdateTargets(sys);

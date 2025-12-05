@@ -8,10 +8,11 @@ struct Console;
 enum NTRAHB_Devices : u8
 {
     Dev_Bios7, // ARM7 only
-    Dev_MainRAM,
-    Dev_WRAM,
-    Dev_A7WRAM, // ARM7 only
-    Dev_IO,
+    //Dev_MainRAM,
+    Dev_WRAM9,
+    Dev_WRAM7,
+    Dev_IO9,
+    Dev_IO7,
 
     // ya like vram?
     Dev_VRAM_A,
@@ -27,8 +28,10 @@ enum NTRAHB_Devices : u8
     Dev_Palette,
     Dev_OAM,
 
-    Dev_MAX,
+    Dev_Max,
 };
+
+static_assert(Dev_Max < 32, "BUSYDEVICE BIT MASK TOO SMALL!!!");
 
 enum ARM9_AHBPriorities : u8
 {
@@ -43,9 +46,7 @@ enum ARM9_AHBPriorities : u8
 struct AHB
 {
     timestamp Timestamp; // AHB Timestamp.
-    timestamp BusyDeviceTS; // when the currently busy device will stop being busy.
     u32 CurOpenBus; // TODO: is this needed?
-    u8 BusyDevice; // The most recently accessed device.
 };
 
 // MainRAM is a type of FCRAM.

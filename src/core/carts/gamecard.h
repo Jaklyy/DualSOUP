@@ -26,11 +26,12 @@ typedef struct
     u32* ROM;
     u32 ChipID;
     u32 WordBuffer;
+    u32 Key1[0x412];
     Flash SRAM;
 } Gamecard;
 
 
-bool Gamecard_Init(Gamecard* card, FILE* rom);
+bool Gamecard_Init(Gamecard* card, FILE* rom, u8* bios7);
 void Gamecard_Cleanup(Gamecard* card);
 u32 Gamecard_ROMDataRead(struct Console* sys, timestamp cur, const bool a9);
 u32 Gamecard_IOReadHandler(struct Console* sys, u32 addr, timestamp cur, const bool a9);

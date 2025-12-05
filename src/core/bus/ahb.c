@@ -58,30 +58,66 @@ void Timing32(struct AHB* bus)
     bus->Timestamp += 1;
 }
 
-void WriteContention(struct AHB* bus, const u8 device)
+void WriteContention(timestamp* busyts, timestamp* cur, const u8 device)
 {
     // check if the device we're accessing is busy
     // sequential accesses shouldn't need to be checked on
-    if ((bus->Timestamp < bus->BusyDeviceTS) && (bus->BusyDevice == device))
+    if (*cur < busyts[device])
     {
-        bus->Timestamp = bus->BusyDeviceTS;
+        *cur = busyts[device];
     }
 }
 
-static inline void AddWriteContention(struct AHB* bus, const u8 device)
+static inline void AddWriteContention(timestamp* busyts, const timestamp cur, const u8 device)
 {
-    bus->BusyDevice = device;
-    bus->BusyDeviceTS = bus->Timestamp+1;
+    busyts[device] = cur+1;
+}
+
+// dma
+// 4 sub buses (probably not how this is actually handled?)
+// priority lowest id to highest
+// - dma0
+// - dma1
+// - dma2
+// - dma3
+
+// arm9
+// 3 sub buses
+// equal-ish priority
+// - arm9 instruction
+// - arm9 data
+// - arm9 write buffer
+
+bool AHB_NegOwnership(struct Console* sys, timestamp* cur, const bool atomic, const bool a9)
+{
+    struct AHB* bus = (a9) ? &sys->AHB9 : &sys->AHB7;
+
+    // ensure component is caught up to bus
+    if (*cur < bus->Timestamp) *cur = bus->Timestamp;
+
+    // check if anything else is able to run
+    if (!atomic && (*cur >= sys->Sched.EventTimes[(a9) ? Evt_DMA9 : Evt_DMA7]))
+    {
+        DMA_Run(sys, a9);
+
+        // catch up component to bus again; otherwise catch bus up to component
+        if (*cur < bus->Timestamp) *cur = bus->Timestamp;
+        else bus->Timestamp = *cur;
+
+        return false;
+    }
+    if (bus->Timestamp < *cur) bus->Timestamp = *cur;
+
+    return true;
 }
 
 #define VRAMRET(x) \
-    any = true; \
     if (write) \
     { \
         if (timings) \
         { \
-            Timing16(&sys->AHB9, mask);  \
-            AddWriteContention(&sys->AHB9, Dev_##x ); \
+            if (!any) Timing16(&sys->AHB9, mask);  \
+            AddWriteContention(sys->AHBBusyTS, sys->AHB9.Timestamp, Dev_##x ); \
         } \
         MemoryWrite(32, sys-> x , addr, x##_Size, val, mask); \
     } \
@@ -89,11 +125,12 @@ static inline void AddWriteContention(struct AHB* bus, const u8 device)
     { \
         if (timings) \
         { \
-            WriteContention(&sys->AHB9, Dev_##x ); \
-            Timing16(&sys->AHB9, mask); \
+            WriteContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_##x ); \
+            if (!any) Timing16(&sys->AHB9, mask); \
         } \
         ret = MemoryRead(32, sys-> x , addr, x##_Size); \
     } \
+    any = true; \
 
 // Thanks to Arisotura for some notes on vram bank mirroring.
 // I never would've guessed that they mirror so weirdly within a given region.
@@ -169,243 +206,225 @@ u32 VRAM_LCD(struct Console* sys, const u32 addr, const u32 mask, const bool wri
         default:
             break;
     }
-    if (!any)
+    if (!any && timings)
     {
         LogPrint(LOG_ARM9|LOG_ODD|LOG_VRAM, "UNMAPPED LCD VRAM ACCESS? %08X %08X\n", val, addr);
-        if (timings) Timing32(&sys->AHB9);
+        Timing32(&sys->AHB9);
     }
     return ret;
 }
 
 #undef VRAMRET
 
-#define VRAMCHECK(x) \
+#define VRAMRET(x) \
     if (base == index) \
-    { \
-        if (timings) regionmask |= (1 << (Dev_##x - Dev_VRAM_A)); \
-        else \
-        { \
-            if (write) MemoryWrite(32, sys-> x , addr, x##_Size, val, mask); \
-            else ret |= MemoryRead(32, sys-> x , addr, x##_Size); \
-        } \
-    }
-
-#define VRAMRET_INTERNAL(x) \
-    if (regionmask & (1 << (Dev_##x - Dev_VRAM_A))) \
     { \
         if (write) \
         { \
-            if (timings) AddWriteContention(&sys->AHB9, Dev_##x ); \
+            if (timings) \
+            { \
+                if (!any) Timing16(bus, mask); \
+                AddWriteContention(sys->AHBBusyTS, bus->Timestamp, Dev_##x ); \
+            } \
             MemoryWrite(32, sys-> x , addr, x##_Size, val, mask); \
         } \
-        else ret |= MemoryRead(32, sys-> x , addr, x##_Size); \
-    } \
-
-
-// this is probably slow but might be needed to do vram timings properly...?
-#define VRAMRET \
-    if (timings && (regionmask)) \
-    { \
-        /* manual contention check for reads */ \
-            if (!write && (sys->AHB9.Timestamp < sys->AHB9.BusyDeviceTS) && (regionmask & (1 << ((s16)sys->AHB9.BusyDevice - Dev_VRAM_A)))) \
+        else /* read */ \
+        { \
+            if (timings) \
             { \
-                sys->AHB9.Timestamp = sys->AHB9.BusyDeviceTS; \
+                WriteContention(sys->AHBBusyTS, &bus->Timestamp, Dev_##x ); \
             } \
-            Timing16(&sys->AHB9, mask); \
-        VRAMRET_INTERNAL(VRAM_A) \
-        VRAMRET_INTERNAL(VRAM_B) \
-        VRAMRET_INTERNAL(VRAM_C) \
-        VRAMRET_INTERNAL(VRAM_D) \
-        VRAMRET_INTERNAL(VRAM_E) \
-        VRAMRET_INTERNAL(VRAM_F) \
-        VRAMRET_INTERNAL(VRAM_G) \
-        VRAMRET_INTERNAL(VRAM_H) \
-        VRAMRET_INTERNAL(VRAM_I) \
+            ret = MemoryRead(32, sys-> x , addr, x##_Size); \
+        } \
+        any = true; \
     }
 
 u32 VRAM_BGA(struct Console* sys, const u32 addr, const u32 mask, const bool write, const u32 val, const bool timings)
 {
+    struct AHB* bus = &sys->AHB9;
     u32 ret = 0;
-    u16 regionmask = 0;
+    bool any = false;
     if ((sys->VRAMCR[0].Raw & 0x87) == 0x81)
     {
         u32 base = (sys->VRAMCR[0].Offset * 0x20000);
         u32 index = addr & 0x60000;
-        VRAMCHECK(VRAM_A)
+        VRAMRET(VRAM_A)
     }
     if ((sys->VRAMCR[1].Raw & 0x87) == 0x81)
     {
         u32 base = (sys->VRAMCR[1].Offset * 0x20000);
         u32 index = addr & 0x60000;
-        VRAMCHECK(VRAM_B)
+        VRAMRET(VRAM_B)
     }
     if ((sys->VRAMCR[2].Raw & 0x87) == 0x81)
     {
         u32 base = (sys->VRAMCR[2].Offset * 0x20000);
         u32 index = addr & 0x60000;
-        VRAMCHECK(VRAM_C)
+        VRAMRET(VRAM_C)
     }
     if ((sys->VRAMCR[3].Raw & 0x87) == 0x81)
     {
         u32 base = (sys->VRAMCR[3].Offset * 0x20000);
         u32 index = addr & 0x60000;
-        VRAMCHECK(VRAM_D)
+        VRAMRET(VRAM_D)
     }
     if ((sys->VRAMCR[4].Raw & 0x87) == 0x81)
     {
         u32 base = 0;
         u32 index = addr & 0x70000;
-        VRAMCHECK(VRAM_E)
+        VRAMRET(VRAM_E)
     }
     if ((sys->VRAMCR[5].Raw & 0x87) == 0x81)
     {
         u32 base = (((sys->VRAMCR[5].Offset & 1) * 0x4000) + ((sys->VRAMCR[5].Offset >> 1) * 0x10000));
         u32 index = addr & 0x74000;
-        VRAMCHECK(VRAM_F)
+        VRAMRET(VRAM_F)
     }
     if ((sys->VRAMCR[6].Raw & 0x87) == 0x81)
     {
         u32 base = (((sys->VRAMCR[6].Offset & 1) * 0x4000) + ((sys->VRAMCR[6].Offset >> 1) * 0x10000));
         u32 index = addr & 0x74000;
-        VRAMCHECK(VRAM_G)
+        VRAMRET(VRAM_G)
     }
-    VRAMRET
-    else if (timings)
+    if (any && !write && timings) Timing16(bus, mask);
+    if (!any && timings)
     {
         LogPrint(LOG_ARM9|LOG_ODD|LOG_VRAM, "UNMAPPED BG A VRAM ACCESS? %08X %08X\n", val, addr);
-        if (timings) Timing32(&sys->AHB9);
+        Timing32(&sys->AHB9);
     }
     return ret;
 }
 
 u32 VRAM_OBJA(struct Console* sys, const u32 addr, const u32 mask, const bool write, const u32 val, const bool timings)
 {
+    struct AHB* bus = &sys->AHB9;
     u32 ret = 0;
-    u16 regionmask = 0;
+    bool any = false;
     if ((sys->VRAMCR[0].Raw & 0x87) == 0x82)
     {
         u32 base = (sys->VRAMCR[0].Offset * 0x20000);
         u32 index = addr & 0x20000;
-        VRAMCHECK(VRAM_A)
+        VRAMRET(VRAM_A)
     }
     if ((sys->VRAMCR[1].Raw & 0x87) == 0x82)
     {
         u32 base = (sys->VRAMCR[1].Offset * 0x20000);
         u32 index = addr & 0x20000;
-        VRAMCHECK(VRAM_B)
+        VRAMRET(VRAM_B)
     }
     if ((sys->VRAMCR[4].Raw & 0x87) == 0x82)
     {
         u32 base = 0;
         u32 index = addr & 0x30000;
-        VRAMCHECK(VRAM_E)
+        VRAMRET(VRAM_E)
     }
     if ((sys->VRAMCR[5].Raw & 0x87) == 0x82)
     {
         u32 base = (((sys->VRAMCR[5].Offset & 1) * 0x4000) + ((sys->VRAMCR[5].Offset >> 1) * 0x10000));
         u32 index = addr & 0x34000;
-        VRAMCHECK(VRAM_F)
+        VRAMRET(VRAM_F)
     }
     if ((sys->VRAMCR[6].Raw & 0x87) == 0x82)
     {
         u32 base = (((sys->VRAMCR[6].Offset & 1) * 0x4000) + ((sys->VRAMCR[6].Offset >> 1) * 0x10000));
         u32 index = addr & 0x34000;
-        VRAMCHECK(VRAM_G)
+        VRAMRET(VRAM_G)
     }
-    VRAMRET
-    else if (timings)
+    if (any && !write && timings) Timing16(bus, mask);
+    if (!any && timings)
     {
         LogPrint(LOG_ARM9|LOG_ODD|LOG_VRAM, "UNMAPPED OBJ A VRAM ACCESS? %08X %08X\n", val, addr);
-        if (timings) Timing32(&sys->AHB9);
+        Timing32(&sys->AHB9);
     }
     return ret;
 }
 
 u32 VRAM_BGB(struct Console* sys, const u32 addr, const u32 mask, const bool write, const u32 val, const bool timings)
 {
+    struct AHB* bus = &sys->AHB9;
     u32 ret = 0;
-    u16 regionmask = 0;
+    bool any = false;
     if ((sys->VRAMCR[2].Raw & 0x87) == 0x84)
     {
         u32 base = 0;
         u32 index = 0;
-        VRAMCHECK(VRAM_C)
+        VRAMRET(VRAM_C)
     }
     if ((sys->VRAMCR[7].Raw & 0x87) == 0x81)
     {
         u32 base = 0;
         u32 index = addr & 0x8000;
-        VRAMCHECK(VRAM_H)
+        VRAMRET(VRAM_H)
     }
     if ((sys->VRAMCR[8].Raw & 0x87) == 0x81)
     {
         u32 base = 0x8000;
         u32 index = addr & 0x8000;
-        VRAMCHECK(VRAM_I)
+        VRAMRET(VRAM_I)
     }
-    VRAMRET
-    else if (timings)
+    if (any && !write && timings) Timing16(bus, mask);
+    if (!any && timings)
     {
         LogPrint(LOG_ARM9|LOG_ODD|LOG_VRAM, "UNMAPPED BG B VRAM ACCESS? %08X %08X\n", val, addr);
-        if (timings) Timing32(&sys->AHB9);
+        Timing32(&sys->AHB9);
     }
     return ret;
 }
 
 u32 VRAM_OBJB(struct Console* sys, const u32 addr, const u32 mask, const bool write, const u32 val, const bool timings)
 {
+    struct AHB* bus = &sys->AHB9;
     u32 ret = 0;
-    u16 regionmask = 0;
+    bool any = false;
     if ((sys->VRAMCR[3].Raw & 0x87) == 0x84)
     {
         u32 base = 0;
         u32 index = 0;
-        VRAMCHECK(VRAM_C)
+        VRAMRET(VRAM_C)
     }
     if ((sys->VRAMCR[8].Raw & 0x87) == 0x82)
     {
         u32 base = 0;
         u32 index = 0;
-        VRAMCHECK(VRAM_I)
+        VRAMRET(VRAM_I)
     }
-    VRAMRET
-    else if (timings)
+    if (any && !write && timings) Timing16(bus, mask);
+    if (!any && timings)
     {
         LogPrint(LOG_ARM9|LOG_ODD|LOG_VRAM, "UNMAPPED OBJ B VRAM ACCESS? %08X %08X\n", val, addr);
-        if (timings) Timing32(&sys->AHB9);
+        Timing32(&sys->AHB9);
     }
     return ret;
 }
 
 u32 VRAM_ARM7(struct Console* sys, const u32 addr, const u32 mask, const bool write, const u32 val, const bool timings)
 {
+    struct AHB* bus = &sys->AHB7;
     u32 ret = 0;
-    u16 regionmask = 0;
+    bool any = false;
     if (timings) Console_SyncWith9GT(sys, sys->AHB7.Timestamp);
     if ((sys->VRAMCR[2].Raw & 0x87) == 0x82)
     {
         u32 base = (sys->VRAMCR[2].Offset * 0x20000);
         u32 index = addr & 0x20000;
-        VRAMCHECK(VRAM_C)
+        VRAMRET(VRAM_C)
     }
     if ((sys->VRAMCR[3].Raw & 0x87) == 0x82)
     {
         u32 base = (sys->VRAMCR[3].Offset * 0x20000);
         u32 index = addr & 0x20000;
-        VRAMCHECK(VRAM_D)
+        VRAMRET(VRAM_D)
     }
-    VRAMRET
-    else if (timings)
+    if (any && !write && timings) Timing16(bus, mask);
+    if (!any && timings)
     {
         LogPrint(LOG_ARM9|LOG_ODD|LOG_VRAM, "UNMAPPED ARM7 VRAM ACCESS? %08X %08X\n", val, addr);
-        if (timings) Timing32(&sys->AHB9);
+        Timing32(&sys->AHB7);
     }
     return ret;
 }
 
-#undef VRAMCHECK
 #undef VRAMRET
-#undef VRAMRET_INTERNAL
 
 u32 VRAM_ARM9(struct Console* sys, const u32 addr, const u32 mask, const bool write, const u32 val, const bool timings)
 {
@@ -463,8 +482,6 @@ u32 Bus_MainRAM_Read(struct Console* sys, struct AHB* buscur, const bool bus9, u
         {
             if (atomic) break;
 
-            busmr->LastWasARM9 = bus9;
-
             if (sys->ExtMemCR_Shared.MRPriority)
             {
                 // arm7 has priority
@@ -484,11 +501,10 @@ u32 Bus_MainRAM_Read(struct Console* sys, struct AHB* buscur, const bool bus9, u
                 *seq = false;
                 buscur->Timestamp = busmr->BusyTS;
             }
-            else
-            {
-                break;
-            }
+            else break;
         }
+
+        busmr->LastWasARM9 = bus9;
 
         // ok we actually have confirmed bus permission now!!! yipee!!!
 
@@ -579,8 +595,6 @@ void Bus_MainRAM_Write(struct Console* sys, struct AHB* buscur, const bool bus9,
         {
             if (atomic) break;
 
-            busmr->LastWasARM9 = bus9;
-
             if (sys->ExtMemCR_Shared.MRPriority)
             {
                 // arm7 has priority
@@ -600,11 +614,10 @@ void Bus_MainRAM_Write(struct Console* sys, struct AHB* buscur, const bool bus9,
                 *seq = false;
                 buscur->Timestamp = busmr->BusyTS;
             }
-            else
-            {
-                break;
-            }
+            else break;
         }
+
+        busmr->LastWasARM9 = bus9;
 
         // ok we actually have confirmed bus permission now!!! yipee!!!
 
@@ -667,7 +680,7 @@ u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
         // NOTE: it seems to still have write contention even if unmapped?
         if (timings)
         {
-            WriteContention(&sys->AHB9, Dev_WRAM);
+            WriteContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_WRAM9);
             Timing32(&sys->AHB9);
         }
         switch(sys->WRAMCR)
@@ -686,7 +699,7 @@ u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
     case 0x04: // Memory Mapped IO
         if (timings)
         {
-            WriteContention(&sys->AHB9, Dev_IO); // checkme: does all of IO have write contention at the same time?
+            WriteContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_IO9); // checkme: does all of IO have write contention at the same time?
             Timing32(&sys->AHB9); // checkme: does all of IO have the exact same timings?
         }
         ret = IO9_Read(sys, addr, mask);
@@ -707,7 +720,7 @@ u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
         {
             if (timings)
             {
-                WriteContention(&sys->AHB9, Dev_Palette);
+                WriteContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_Palette);
                 Timing16(&sys->AHB9, mask);
             }
             ret = MemoryRead(32, sys->Palette, addr, Palette_Size);
@@ -734,7 +747,7 @@ u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
         {
             if (timings)
             {
-                WriteContention(&sys->AHB9, Dev_Palette);
+                WriteContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_Palette);
                 Timing32(&sys->AHB9);
             }
             ret = MemoryRead(32, sys->OAM, addr, OAM_Size);
@@ -770,6 +783,7 @@ u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
         }
 
     default: // Unmapped Device;
+        ARM9_Log(&sys->ARM9);
         LogPrint(LOG_ODD|LOG_ARM9,"NTR_AHB9: %i bit read from unmapped memory at 0x%08X? Something went wrong?\n", width, addr);
         if (timings)
         {
@@ -812,7 +826,7 @@ void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
         if (timings)
         {
             Timing32(&sys->AHB9);
-            AddWriteContention(&sys->AHB9, Dev_WRAM);
+            AddWriteContention(sys->AHBBusyTS, sys->AHB9.Timestamp, Dev_WRAM9);
         }
         switch(sys->WRAMCR)
         {
@@ -831,7 +845,7 @@ void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
         if (timings)
         {
             Timing32(&sys->AHB9); // checkme: does all of IO have the exact same timings?
-            AddWriteContention(&sys->AHB9, Dev_IO);
+            AddWriteContention(sys->AHBBusyTS, sys->AHB9.Timestamp, Dev_IO9);
         }
         IO9_Write(sys, addr, val, mask);
         break;
@@ -852,7 +866,7 @@ void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
             if (timings)
             {
                 Timing16(&sys->AHB9, mask);
-                AddWriteContention(&sys->AHB9, Dev_Palette);
+                AddWriteContention(sys->AHBBusyTS, sys->AHB9.Timestamp, Dev_Palette);
             }
             MemoryWrite(32, sys->Palette, addr, Palette_Size, val, mask);
         }
@@ -891,7 +905,7 @@ void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
             if (timings)
             {
                 Timing32(&sys->AHB9);
-                AddWriteContention(&sys->AHB9, Dev_OAM);
+                AddWriteContention(sys->AHBBusyTS, sys->AHB9.Timestamp, Dev_OAM);
             }
             MemoryWrite(32, sys->OAM, addr, OAM_Size, val, mask);
         }
@@ -908,6 +922,7 @@ void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
         break;
 
     default: // Unmapped Device;
+        ARM9_Log(&sys->ARM9);
         LogPrint(LOG_ODD|LOG_ARM9,"NTR_AHB9: %i bit write to unmapped memory at 0x%08X? Something went wrong?\n", width, addr);
         if (timings)
         {
@@ -921,44 +936,6 @@ void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
     {
         *ts = sys->AHB9.Timestamp;
     }
-}
-
-// dma
-// 4 sub buses (probably not how this is actually handled?)
-// priority lowest id to highest
-// - dma0
-// - dma1
-// - dma2
-// - dma3
-
-// arm9
-// 3 sub buses
-// equal-ish priority
-// - arm9 instruction
-// - arm9 data
-// - arm9 write buffer
-
-bool AHB_NegOwnership(struct Console* sys, timestamp* cur, const bool atomic, const bool a9)
-{
-    struct AHB* bus = (a9) ? &sys->AHB9 : &sys->AHB7;
-
-    // ensure component is caught up to bus
-    if (*cur < bus->Timestamp) *cur = bus->Timestamp;
-
-    // check if anything else is able to run
-    if (!atomic && (*cur >= sys->Sched.EventTimes[(a9) ? Sched_DMA9 : Sched_DMA7]))
-    {
-        Scheduler_RunEventManual(sys, *cur, (a9) ? Sched_DMA9 : Sched_DMA7, a9);
-
-        // catch up component to bus again; otherwise catch bus up to component
-        if (*cur < bus->Timestamp) *cur = bus->Timestamp;
-        else bus->Timestamp = *cur;
-
-        return false;
-    }
-    if (bus->Timestamp < *cur) bus->Timestamp = *cur;
-
-    return true;
 }
 
 u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, const bool atomic, const bool hold, bool* seq, const bool timings)
@@ -983,7 +960,7 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
         if (timings)
         {
             // CHECKME: does bios7 write contention work weirdly with bios prot?
-            WriteContention(&sys->AHB7, Dev_Bios7);
+            WriteContention(sys->AHBBusyTS, &sys->AHB7.Timestamp, Dev_Bios7);
             Timing32(&sys->AHB7);
         }
         ret = MemoryRead(32, sys->NTRBios7, addr, NTRBios7_Size);
@@ -997,9 +974,9 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
     case 0x030: // Shared WRAM
         if (timings)
         {
-            Console_SyncWith9GT(sys, sys->AHB7.Timestamp);
-            WriteContention(&sys->AHB7, Dev_WRAM);
+            WriteContention(sys->AHBBusyTS, &sys->AHB7.Timestamp, Dev_WRAM7);
             Timing32(&sys->AHB7);
+            Console_SyncWith9GT(sys, sys->AHB7.Timestamp);
         }
         switch(sys->WRAMCR)
         {
@@ -1017,7 +994,7 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
     case 0x038: // ARM7 WRAM
         if (timings)
         {
-            WriteContention(&sys->AHB7, Dev_WRAM);
+            WriteContention(sys->AHBBusyTS, &sys->AHB7.Timestamp, Dev_WRAM7);
             Timing32(&sys->AHB7);
         }
         ret = MemoryRead(32, sys->ARM7WRAM, addr, ARM7WRAM_Size);
@@ -1026,7 +1003,7 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
     case 0x040: // Memory Mapped IO
         if (timings)
         {
-            WriteContention(&sys->AHB7, Dev_IO); // checkme: does all of IO have write contention at the same time?
+            WriteContention(sys->AHBBusyTS, &sys->AHB7.Timestamp, Dev_IO7); // checkme: does all of IO have write contention at the same time?
             Timing32(&sys->AHB7); // checkme: does all of IO have the exact same timings?
         }
         ret = IO7_Read(sys, addr, mask);
@@ -1044,14 +1021,14 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
     case 0x080 ... 0x098: // GBA Cartridge ROM
         LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented READ%i: GBAROM\n", width);
         ret = (sys->ExtMemCR_Shared.GBAPakAccess ? 0xFFFFFFFF : 0); // TODO
-        Timing32(&sys->AHB9);
+        Timing32(&sys->AHB7);
         break;
 
     case 0x0A0: // GBA Cartridge RAM
     case 0x0A8: // GBA Cartridge RAM
         LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented READ%i: GBARAM\n", width);
         ret = (sys->ExtMemCR_Shared.GBAPakAccess ? 0xFFFFFFFF : 0); // TODO
-        Timing32(&sys->AHB9);
+        Timing32(&sys->AHB7);
         break;
 #if 0
     case 0xEA0:
@@ -1103,7 +1080,7 @@ void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
         {
             // CHECKME: does bios7 write contention work weirdly with bios prot?
             Timing32(&sys->AHB7);
-            AddWriteContention(&sys->AHB7, Dev_WRAM);
+            AddWriteContention(sys->AHBBusyTS, sys->AHB7.Timestamp, Dev_Bios7);
         }
         break;
 
@@ -1115,9 +1092,9 @@ void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
     case 0x030: // Shared WRAM
         if (timings)
         {
-            Console_SyncWith9GT(sys, sys->AHB7.Timestamp);
             Timing32(&sys->AHB7);
-            AddWriteContention(&sys->AHB7, Dev_WRAM);
+            AddWriteContention(sys->AHBBusyTS, sys->AHB7.Timestamp, Dev_WRAM7);
+            Console_SyncWith9GT(sys, sys->AHB7.Timestamp);
         }
         switch(sys->WRAMCR)
         {
@@ -1136,7 +1113,7 @@ void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
         if (timings)
         {
             Timing32(&sys->AHB7);
-            AddWriteContention(&sys->AHB7, Dev_WRAM);
+            AddWriteContention(sys->AHBBusyTS, sys->AHB7.Timestamp, Dev_WRAM7);
         }
         MemoryWrite(32, sys->ARM7WRAM, addr, ARM7WRAM_Size, val, mask);
         break;
@@ -1145,7 +1122,7 @@ void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
         if (timings)
         {
             Timing32(&sys->AHB7); // checkme: does all of IO have the exact same timings?
-            AddWriteContention(&sys->AHB7, Dev_IO);
+            AddWriteContention(sys->AHBBusyTS, sys->AHB7.Timestamp, Dev_IO7);
         }
         IO7_Write(sys, addr, val, mask);
         break;

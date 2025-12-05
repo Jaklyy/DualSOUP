@@ -9,24 +9,26 @@ struct Console;
 
 enum Scheduler_Events : u8
 {
-    Sched_DMA9,
-    Sched_IF9Update,
-    Sched_Divider,
-    Sched_Sqrt,
+    Evt_DMA9,
+    Evt_IF9Update,
+    Evt_Divider,
+    Evt_Sqrt,
+    Evt_Timer9,
 
-    Sched_DMA7,
-    Sched_IF7Update,
+    Evt_DMA7,
+    Evt_IF7Update,
+    Evt_Timer7,
 
-    Sched_Scanline,
-    Sched_Gamecard,
+    Evt_Scanline,
+    Evt_Gamecard,
 
-    Sched_MAX
+    Evt_Max
 };
 
 struct Scheduler
 {
-    alignas(HOST_CACHEALIGN) timestamp EventTimes[Sched_MAX];
-    void (*EventCallbacks[Sched_MAX]) (struct Console*, timestamp);
+    alignas(HOST_CACHEALIGN) timestamp EventTimes[Evt_Max];
+    void (*EventCallbacks[Evt_Max]) (struct Console*, timestamp);
 
     mtx_t SchedulerMtx;
 };

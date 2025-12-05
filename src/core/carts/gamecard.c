@@ -1,13 +1,14 @@
 #include "gamecard.h"
 #include "../console.h"
 #include <stdlib.h>
+#include <string.h>
 #include <stdio.h>
 
 
 
 
 // todo SRAM
-bool Gamecard_Init(Gamecard* card, FILE* rom)
+bool Gamecard_Init(Gamecard* card, FILE* rom, u8* bios7)
 {
     fseek(rom, 0, SEEK_END);
     u64 size = ftell(rom);
@@ -44,6 +45,8 @@ bool Gamecard_Init(Gamecard* card, FILE* rom)
         return false;
     }
 
+    memcpy(card->Key1, &bios7[0xC6D0], 1042);
+
     if (!Flash_InitB(&card->SRAM, KiB(256))) return false;
     // TODO: make configurable
     card->ChipID = 0x01010101;
@@ -57,7 +60,80 @@ void Gamecard_Cleanup(Gamecard* card)
 
 // TODO: reset func?
 
-u32 GamecardMisc_ROMReadB7Handler(Gamecard* card)
+// this is just ripped from melonds
+void Key1_Encrypt(Gamecard* card, u32* data)
+{
+    u32 y = data[0];
+    u32 x = data[1];
+    u32 z;
+
+    for (u32 i = 0x0; i <= 0xF; i++)
+    {
+        z = card->Key1[i] ^ x;
+        x =  card->Key1[0x012 +  (z >> 24)        ];
+        x += card->Key1[0x112 + ((z >> 16) & 0xFF)];
+        x ^= card->Key1[0x212 + ((z >>  8) & 0xFF)];
+        x += card->Key1[0x312 +  (z        & 0xFF)];
+        x ^= y;
+        y = z;
+    }
+
+    data[0] = x ^ card->Key1[0x10];
+    data[1] = y ^ card->Key1[0x11];
+}
+
+// this is just ripped from melonds
+void Key1_Decrypt(Gamecard* card, u32* data)
+{
+    u32 y = data[0];
+    u32 x = data[1];
+    u32 z;
+
+    for (u32 i = 0x11; i >= 0x2; i--)
+    {
+        z = card->Key1[i] ^ x;
+        x =  card->Key1[0x012 +  (z >> 24)        ];
+        x += card->Key1[0x112 + ((z >> 16) & 0xFF)];
+        x ^= card->Key1[0x212 + ((z >>  8) & 0xFF)];
+        x += card->Key1[0x312 +  (z        & 0xFF)];
+        x ^= y;
+        y = z;
+    }
+
+    data[0] = x ^ card->Key1[0x1];
+    data[1] = y ^ card->Key1[0x0];
+}
+
+// this is just ripped from melonds
+void Key1_Apply(Gamecard* card, u32* code, u32 mod)
+{
+    Key1_Encrypt(card, &code[1]);
+    Key1_Encrypt(card, &code[0]);
+
+    u32 temp[2] = {0,0};
+
+    for (u32 i = 0; i <= 0x11; i++)
+    {
+        card->Key1[i] ^= bswap(code[i % mod]);
+    }
+    for (u32 i = 0; i <= 0x410; i+=2)
+    {
+        Key1_Encrypt(card, temp);
+        card->Key1[i  ] = temp[1];
+        card->Key1[i+1] = temp[0];
+    }
+}
+
+// this is just ripped from melonds
+void GamecardMisc_InitKey1(Gamecard* card)
+{
+    u32 code[3] = {card->ROM[0xC], card->ROM[0xC]>>1 ,card->ROM[0xC]<<1};
+    Key1_Apply(card, code, 2);
+    Key1_Apply(card, code, 2);
+    card->Mode = Key1;
+}
+
+u32 GamecardMisc_ROMReadHandler(Gamecard* card)
 {
     u32 ret = card->ROM[card->Address/sizeof(u32)];
     card->Address += 4;
@@ -70,7 +146,7 @@ u32 GamecardMisc_ROMReadB7Handler(Gamecard* card)
     return ret;
 }
 
-u32 GamecardMisc_ROMReadB7SecureAreaHandler(Gamecard* card)
+u32 GamecardMisc_ROMReadSecureAreaHandler(Gamecard* card)
 {
     u32 ret = card->ROM[(0x1000+card->Address)/sizeof(u32)];
     card->Address += 4;
@@ -79,9 +155,25 @@ u32 GamecardMisc_ROMReadB7SecureAreaHandler(Gamecard* card)
     return ret;
 }
 
-u32 GamecardMisc_IDReadB8Handler(Gamecard* card)
+u32 GamecardMisc_ReadSecureAreaHandler(Gamecard* card)
+{
+    // TODO: what does this actually do???
+    u32 ret = card->ROM[card->Address/sizeof(u32)];
+    card->Address += 4;
+    return ret;
+}
+
+u32 GamecardMisc_UnencIDReadHandler(Gamecard* card)
 {
     return card->ChipID;
+}
+
+u32 GamecardMisc_UnencHeaderHandler(Gamecard* card)
+{
+    card->Address &= 0xFFF;
+    u32 ret = card->ROM[card->Address/sizeof(u32)];
+    card->Address += 4;
+    return ret;
 }
 
 u32 GamecardMisc_InvalidCmdHandler([[maybe_unused]] Gamecard* card)
@@ -101,21 +193,42 @@ void* GamecardMisc_ROMCommandHandler(struct Console* sys, const bool a9)
             {
                 case 0x9F:
                     // High Z
-                    break;
+                    return GamecardMisc_InvalidCmdHandler;
                 case 0x00:
                     // header
-                    break;
+                    card->Address = (bswap(cmd) >> 24);
+                    return GamecardMisc_UnencHeaderHandler;
                 case 0x90:
                     // chip id
-                    break;
+                    return GamecardMisc_UnencIDReadHandler;
                 case 0x3C:
                     // active key 1
-                    break;
+                    GamecardMisc_InitKey1(card);
+                    return GamecardMisc_InvalidCmdHandler; // idk?
             }
             break;
         }
         case Key1:
+        {
+            cmd = bswap(cmd);
+            Key1_Decrypt(card, (u32*)&cmd); // type punning...
+            cmd = bswap(cmd);
+
+            switch(cmd & 0xF0)
+            {
+                case 0x40:
+                    return GamecardMisc_InvalidCmdHandler; // idk?
+                case 0x10:
+                    return GamecardMisc_UnencIDReadHandler;
+                case 0x20:
+                    card->Address = ((cmd >> 24) & 0xF0) << 8;
+                    return GamecardMisc_ReadSecureAreaHandler;
+                case 0xA0:
+                    card->Mode = Key2;
+                    return GamecardMisc_InvalidCmdHandler; // idk?
+            }
             break;
+        }
         case Key2:
         {
             switch(cmd & 0xFF)
@@ -123,19 +236,19 @@ void* GamecardMisc_ROMCommandHandler(struct Console* sys, const bool a9)
                 case 0xB7:
                 {
                     // data
-                    card->Address = ((((cmd >> 8) & 0xFF) << 24) | (((cmd >> 16) & 0xFF) << 16) | (((cmd >> 24) & 0xFF) << 8) | (((cmd >> 32) & 0xFF) << 0)) & (card->RomSize-4); // subtract 4 as a weird way to handle masking out bottom bits as well.
+                    card->Address = (bswap(cmd) >> 24) & (card->RomSize-4); // subtract 4 as a weird way to handle masking out bottom bits as well.
                     if (!(card->Address & ~(KiB(4)-1)))
                     {
                         // secure area is rerouted to the 512 bytes above the 
                         card->Address &= 0x1FF;
-                        return GamecardMisc_ROMReadB7SecureAreaHandler;
+                        return GamecardMisc_ROMReadSecureAreaHandler;
                     }
-                    else return GamecardMisc_ROMReadB7Handler;
+                    else return GamecardMisc_ROMReadHandler;
                 }
                 case 0xB8:
                 {
                     // chip id
-                    return GamecardMisc_IDReadB8Handler;
+                    return GamecardMisc_UnencIDReadHandler;
                 }
                 default:
                     return GamecardMisc_InvalidCmdHandler;
@@ -169,18 +282,18 @@ void QueueNextTransfer(struct Console* sys, timestamp cur, const bool a9)
 
         transtime *= ((sys->GCROMCR[a9].ClockDivider) ? 8 : 5);
 
-        Schedule_Event(sys, Gamecard_HandleSchedulingROM, Sched_Gamecard, cur+transtime);
+        Schedule_Event(sys, Gamecard_HandleSchedulingROM, Evt_Gamecard, cur+transtime);
     }
     else
     {
         sys->GCROMCR[a9].Start = false;
-        Schedule_Event(sys, Gamecard_HandleSchedulingROM, Sched_Gamecard, timestamp_max);
+        Schedule_Event(sys, Gamecard_HandleSchedulingROM, Evt_Gamecard, timestamp_max);
     }
 }
 
 u32 Gamecard_ROMDataRead(struct Console* sys, timestamp cur, const bool a9)
 {
-    Scheduler_RunEventManual(sys, cur, Sched_Gamecard, a9);
+    Scheduler_RunEventManual(sys, cur, Evt_Gamecard, a9);
     Gamecard* card = &sys->Gamecard;
 
     u32 ret = sys->GCROMData[a9];
@@ -190,6 +303,7 @@ u32 Gamecard_ROMDataRead(struct Console* sys, timestamp cur, const bool a9)
         QueueNextTransfer(sys, cur, a9);
         sys->GCROMData[a9] = card->WordBuffer;
         card->Buffered = false;
+        StartDMA9(sys, cur+1, DMAStart_NTRCard); // checkme: delay?
     }
     else sys->GCROMCR[a9].DataReady = false;
 
@@ -206,12 +320,13 @@ void Gamecard_HandleSchedulingROM(struct Console* sys, timestamp now)
     {
         card->Buffered = true;
         card->WordBuffer = card->ReadHandler(card);
-        Schedule_Event(sys, Gamecard_HandleSchedulingROM, Sched_Gamecard, timestamp_max);
+        Schedule_Event(sys, Gamecard_HandleSchedulingROM, Evt_Gamecard, timestamp_max);
     }
     else
     {
         sys->GCROMData[a9] = card->ReadHandler(card);
         sys->GCROMCR[a9].DataReady = true;
+        StartDMA9(sys, now+1, DMAStart_NTRCard); // checkme: delay?
     }
 
     QueueNextTransfer(sys, now, a9);
@@ -244,12 +359,12 @@ void Gamecard_ROMCommandSubmit(struct Console* sys, timestamp cur, const bool a9
     transfertime *= ((sys->GCROMCR[a9].ClockDivider) ? 8 : 5);
     transfertime += 3;
 
-    Schedule_Event(sys, Gamecard_HandleSchedulingROM, Sched_Gamecard, cur+transfertime);
+    Schedule_Event(sys, Gamecard_HandleSchedulingROM, Evt_Gamecard, cur+transfertime);
 }
 
 u32 Gamecard_IOReadHandler(struct Console* sys, u32 addr, timestamp cur, const bool a9)
 {
-    Scheduler_RunEventManual(sys, cur, Sched_Gamecard, a9);
+    Scheduler_RunEventManual(sys, cur, Evt_Gamecard, a9);
     addr -= 0x040001A0;
 
     // a7 is set for exmemcnt bits
@@ -270,7 +385,7 @@ u32 Gamecard_IOReadHandler(struct Console* sys, u32 addr, timestamp cur, const b
 void Gamecard_IOWriteHandler(struct Console* sys, u32 addr, const u32 val, const u32 mask, timestamp cur, const bool a9)
 {
     addr -= 0x040001A0;
-    Scheduler_RunEventManual(sys, cur, Sched_Gamecard, a9);
+    Scheduler_RunEventManual(sys, cur, Evt_Gamecard, a9);
 
     // a7 is set for exmemcnt bits
     if (sys->ExtMemCR_Shared.NDSCardAccess == a9) return; // checkme: all of them?

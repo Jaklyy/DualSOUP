@@ -197,7 +197,7 @@ void IO9_FinishDiv(struct Console* sys, [[maybe_unused]] timestamp now)
     sys->DivCR.DivByZero = !sys->DivDen.b64;
     sys->DivCR.Busy = false;
 
-    Schedule_Event(sys, IO9_FinishDiv, Sched_Divider, timestamp_max);
+    Schedule_Event(sys, IO9_FinishDiv, Evt_Divider, timestamp_max);
 }
 
 void IO9_StartDiv(struct Console* sys)
@@ -205,7 +205,7 @@ void IO9_StartDiv(struct Console* sys)
     sys->DivQuo.b64 = 0;
     sys->DivRem.b64 = 0;
     sys->DivCR.Busy = true;
-    Schedule_Event(sys, IO9_FinishDiv, Sched_Divider, sys->AHB9.Timestamp + ((sys->DivCR.DivMode == 0 ) ? 18 : 34));
+    Schedule_Event(sys, IO9_FinishDiv, Evt_Divider, sys->AHB9.Timestamp + ((sys->DivCR.DivMode == 0 ) ? 18 : 34));
 }
 
 // algorithm stolen from melonds which links this so im linking it too, sue me.
@@ -247,14 +247,14 @@ void IO9_FinishSqrt(struct Console* sys, [[maybe_unused]] timestamp now)
 
     sys->SqrtRes = res;
     sys->SqrtCR.Busy = false;
-    Schedule_Event(sys, IO9_FinishSqrt, Sched_Sqrt, timestamp_max);
+    Schedule_Event(sys, IO9_FinishSqrt, Evt_Sqrt, timestamp_max);
 }
 
 void IO9_StartSqrt(struct Console* sys)
 {
     sys->SqrtRes = 0;
     sys->SqrtCR.Busy = true;
-    Schedule_Event(sys, IO9_FinishSqrt, Sched_Sqrt, sys->AHB9.Timestamp + 13);
+    Schedule_Event(sys, IO9_FinishSqrt, Evt_Sqrt, sys->AHB9.Timestamp + 13);
 }
 
 
@@ -263,14 +263,14 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask)
     switch(addr & 0xFF'FF'FC)
     {
         case 0x00'00'04:
-            Scheduler_RunEventManual(sys, sys->AHB7.Timestamp, Sched_Scanline, false);
+            Scheduler_RunEventManual(sys, sys->AHB7.Timestamp, Evt_Scanline, false);
             return (sys->VCount << 16);
 
         case 0x00'00'B0 ... 0x00'00'E0-1:
             return DMA_IOReadHandler(sys->DMA7.Channels, addr);
 
         case 0x00'01'00 ... 0x00'01'0C:
-            return Timer_IOReadHandler(sys->Timers7, sys->AHB7.Timestamp, addr);
+            return Timer_IOReadHandler(sys, sys->Timers7, sys->AHB7.Timestamp, addr, false);
 
         case 0x00'01'30:
             return Input_PollMain(sys->Pad);
@@ -302,7 +302,7 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask)
         case 0x00'02'10: // IE
             return sys->IE7;
         case 0x00'02'14: // IF
-            Scheduler_RunEventManual(sys, sys->AHB7.Timestamp, Sched_IF7Update, false);
+            Scheduler_RunEventManual(sys, sys->AHB7.Timestamp, Evt_IF7Update, false);
             return sys->IF7;
 
         case 0x00'02'40: // VRAM/WRAM Status
@@ -315,6 +315,9 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask)
 
         case 0x00'03'04:
             return sys->PowerCR7.Raw;
+
+        case 0x00'05'04:
+            return sys->SoundBias;
 
         case 0x10'00'00:
             return IPC_FIFORead(sys, mask, false);
@@ -333,7 +336,7 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
     switch(addr & 0xFF'FF'FC)
     {
         case 0x00'00'04:
-            Scheduler_RunEventManual(sys, sys->AHB7.Timestamp, Sched_Scanline, false);
+            Scheduler_RunEventManual(sys, sys->AHB7.Timestamp, Evt_Scanline, false);
             //sys->DispStatRW.Raw = val & mask & 0xB8;
 
             // TODO VCount Match Settings.
@@ -354,7 +357,7 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             break;
 
         case 0x00'01'00 ... 0x00'01'0C:
-            Timer_IOWriteHandler(sys->Timers7, sys->AHB7.Timestamp, addr, val, mask);
+            Timer_IOWriteHandler(sys, sys->Timers7, sys->AHB7.Timestamp, addr, val, mask, false);
             break;
 
         case 0x00'01'80: // ipcsync
@@ -398,10 +401,10 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
                     LogPrint(LOG_ARM7|LOG_UNIMP, "POWMAN UNIMPLEMENTED!\n");
                     break;
                 case 1:
-                    LogPrint(LOG_ARM7|LOG_UNIMP, "TSC UNIMPLEMENTED!\n");
+                    sys->SPIOut = Flash_CMDSend(&sys->Firmware, val>>16, sys->SPICR.ChipSelect);
                     break;
                 case 2:
-                    sys->SPIOut = Flash_CMDSend(&sys->Firmware, val>>16, sys->SPICR.ChipSelect);
+                    LogPrint(LOG_ARM7|LOG_UNIMP, "TSC UNIMPLEMENTED!\n");
                     break;
                 case 3:
                     LogPrint(LOG_ARM7|LOG_UNIMP, "spi RESERVED????????????\n");
@@ -421,7 +424,7 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             MaskedWrite(sys->IE7, val, mask & 0x01DF3FFF);
             break;
         case 0x00'02'14: // IF
-            Scheduler_RunEventManual(sys, sys->AHB7.Timestamp, Sched_IF7Update, false);
+            Scheduler_RunEventManual(sys, sys->AHB7.Timestamp, Evt_IF7Update, false);
             sys->IF7 &= ~(val & mask);
             break;
 
@@ -461,6 +464,10 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             MaskedWrite(sys->PowerCR7.Raw, val, mask & 0x3);
             break;
 
+        case 0x00'05'04:
+            MaskedWrite(sys->SoundBias, val, mask & 0x3FF);
+            break;
+
         default:
             LogPrint(LOG_ARM7 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO7 WRITE: %08X %08X %08X @ %08X\n", addr, val, mask, sys->ARM7.ARM.PC);
             break;
@@ -475,7 +482,7 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask)
             return sys->PPU_A.DisplayCR.Raw;
 
         case 0x00'00'04:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Sched_Scanline, true);
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Scanline, true);
             return (sys->VCount << 16) | sys->DispStatRO.Raw |  sys->DispStatRW.Raw;
 
         // DMA
@@ -485,7 +492,7 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask)
             return sys->DMAFill[(addr & 0xF) / 4];
 
         case 0x00'01'00 ... 0x00'01'0C:
-            return Timer_IOReadHandler(sys->Timers9, sys->AHB9.Timestamp, addr);
+            return Timer_IOReadHandler(sys, sys->Timers9, sys->AHB9.Timestamp, addr, true);
 
         case 0x00'01'30:
             return Input_PollMain(sys->Pad);
@@ -511,7 +518,7 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask)
         case 0x00'02'10: // IE
             return sys->IE9;
         case 0x00'02'14: // IF
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Sched_IF9Update, true);
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_IF9Update, true);
             return sys->IF9;
 
         // VRAM/WRAM Control
@@ -526,44 +533,44 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask)
 
 
         case 0x00'02'80:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Sched_Divider, true);
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true);
             return sys->DivCR.Raw;
 
         case 0x00'02'90:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Sched_Divider, true);
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true);
             return sys->DivNum.b32[0];
         case 0x00'02'94:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Sched_Divider, true);
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true);
             return sys->DivNum.b32[1];
         case 0x00'02'98:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Sched_Divider, true);
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true);
             return sys->DivDen.b32[0];
         case 0x00'02'9C:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Sched_Divider, true);
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true);
             return sys->DivDen.b32[1];
         case 0x00'02'A0:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Sched_Divider, true);
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true);
             return sys->DivQuo.b32[0];
         case 0x00'02'A4:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Sched_Divider, true);
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true);
             return sys->DivQuo.b32[1];
         case 0x00'02'A8:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Sched_Divider, true);
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true);
             return sys->DivRem.b32[0];
         case 0x00'02'AC:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Sched_Divider, true);
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true);
             return sys->DivRem.b32[1];
         case 0x00'02'B0:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Sched_Divider, true);
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true);
             return sys->SqrtCR.Raw;
         case 0x00'02'B4:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Sched_Divider, true);
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true);
             return sys->SqrtRes;
         case 0x00'02'B8:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Sched_Divider, true);
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true);
             return sys->SqrtParam.b32[0];
         case 0x00'02'BC:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Sched_Divider, true);
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true);
             return sys->SqrtParam.b32[1];
 
 
@@ -584,7 +591,7 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask)
 
         case 0x10'00'00:
             return IPC_FIFORead(sys, mask, true);
-        
+
         case 0x10'00'10:
             return Gamecard_ROMDataRead(sys, sys->AHB9.Timestamp, true);
 
@@ -603,7 +610,7 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             break;
 
         case 0x00'00'04:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Sched_Scanline, true);
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Scanline, true);
             MaskedWrite(sys->DispStatRW.Raw, val, mask & 0xB8);
 
             // TODO VCount Match Settings.
@@ -627,7 +634,7 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             break;
 
         case 0x00'01'00 ... 0x00'01'0C:
-            Timer_IOWriteHandler(sys->Timers9, sys->AHB9.Timestamp, addr, val, mask);
+            Timer_IOWriteHandler(sys, sys->Timers9, sys->AHB9.Timestamp, addr, val, mask, true);
             break;
 
         case 0x00'01'80: // ipcsync
@@ -682,7 +689,7 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             MaskedWrite(sys->IE9, val, mask & 0x003F3F7F);
             break;
         case 0x00'02'14: // IF
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Sched_IF9Update, true);
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_IF9Update, true);
             sys->IF9 &= ~(val & mask);
             break;
 

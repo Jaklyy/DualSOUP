@@ -10,7 +10,6 @@ timestamp DMA_CheckNext(struct DMA_Controller* cnt, u8* id)
     timestamp time = timestamp_max;
 
     int max = stdc_trailing_zeros(cnt->CurMask) - 1;
-    printf("mask: %02X %i\n", cnt->CurMask, max);
     if (max > 3) max = 3;
     for (int i = max; i >= 0; i--)
     {
@@ -25,19 +24,12 @@ timestamp DMA_CheckNext(struct DMA_Controller* cnt, u8* id)
 
 void DMA9_ScheduledRun(struct Console* sys, [[maybe_unused]] timestamp now)
 {
-    coroutine old = CR_Active();
     CR_Switch(sys->HandleARM9);
-    DMA_Run(sys, &sys->DMA9, sys->DMA9.NextID, true);
-
-    CR_Switch(old);
 }
 
 void DMA7_ScheduledRun(struct Console* sys, [[maybe_unused]] timestamp now)
 {
-    coroutine old = CR_Active();
-    CR_Switch(sys->HandleARM9);
-    DMA_Run(sys, &sys->DMA9, sys->DMA7.NextID, false);
-    CR_Switch(old);
+    CR_Switch(sys->HandleARM7);
 }
 
 void DMA_Schedule(struct Console* sys, const bool a9)
@@ -48,13 +40,39 @@ void DMA_Schedule(struct Console* sys, const bool a9)
 
     u8 id = -1;
     timestamp time = DMA_CheckNext(cnt, &id);
-    printf("time %i, %li\n", id, time);
     cnt->NextID = id;
     if (a9)
-        Schedule_Event(sys, DMA9_ScheduledRun, Sched_DMA9, time);
+        Schedule_Event(sys, DMA9_ScheduledRun, Evt_DMA9, time);
     else
-        Schedule_Event(sys, DMA7_ScheduledRun, Sched_DMA7, time);
+        Schedule_Event(sys, DMA7_ScheduledRun, Evt_DMA7, time);
 }
+
+void StartDMA9(struct Console* sys, timestamp start, u8 mode)
+{
+    for (int i = 0; i < 4; i++)
+    {
+        if (!sys->DMA9.Channels[i].CR.Enable) continue;
+        if (sys->DMA9.Channels[i].CurrentMode != mode) continue;
+        if ((sys->DMA9.ChannelLastEnded[i] <= start) && ((sys->DMA9.ChannelTimestamps[i] < start) || (sys->DMA9.ChannelTimestamps[i] == timestamp_max))) // checkme: starting dma while already started?
+            sys->DMA9.ChannelTimestamps[i] = start;
+        else LogPrint(LOG_ALWAYS, "DMA9 START FAILURE tried: %li ended: %li current: %li mode: %i\n", start, sys->DMA9.ChannelLastEnded[i], sys->DMA9.ChannelTimestamps[i], mode);
+    }
+    DMA_Schedule(sys, true);
+}
+
+void StartDMA7(struct Console* sys, timestamp start, u8 mode)
+{
+    for (int i = 0; i < 4; i++)
+    {
+        if (!sys->DMA7.Channels[i].CR.Enable) continue;
+        if (sys->DMA7.Channels[i].CurrentMode != mode) continue;
+        if ((sys->DMA7.ChannelLastEnded[i] <= start) && ((sys->DMA7.ChannelTimestamps[i] < start) || (sys->DMA7.ChannelTimestamps[i] == timestamp_max))) // checkme: starting dma while already started?
+            sys->DMA7.ChannelTimestamps[i] = start;
+        else LogPrint(LOG_ALWAYS, "DMA7 START FAILURE tried: %li ended: %li current: %li mode: %i\n", start, sys->DMA7.ChannelLastEnded[i], sys->DMA7.ChannelTimestamps[i], mode);
+    }
+    DMA_Schedule(sys, false);
+}
+
 
 void DMA7_Enable(struct Console* sys, struct DMA_Channel* channel, u8 channel_id)
 {
@@ -67,15 +85,15 @@ void DMA7_Enable(struct Console* sys, struct DMA_Channel* channel, u8 channel_id
     case 0: // Immediate
     {
         channel->CurrentMode = DMAStart_Immediate;
-        sys->DMA7.ChannelTimestamps[channel_id] = sys->AHB7.Timestamp+1;
+        StartDMA7(sys, sys->AHB7.Timestamp+1, DMAStart_Immediate);
         break;
     }
-    #if 0
     case 1: // VBlank
     {
         channel->CurrentMode = DMAStart_VBlank;
         break;
     }
+    #if 0
     case 2: // NTR Gamecard
     {
         channel->CurrentMode = DMAStart_NTRCard;
@@ -118,11 +136,9 @@ void DMA7_Enable(struct Console* sys, struct DMA_Channel* channel, u8 channel_id
         channel->SrcInc *= 2;
         channel->DstInc *= 2;
     }
-
-    DMA_Schedule(sys, false);
 }
 
-void DMA9_Enable(struct Console* sys, struct DMA_Channel* channel, u8 channel_id)
+void DMA9_Enable(struct Console* sys, struct DMA_Channel* channel)
 {
     channel->Latched_SrcAddr = channel->SrcAddr;
     channel->Latched_DstAddr = channel->DstAddr;
@@ -133,10 +149,9 @@ void DMA9_Enable(struct Console* sys, struct DMA_Channel* channel, u8 channel_id
     case 0: // Immediate
     {
         channel->CurrentMode = DMAStart_Immediate;
-        sys->DMA9.ChannelTimestamps[channel_id] = sys->AHB9.Timestamp+1;
+        StartDMA9(sys, sys->AHB9.Timestamp+1, DMAStart_Immediate);
         break;
     }
-    #if 0
     case 1: // VBlank
     {
         channel->CurrentMode = DMAStart_VBlank;
@@ -147,6 +162,12 @@ void DMA9_Enable(struct Console* sys, struct DMA_Channel* channel, u8 channel_id
         channel->CurrentMode = DMAStart_HBlank;
         break;
     }
+    case 5: // NTR Gamecard
+    {
+        channel->CurrentMode = DMAStart_NTRCard;
+        break;
+    }
+    #if 0
     case 3: // synchronize to start of display(??)
     {
         channel->CurrentMode = DMAStart_Video;
@@ -157,11 +178,6 @@ void DMA9_Enable(struct Console* sys, struct DMA_Channel* channel, u8 channel_id
     case 4: // Display FIFO
     {
         channel->CurrentMode = DMAStart_DisplayFIFO;
-        break;
-    }
-    case 5: // NTR Gamecard
-    {
-        channel->CurrentMode = DMAStart_NTRCard;
         break;
     }
     case 6: // AGB Gamepak
@@ -206,16 +222,16 @@ void DMA9_Enable(struct Console* sys, struct DMA_Channel* channel, u8 channel_id
         channel->SrcInc *= 2;
         channel->DstInc *= 2;
     }
-    DMA_Schedule(sys, true);
 }
 
-void DMA_Run(struct Console* sys, struct DMA_Controller* cnt, u8 id, const bool a9)
+void DMA_Run(struct Console* sys, const bool a9)
 {
-    printf("run %i\n", id);
     u32 rmask;
     u32 wmask;
-    u64 timecur = sys->DMA9.ChannelTimestamps[id];
-    sys->DMA9.ChannelTimestamps[id] = timestamp_max;
+    struct DMA_Controller* cnt = ((a9) ? &sys->DMA9 : &sys->DMA7);
+    u8 id = cnt->NextID;
+    u64 timecur = cnt->ChannelTimestamps[id];
+    cnt->ChannelTimestamps[id] = timestamp_max;
 
     cnt->CurMask |= 1<<id;
     DMA_Schedule(sys, a9);
@@ -301,15 +317,16 @@ void DMA_Run(struct Console* sys, struct DMA_Controller* cnt, u8 id, const bool 
     }
     cnt->CurMask &= ~1<<id;
 
+    cnt->ChannelLastEnded[id] = timecur;
+
     if (channel->CR.IRQ) // TODO
-        {}
+        Console_ScheduleIRQs(sys, IRQ_DMA0+id, a9, timecur); // checkme: delay
 
     DMA_Schedule(sys, a9);
 }
 
 u32 DMA_IOReadHandler(struct DMA_Channel* channels, u32 addr)
 {
-
     addr &= 0xFF;
     addr -= 0xB0;
     int channel = (addr / 4) / 3;
@@ -343,8 +360,6 @@ void DMA9_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 
     int channel = (addr / 4) / 3;
     int reg = (addr / 4) % 3;
 
-    printf("chan: %i\n", channel);
-
     struct DMA_Channel* cur = &channels[channel];
 
     switch(reg)
@@ -373,7 +388,7 @@ void DMA9_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 
             if (cur->CR.Enable == true)
             {
                 // starting dma channel
-                DMA9_Enable(sys, cur, channel);
+                DMA9_Enable(sys, cur);
             }
             else
             {
@@ -393,8 +408,6 @@ void DMA7_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 
     addr -= 0xB0;
     int channel = (addr / 4) / 3;
     int reg = (addr / 4) % 3;
-
-    printf("chan7: %i\n", channel);
 
     struct DMA_Channel* cur = &channels[channel];
 

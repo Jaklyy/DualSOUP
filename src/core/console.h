@@ -115,6 +115,7 @@ struct Console
     struct AHB AHB9;
     struct AHB AHB7;
     struct BusMainRAM BusMR;
+    timestamp AHBBusyTS[Dev_Max];
 
     coroutine HandleMain;
     coroutine HandleARM9;
@@ -388,6 +389,9 @@ struct Console
     } GCS2EncrySeeds[2][2][2]; // [internal = 1][cpu][seed]
 
     Gamecard Gamecard;
+
+    u16 SoundBias;
+
 #ifdef MonitorFPS
     u64 OldTime;
 #endif
@@ -438,8 +442,8 @@ void Console_DirectBoot(struct Console* sys, FILE* rom);
 
 
 void Console_ScheduleIRQs(struct Console* sys, const u8 irq, const bool a9, timestamp time);
-timestamp Console_GetARM7Cur(struct Console* sys);
-timestamp Console_GetARM9Cur(struct Console* sys);
+timestamp Console_GetARM7Max(struct Console* sys);
+timestamp Console_GetARM9Max(struct Console* sys);
 void Console_SyncWith7GTE(struct Console* sys, timestamp now);
 void Console_SyncWith7GT(struct Console* sys, timestamp now);
 void Console_SyncWith9GTE(struct Console* sys, timestamp now);
