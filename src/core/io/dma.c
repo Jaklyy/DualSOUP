@@ -24,11 +24,13 @@ timestamp DMA_CheckNext(struct DMA_Controller* cnt, u8* id)
 
 void DMA9_ScheduledRun(struct Console* sys, [[maybe_unused]] timestamp now)
 {
+    printf("dma9\n");
     CR_Switch(sys->HandleARM9);
 }
 
 void DMA7_ScheduledRun(struct Console* sys, [[maybe_unused]] timestamp now)
 {
+    printf("dma7\n");
     CR_Switch(sys->HandleARM7);
 }
 
@@ -264,7 +266,7 @@ void DMA_Run(struct Console* sys, const bool a9)
         }
         else
         {
-            read = AHB7_Read(sys, &timecur, channel->Latched_SrcAddr, rmask, false, rseq, &rseq, true);
+            read = AHB7_Read(sys, &timecur, channel->Latched_SrcAddr, rmask, false, rseq, &rseq, true, 0xFFFFFFFF /*checkme?*/);
         }
         diff = timecur - diff;
 
@@ -280,7 +282,7 @@ void DMA_Run(struct Console* sys, const bool a9)
         }
         else
         {
-            AHB7_Write(sys, &timecur, channel->Latched_DstAddr, read, wmask, false, &wseq, true);
+            AHB7_Write(sys, &timecur, channel->Latched_DstAddr, read, wmask, false, &wseq, true, 0xFFFFFFFF /*checkme?*/);
         }
         // CHECKME: should this only apply to the actual first?
         if (!rseq)

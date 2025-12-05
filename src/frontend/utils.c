@@ -65,6 +65,7 @@ u16 Input_PollExtra(void* pad)
                | (1<<6) // pen
                | (0<<7); // fold
 
+    //inputs |= !SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_LEFT_STICK) << 3;
     inputs |= !SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_NORTH) << 0;
     inputs |= !SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_WEST) << 1;
     return inputs;

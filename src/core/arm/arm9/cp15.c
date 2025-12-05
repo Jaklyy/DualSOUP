@@ -1,4 +1,5 @@
 #include "../../utils.h"
+#include "../../console.h"
 #include "arm.h"
 
 
@@ -314,6 +315,7 @@ void DCache_CleanFlushAddr(struct ARM946ES* ARM9, const u32 addr)
 
 
 
+
 void ARM9_MCR_15(struct ARM946ES* ARM9, const u16 cmd, const u32 val)
 {
     // try to make sure the compiler knows only 14 bits are used here.
@@ -432,7 +434,9 @@ void ARM9_MCR_15(struct ARM946ES* ARM9, const u16 cmd, const u32 val)
 
     case ARM_CoprocReg(0, 7, 0, 4): // wait for interrupt
     case ARM_CoprocReg(0, 15, 8, 2): // wait for interrupt
-        ARM9->ARM.WaitForInterrupt = true;
+        Scheduler_RunEventManual(ARM9->ARM.Sys, ARM9->ARM.Timestamp >> (ARM9->BoostedClock ? 2 : 1), Evt_IF9Update, true);
+        if (!Console_CheckARM9Wake(ARM9->ARM.Sys)) // checkme: might still halt for a little?
+            ARM9->ARM.WaitForInterrupt = true;
         break;
 
     case ARM_CoprocReg(0, 7, 5, 0): // flush icache

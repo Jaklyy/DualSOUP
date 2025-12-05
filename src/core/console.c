@@ -131,6 +131,7 @@ void Console_DirectBoot(struct Console* sys, FILE* rom)
     // wram should probably be enabled...?
     sys->WRAMCR = 3;
     sys->PostFlag = true;
+    sys->Bios7Prot = 0x1204;
     sys->PowerCR9.Raw = 0x820F;
 
     sys->Gamecard.Mode = Key2;
@@ -193,7 +194,7 @@ void Console_DirectBoot(struct Console* sys, FILE* rom)
 
     for (unsigned i = 0; i < vars[7]/4; i++)
     {
-        AHB7_Write(sys, &nop, vars[6], arry[i], 0xFFFFFFFF, false, &nopy, false);
+        AHB7_Write(sys, &nop, vars[6], arry[i], 0xFFFFFFFF, false, &nopy, false, 0xFFFFFFFF);
         vars[6]+=4;
     }
     free(arry);
@@ -208,10 +209,10 @@ void Console_DirectBoot(struct Console* sys, FILE* rom)
     fread(&sys->MainRAM.b8[0x27FFE00 & (MainRAM_Size-1)], 0x170*sizeof(u32), 1, rom);
 
     // "load" chipid
-    sys->MainRAM.b32[(0x27FF800 & (MainRAM_Size-1))/sizeof(u32)] = 0x01010101;
-    sys->MainRAM.b32[(0x27FF804 & (MainRAM_Size-1))/sizeof(u32)] = 0x01010101;
-    sys->MainRAM.b32[(0x27FFC00 & (MainRAM_Size-1))/sizeof(u32)] = 0x01010101;
-    sys->MainRAM.b32[(0x27FFC04 & (MainRAM_Size-1))/sizeof(u32)] = 0x01010101;
+    sys->MainRAM.b32[(0x27FF800 & (MainRAM_Size-1))/sizeof(u32)] = 0x010101C2;
+    sys->MainRAM.b32[(0x27FF804 & (MainRAM_Size-1))/sizeof(u32)] = 0x010101C2;
+    sys->MainRAM.b32[(0x27FFC00 & (MainRAM_Size-1))/sizeof(u32)] = 0x010101C2;
+    sys->MainRAM.b32[(0x27FFC04 & (MainRAM_Size-1))/sizeof(u32)] = 0x010101C2;
 
     // header checksum
     fseek(rom, 0x15E, SEEK_SET);
@@ -319,7 +320,7 @@ void Console_SyncWith7GTE(struct Console* sys, timestamp now)
 {
     while(now >= Console_GetARM7Max(sys))
     {
-        CR_Switch(sys->HandleARM7);
+        CR_Switch(sys->HandleMain);
     }
 }
 
@@ -327,7 +328,7 @@ void Console_SyncWith7GT(struct Console* sys, timestamp now)
 {
     while(now > Console_GetARM7Max(sys))
     {
-        CR_Switch(sys->HandleARM7);
+        CR_Switch(sys->HandleMain);
     }
 }
 
@@ -335,7 +336,7 @@ void Console_SyncWith9GTE(struct Console* sys, timestamp now)
 {
     while(now >= Console_GetARM9Max(sys))
     {
-        CR_Switch(sys->HandleARM9);
+        CR_Switch(sys->HandleMain);
     }
 }
 
@@ -343,8 +344,18 @@ void Console_SyncWith9GT(struct Console* sys, timestamp now)
 {
     while(now > Console_GetARM9Max(sys))
     {
-        CR_Switch(sys->HandleARM9);
+        CR_Switch(sys->HandleMain);
     }
+}
+
+bool Console_CheckARM9Wake(struct Console* sys)
+{
+    return (sys->IME9 && (sys->IE9 & sys->IF9));
+}
+
+bool Console_CheckARM7Wake(struct Console* sys)
+{
+    return (sys->IE7 & sys->IF7);
 }
 
 void IF9_Update(struct Console* sys, timestamp now)
@@ -364,7 +375,7 @@ void IF9_Update(struct Console* sys, timestamp now)
 
     // wake up cpu
     // TODO: SCHEDULE THIS INSTEAD
-    if (sys->ARM9.ARM.CpuSleeping && sys->IME9 && (sys->IE9 & sys->IF9))
+    if (sys->ARM9.ARM.CpuSleeping && Console_CheckARM9Wake(sys))
     {
         sys->ARM9.ARM.CpuSleeping = 0;
         sys->ARM9.ARM.Timestamp = now << ((sys->ARM9.BoostedClock) ? 2 : 1);
@@ -390,7 +401,7 @@ void IF7_Update(struct Console* sys, timestamp now)
     }
     // wake up cpu
     // TODO: SCHEDULE THIS INSTEAD
-    if (sys->ARM7.ARM.CpuSleeping && (sys->IE7 & sys->IF7))
+    if (sys->ARM7.ARM.CpuSleeping && Console_CheckARM7Wake(sys))
     {
         sys->ARM7.ARM.CpuSleeping = 0;
         sys->ARM7.ARM.Timestamp = now;

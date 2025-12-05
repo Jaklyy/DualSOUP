@@ -17,7 +17,7 @@ void Timer_SchedRun7(struct Console* sys, timestamp now)
     Timer_Run(sys, sys->Timers7, now, false);
 }
 
-void Timer_CalcNextIRQ(struct Console* sys, bool a9)
+void Timer_CalcNextIRQ(struct Console* sys, timestamp now, bool a9)
 {
     struct Timer* timers = ((a9) ? sys->Timers9 : sys->Timers7);
     timestamp timerrem[4];
@@ -50,7 +50,7 @@ void Timer_CalcNextIRQ(struct Console* sys, bool a9)
             }
         }
         if (timers[i].Control.IRQ)
-            nextirq[i] = timerrem[i];
+            nextirq[i] = timerrem[i] + now;
     }
 
     timestamp next = timestamp_max;
@@ -60,6 +60,7 @@ void Timer_CalcNextIRQ(struct Console* sys, bool a9)
             next = nextirq[i];
     }
 
+    //printf("timer %li\n", next);
     if (a9)
         Schedule_Event(sys, Timer_SchedRun9, Evt_Timer9, next);
     else
@@ -166,7 +167,7 @@ u8 Timer_Run(struct Console* sys, struct Timer* timers, const timestamp until, b
         timer->LastUpdated = until; 
         overflowed |= Timer_AddTicks(sys, timers, i, ticks, a9) << i;
     }
-    Timer_CalcNextIRQ(sys, a9);
+    Timer_CalcNextIRQ(sys, until, a9);
     return overflowed;
 }
 
@@ -196,7 +197,7 @@ void Timer_IOWriteHandler(struct Console* sys, struct Timer* timers, const times
         }
     }
     else timer->NeedsUpdate = true;
-    Timer_CalcNextIRQ(sys, a9);
+    Timer_CalcNextIRQ(sys, curts, a9);
 }
 
 u32 Timer_IOReadHandler(struct Console* sys, struct Timer* timers, const timestamp curts, const u32 addr, const bool a9)

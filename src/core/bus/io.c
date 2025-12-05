@@ -4,6 +4,7 @@
 #include "../console.h"
 #include "../sram/flash.h"
 #include "../carts/gamecard.h"
+#include "../io/powman.h"
 
 
 
@@ -260,6 +261,7 @@ void IO9_StartSqrt(struct Console* sys)
 
 u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask)
 {
+    //printf("addr %08X\n", addr);
     switch(addr & 0xFF'FF'FC)
     {
         case 0x00'00'04:
@@ -276,7 +278,10 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask)
             return Input_PollMain(sys->Pad);
 
         case 0x00'01'34:
-            return Input_PollMain(sys->Pad) << 16;
+            return sys->RCR | (Input_PollExtra(sys->Pad) << 16);
+
+        case 0x00'01'38:
+            return sys->RTC.CR.Raw;
 
         case 0x00'01'80: // ipcsync
             Console_SyncWith9GT(sys, sys->AHB7.Timestamp);
@@ -323,6 +328,8 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask)
             return IPC_FIFORead(sys, mask, false);
 
         case 0x10'00'10:
+            ARM9_Log(&sys->ARM9);
+            ARM7_Log(&sys->ARM7);
             return Gamecard_ROMDataRead(sys, sys->AHB7.Timestamp, false);
 
         default:
@@ -331,7 +338,7 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask)
     }
 }
 
-void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mask)
+void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mask, const u32 a7pc)
 {
     switch(addr & 0xFF'FF'FC)
     {
@@ -358,6 +365,15 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
 
         case 0x00'01'00 ... 0x00'01'0C:
             Timer_IOWriteHandler(sys, sys->Timers7, sys->AHB7.Timestamp, addr, val, mask, false);
+            break;
+
+        case 0x00'01'34:
+            MaskedWrite(sys->RCR, val, mask & 0x83);
+            break;
+
+        case 0x00'01'38:
+            if (mask & 0x0000FFFF)
+                RTC_IOWriteHandler(sys, val&0xFFFF,  mask&0xFFFF);
             break;
 
         case 0x00'01'80: // ipcsync
@@ -398,7 +414,7 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
                 switch(sys->SPICR.DeviceSelect)
                 {
                 case 0:
-                    LogPrint(LOG_ARM7|LOG_UNIMP, "POWMAN UNIMPLEMENTED!\n");
+                    sys->SPIOut = PowMan_CMDSend(&sys->Powman, val>>16, sys->SPICR.ChipSelect);
                     break;
                 case 1:
                     sys->SPIOut = Flash_CMDSend(&sys->Firmware, val>>16, sys->SPICR.ChipSelect);
@@ -429,39 +445,48 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             break;
 
         case 0x00'03'00:
-            // TODO: bios prot
-            if (mask & 0x1) // post flag
+            if (a7pc < 0x4000) // can only be written from bios. for... some reason?
             {
-                Console_SyncWith9GT(sys, sys->AHB7.Timestamp);
-                sys->PostFlag |= val & 0x1;
-            }
-            if (mask & 0xC000) // wait control
-            {
-                switch((val >> 14) & 0x3)
+                if (mask & 0x1) // post flag
                 {
-                case 0: // does nothing
-                    LogPrint(LOG_ARM7|LOG_ODD, "A7 wrote nothing to HaltCR...?\n");
-                    break;
-                case 1: // GBA
-                    LogPrint(LOG_ARM7|LOG_UNIMP, "But nobody came...\n\n\n...GBA mode unsupported, sorry!\n");
-                    sys->ARM7.ARM.WaitForInterrupt = true;
-                    sys->ARM7.ARM.DeadAsleep = true;
-                    break;
-                case 2: // halt
-                    sys->ARM7.ARM.WaitForInterrupt = true;
-                    sys->ARM7.ARM.DeadAsleep = true;
-                    break;
-                case 3: // sleep
-                    LogPrint(LOG_ARM7|LOG_UNIMP, "I dont really know what sleep does but it's not in yet!\n");
-                    sys->ARM7.ARM.WaitForInterrupt = true;
-                    sys->ARM7.ARM.DeadAsleep = true;
-                    break;
+                    Console_SyncWith9GT(sys, sys->AHB7.Timestamp);
+                    sys->PostFlag |= val & 0x1;
+                }
+                if (mask & 0xC000) // wait control
+                {
+                    switch((val >> 14) & 0x3)
+                    {
+                    case 0: // does nothing
+                        LogPrint(LOG_ARM7|LOG_ODD, "A7 wrote nothing to HaltCR...?\n");
+                        break;
+                    case 1: // GBA
+                        LogPrint(LOG_ARM7|LOG_UNIMP, "But nobody came...\n\n\n...GBA mode unsupported, sorry!\n");
+                        sys->ARM7.ARM.WaitForInterrupt = true;
+                        sys->ARM7.ARM.DeadAsleep = true;
+                        break;
+                    case 2: // halt
+                        Scheduler_RunEventManual(sys, sys->AHB7.Timestamp, Evt_IF7Update, false);
+                        if (!Console_CheckARM7Wake(sys)) // checkme: might still halt for a little?
+                        {
+                            sys->ARM7.ARM.WaitForInterrupt = true;
+                            sys->ARM7.ARM.DeadAsleep = true;
+                        }
+                        break;
+                    case 3: // sleep
+                        LogPrint(LOG_ARM7|LOG_UNIMP, "I dont really know what sleep does but it's not in yet!\n");
+                        break;
+                    }
                 }
             }
             break;
 
         case 0x00'03'04:
             MaskedWrite(sys->PowerCR7.Raw, val, mask & 0x3);
+            break;
+
+        case 0x00'03'08:
+            if ((a7pc < 0x4000) && (sys->Bios7Prot == 0)) // write once and can probably only be written from bios?
+                MaskedWrite(sys->Bios7Prot, val, mask & 0xFFFC);
             break;
 
         case 0x00'05'04:
@@ -576,6 +601,7 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask)
 
         case 0x00'03'04:
             return sys->PowerCR9.Raw;
+
 
         case 0x00'10'00:
             return sys->PPU_B.DisplayCR.Raw;

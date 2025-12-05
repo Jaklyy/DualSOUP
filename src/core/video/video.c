@@ -1,4 +1,5 @@
 #include <SDL3/SDL_timer.h>
+#include <SDL3/SDL.h>
 #include "video.h"
 #include "../bus/io.h"
 #include "../scheduler.h"
@@ -38,6 +39,31 @@ void LCD_Scanline(struct Console* sys, timestamp now)
     // this occurs before vcount writes
     if (sys->VCount == 192)
     {
+        if (SDL_GetGamepadButton(sys->Pad, SDL_GAMEPAD_BUTTON_LEFT_STICK))
+        {
+            bool seq = false;
+            printf("dumping\n");
+            {
+                FILE* file = fopen("log7.bin", "wb");
+                for (int i = 0x02000000; i < 0x08000000; i+=4)
+                {
+                    u32 buf = AHB7_Read(sys, NULL, i, 0xFFFFFFFF, false, false, &seq, false, 0);
+                    fwrite(&buf, 4, 1, file);
+                }
+                fclose(file);
+            }
+            {
+                FILE* file = fopen("log9.bin", "wb");
+                for (int i = 0x02000000; i < 0x08000000; i+=4)
+                {
+                    u32 buf = AHB9_Read(sys, NULL, i, 0xFFFFFFFF, false, false, &seq, false);
+                    fwrite(&buf, 4, 1, file);
+                }
+                fclose(file);
+            }
+            printf("done\n");
+            while (SDL_GetGamepadButton(sys->Pad, SDL_GAMEPAD_BUTTON_LEFT_STICK));
+        }
 #ifdef MonitorFPS
         u64 newtime = SDL_GetPerformanceCounter();
         double time = ((double)(newtime-sys->OldTime) / SDL_GetPerformanceFrequency()) * 1000.0;

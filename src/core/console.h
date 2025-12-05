@@ -15,6 +15,8 @@
 #include "video/ppu.h"
 #include "sram/flash.h"
 #include "carts/gamecard.h"
+#include "io/rtc.h"
+#include "io/powman.h"
 
 
 
@@ -392,6 +394,13 @@ struct Console
 
     u16 SoundBias;
 
+    RTC RTC;
+    u16 RCR;
+
+    u16 Bios7Prot;
+
+    Powman Powman;
+
 #ifdef MonitorFPS
     u64 OldTime;
 #endif
@@ -448,3 +457,5 @@ void Console_SyncWith7GTE(struct Console* sys, timestamp now);
 void Console_SyncWith7GT(struct Console* sys, timestamp now);
 void Console_SyncWith9GTE(struct Console* sys, timestamp now);
 void Console_SyncWith9GT(struct Console* sys, timestamp now);
+bool Console_CheckARM9Wake(struct Console* sys);
+bool Console_CheckARM7Wake(struct Console* sys);

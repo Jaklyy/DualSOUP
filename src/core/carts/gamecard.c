@@ -49,7 +49,7 @@ bool Gamecard_Init(Gamecard* card, FILE* rom, u8* bios7)
 
     if (!Flash_InitB(&card->SRAM, KiB(256))) return false;
     // TODO: make configurable
-    card->ChipID = 0x01010101;
+    card->ChipID = 0x010101C2;
     return true;
 }
 

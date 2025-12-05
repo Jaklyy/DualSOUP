@@ -938,7 +938,7 @@ void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
     }
 }
 
-u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, const bool atomic, const bool hold, bool* seq, const bool timings)
+u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, const bool atomic, const bool hold, bool* seq, const bool timings, const u32 a7pc)
 {
     // CHECKME: alignment is enforced by the bus on arm7 on gba, this presumably still applies to arm9.
     // is the alignment properly enforced by all bus devices?
@@ -955,15 +955,36 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
 
     switch(addr >> 20 & 0xFF8) // check most signficant byte (and msb of second byte)
     {
-    case 0x000: // NDS BIOS
-        // TODO: Bios protection.
+    case 0x000: // ARM7 BIOS
+        if (addr < 0x4000)
+        {
+            if (timings)
+            {
+                // CHECKME: does bios7 write contention work weirdly with bios prot?
+                WriteContention(sys->AHBBusyTS, &sys->AHB7.Timestamp, Dev_Bios7);
+                Timing32(&sys->AHB7);
+            }
+            // a7 bios reads have protection
+            if ((a7pc >= 0x4000) || ((addr < sys->Bios7Prot) && (a7pc >= sys->Bios7Prot)))
+            {
+                ret = 0xFFFFFFFF;
+                LogPrint(LOG_ARM7|LOG_ODD, "Protected Bios7 Read? Addr: %08X PC: %08X\n", addr, a7pc);
+            }
+            else ret = MemoryRead(32, sys->NTRBios7, addr, NTRBios7_Size);
+            break;
+        }
+        else
+        {
+            [[fallthrough]];
+        }
+
+    default: // Unmapped Device;
+        LogPrint(LOG_ODD|LOG_ARM7, "NTR_AHB7: %i bit read from unmapped memory at 0x%08X? Something went wrong?\n", width, addr);
         if (timings)
         {
-            // CHECKME: does bios7 write contention work weirdly with bios prot?
-            WriteContention(sys->AHBBusyTS, &sys->AHB7.Timestamp, Dev_Bios7);
             Timing32(&sys->AHB7);
         }
-        ret = MemoryRead(32, sys->NTRBios7, addr, NTRBios7_Size);
+        ret = 0; // always reads 0
         break;
 
     case 0x020: // Main RAM
@@ -1015,7 +1036,7 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
 
     case 0x060: // VRAM
     case 0x068: // VRAM
-        ret = VRAM_ARM7(sys, addr, mask, false, 0, true);
+        ret = VRAM_ARM7(sys, addr, mask, false, 0, timings);
         break;
 
     case 0x080 ... 0x098: // GBA Cartridge ROM
@@ -1030,26 +1051,6 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
         ret = (sys->ExtMemCR_Shared.GBAPakAccess ? 0xFFFFFFFF : 0); // TODO
         Timing32(&sys->AHB7);
         break;
-#if 0
-    case 0xEA0:
-        FILE* file = fopen("log.bin", "wb");
-        for (int i = 0; i < 0x08000000; i+=4)
-        {
-            u32 buf = AHB7_Read(sys, NULL, i, 0xFFFFFFFF, false, false, seq, false);
-            fwrite(&buf, 4, 1, file);
-        }
-        fclose(file);
-        CrashSpectacularly("wow\n");
-        break;
-#endif
-    default: // Unmapped Device;
-        LogPrint(LOG_ODD|LOG_ARM7, "NTR_AHB7: %i bit read from unmapped memory at 0x%08X? Something went wrong?\n", width, addr);
-        if (timings)
-        {
-            Timing32(&sys->AHB7);
-        }
-        ret = 0; // always reads 0
-        break;
     }
 
     if (timings)
@@ -1059,7 +1060,7 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
     return ret;
 }
 
-void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, const u32 mask, const bool atomic, bool* seq, const bool timings)
+void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, const u32 mask, const bool atomic, bool* seq, const bool timings, const u32 a7pc)
 {
     // CHECKME: alignment is enforced by the bus on arm7 on gba, this presumably still applies to arm9.
     // is the alignment properly enforced by all bus devices?
@@ -1075,8 +1076,8 @@ void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
 
     switch(addr >> 20 & 0xFF8) // check most signficant byte (and msb of second byte)
     {
-    case 0x000: // NDS BIOS
-        if (timings)
+    case 0x000: // ARM7 BIOS
+        if (timings && (addr < 0x4000))
         {
             // CHECKME: does bios7 write contention work weirdly with bios prot?
             Timing32(&sys->AHB7);
@@ -1124,7 +1125,7 @@ void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
             Timing32(&sys->AHB7); // checkme: does all of IO have the exact same timings?
             AddWriteContention(sys->AHBBusyTS, sys->AHB7.Timestamp, Dev_IO7);
         }
-        IO7_Write(sys, addr, val, mask);
+        IO7_Write(sys, addr, val, mask, a7pc);
         break;
     case 0x048: // WiFi
         LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented WRITE%i: WiFi\n", width);
