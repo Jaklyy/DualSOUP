@@ -45,6 +45,7 @@ void ARM7_RaiseUDF(struct ARM* ARM, const struct ARM_Instr instr_data, const int
     else
         LogPrint(LOG_ARM9 | LOG_EXCEP, "ARM7 - UNDEF INSTR: %08X @ %08X\n", instr_data.Raw, cpu->PC);
 
+    //CrashSpectacularly("FARK\n");
     // addr of next instr
     u32 oldpc = cpu->PC - (cpu->CPSR.Thumb ? 2 : 4);
     union ARM_PSR oldcpsr = cpu->CPSR;

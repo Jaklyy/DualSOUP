@@ -40,14 +40,15 @@ void ARM_MCR(struct ARM* cpu, const struct ARM_Instr instr_data)
         if (instr.Coproc == 14) // debug
         {
             // uhhhhhh
+            LogPrint(LOG_ARM7 | LOG_EXCEP, "ARM7: MCR?!\n");
         }
         else // absent
         {
             /// UHHHHHHHHH
+            ARM7_RaiseUDF(cpu, instr_data, 1); // idk cycle counts.
             // TODO: ARM7 UNDEFINED EXCEPTION???
             // TODO: ARM7 TIMINGS????
         }
-        LogPrint(LOG_ARM7 | LOG_EXCEP, "ARM7: MCR?!\n");
     }
     else // ARM9ID
     {
@@ -132,6 +133,7 @@ void ARM_MRC(struct ARM* cpu, const struct ARM_Instr instr_data)
         {
             // TODO: ARM7 UNDEFINED EXCEPTION
             // TODO: ARM7 TIMINGS
+            ARM7_RaiseUDF(cpu, instr_data, 1); // idk cycle counts.
             LogPrint(LOG_ARM7 | LOG_EXCEP, "ARM7: MRC ABSENT COPROC %i!\n", instr.Coproc);
             return;
         }

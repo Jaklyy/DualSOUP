@@ -29,9 +29,8 @@ ifeq ($(DEB), 1) # debug build
 	CFLAGS += -march=x86-64-v3
 else
 ifeq ($(SAN), 1) # debug w/ sanitizers
-    bool wow;
 	BUILDDIR := $(SANDIR)
-	CFLAGS += -g  -Og -fsanitize=undefined -fsanitize=address
+	CFLAGS += -g -Og -fsanitize=undefined -fsanitize=address
 	CFLAGS += -march=x86-64-v3
 else
 ifeq ($(REL), 1) # release build

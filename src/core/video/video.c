@@ -13,7 +13,8 @@
 void LCD_HBlank(struct Console* sys, timestamp now)
 {
     // set hblank flag
-    sys->DispStatRO.HBlank = true;
+    sys->DispStatRO9.HBlank = true;
+    sys->DispStatRO7.HBlank = true;
     if (sys->VCount < 192)
     {
         StartDMA9(sys, now+2+1, DMAStart_HBlank); // checkme: delay?
@@ -21,11 +22,9 @@ void LCD_HBlank(struct Console* sys, timestamp now)
         PPU_RenderScanline(sys, true, sys->VCount);
     }
     // schedule irq
-    if (sys->DispStatRW.HBlankIRQ)
-    {
-        Console_ScheduleIRQs(sys, IRQ_HBlank, true, now+2); // CHECKME: delay?
-        Console_ScheduleIRQs(sys, IRQ_HBlank, false, now+2); // CHECKME: delay?
-    }
+    if (sys->DispStatRW9.HBlankIRQ) Console_ScheduleIRQs(sys, IRQ_HBlank, true, now+2); // CHECKME: delay?
+    if (sys->DispStatRW7.HBlankIRQ) Console_ScheduleIRQs(sys, IRQ_HBlank, false, now+2); // CHECKME: delay?
+
     // schedule hblank
     Schedule_Event(sys, LCD_Scanline, Evt_Scanline, now + (HBlank_Cycles*2));
 }
@@ -71,30 +70,39 @@ void LCD_Scanline(struct Console* sys, timestamp now)
             printf("%f\n", time);
         sys->OldTime = newtime;
 #endif
-        sys->DispStatRO.Raw = 0b001;
+        sys->DispStatRO9.Raw = 0b001;
+        sys->DispStatRO7.Raw = 0b001;
+
         // schedule irq
-        if (sys->DispStatRW.VBlankIRQ)
-        {
-            Console_ScheduleIRQs(sys, IRQ_VBlank, true, now+2);
-            Console_ScheduleIRQs(sys, IRQ_VBlank, false, now+2); // CHECKME: delay correct for arm7 too?
-        }
+        if (sys->DispStatRW9.VBlankIRQ) Console_ScheduleIRQs(sys, IRQ_VBlank, true, now+2);
+        if (sys->DispStatRW7.VBlankIRQ) Console_ScheduleIRQs(sys, IRQ_VBlank, false, now+2); // CHECKME: delay correct for arm7 too?
         StartDMA9(sys, now+2+1, DMAStart_VBlank); // checkme: delay?
         StartDMA9(sys, now+2+1, DMAStart_VBlank); // checkme: delay?
     }
     else if (sys->VCount == 262)
     {
-        sys->DispStatRO.Raw = 0b000;
+        sys->DispStatRO9.Raw = 0b000;
+        sys->DispStatRO7.Raw = 0b000;
     }
-    else sys->DispStatRO.HBlank = false; // just clear hblank
+    else
+    {
+        // just clear hblank
+        sys->DispStatRO9.HBlank = false;
+        sys->DispStatRO7.HBlank = false;
+    }
 
     // todo: vcount write
     if (sys->VCountUpdate)
     {
         sys->VCount = sys->VCountNew;
+        sys->VCountUpdate = false;
     }
 
     // vcount match
-    sys->DispStatRO.VCountMatch = (sys->TargetVCount == sys->VCount);
+    sys->DispStatRO7.VCountMatch = (sys->TargetVCount7 == sys->VCount);
+    if (sys->TargetVCount7 == sys->VCount) Console_ScheduleIRQs(sys, IRQ_VCount, false, now+2); // checkme: delay?
+    sys->DispStatRO9.VCountMatch = (sys->TargetVCount9 == sys->VCount);
+    if (sys->TargetVCount9 == sys->VCount) Console_ScheduleIRQs(sys, IRQ_VCount, true, now+2); // checkme: delay?
 
     // schedule hblank
     Schedule_Event(sys, LCD_HBlank, Evt_Scanline, now + (ActiveRender_Cycles*2));

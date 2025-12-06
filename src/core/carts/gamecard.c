@@ -16,12 +16,17 @@ bool Gamecard_Init(Gamecard* card, FILE* rom, u8* bios7)
     u64 fauxsize = size;
     if (stdc_count_ones(fauxsize) != 1)
     {
+        int shift = 0;
         while (stdc_count_ones(fauxsize) != 1)
         {
             fauxsize >>= 1;
+            shift++;
         }
+        fauxsize <<= shift;
         fauxsize *= 2;
-    }if (size > MiB(512))
+    }
+
+    if (size > MiB(512))
     {
         LogPrint(LOG_ALWAYS, "FATAL: Gamecard ROM too big! must be <= 512MiB; currently %li\n", size);
         return false;
@@ -39,7 +44,7 @@ bool Gamecard_Init(Gamecard* card, FILE* rom, u8* bios7)
         card->ROM[i] = 0;
     }
 
-    if (fread(card->ROM, card->RomSize, 1, rom) == 0)
+    if (fread(card->ROM, size, 1, rom) == 0)
     {
         LogPrint(LOG_ALWAYS, "FATAL: Gamecard ROM read failed\n");
         return false;
@@ -266,6 +271,7 @@ void QueueNextTransfer(struct Console* sys, timestamp cur, const bool a9)
 {
     Gamecard* card = &sys->Gamecard;
 
+    printf("nw %i\n", card->NumWords);
     if (card->NumWords)
     {
         timestamp transtime = 4;
@@ -287,6 +293,7 @@ void QueueNextTransfer(struct Console* sys, timestamp cur, const bool a9)
     else
     {
         sys->GCROMCR[a9].Start = false;
+        if (sys->GCSPICR[a9].ROMDataReadyIRQ) Console_ScheduleIRQs(sys, IRQ_GamecardTransferComplete, a9, cur); // todo: delay?
         Schedule_Event(sys, Gamecard_HandleSchedulingROM, Evt_Gamecard, timestamp_max);
     }
 }
@@ -303,7 +310,8 @@ u32 Gamecard_ROMDataRead(struct Console* sys, timestamp cur, const bool a9)
         QueueNextTransfer(sys, cur, a9);
         sys->GCROMData[a9] = card->WordBuffer;
         card->Buffered = false;
-        StartDMA9(sys, cur+1, DMAStart_NTRCard); // checkme: delay?
+        if (a9) StartDMA9(sys, cur+1, DMAStart_NTRCard); // checkme: delay?
+        else StartDMA7(sys, cur+1, DMAStart_NTRCard); // checkme: delay?
     }
     else sys->GCROMCR[a9].DataReady = false;
 
@@ -326,7 +334,8 @@ void Gamecard_HandleSchedulingROM(struct Console* sys, timestamp now)
     {
         sys->GCROMData[a9] = card->ReadHandler(card);
         sys->GCROMCR[a9].DataReady = true;
-        StartDMA9(sys, now+1, DMAStart_NTRCard); // checkme: delay?
+        if (a9) StartDMA9(sys, now+1, DMAStart_NTRCard); // checkme: delay?
+        else StartDMA7(sys, now+1, DMAStart_NTRCard); // checkme: delay?
     }
 
     QueueNextTransfer(sys, now, a9);
@@ -375,7 +384,6 @@ u32 Gamecard_IOReadHandler(struct Console* sys, u32 addr, timestamp cur, const b
         case 0x00:
             return sys->GCSPICR[a9].Raw | (sys->GCSPIOut[a9] << 16);
         case 0x04:
-            //printf("card %08X %08X\n", addr, sys->GCROMCR[a9].Raw);
             return sys->GCROMCR[a9].Raw;
         default:
             return 0;

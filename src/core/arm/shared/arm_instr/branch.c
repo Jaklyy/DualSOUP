@@ -78,7 +78,7 @@ void ARM_BranchExchange(struct ARM* cpu, const struct ARM_Instr instr_data)
     // if bit 0 of the address is set we switch to thumb
     ARM_SetThumb(cpu, addr & 0b1);
 
-    // TODO: what does this do on ARM7TDMI?
+    // does not link on arm7
     if (instr.Link && (cpu->CPUID != ARM7ID))
         ARM_SetReg(14, ARM_GetReg(15)-4, 0, 0);
 

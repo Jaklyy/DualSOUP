@@ -10,14 +10,30 @@
 void Scheduler_UpdateTargets(struct Console* sys)
 {
     timestamp next = timestamp_max;
+    int b = 0;
     for (int i = 0; i < Evt_Max; i++)
     {
-        if (next > sys->Sched.EventTimes[i])
-            next = sys->Sched.EventTimes[i];
+        if (i <= Evt_DMA7)
+        {
+            if (sys->Sched.EventTimes[i] == timestamp_max) continue;
+            if (next > sys->Sched.EventTimes[i] + 1)
+            {
+                next = sys->Sched.EventTimes[i] + 1;
+                b = i;
+            }
+        }
+        else
+        {
+            if (next > sys->Sched.EventTimes[i])
+            {
+                next = sys->Sched.EventTimes[i];
+                b = i;
+            }
+        }
     }
     //if (ckd_mul(&sys->ARM9Target, next, sys->ARM9.BoostedClock ? 4 : 2))
     //    sys->ARM9Target = timestamp_max;
-
+    //printf("b:%i %li\n", b, next);
     sys->ARM7Target = next;
 }
 

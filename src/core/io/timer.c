@@ -60,7 +60,6 @@ void Timer_CalcNextIRQ(struct Console* sys, timestamp now, bool a9)
             next = nextirq[i];
     }
 
-    //printf("timer %li\n", next);
     if (a9)
         Schedule_Event(sys, Timer_SchedRun9, Evt_Timer9, next);
     else

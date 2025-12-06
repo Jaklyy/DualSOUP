@@ -355,7 +355,7 @@ u32 ARM9_ICacheLookup(struct ARM946ES* ARM9, const u32 addr)
     return ARM9->ICache.b32[((index | set)<<3) | ((addr/sizeof(u32)) & 0x7)];
 }
 
-void DCache_CleanLine(struct ARM946ES* ARM9, const u32 idxset);
+extern void DCache_CleanLine(struct ARM946ES* ARM9, const u32 idxset);
 
 u32 ARM9_DCacheReadLookup(struct ARM946ES* ARM9, const u32 addr)
 {
@@ -694,7 +694,7 @@ u16 ARM9_DataRead16(struct ARM946ES* ARM9, u32 addr, bool* seq, bool* dabt)
     u32 ret = ARM9_DataRead(ARM9, addr, mask, seq, dabt);
 
     // note: arm9 ldrh doesn't do a rotate right so we need to special case the correction here.
-    return ret >> ((addr & 2) * 8);
+    return ROR32(ret, ((addr & 2) * 8)) & 0xFFFF;
 }
 
 u32 ARM9_DataRead8(struct ARM946ES* ARM9, u32 addr, bool* seq, bool* dabt)

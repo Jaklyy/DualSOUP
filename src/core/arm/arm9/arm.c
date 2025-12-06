@@ -264,7 +264,7 @@ void ARM9_Step(struct ARM946ES* ARM9)
         else
         {
             cpu->DeadAsleep = true;
-            CR_Switch(cpu->Sys->HandleMain);
+            return;
         }
     }
 
@@ -327,7 +327,7 @@ void ARM9_MainLoop(struct ARM946ES* ARM9)
     while (!CR_Start);
     while(!CR_Kill)
     {
-        if (Console_GetARM9Max(cpu->Sys) >= cpu->Sys->ARM7Target)
+        if ((Console_GetARM9Max(cpu->Sys) >= cpu->Sys->ARM7Target) || cpu->DeadAsleep)
         {
             if (cpu->Sys->Sched.EventTimes[Evt_DMA9] <= cpu->Sys->ARM7Target)
             {

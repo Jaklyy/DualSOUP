@@ -150,7 +150,7 @@ void ARM9_RaiseUDF(struct ARM* ARM, const struct ARM_Instr instr_data, const int
         LogPrint(LOG_ARM9 | LOG_EXCEP, "ARM9 - UNDEF INSTR: %08X @ %08X\n", instr_data.Raw, cpu->PC);
 
 
-    CrashSpectacularly("FARK %08X\n", cpu->PC);
+    //CrashSpectacularly("FARK %08X\n", cpu->PC);
 
     // addr of next instr
     u32 oldpc = cpu->PC - (cpu->CPSR.Thumb ? 2 : 4);
@@ -218,8 +218,8 @@ void ARM9_PrefetchAbort(struct ARM* ARM, const struct ARM_Instr instr_data)
             LogPrint(LOG_ARM9 | LOG_EXCEP, "ARM9 - BKPT: %08X @ %08X\n", instr_data.Raw, cpu->PC);
     }
 
-    ARM9_DumpMPU(ARM9);
-    CrashSpectacularly("FARK %08X\n", cpu->PC);
+    //ARM9_DumpMPU(ARM9);
+    //CrashSpectacularly("FARK %08X\n", cpu->PC);
 
     // lr is aborted instruction + 4
     u32 oldpc = cpu->PC - ((cpu->CPSR.Thumb) ? 0 : 4);

@@ -163,8 +163,23 @@ struct Console
             u16 VCountMSB : 1;
             u16 VCountLSB : 8;
         };
-    } DispStatRW;
-    u16 TargetVCount;
+    } DispStatRW9;
+    union
+    {
+        u16 Raw;
+        struct
+        {
+            u16 : 3;
+            bool VBlankIRQ : 1;
+            bool HBlankIRQ : 1;
+            bool VCountMatchIRQ : 1;
+            u16 : 1;
+            u16 VCountMSB : 1;
+            u16 VCountLSB : 8;
+        };
+    } DispStatRW7;
+    u16 TargetVCount9;
+    u16 TargetVCount7;
     u16 VCountNew;
     bool VCountUpdate;
     union
@@ -178,7 +193,19 @@ struct Console
             u8 : 3;
             bool LCDReady : 1;
         };
-    } DispStatRO;
+    } DispStatRO9;
+    union
+    {
+        u8 Raw;
+        struct
+        {
+            bool VBlank : 1;
+            bool HBlank : 1;
+            bool VCountMatch : 1;
+            u8 : 3;
+            bool LCDReady : 1;
+        };
+    } DispStatRO7;
 
     struct Timer Timers9[4];
     struct Timer Timers7[4];
@@ -329,6 +356,7 @@ struct Console
         };
     } SPICR;
     u8 SPIOut;
+    u8 SPIBuf;
 
     u8 GCSPIOut[2]; // [cpu]
     union
@@ -447,7 +475,7 @@ void Console_Reset(struct Console* sys);
 // actually run the emulation.
 void Console_MainLoop(struct Console* sys);
 
-void Console_DirectBoot(struct Console* sys, FILE* rom);
+void Console_DirectBoot(struct Console* sys);
 
 
 void Console_ScheduleIRQs(struct Console* sys, const u8 irq, const bool a9, timestamp time);

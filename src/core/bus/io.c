@@ -95,7 +95,6 @@ void IPC_FIFOWrite(struct Console* sys, const u32 val, const u32 mask, const boo
                 Console_ScheduleIRQs(sys, IRQ_IPCFIFONotEmpty, !a9, ts);
             }
         }
-
         send->FillPtr = (send->FillPtr + 1) % 16;
 
         // now full
@@ -258,15 +257,22 @@ void IO9_StartSqrt(struct Console* sys)
     Schedule_Event(sys, IO9_FinishSqrt, Evt_Sqrt, sys->AHB9.Timestamp + 13);
 }
 
+void SPI_Finish(struct Console* sys, timestamp cur)
+{
+    sys->SPIOut = sys->SPIBuf;
+    sys->SPICR.Busy = false;
+    Console_ScheduleIRQs(sys, IRQ_SPI, false, cur); // delay?
+    Schedule_Event(sys, SPI_Finish, Evt_SPI, timestamp_max);
+}
+
 
 u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask)
 {
-    //printf("addr %08X\n", addr);
     switch(addr & 0xFF'FF'FC)
     {
         case 0x00'00'04:
             Scheduler_RunEventManual(sys, sys->AHB7.Timestamp, Evt_Scanline, false);
-            return (sys->VCount << 16);
+            return (sys->VCount << 16) | sys->DispStatRO7.Raw | sys->DispStatRW7.Raw;
 
         case 0x00'00'B0 ... 0x00'00'E0-1:
             return DMA_IOReadHandler(sys->DMA7.Channels, addr);
@@ -328,8 +334,6 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask)
             return IPC_FIFORead(sys, mask, false);
 
         case 0x10'00'10:
-            ARM9_Log(&sys->ARM9);
-            ARM7_Log(&sys->ARM7);
             return Gamecard_ROMDataRead(sys, sys->AHB7.Timestamp, false);
 
         default:
@@ -344,7 +348,8 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
     {
         case 0x00'00'04:
             Scheduler_RunEventManual(sys, sys->AHB7.Timestamp, Evt_Scanline, false);
-            //sys->DispStatRW.Raw = val & mask & 0xB8;
+            sys->DispStatRW7.Raw = val & mask & 0xB8;
+            sys->TargetVCount7 = (sys->DispStatRW7.VCountMSB << 8) | sys->DispStatRW7.VCountLSB;
 
             // TODO VCount Match Settings.
 
@@ -414,10 +419,10 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
                 switch(sys->SPICR.DeviceSelect)
                 {
                 case 0:
-                    sys->SPIOut = PowMan_CMDSend(&sys->Powman, val>>16, sys->SPICR.ChipSelect);
+                    sys->SPIBuf = PowMan_CMDSend(&sys->Powman, val>>16, sys->SPICR.ChipSelect);
                     break;
                 case 1:
-                    sys->SPIOut = Flash_CMDSend(&sys->Firmware, val>>16, sys->SPICR.ChipSelect);
+                    sys->SPIBuf = Flash_CMDSend(&sys->Firmware, val>>16, sys->SPICR.ChipSelect);
                     break;
                 case 2:
                     LogPrint(LOG_ARM7|LOG_UNIMP, "TSC UNIMPLEMENTED!\n");
@@ -426,6 +431,8 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
                     LogPrint(LOG_ARM7|LOG_UNIMP, "spi RESERVED????????????\n");
                     break;
                 }
+                sys->SPICR.Busy = true;
+                Schedule_Event(sys, SPI_Finish, Evt_SPI, sys->AHB7.Timestamp + (((8*8) << sys->SPICR.Baudrate))); // checkme: delay?
             }
             break;
 
@@ -469,7 +476,6 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
                         if (!Console_CheckARM7Wake(sys)) // checkme: might still halt for a little?
                         {
                             sys->ARM7.ARM.WaitForInterrupt = true;
-                            sys->ARM7.ARM.DeadAsleep = true;
                         }
                         break;
                     case 3: // sleep
@@ -508,7 +514,7 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask)
 
         case 0x00'00'04:
             Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Scanline, true);
-            return (sys->VCount << 16) | sys->DispStatRO.Raw |  sys->DispStatRW.Raw;
+            return (sys->VCount << 16) | sys->DispStatRO9.Raw |  sys->DispStatRW9.Raw;
 
         // DMA
         case 0x00'00'B0 ... 0x00'00'E0-1:
@@ -637,7 +643,8 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
 
         case 0x00'00'04:
             Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Scanline, true);
-            MaskedWrite(sys->DispStatRW.Raw, val, mask & 0xB8);
+            MaskedWrite(sys->DispStatRW9.Raw, val, mask & 0xB8);
+            sys->TargetVCount9 = (sys->DispStatRW9.VCountMSB << 8) | sys->DispStatRW9.VCountLSB;
 
             // TODO VCount Match Settings.
 

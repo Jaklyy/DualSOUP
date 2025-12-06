@@ -24,13 +24,11 @@ timestamp DMA_CheckNext(struct DMA_Controller* cnt, u8* id)
 
 void DMA9_ScheduledRun(struct Console* sys, [[maybe_unused]] timestamp now)
 {
-    printf("dma9\n");
     CR_Switch(sys->HandleARM9);
 }
 
 void DMA7_ScheduledRun(struct Console* sys, [[maybe_unused]] timestamp now)
 {
-    printf("dma7\n");
     CR_Switch(sys->HandleARM7);
 }
 
@@ -58,6 +56,7 @@ void StartDMA9(struct Console* sys, timestamp start, u8 mode)
         if ((sys->DMA9.ChannelLastEnded[i] <= start) && ((sys->DMA9.ChannelTimestamps[i] < start) || (sys->DMA9.ChannelTimestamps[i] == timestamp_max))) // checkme: starting dma while already started?
             sys->DMA9.ChannelTimestamps[i] = start;
         else LogPrint(LOG_ALWAYS, "DMA9 START FAILURE tried: %li ended: %li current: %li mode: %i\n", start, sys->DMA9.ChannelLastEnded[i], sys->DMA9.ChannelTimestamps[i], mode);
+        printf("try %i\n", mode);
     }
     DMA_Schedule(sys, true);
 }
@@ -95,12 +94,12 @@ void DMA7_Enable(struct Console* sys, struct DMA_Channel* channel, u8 channel_id
         channel->CurrentMode = DMAStart_VBlank;
         break;
     }
-    #if 0
     case 2: // NTR Gamecard
     {
         channel->CurrentMode = DMAStart_NTRCard;
         break;
     }
+    #if 0
     case 3: // (DMA 0 & 2) WiFi IRQ / (DMA 1 & 3) AGB Cartridge IRQ
     {
         channel->CurrentMode = (channel_id & 0b01) ? DMAStart_AGBPakIRQ : DMAStart_WiFiIRQ;
@@ -144,7 +143,6 @@ void DMA9_Enable(struct Console* sys, struct DMA_Channel* channel)
 {
     channel->Latched_SrcAddr = channel->SrcAddr;
     channel->Latched_DstAddr = channel->DstAddr;
-    channel->Latched_NumWords = (channel->CR.NumWords ? channel->CR.NumWords : 0x200000);
 
     switch(channel->CR.StartMode9)
     {
@@ -228,17 +226,26 @@ void DMA9_Enable(struct Console* sys, struct DMA_Channel* channel)
 
 void DMA_Run(struct Console* sys, const bool a9)
 {
-    u32 rmask;
-    u32 wmask;
     struct DMA_Controller* cnt = ((a9) ? &sys->DMA9 : &sys->DMA7);
     u8 id = cnt->NextID;
+    if (cnt->CurMask & (1<<id)) return;
+    u32 rmask;
+    u32 wmask;
+    struct DMA_Channel* channel = &cnt->Channels[id];
     u64 timecur = cnt->ChannelTimestamps[id];
     cnt->ChannelTimestamps[id] = timestamp_max;
 
+    //printf("%08X %08X %08X\n", channel->Latched_SrcAddr, channel->Latched_DstAddr, channel->Latched_NumWords);
+
+    if (channel->CR.SourceCR == 3) channel->Latched_SrcAddr = channel->SrcAddr;
+    if (channel->CR.DestCR == 3) channel->Latched_DstAddr = channel->DstAddr;
+    channel->Latched_NumWords = (channel->CR.NumWords ? channel->CR.NumWords : 0x200000);
+
+    printf("%08X %08X %08X\n", channel->Latched_SrcAddr, channel->Latched_DstAddr, channel->Latched_NumWords);
+
+
     cnt->CurMask |= 1<<id;
     DMA_Schedule(sys, a9);
-
-    struct DMA_Channel* channel = &cnt->Channels[id];
 
     if (channel->CR.Width32)
     {
@@ -311,7 +318,7 @@ void DMA_Run(struct Console* sys, const bool a9)
     if (channel->CR.Repeat)
     {
         // TODO: reschedule
-        LogPrint(0, "UNIMP: DMA WANTS RESCHEDULE\n");
+        LogPrint(0, "UNIMP: DMA WANTS RESCHEDULE %i\n", channel->CurrentMode);
     }
     else
     {
@@ -325,6 +332,7 @@ void DMA_Run(struct Console* sys, const bool a9)
         Console_ScheduleIRQs(sys, IRQ_DMA0+id, a9, timecur); // checkme: delay
 
     DMA_Schedule(sys, a9);
+    printf("fin\n");
 }
 
 u32 DMA_IOReadHandler(struct DMA_Channel* channels, u32 addr)

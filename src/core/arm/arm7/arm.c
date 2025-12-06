@@ -165,11 +165,6 @@ if (instr.Flushed || !ARM7_CheckInterrupts(ARM7)) \
 
 void ARM7_Step(struct ARM7TDMI* ARM7)
 {
-    if (cpu->CpuSleeping)
-    {
-        CR_Switch(cpu->Sys->HandleMain);
-    }
-
     // step the pipeline.
     ARM_PipelineStep(cpu);
 
@@ -213,11 +208,10 @@ void ARM7_MainLoop(struct ARM7TDMI* ARM7)
     while(!CR_Start);
     while(!CR_Kill)
     {
-        if (Console_GetARM7Max(cpu->Sys) >= cpu->Sys->ARM7Target)
+        if ((Console_GetARM7Max(cpu->Sys) >= cpu->Sys->ARM7Target) || cpu->DeadAsleep)
         {
             if (cpu->Sys->Sched.EventTimes[Evt_DMA7] <= cpu->Sys->ARM7Target)
             {
-                printf("%li %li %li %li\n", cpu->Sys->AHB7.Timestamp, cpu->Sys->Sched.EventTimes[Evt_DMA7], cpu->Sys->ARM7Target, cpu->Timestamp);
                 DMA_Run(cpu->Sys, false);
             }
             CR_Switch(cpu->Sys->HandleMain);
@@ -225,6 +219,8 @@ void ARM7_MainLoop(struct ARM7TDMI* ARM7)
         else
         {
             ARM7_Step(ARM7);
+            if (cpu->WaitForInterrupt)
+                cpu->DeadAsleep = true;
         }
     }
 }

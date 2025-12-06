@@ -10,14 +10,15 @@ struct Console;
 enum Scheduler_Events : u8
 {
     Evt_DMA9,
+    Evt_DMA7,
     Evt_IF9Update,
     Evt_Divider,
     Evt_Sqrt,
     Evt_Timer9,
 
-    Evt_DMA7,
     Evt_IF7Update,
     Evt_Timer7,
+    Evt_SPI,
 
     Evt_Scanline,
     Evt_Gamecard,

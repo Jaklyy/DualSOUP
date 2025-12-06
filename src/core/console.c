@@ -118,6 +118,8 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
     sys->IPCFIFO9.CR.RecvFIFOEmpty = true;
     sys->IPCFIFO9.CR.SendFIFOEmpty = true;
 
+    sys->Powman.BacklightLevels.AlwaysSet = true;
+
     sys->Pad = pad;
 
     // run power on/reset logic
@@ -126,7 +128,7 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
     return sys;
 }
 
-void Console_DirectBoot(struct Console* sys, FILE* rom)
+void Console_DirectBoot(struct Console* sys)
 {
     // wram should probably be enabled...?
     sys->WRAMCR = 3;
@@ -152,52 +154,38 @@ void Console_DirectBoot(struct Console* sys, FILE* rom)
     sys->ARM7.ARM.IRQ_Bank.R[0] = 0x0380FF80;
     sys->ARM7.ARM.SWI_Bank.R[0] = 0x0380FFC0;
 
-    fseek(rom, 0x20, SEEK_SET);
-    u32 vars[8];
+    //fseek(rom, 0x20, SEEK_SET);
+    u32 arm9_romoffs = sys->Gamecard.ROM[0x20/4];
+    u32 arm9_entryaddr = sys->Gamecard.ROM[0x24/4];
+    u32 arm9_ramaddr = sys->Gamecard.ROM[0x28/4];
+    u32 arm9_romsize = sys->Gamecard.ROM[0x2C/4];
+    u32 arm7_romoffs = sys->Gamecard.ROM[0x30/4];
+    u32 arm7_entryaddr = sys->Gamecard.ROM[0x34/4];
+    u32 arm7_ramaddr = sys->Gamecard.ROM[0x38/4];
+    u32 arm7_romsize = sys->Gamecard.ROM[0x3C/4];
 
-    fread(vars, 4*4*2, 1, rom);
+    //fread(vars, 4*4*2, 1, rom);
 
-    sys->ARM9.ARM.R12 = vars[1];
-    sys->ARM9.ARM.R14 = vars[1];
-    sys->ARM7.ARM.R12 = vars[5];
-    sys->ARM7.ARM.R14 = vars[5];
+    sys->ARM9.ARM.R12 = arm9_entryaddr;
+    sys->ARM9.ARM.R14 = arm9_entryaddr;
+    sys->ARM7.ARM.R12 = arm7_entryaddr;
+    sys->ARM7.ARM.R14 = arm7_entryaddr;
 
-    fseek(rom, vars[0], SEEK_SET);
+    timestamp nop;
+    bool nopy;
 
     // load arm9 rom
+    for (unsigned i = 0; i < arm9_romsize; i+=4)
     {
-        if (vars[3] > MiB(512)) return;
-    timestamp nop;
-    u32* arry = malloc(vars[3]);
-
-    fseek(rom, vars[0], SEEK_SET);
-    fread(arry, vars[3], 1, rom);
-    bool nopy;
-
-    for (unsigned i = 0; i < vars[3]/4; i++)
-    {
-        AHB9_Write(sys, &nop, vars[2], arry[i], 0xFFFFFFFF, false, &nopy, false);
-        vars[2]+=4;
+        AHB9_Write(sys, &nop, arm9_ramaddr+i, sys->Gamecard.ROM[(arm9_romoffs+i)/4], u32_max, false, &nopy, false);
     }
-    free(arry);
-    }
+
+    //printf("%08X\n", sys->Gamecard.ROM[(arm7_romoffs)/4]);
 
     // load arm7 rom
+    for (unsigned i = 0; i < arm7_romsize; i+=4)
     {
-        if (vars[7] > MiB(512)) return;
-    timestamp nop;
-    u32* arry = malloc(vars[7]);
-
-    fseek(rom, vars[4], SEEK_SET);
-    fread(arry, vars[7], 1, rom);
-    bool nopy;
-
-    for (unsigned i = 0; i < vars[7]/4; i++)
-    {
-        AHB7_Write(sys, &nop, vars[6], arry[i], 0xFFFFFFFF, false, &nopy, false, 0xFFFFFFFF);
-        vars[6]+=4;
-    }
-    free(arry);
+        AHB7_Write(sys, &nop, arm7_ramaddr+i, sys->Gamecard.ROM[(arm7_romoffs+i)/4], u32_max, false, &nopy, false, 0);
     }
 
     sys->ARM9.CP15.CR.DTCMEnable = true;
@@ -205,9 +193,7 @@ void Console_DirectBoot(struct Console* sys, FILE* rom)
     ARM9_ConfigureDTCM(&sys->ARM9);
 
     // load header
-    fseek(rom, 0, SEEK_SET);
-    fread(&sys->MainRAM.b8[0x27FFE00 & (MainRAM_Size-1)], 0x170*sizeof(u32), 1, rom);
-
+    memcpy(&sys->MainRAM.b8[0x27FFE00 & (MainRAM_Size-1)], sys->Gamecard.ROM, 0x170);
     // "load" chipid
     sys->MainRAM.b32[(0x27FF800 & (MainRAM_Size-1))/sizeof(u32)] = 0x010101C2;
     sys->MainRAM.b32[(0x27FF804 & (MainRAM_Size-1))/sizeof(u32)] = 0x010101C2;
@@ -215,15 +201,14 @@ void Console_DirectBoot(struct Console* sys, FILE* rom)
     sys->MainRAM.b32[(0x27FFC04 & (MainRAM_Size-1))/sizeof(u32)] = 0x010101C2;
 
     // header checksum
-    fseek(rom, 0x15E, SEEK_SET);
-    fread(&sys->MainRAM.b8[0x27FF808 & (MainRAM_Size-1)], 2, 1, rom);
-    fseek(rom, 0x15E, SEEK_SET);
-    fread(&sys->MainRAM.b8[0x27FFC08 & (MainRAM_Size-1)], 2, 1, rom);
+    memcpy(&sys->MainRAM.b8[0x27FF808 & (MainRAM_Size-1)], &sys->Gamecard.ROM[0x15E/4]+2, 2);
+
+    memcpy(&sys->MainRAM.b8[0x27FFC08 & (MainRAM_Size-1)], &sys->Gamecard.ROM[0x15E/4]+2, 2);
+
     // secure area checksum
-    fseek(rom, 0x15E, SEEK_SET);
-    fread(&sys->MainRAM.b8[0x27FF80A & (MainRAM_Size-1)], 2, 1, rom);
-    fseek(rom, 0x15E, SEEK_SET);
-    fread(&sys->MainRAM.b8[0x27FFC0A & (MainRAM_Size-1)], 2, 1, rom);
+    memcpy(&sys->MainRAM.b8[0x27FF80A & (MainRAM_Size-1)], &sys->Gamecard.ROM[0x6C/4], 2);
+
+    memcpy(&sys->MainRAM.b8[0x27FFC0A & (MainRAM_Size-1)], &sys->Gamecard.ROM[0x6C/4], 2);
 
     // idk
     sys->MainRAM.b16[(0x27FF850 & (MainRAM_Size-1))/sizeof(u16)] = 0x5835;
@@ -244,8 +229,8 @@ void Console_DirectBoot(struct Console* sys, FILE* rom)
         sys->MainRAM.b8[((0x27FFC80 + i) & (MainRAM_Size-1))] = sys->Firmware.RAM[usersettings+i];
 
 
-    ARM9_SetPC(&sys->ARM9, vars[1], 0);
-    ARM7_SetPC(&sys->ARM7, vars[5]);
+    ARM9_SetPC(&sys->ARM9, arm9_entryaddr, 0);
+    ARM7_SetPC(&sys->ARM7, arm7_entryaddr);
 }
 
 void Console_Reset(struct Console* sys)
@@ -258,60 +243,52 @@ void Console_Reset(struct Console* sys)
 
 timestamp Console_GetARM7Max(struct Console* sys)
 {
-    if (sys->ARM7.ARM.DeadAsleep && (sys->Sched.EventTimes[Evt_DMA7] != timestamp_max)) timestamp_max;
+    timestamp ts = 0;
 
-    timestamp ts = sys->ARM7.ARM.Timestamp;
-
-    if (ts < sys->AHB7.Timestamp)
-        ts = sys->AHB7.Timestamp;
-
-    if ((ts < sys->Sched.EventTimes[Evt_DMA7]) && (sys->Sched.EventTimes[Evt_DMA7] != timestamp_max))
+    if (sys->ARM7.ARM.DeadAsleep)
+    {
         ts = sys->Sched.EventTimes[Evt_DMA7];
+
+        if (ts < sys->AHB7.Timestamp)
+            ts = sys->AHB7.Timestamp;
+    }
+    else
+    {
+        if (ts < sys->ARM7.ARM.Timestamp)
+            ts = sys->ARM7.ARM.Timestamp;
+
+        if (ts > sys->Sched.EventTimes[Evt_DMA7])
+            ts = sys->Sched.EventTimes[Evt_DMA7];
+
+        if (ts < sys->AHB7.Timestamp)
+            ts = sys->AHB7.Timestamp;
+    }
 
     return ts;
 }
 
 timestamp Console_GetARM9Max(struct Console* sys)
 {
-    if (sys->ARM9.ARM.DeadAsleep && (sys->Sched.EventTimes[Evt_DMA9] != timestamp_max)) return timestamp_max;
+    timestamp ts = 0;
 
-    timestamp ts = sys->ARM9.ARM.Timestamp >> ((sys->ARM9.BoostedClock) ? 2 : 1);
-
-    if (ts < sys->AHB9.Timestamp)
-        ts = sys->AHB9.Timestamp;
-
-    if ((ts < sys->Sched.EventTimes[Evt_DMA9]) && (sys->Sched.EventTimes[Evt_DMA9] != timestamp_max))
+    if (sys->ARM9.ARM.DeadAsleep)
+    {
         ts = sys->Sched.EventTimes[Evt_DMA9];
 
-    return ts;
-}
+        if (ts < sys->AHB9.Timestamp)
+            ts = sys->AHB9.Timestamp;
+    }
+    else
+    {
+        if (ts < (sys->ARM9.ARM.Timestamp >> ((sys->ARM9.BoostedClock) ? 2 : 1)))
+            ts = sys->ARM9.ARM.Timestamp >> ((sys->ARM9.BoostedClock) ? 2 : 1);
 
-timestamp Console_GetARM7Min(struct Console* sys)
-{
-    if (sys->ARM7.ARM.DeadAsleep && (sys->Sched.EventTimes[Evt_DMA7] != timestamp_max)) timestamp_max;
+        if (ts > sys->Sched.EventTimes[Evt_DMA9])
+            ts = sys->Sched.EventTimes[Evt_DMA9];
 
-    timestamp ts = sys->ARM7.ARM.Timestamp;
-
-    if (ts > sys->AHB7.Timestamp)
-        ts = sys->AHB7.Timestamp;
-
-    if ((ts > sys->Sched.EventTimes[Evt_DMA7]) && (sys->Sched.EventTimes[Evt_DMA7] != timestamp_max))
-        ts = sys->Sched.EventTimes[Evt_DMA7];
-
-    return ts;
-}
-
-timestamp Console_GetARM9Min(struct Console* sys)
-{
-    if (sys->ARM9.ARM.DeadAsleep && (sys->Sched.EventTimes[Evt_DMA9] != timestamp_max)) return timestamp_max;
-
-    timestamp ts = sys->ARM9.ARM.Timestamp >> ((sys->ARM9.BoostedClock) ? 2 : 1);
-
-    if (ts > sys->AHB9.Timestamp)
-        ts = sys->AHB9.Timestamp;
-
-    if ((ts > sys->Sched.EventTimes[Evt_DMA9]) && (sys->Sched.EventTimes[Evt_DMA9] != timestamp_max))
-        ts = sys->Sched.EventTimes[Evt_DMA9];
+        if (ts < sys->AHB9.Timestamp)
+            ts = sys->AHB9.Timestamp;
+    }
 
     return ts;
 }
@@ -457,15 +434,15 @@ void Console_MainLoop(struct Console* sys)
 
         while((Console_GetARM7Max(sys) < sys->ARM7Target) || (Console_GetARM9Max(sys) < sys->ARM7Target))
         {
-            //printf("9 %lu %lu\n", Console_GetARM9Max(sys), sys->ARM7Target);
-            //printf("7 %lu %lu\n", Console_GetARM7Max(sys), sys->ARM7Target);
+            //printf("9i %lu %lu s:%i\n", Console_GetARM9Max(sys), sys->ARM7Target, sys->ARM9.ARM.DeadAsleep);
+            //printf("7i %lu %lu s:%i\n", Console_GetARM7Max(sys), sys->ARM7Target, sys->ARM7.ARM.DeadAsleep);
             if (Console_GetARM9Max(sys) < sys->ARM7Target)
                 CR_Switch(sys->HandleARM9);
             if (Console_GetARM7Max(sys) < sys->ARM7Target)
                 CR_Switch(sys->HandleARM7);
         }
-        //printf("9 %lu %lu\n", Console_GetARM9Max(sys), sys->ARM7Target);
-        //printf("7 %lu %lu\n", Console_GetARM7Max(sys), sys->ARM7Target);
+        //printf("9e %lu %lu s:%i\n", Console_GetARM9Max(sys), sys->ARM7Target, sys->ARM9.ARM.DeadAsleep);
+        //printf("7e %lu %lu s:%i\n", Console_GetARM7Max(sys), sys->ARM7Target, sys->ARM7.ARM.DeadAsleep);
 #endif
         Scheduler_Run(sys);
     }

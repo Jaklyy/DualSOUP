@@ -208,7 +208,7 @@ u32 VRAM_LCD(struct Console* sys, const u32 addr, const u32 mask, const bool wri
     }
     if (!any && timings)
     {
-        LogPrint(LOG_ARM9|LOG_ODD|LOG_VRAM, "UNMAPPED LCD VRAM ACCESS? %08X %08X\n", val, addr);
+        //LogPrint(LOG_ARM9|LOG_ODD|LOG_VRAM, "UNMAPPED LCD VRAM ACCESS? %08X %08X\n", val, addr);
         Timing32(&sys->AHB9);
     }
     return ret;
@@ -709,7 +709,7 @@ u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
         // TODO: 2d gpu contention timings
         if (!((addr & 0x400) ? sys->PowerCR9.PPUBPower : sys->PowerCR9.PPUAPower))
         {
-            LogPrint(LOG_ARM9|LOG_ODD, "DISABLED PALETTE WRITE?\n");
+            if (timings) LogPrint(LOG_ARM9|LOG_ODD, "DISABLED PALETTE READ?\n");
             if (timings)
             {
                 Timing32(&sys->AHB9);
@@ -736,7 +736,7 @@ u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
         // TODO: 2d gpu contention timings
         if (!((addr & 0x400) ? sys->PowerCR9.PPUBPower : sys->PowerCR9.PPUAPower))
         {
-            LogPrint(LOG_ARM9|LOG_ODD, "DISABLED OAM WRITE?\n");
+            if (timings) LogPrint(LOG_ARM9|LOG_ODD, "DISABLED OAM READ?\n");
             if (timings)
             {
                 Timing32(&sys->AHB9);
@@ -755,13 +755,13 @@ u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
         break;
 
     case 0x08 ... 0x09: // GBA Cartridge ROM
-        LogPrint(LOG_UNIMP|LOG_ARM9, "NTR_AHB9: Unimplemented READ%i: GBAROM\n", width);
+        if (timings) LogPrint(LOG_UNIMP|LOG_ARM9, "NTR_AHB9: Unimplemented READ%i: GBAROM\n", width);
         ret = (sys->ExtMemCR_Shared.GBAPakAccess ? 0xFFFFFFFF : 0); // TODO
         Timing32(&sys->AHB9);
         break;
 
     case 0x0A: // GBA Cartridge RAM
-        LogPrint(LOG_UNIMP|LOG_ARM9, "NTR_AHB9: Unimplemented READ%i: GBARAM\n", width);
+        if (timings) LogPrint(LOG_UNIMP|LOG_ARM9, "NTR_AHB9: Unimplemented READ%i: GBARAM\n", width);
         ret = (sys->ExtMemCR_Shared.GBAPakAccess ? 0xFFFFFFFF : 0); // TODO
         Timing32(&sys->AHB9);
         break;
@@ -783,8 +783,7 @@ u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
         }
 
     default: // Unmapped Device;
-        ARM9_Log(&sys->ARM9);
-        LogPrint(LOG_ODD|LOG_ARM9,"NTR_AHB9: %i bit read from unmapped memory at 0x%08X? Something went wrong?\n", width, addr);
+        if (timings) LogPrint(LOG_ODD|LOG_ARM9,"NTR_AHB9: %i bit read from unmapped memory at 0x%08X? Something went wrong?\n", width, addr);
         if (timings)
         {
             Timing32(&sys->AHB9);
@@ -854,7 +853,7 @@ void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
         // TODO: 2d gpu contention timings
         if (!((addr & 0x400) ? sys->PowerCR9.PPUBPower : sys->PowerCR9.PPUAPower) || (width == 8))
         {
-            (width == 8) ? LogPrint(LOG_ARM9|LOG_ODD, "8 BIT PALETTE WRITE?\n") : LogPrint(LOG_ARM9|LOG_ODD, "DISABLED PALETTE WRITE?\n");
+            if (timings) (width == 8) ? LogPrint(LOG_ARM9|LOG_ODD, "8 BIT PALETTE WRITE?\n") : LogPrint(LOG_ARM9|LOG_ODD, "DISABLED PALETTE WRITE?\n");
             if (timings)
             {
                 // CHECKME: contention for bytes?
@@ -876,7 +875,7 @@ void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
         // TODO: 2d gpu contention timings
         if (width == 8)
         {
-            LogPrint(LOG_ARM9|LOG_ODD, "ARM9: 8 BIT VRAM WRITE?\n");
+            if (timings) LogPrint(LOG_ARM9|LOG_ODD, "ARM9: 8 BIT VRAM WRITE?\n");
             if (timings)
             {
                 // CHECKME: contention for bytes?
@@ -893,7 +892,7 @@ void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
         // TODO: 2d gpu contention timings
         if (!((addr & 0x400) ? sys->PowerCR9.PPUBPower : sys->PowerCR9.PPUAPower) || (width == 8))
         {
-            (width == 8) ? LogPrint(LOG_ARM9|LOG_ODD, "8 BIT OAM WRITE?\n") : LogPrint(LOG_ARM9|LOG_ODD, "DISABLED OAM WRITE?\n");
+            if (timings) (width == 8) ? LogPrint(LOG_ARM9|LOG_ODD, "8 BIT OAM WRITE?\n") : LogPrint(LOG_ARM9|LOG_ODD, "DISABLED OAM WRITE?\n");
             if (timings)
             {
                 // CHECKME: contention for bytes?
@@ -912,20 +911,19 @@ void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
         break;
 
     case 0x08 ... 0x09: // GBA Cartridge ROM
-        LogPrint(LOG_UNIMP|LOG_ARM9, "NTR_AHB9: Unimplemented WRITE%i: GBAROM\n", width);
+        if (timings) LogPrint(LOG_UNIMP|LOG_ARM9, "NTR_AHB9: Unimplemented WRITE%i: GBAROM\n", width);
         // TODO
         break;
 
     case 0x0A: // GBA Cartridge RAM
-        LogPrint(LOG_UNIMP|LOG_ARM9, "NTR_AHB9: Unimplemented WRITE%i: GBARAM\n", width);
+        if (timings) LogPrint(LOG_UNIMP|LOG_ARM9, "NTR_AHB9: Unimplemented WRITE%i: GBARAM\n", width);
         // TODO
         break;
 
     default: // Unmapped Device;
-        ARM9_Log(&sys->ARM9);
-        LogPrint(LOG_ODD|LOG_ARM9,"NTR_AHB9: %i bit write to unmapped memory at 0x%08X? Something went wrong?\n", width, addr);
         if (timings)
         {
+            LogPrint(LOG_ODD|LOG_ARM9,"NTR_AHB9: %i bit write to unmapped memory at 0x%08X? Something went wrong?\n", width, addr);
             Timing32(&sys->AHB9);
         }
         // always reads 0
@@ -979,7 +977,7 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
         }
 
     default: // Unmapped Device;
-        LogPrint(LOG_ODD|LOG_ARM7, "NTR_AHB7: %i bit read from unmapped memory at 0x%08X? Something went wrong?\n", width, addr);
+        if (timings) LogPrint(LOG_ODD|LOG_ARM7, "NTR_AHB7: %i bit read from unmapped memory at 0x%08X? Something went wrong?\n", width, addr);
         if (timings)
         {
             Timing32(&sys->AHB7);
@@ -1030,7 +1028,7 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
         ret = IO7_Read(sys, addr, mask);
         break;
     case 0x048: // WiFi
-        LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented READ%i: WiFi\n", width);
+        if (timings) LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented READ%i: WiFi\n", width);
         ret = MemoryRead(32, sys->WiFiRAM, addr, WiFiRAM_Size);
         break;
 
@@ -1040,14 +1038,14 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
         break;
 
     case 0x080 ... 0x098: // GBA Cartridge ROM
-        LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented READ%i: GBAROM\n", width);
+        if (timings) LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented READ%i: GBAROM\n", width);
         ret = (sys->ExtMemCR_Shared.GBAPakAccess ? 0xFFFFFFFF : 0); // TODO
         Timing32(&sys->AHB7);
         break;
 
     case 0x0A0: // GBA Cartridge RAM
     case 0x0A8: // GBA Cartridge RAM
-        LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented READ%i: GBARAM\n", width);
+        if (timings) LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented READ%i: GBARAM\n", width);
         ret = (sys->ExtMemCR_Shared.GBAPakAccess ? 0xFFFFFFFF : 0); // TODO
         Timing32(&sys->AHB7);
         break;
