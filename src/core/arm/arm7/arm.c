@@ -210,10 +210,6 @@ void ARM7_MainLoop(struct ARM7TDMI* ARM7)
     {
         if ((Console_GetARM7Max(cpu->Sys) >= cpu->Sys->ARM7Target) || cpu->DeadAsleep)
         {
-            if (cpu->Sys->Sched.EventTimes[Evt_DMA7] <= cpu->Sys->ARM7Target)
-            {
-                DMA_Run(cpu->Sys, false);
-            }
             CR_Switch(cpu->Sys->HandleMain);
         }
         else
@@ -221,6 +217,10 @@ void ARM7_MainLoop(struct ARM7TDMI* ARM7)
             ARM7_Step(ARM7);
             if (cpu->WaitForInterrupt)
                 cpu->DeadAsleep = true;
+        }
+        if (DMA_GetNext(cpu->Sys, false) <= cpu->Sys->ARM7Target)
+        {
+            DMA_Run(cpu->Sys, false);
         }
     }
 }

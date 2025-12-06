@@ -22,6 +22,11 @@ timestamp DMA_CheckNext(struct DMA_Controller* cnt, u8* id)
     return time;
 }
 
+timestamp DMA_GetNext(struct Console* sys, bool a9)
+{
+    return (a9) ? sys->DMA9.NextTime : sys->DMA7.NextTime;
+}
+
 void DMA9_ScheduledRun(struct Console* sys, [[maybe_unused]] timestamp now)
 {
     CR_Switch(sys->HandleARM9);
@@ -41,10 +46,11 @@ void DMA_Schedule(struct Console* sys, const bool a9)
     u8 id = -1;
     timestamp time = DMA_CheckNext(cnt, &id);
     cnt->NextID = id;
-    if (a9)
-        Schedule_Event(sys, DMA9_ScheduledRun, Evt_DMA9, time);
-    else
-        Schedule_Event(sys, DMA7_ScheduledRun, Evt_DMA7, time);
+    cnt->NextTime = time;
+    //if (a9)
+    //    Schedule_Event(sys, DMA9_ScheduledRun, Evt_DMA9, time);
+    //else
+    //    Schedule_Event(sys, DMA7_ScheduledRun, Evt_DMA7, time);
 }
 
 void StartDMA9(struct Console* sys, timestamp start, u8 mode)

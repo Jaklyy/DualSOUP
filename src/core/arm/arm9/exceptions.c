@@ -247,8 +247,8 @@ void ARM9_DataAbort(struct ARM946ES* ARM9)
 {
     LogPrint(LOG_ARM9 | LOG_EXCEP, "%s9 - DATA ABT @ %08X\n", (cpu->CPSR.Thumb ? "THUMB" : "ARM"), cpu->PC);
 
-    ARM9_DumpMPU(ARM9);
-    CrashSpectacularly("FARK %08X\n", cpu->PC);
+    //ARM9_DumpMPU(ARM9);
+    //CrashSpectacularly("FARK %08X\n", cpu->PC);
     // lr is aborted instr + 8
     // CHECKME: what happens if the abort was from an exception return LDM? (SPSR was restored?)
     u32 oldpc = cpu->PC + ((cpu->CPSR.Thumb) ? 2 : -4);

@@ -113,6 +113,9 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
     sys->DMA7.ChannelTimestamps[2] = timestamp_max;
     sys->DMA7.ChannelTimestamps[3] = timestamp_max;
 
+    sys->DMA9.NextTime = timestamp_max;
+    sys->DMA7.NextTime = timestamp_max;
+
     sys->IPCFIFO7.CR.RecvFIFOEmpty = true;
     sys->IPCFIFO7.CR.SendFIFOEmpty = true;
     sys->IPCFIFO9.CR.RecvFIFOEmpty = true;
@@ -247,7 +250,7 @@ timestamp Console_GetARM7Max(struct Console* sys)
 
     if (sys->ARM7.ARM.DeadAsleep)
     {
-        ts = sys->Sched.EventTimes[Evt_DMA7];
+        ts = DMA_GetNext(sys, false);
 
         if (ts < sys->AHB7.Timestamp)
             ts = sys->AHB7.Timestamp;
@@ -257,8 +260,8 @@ timestamp Console_GetARM7Max(struct Console* sys)
         if (ts < sys->ARM7.ARM.Timestamp)
             ts = sys->ARM7.ARM.Timestamp;
 
-        if (ts > sys->Sched.EventTimes[Evt_DMA7])
-            ts = sys->Sched.EventTimes[Evt_DMA7];
+        if (ts > DMA_GetNext(sys, false))
+            ts = DMA_GetNext(sys, false);
 
         if (ts < sys->AHB7.Timestamp)
             ts = sys->AHB7.Timestamp;
@@ -273,7 +276,7 @@ timestamp Console_GetARM9Max(struct Console* sys)
 
     if (sys->ARM9.ARM.DeadAsleep)
     {
-        ts = sys->Sched.EventTimes[Evt_DMA9];
+        ts = DMA_GetNext(sys, true);
 
         if (ts < sys->AHB9.Timestamp)
             ts = sys->AHB9.Timestamp;
@@ -283,8 +286,8 @@ timestamp Console_GetARM9Max(struct Console* sys)
         if (ts < (sys->ARM9.ARM.Timestamp >> ((sys->ARM9.BoostedClock) ? 2 : 1)))
             ts = sys->ARM9.ARM.Timestamp >> ((sys->ARM9.BoostedClock) ? 2 : 1);
 
-        if (ts > sys->Sched.EventTimes[Evt_DMA9])
-            ts = sys->Sched.EventTimes[Evt_DMA9];
+        if (ts > DMA_GetNext(sys, true))
+            ts = DMA_GetNext(sys, true);
 
         if (ts < sys->AHB9.Timestamp)
             ts = sys->AHB9.Timestamp;
@@ -297,6 +300,10 @@ void Console_SyncWith7GTE(struct Console* sys, timestamp now)
 {
     while(now >= Console_GetARM7Max(sys))
     {
+        if (DMA_GetNext(sys, true) <= sys->ARM7Target)
+        {
+            DMA_Run(sys, true);
+        }
         CR_Switch(sys->HandleMain);
     }
 }
@@ -305,6 +312,10 @@ void Console_SyncWith7GT(struct Console* sys, timestamp now)
 {
     while(now > Console_GetARM7Max(sys))
     {
+        if (DMA_GetNext(sys, true) <= sys->ARM7Target)
+        {
+            DMA_Run(sys, true);
+        }
         CR_Switch(sys->HandleMain);
     }
 }
@@ -313,6 +324,10 @@ void Console_SyncWith9GTE(struct Console* sys, timestamp now)
 {
     while(now >= Console_GetARM9Max(sys))
     {
+        if (DMA_GetNext(sys, false) <= sys->ARM7Target)
+        {
+            DMA_Run(sys, false);
+        }
         CR_Switch(sys->HandleMain);
     }
 }
@@ -321,6 +336,10 @@ void Console_SyncWith9GT(struct Console* sys, timestamp now)
 {
     while(now > Console_GetARM9Max(sys))
     {
+        if (DMA_GetNext(sys, false) <= sys->ARM7Target)
+        {
+            DMA_Run(sys, false);
+        }
         CR_Switch(sys->HandleMain);
     }
 }

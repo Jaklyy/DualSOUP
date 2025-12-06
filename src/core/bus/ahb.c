@@ -96,7 +96,7 @@ bool AHB_NegOwnership(struct Console* sys, timestamp* cur, const bool atomic, co
     if (*cur < bus->Timestamp) *cur = bus->Timestamp;
 
     // check if anything else is able to run
-    if (!atomic && (*cur >= sys->Sched.EventTimes[(a9) ? Evt_DMA9 : Evt_DMA7]))
+    if (!atomic && (*cur >= DMA_GetNext(sys, a9)))
     {
         DMA_Run(sys, a9);
 

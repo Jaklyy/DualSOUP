@@ -329,15 +329,15 @@ void ARM9_MainLoop(struct ARM946ES* ARM9)
     {
         if ((Console_GetARM9Max(cpu->Sys) >= cpu->Sys->ARM7Target) || cpu->DeadAsleep)
         {
-            if (cpu->Sys->Sched.EventTimes[Evt_DMA9] <= cpu->Sys->ARM7Target)
-            {
-                DMA_Run(cpu->Sys, true);
-            }
             CR_Switch(cpu->Sys->HandleMain);
         }
         else
         {
             ARM9_Step(ARM9);
+        }
+        if (DMA_GetNext(cpu->Sys, true) <= cpu->Sys->ARM7Target)
+        {
+            DMA_Run(cpu->Sys, true);
         }
     }
 }

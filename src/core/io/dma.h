@@ -57,6 +57,7 @@ struct DMA_Controller
 {
     alignas(sizeof(timestamp[4])) timestamp ChannelTimestamps[4];
     alignas(sizeof(timestamp[4])) timestamp ChannelLastEnded[4];
+    timestamp NextTime;
     struct DMA_Channel Channels[4];
     u8 CurMask;
     s8 NextID;
@@ -70,3 +71,4 @@ void DMA9_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 
 u32 DMA_IOReadHandler(struct DMA_Channel* channels, u32 addr);
 void StartDMA9(struct Console* sys, timestamp start, u8 mode);
 void StartDMA7(struct Console* sys, timestamp start, u8 mode);
+timestamp DMA_GetNext(struct Console* sys, bool a9);
