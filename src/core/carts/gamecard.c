@@ -145,6 +145,7 @@ u32 GamecardMisc_ROMReadHandler(Gamecard* card)
     // force it to stay within one 4 KiB area.
     if (!(card->Address & (KiB(4)-1)))
     {
+        LogPrint(LOG_CARD, "Gamecard read wrapping.\n");
         card->Address -= KiB(4);
     }
 
@@ -201,7 +202,7 @@ void* GamecardMisc_ROMCommandHandler(struct Console* sys, const bool a9)
                     return GamecardMisc_InvalidCmdHandler;
                 case 0x00:
                     // header
-                    card->Address = (bswap(cmd) >> 24);
+                    card->Address = (bswap(cmd) >> 24) & ~3;
                     return GamecardMisc_UnencHeaderHandler;
                 case 0x90:
                     // chip id
@@ -242,10 +243,12 @@ void* GamecardMisc_ROMCommandHandler(struct Console* sys, const bool a9)
                 {
                     // data
                     card->Address = (bswap(cmd) >> 24) & (card->RomSize-4); // subtract 4 as a weird way to handle masking out bottom bits as well.
+                    printf("%08X %i\n", card->Address, card->NumWords);
                     if (!(card->Address & ~(KiB(4)-1)))
                     {
-                        // secure area is rerouted to the 512 bytes above the 
+                        // secure area is rerouted to the 512 bytes above it
                         card->Address &= 0x1FF;
+                        LogPrint(LOG_CARD, "Gamecard secure area read.\n");
                         return GamecardMisc_ROMReadSecureAreaHandler;
                     }
                     else return GamecardMisc_ROMReadHandler;
@@ -350,10 +353,10 @@ void Gamecard_ROMCommandSubmit(struct Console* sys, timestamp cur, const bool a9
 
 
     card->NumWords = ((sys->GCROMCR[a9].NumWords == 7)
-                        ? 4
+                        ? 1
                         : ((sys->GCROMCR[a9].NumWords == 0)
                             ? 0
-                            : (0x100 << sys->GCROMCR[a9].NumWords)));
+                            : (0x40 << sys->GCROMCR[a9].NumWords)));
 
     card->ReadHandler = GamecardMisc_ROMCommandHandler(sys, a9);
 

@@ -34,6 +34,7 @@ void ARM7_BusWrite(struct ARM7TDMI* ARM7, const u32 addr, const u32 val, const u
 {
     if (!AHB_NegOwnership(ARM7->ARM.Sys, &ARM7->ARM.Timestamp, atomic, false))
         *seq = false;
+    //if ((addr & 0xFF000000) == 0x02000000) printf("AA %08X\n", addr);
     AHB7_Write(ARM7->ARM.Sys, &ARM7->ARM.Timestamp, addr, val, mask, atomic, seq, true, ARM7->ARM.PC);
     *seq = true;
 }

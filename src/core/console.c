@@ -125,6 +125,14 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
 
     sys->Pad = pad;
 
+    sys->RTC.DataTime[0] = 1;
+    sys->RTC.DataTime[1] = 1;
+    sys->RTC.DataTime[2] = 1;
+    sys->RTC.DataTime[3] = 1;
+    sys->RTC.DataTime[4] = 1;
+    sys->RTC.DataTime[5] = 1;
+    sys->RTC.DataTime[6] = 1;
+
     // run power on/reset logic
     Console_Reset(sys);
 

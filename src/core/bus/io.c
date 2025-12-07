@@ -353,10 +353,8 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
     {
         case 0x00'00'04:
             Scheduler_RunEventManual(sys, sys->AHB7.Timestamp, Evt_Scanline, false);
-            sys->DispStatRW7.Raw = val & mask & 0xB8;
+            MaskedWrite(sys->DispStatRW7.Raw, val, mask & 0xFFB8);
             sys->TargetVCount7 = (sys->DispStatRW7.VCountMSB << 8) | sys->DispStatRW7.VCountLSB;
-
-            // TODO VCount Match Settings.
 
             // CHECKME: byte writes probably behave weirdly.
             if ((mask == 0xFF000000) || (mask == 0x00FF0000)) LogPrint(LOG_UNIMP, "UNTESTED: VCOUNT BYTE WRITES!\n");
@@ -466,7 +464,7 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
                     Console_SyncWith9GT(sys, sys->AHB7.Timestamp);
                     sys->PostFlag |= val & 0x1;
                 }
-                if (mask & 0xC000) // wait control
+                if (mask & 0xFF00) // wait control
                 {
                     switch((val >> 14) & 0x3)
                     {
@@ -650,7 +648,7 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
 
         case 0x00'00'04:
             Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Scanline, true);
-            MaskedWrite(sys->DispStatRW9.Raw, val, mask & 0xB8);
+            MaskedWrite(sys->DispStatRW9.Raw, val, mask & 0xFFB8);
             sys->TargetVCount9 = (sys->DispStatRW9.VCountMSB << 8) | sys->DispStatRW9.VCountLSB;
 
             // TODO VCount Match Settings.

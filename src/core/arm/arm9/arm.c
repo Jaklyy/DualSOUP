@@ -27,6 +27,7 @@ void ARM9_Log(struct ARM946ES* ARM9)
     {
         LogPrint(LOG_ARM9, "INSTR: %08X ", cpu->Instr[0].Raw);
     }
+    LogPrint(LOG_ARM9, "DTCM: %08lX %08lX %i ITCM: %i %i %i\n", ARM9->CP15.DTCMReadBase, ARM9->CP15.DTCMWriteBase, ARM9->CP15.DTCMShift, ARM9->CP15.ITCMShift, ARM9->CP15.CR.ITCMEnable, ARM9->CP15.CR.ITCMLoadMode);
     LogPrint(LOG_ARM9, "EXE:%li MEM:%li\n\n", cpu->Timestamp, ARM9->MemTimestamp);
 }
 

@@ -54,6 +54,16 @@ void LCD_Scanline(struct Console* sys, timestamp now)
                 fclose(file);
             }
             {
+                FILE* file = fopen("log9dt.bin", "wb");
+                fwrite(sys->ARM9.DTCM.b8, ARM9_DTCMSize, 1, file);
+                fclose(file);
+            }
+            {
+                FILE* file = fopen("log9it.bin", "wb");
+                fwrite(sys->ARM9.ITCM.b8, ARM9_ITCMSize, 1, file);
+                fclose(file);
+            }
+            {
                 FILE* file = fopen("log9.bin", "wb");
                 for (int i = 0x02000000; i < 0x08000000; i+=4)
                 {

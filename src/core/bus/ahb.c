@@ -944,11 +944,13 @@ void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
 
     case 0x08 ... 0x09: // GBA Cartridge ROM
         if (timings) LogPrint(LOG_UNIMP|LOG_ARM9, "NTR_AHB9: Unimplemented WRITE%i: GBAROM\n", width);
+        if (timings) Timing32(&sys->AHB9);
         // TODO
         break;
 
     case 0x0A: // GBA Cartridge RAM
         if (timings) LogPrint(LOG_UNIMP|LOG_ARM9, "NTR_AHB9: Unimplemented WRITE%i: GBARAM\n", width);
+        if (timings) Timing32(&sys->AHB9);
         // TODO
         break;
 
@@ -1077,15 +1079,15 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
 
     case 0x080 ... 0x098: // GBA Cartridge ROM
         if (timings) LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented READ%i: GBAROM\n", width);
+        if (timings) Timing32(&sys->AHB7);
         ret = (sys->ExtMemCR_Shared.GBAPakAccess ? 0xFFFFFFFF : 0); // TODO
-        Timing32(&sys->AHB7);
         break;
 
     case 0x0A0: // GBA Cartridge RAM
     case 0x0A8: // GBA Cartridge RAM
         if (timings) LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented READ%i: GBARAM\n", width);
+        if (timings) Timing32(&sys->AHB7);
         ret = (sys->ExtMemCR_Shared.GBAPakAccess ? 0xFFFFFFFF : 0); // TODO
-        Timing32(&sys->AHB7);
         break;
     }
 
@@ -1164,6 +1166,7 @@ void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
         IO7_Write(sys, addr, val, mask, a7pc);
         break;
     case 0x048: // WiFi
+        if (timings) Timing32(&sys->AHB7); // TODO
         LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented WRITE%i: WiFi\n", width);
         MemoryWrite(32, sys->WiFiRAM, addr, WiFiRAM_Size, val, mask);
         break;
@@ -1174,22 +1177,21 @@ void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
         break;
 
     case 0x080 ... 0x098: // GBA Cartridge ROM
+        if (timings) Timing32(&sys->AHB7);
         LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented WRITE%i: GBAROM\n", width);
         // TODO
         break;
 
     case 0x0A0: // GBA Cartridge RAM
     case 0x0A8: // GBA Cartridge RAM
+        if (timings) Timing32(&sys->AHB7);
         LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented WRITE%i: GBARAM\n", width);
         // TODO
         break;
 
     default: // Unmapped Device;
         LogPrint(LOG_ODD|LOG_ARM7,"NTR_AHB7: %i bit write to unmapped memory at 0x%08X? Something went wrong?\n", width, addr);
-        if (timings)
-        {
-            Timing32(&sys->AHB7);
-        }
+        if (timings) Timing32(&sys->AHB7);
         break;
     }
 
