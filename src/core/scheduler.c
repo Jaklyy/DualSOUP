@@ -56,10 +56,10 @@ void Scheduler_RunEventManual(struct Console* sys, timestamp time, const u8 even
     // need to catch up other components to ensure coherency
     if (a9) Console_SyncWith7GT(sys, time);
     else Console_SyncWith9GT(sys, time);
+    while (time >= sys->Sched.EventTimes[event])
 #ifdef UseThreads
-    while (time >= sys->Sched.EventTimes[event]);
+        ;
 #else
-    if (time >= sys->Sched.EventTimes[event])
     {
         sys->Sched.EventCallbacks[event](sys, sys->Sched.EventTimes[event]);
         Scheduler_UpdateTargets(sys);

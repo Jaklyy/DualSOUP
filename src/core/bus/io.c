@@ -61,6 +61,8 @@ u32 IPC_FIFORead(struct Console* sys, [[maybe_unused]] const u32 mask, const boo
         // return oldest value.
         ret = recv->FIFO[recv->DrainPtr];
     }
+
+    printf("r%i %08X\n", a9, ret);
     return ret;
 }
 
@@ -71,6 +73,8 @@ void IPC_FIFOWrite(struct Console* sys, const u32 val, const u32 mask, const boo
     timestamp ts = ((a9) ? sys->AHB9.Timestamp : sys->AHB7.Timestamp);
     if (a9) Console_SyncWith7GT(sys, ts);
     else    Console_SyncWith9GT(sys, ts);
+
+    printf("w%i %08X\n", a9, val);
 
     // CHECKME: do both sides need to be enabled for it to work?
     // CHECKME: halfword/byte accesses?
@@ -261,7 +265,7 @@ void SPI_Finish(struct Console* sys, timestamp cur)
 {
     sys->SPIOut = sys->SPIBuf;
     sys->SPICR.Busy = false;
-    Console_ScheduleIRQs(sys, IRQ_SPI, false, cur); // delay?
+    if (sys->SPICR.IRQ) Console_ScheduleIRQs(sys, IRQ_SPI, false, cur); // delay?
     Schedule_Event(sys, SPI_Finish, Evt_SPI, timestamp_max);
 }
 
@@ -337,13 +341,14 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask)
             return Gamecard_ROMDataRead(sys, sys->AHB7.Timestamp, false);
 
         default:
-            LogPrint(LOG_ARM7 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO7 READ: %08X %08X @ %08X\n", addr, mask, sys->ARM7.ARM.PC);
+            //LogPrint(LOG_ARM7 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO7 READ: %08X %08X @ %08X\n", addr, mask, sys->ARM7.ARM.PC);
             return 0;
     }
 }
 
 void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mask, const u32 a7pc)
 {
+        //printf("io7 %08X %08X %08X %08X\n", addr, val, mask, a7pc);
     switch(addr & 0xFF'FF'FC)
     {
         case 0x00'00'04:
@@ -414,6 +419,7 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
 
         case 0x00'01'C0:
             MaskedWrite(sys->SPICR.Raw, val, mask & 0xCF83);
+
             if (mask & 0xFF0000)
             {
                 switch(sys->SPICR.DeviceSelect)
@@ -426,6 +432,7 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
                     break;
                 case 2:
                     LogPrint(LOG_ARM7|LOG_UNIMP, "TSC UNIMPLEMENTED!\n");
+                    sys->SPIBuf = 0;
                     break;
                 case 3:
                     LogPrint(LOG_ARM7|LOG_UNIMP, "spi RESERVED????????????\n");

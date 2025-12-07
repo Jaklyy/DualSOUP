@@ -398,7 +398,7 @@ u32 ARM9_DCacheReadLookup(struct ARM946ES* ARM9, const u32 addr)
     bool seq = false;
     timestamp time = ARM9->MemTimestamp;
     unsigned waittil = (addr / sizeof(u32)) & 0x7;
-    u32 actualaddr = addr & ~0x1F;
+    u32 actualaddr = addr & ~0x1C;
     for (unsigned i = 0; i < 8; i++)
     {
         // TODO: Atomic access bug
@@ -685,13 +685,13 @@ u32 ARM9_DataRead(struct ARM946ES* ARM9, const u32 addr, const u32 mask, bool* s
 
 u32 ARM9_DataRead32(struct ARM946ES* ARM9, u32 addr, bool* seq, bool* dabt)
 {
-    return ARM9_DataRead(ARM9, addr, u32_max, seq, dabt);
+    return ARM9_DataRead(ARM9, addr & ~3, u32_max, seq, dabt);
 }
 
 u16 ARM9_DataRead16(struct ARM946ES* ARM9, u32 addr, bool* seq, bool* dabt)
 {
-    u32 mask = ROL32(u16_max,((addr & 2) * 8));
-    u32 ret = ARM9_DataRead(ARM9, addr, mask, seq, dabt);
+    u32 mask = ROL32(u16_max, ((addr & 2) * 8));
+    u32 ret = ARM9_DataRead(ARM9, addr & ~3, mask, seq, dabt);
 
     // note: arm9 ldrh doesn't do a rotate right so we need to special case the correction here.
     return ROR32(ret, ((addr & 2) * 8)) & 0xFFFF;
@@ -700,7 +700,7 @@ u16 ARM9_DataRead16(struct ARM946ES* ARM9, u32 addr, bool* seq, bool* dabt)
 u32 ARM9_DataRead8(struct ARM946ES* ARM9, u32 addr, bool* seq, bool* dabt)
 {
     u32 mask = ROL32(u8_max, ((addr & 3) * 8));
-    u32 ret = ARM9_DataRead(ARM9, addr, mask, seq, dabt);
+    u32 ret = ARM9_DataRead(ARM9, addr & ~3, mask, seq, dabt);
 
     return ret;
 }
@@ -806,6 +806,25 @@ void ARM9_DataWrite(struct ARM946ES* ARM9, u32 addr, const u32 val, const u32 ma
     }
 
     *seq = true;
+}
+
+void ARM9_DataWrite32(struct ARM946ES* ARM9, u32 addr, u32 val, const bool atomic, const bool deferrable, bool* seq, bool* dabt)
+{
+    ARM9_DataWrite(ARM9, addr, val, u32_max, atomic, deferrable, seq, dabt);
+}
+
+void ARM9_DataWrite16(struct ARM946ES* ARM9, u32 addr, u32 val, bool* seq, bool* dabt)
+{
+    val = ROL32(val, ((addr & 2) * 8));
+    u32 mask = ROL32(u16_max, ((addr & 2) * 8));
+    ARM9_DataWrite(ARM9, addr, val, mask, false, true, seq, dabt);
+}
+
+void ARM9_DataWrite8(struct ARM946ES* ARM9, u32 addr, u32 val, const bool atomic, bool* seq, bool* dabt)
+{
+    val = ROL32(val, ((addr & 3) * 8));
+    u32 mask = ROL32(u8_max, ((addr & 3) * 8));
+    ARM9_DataWrite(ARM9, addr, val, mask, atomic, true, seq, dabt);
 }
 
 void ARM9_DeferredITCMWrite(struct ARM946ES* ARM9)

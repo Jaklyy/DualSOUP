@@ -21,7 +21,7 @@ typedef struct
     void* (*CmdHandler) (struct Console*, bool);
     u32 (*ReadHandler) (void*);
     u32 Address;
-    u32 NumWords;
+    s32 NumWords;
     u32 RomSize;
     u32* ROM;
     u32 ChipID;

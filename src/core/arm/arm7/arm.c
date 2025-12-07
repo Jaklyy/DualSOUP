@@ -2,7 +2,6 @@
 #include "../shared/arm.h"
 #include "../../console.h"
 #include "arm.h"
-#include <stdlib.h>
 
 
 
@@ -28,6 +27,8 @@ void ARM7_Log(struct ARM7TDMI* ARM7)
         LogPrint(LOG_ARM7, "INSTR: %08X ", cpu->Instr[0].Raw);
     }
     LogPrint(LOG_ARM7, "EXE:%li\n\n", cpu->Timestamp);
+    LogPrint(LOG_ARM7, "%08X %08X %i\n", cpu->Sys->IF7, cpu->Sys->IE7, cpu->Sys->IME7);
+    LogPrint(LOG_ARM7, "%08X\n", cpu->Sys->Timers7[3].CR.Raw);
 }
 
 void ARM7_Init(struct ARM7TDMI* ARM7, struct Console* sys)
@@ -121,14 +122,15 @@ void ARM7_SetReg(struct ARM7TDMI* ARM7, const int reg, u32 val)
     }
 }
 
-void ARM7_ExecuteCycles(struct ARM7TDMI* ARM7, const u32 Execute)
+void ARM7_ExecuteCycles(struct ARM7TDMI* ARM7, const u32 execute)
 {
     // must be minus 1 to model pipeline overlaps
-    cpu->Timestamp += Execute - 1;
+    cpu->Timestamp += execute - 1;
     // internal cycles break up instruction bursts
     // CHECKME: presumably it ends the burst on the first internal cycle?
-    cpu->CodeSeq = (Execute == 1);
+    cpu->CodeSeq = (execute == 1);
 }
+
 
 #define FetchIRQExec(size, x) \
 /* Step 2: Fetch upcoming instruction. */ \
@@ -198,6 +200,7 @@ void ARM7_Step(struct ARM7TDMI* ARM7)
             }
         }
     }
+    //ARM7_Log(ARM7);
 }
 
 #undef ILCheck

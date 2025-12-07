@@ -24,13 +24,15 @@ struct Timer
                     bool IRQ : 1;
                     bool Enable : 1;
                 };
-            } Control;
+            } CR;
         };
     };
     u16 Counter;
     u8 DividerShift;
     bool NeedsUpdate;
-    bool NeedsInit;
+    bool NeedsEnable;
+    bool On;
+    bool JustOverflowed;
     u32 BufferedRegs;
 };
 

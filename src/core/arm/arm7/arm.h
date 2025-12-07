@@ -65,7 +65,13 @@ void ARM7_SetPC(struct ARM7TDMI* ARM7, u32 val);
 void ARM7_ExecuteCycles(struct ARM7TDMI* ARM7, const u32 Execute);
 
 [[nodiscard]] u32 ARM7_BusRead(struct ARM7TDMI* ARM7, const u32 addr, const u32 mask, bool* seq);
-void ARM7_BusWrite(struct ARM7TDMI* ARM7, const u32 addr, const u32 val, const u32 mask, const u32 atomic, bool* seq);
+[[nodiscard]] u32 ARM7_DataRead32(struct ARM7TDMI* ARM7, const u32 addr, bool* seq);
+[[nodiscard]] u32 ARM7_DataRead16(struct ARM7TDMI* ARM7, const u32 addr, bool* seq);
+[[nodiscard]] u32 ARM7_DataRead8(struct ARM7TDMI* ARM7, const u32 addr, bool* seq);
+void ARM7_BusWrite(struct ARM7TDMI* ARM7, const u32 addr, const u32 val, const u32 mask, const bool atomic, bool* seq);
+void ARM7_DataWrite32(struct ARM7TDMI* ARM7, const u32 addr, u32 val, const bool atomic, bool* seq);
+void ARM7_DataWrite16(struct ARM7TDMI* ARM7, const u32 addr, u32 val, bool* seq);
+void ARM7_DataWrite8(struct ARM7TDMI* ARM7, const u32 addr, u32 val, const bool atomic, bool* seq);
 void ARM7_InstrRead32(struct ARM7TDMI* ARM7, const u32 addr);
 void ARM7_InstrRead16(struct ARM7TDMI* ARM7, const u32 addr);
 

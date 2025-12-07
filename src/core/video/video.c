@@ -33,6 +33,8 @@ void LCD_Scanline(struct Console* sys, timestamp now)
 {
     sys->VCount++;
     sys->VCount %= 263;
+    //ARM9_Log(&sys->ARM9);
+    //ARM7_Log(&sys->ARM7);
 
     // check for vblank; clear hblank.
     // this occurs before vcount writes

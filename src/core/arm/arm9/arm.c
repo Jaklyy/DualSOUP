@@ -317,6 +317,7 @@ void ARM9_Step(struct ARM946ES* ARM9)
             }
         }
     }
+    //ARM9_Log(ARM9);
 }
 
 #undef ILCheck

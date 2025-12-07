@@ -271,8 +271,7 @@ void QueueNextTransfer(struct Console* sys, timestamp cur, const bool a9)
 {
     Gamecard* card = &sys->Gamecard;
 
-    printf("nw %i\n", card->NumWords);
-    if (card->NumWords)
+    if (card->NumWords > 0)
     {
         timestamp transtime = 4;
         if(!(card->Address & 0x1FF))

@@ -23,23 +23,20 @@ void STR(struct ARM* cpu, const u32 addr, const u8 rd, const int width)
     u32 val = ARM_GetReg(rd);
     bool seq = false;
     bool dabt = false;
-    u32 mask;
-
-    if (width == width32) { mask = u32_max; }
-    if (width == width16) { mask = ROL32(u16_max, (addr & 2) * 8); val = ROL32(val, (addr & 2) * 8); }
-    if (width == width8 ) { mask = ROL32(u8_max  , (addr & 3) * 8); val = ROL32(val, (addr & 3) * 8); }
-
     if (cpu->CPUID == ARM7ID)
     {
-        ARM7_BusWrite(ARM7Cast, addr, val, mask, false, &seq);
+        if (width == width32) ARM7_DataWrite32(ARM7Cast, addr, val, false, &seq);
+        if (width == width16) ARM7_DataWrite16(ARM7Cast, addr, val, &seq);
+        if (width == width8 ) ARM7_DataWrite8 (ARM7Cast, addr, val, false, &seq);
         cpu->CodeSeq = false;
     }
     else
     {
         timestamp oldts = ARM9Cast->MemTimestamp;
-        ARM9_DataWrite(ARM9Cast, addr, val, mask, false, true, &seq, &dabt);
+        if (width == width32) ARM9_DataWrite32(ARM9Cast, addr, val, false, true, &seq, &dabt);
+        if (width == width16) ARM9_DataWrite16(ARM9Cast, addr, val, &seq, &dabt);
+        if (width == width8 ) ARM9_DataWrite8 (ARM9Cast, addr, val, false, &seq, &dabt);
         ARM9_FixupLoadStore(ARM9Cast, 1, ARM9Cast->MemTimestamp - oldts);
-        // TODO: data abort
     }
 
     if (dabt)
@@ -61,19 +58,14 @@ void LDR(struct ARM* cpu, const u32 addr, const u8 rd, const int width, const bo
     u32 interlock = 0;
     if (cpu->CPUID == ARM7ID)
     {
-    u32 mask;
-
-        if (width == width32) { mask = u32_max; }
-        if (width == width16) { mask = ROL32(u16_max, (addr & 2) * 8); }
-        if (width == width8 ) { mask = ROL32(u8_max  , (addr & 3) * 8); }
-
-        val = ARM7_BusRead(ARM7Cast, addr, mask, &seq);
-
-        cpu->CodeSeq = false;
+        if (width == width32) val = ARM7_DataRead32(ARM7Cast, addr, &seq);
+        if (width == width16) val = ARM7_DataRead16(ARM7Cast, addr, &seq);
+        if (width == width8 ) val = ARM7_DataRead8 (ARM7Cast, addr, &seq);
 
         // arm7 needs 1 cycle extra after the load.
         // presumably this is for the same reason that certain loads can have writeback stage interlocks on arm9.
         cpu->Timestamp += 1;
+        cpu->CodeSeq = false;
 
         // rotate result right based on lsb of address.
         val = ROR32(val, (addr&3) * 8);
@@ -335,11 +327,11 @@ void THUMB_Push(struct ARM* cpu, const struct ARM_Instr instr_data)
         u32 val = ARM_GetReg(reg);
         if (cpu->CPUID == ARM7ID)
         {
-            ARM7_BusWrite(ARM7Cast, addr, val, u32_max, false, &seq);
+            ARM7_DataWrite32(ARM7Cast, addr, val, false, &seq);
         }
         else
         {
-            ARM9_DataWrite(ARM9Cast, addr, val, u32_max, false, false, &seq, &dabt);
+            ARM9_DataWrite32(ARM9Cast, addr, val, false, false, &seq, &dabt);
         }
         // increment address
         addr += 4;
@@ -441,7 +433,7 @@ void THUMB_Pop(struct ARM* cpu, const struct ARM_Instr instr_data)
         u32 val;
         if (cpu->CPUID == ARM7ID)
         {
-            val = ARM7_BusRead(ARM7Cast, addr, u32_max, &seq);
+            val = ARM7_DataRead32(ARM7Cast, addr, &seq);
         }
         else
         {
@@ -561,7 +553,7 @@ void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
             u32 val;
             if (cpu->CPUID == ARM7ID)
             {
-                val = ARM7_BusRead(ARM7Cast, addr, u32_max, &seq);
+                val = ARM7_DataRead32(ARM7Cast, addr, &seq);
 
                 // base writeback after first access
                 if (reg == stdc_trailing_zeros(rlistinit))
@@ -610,7 +602,7 @@ void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
             u32 val = ARM_GetReg(reg);
             if (cpu->CPUID == ARM7ID)
             {
-                ARM7_BusWrite(ARM7Cast, addr, val, u32_max, false, &seq);
+                ARM7_DataWrite32(ARM7Cast, addr, val, false, &seq);
 
                 // base writeback after first access
                 if (reg == stdc_trailing_zeros(rlistinit))
@@ -618,7 +610,7 @@ void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
             }
             else
             {
-                ARM9_DataWrite(ARM9Cast, addr, val, u32_max, false, false, &seq, &dabt);
+                ARM9_DataWrite32(ARM9Cast, addr, val, false, false, &seq, &dabt);
 
                 // base writeback before last access
                 if (reg == (15-stdc_leading_zeros(rlistinit)))

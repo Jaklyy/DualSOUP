@@ -239,6 +239,7 @@ void DMA_Run(struct Console* sys, const bool a9)
     u32 wmask;
     struct DMA_Channel* channel = &cnt->Channels[id];
     u64 timecur = cnt->ChannelTimestamps[id];
+    printf("%i %li %li\n", a9, timecur, sys->AHB7.Timestamp);
     cnt->ChannelTimestamps[id] = timestamp_max;
 
     //printf("%08X %08X %08X\n", channel->Latched_SrcAddr, channel->Latched_DstAddr, channel->Latched_NumWords);

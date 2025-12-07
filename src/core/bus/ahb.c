@@ -942,8 +942,8 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
     // is the alignment properly enforced by all bus devices?
     if (timings)
     {
-        if (*ts < sys->AHB7.Timestamp)
-            *ts = sys->AHB7.Timestamp;
+        if (sys->AHB7.Timestamp < *ts)
+            sys->AHB7.Timestamp = *ts;
     }
 
     addr &= ~3; // 4 byte aligned value used to simplify read logic.
@@ -1064,8 +1064,8 @@ void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
     // is the alignment properly enforced by all bus devices?
     if (timings)
     {
-        if (*ts < sys->AHB7.Timestamp)
-            *ts = sys->AHB7.Timestamp;
+        if (sys->AHB7.Timestamp < *ts)
+            sys->AHB7.Timestamp = *ts;
     }
 
     addr &= ~3; // 4 byte aligned value used to simplify write logic.
