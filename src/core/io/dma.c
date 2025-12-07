@@ -319,7 +319,7 @@ void DMA_Run(struct Console* sys, const bool a9)
     if (channel->CR.Repeat)
     {
         // TODO: reschedule
-        LogPrint(0, "UNIMP: DMA WANTS RESCHEDULE %i\n", channel->CurrentMode);
+        LogPrint(LOG_UNIMP, "UNIMP: DMA WANTS RESCHEDULE %i\n", channel->CurrentMode);
     }
     else
     {
@@ -405,7 +405,7 @@ void DMA9_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 
             }
             else
             {
-                LogPrint(0, "UNIMP: Stopping DMA9\n");
+                LogPrint(LOG_UNIMP, "UNIMP: Stopping DMA9\n");
                 // stopping dma channel
                 // TODO: allegedly under specific circumstances this can lock up the bus?
             }
@@ -456,7 +456,7 @@ void DMA7_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 
             }
             else
             {
-                LogPrint(0, "UNIMP: Stopping DMA7\n");
+                LogPrint(LOG_UNIMP, "UNIMP: Stopping DMA7\n");
                 // stopping dma channel
                 // TODO: allegedly under specific circumstances this can lock up the bus?
             }

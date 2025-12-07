@@ -19,9 +19,6 @@ void Scheduler_UpdateTargets(struct Console* sys)
             b = i;
         }
     }
-    //if (ckd_mul(&sys->ARM9Target, next, sys->ARM9.BoostedClock ? 4 : 2))
-    //    sys->ARM9Target = timestamp_max;
-    //printf("b:%i %li\n", b, next);
     sys->ARM7Target = next;
 }
 

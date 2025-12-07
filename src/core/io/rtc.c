@@ -31,7 +31,7 @@ u8 RTC_ReadByte(RTC* rtc)
             return rtc->DataTime[(rtc->BitsRead / 8) + 4];
         }
         default:
-            LogPrint(0, "UNIMP RTC READ %02X\n", rtc->CurCmd);
+            LogPrint(LOG_UNIMP, "UNIMP RTC READ %02X\n", rtc->CurCmd);
             return 0;
     }
 }
@@ -91,7 +91,7 @@ void RTC_CommandHandler(RTC* rtc)
             break;
         }
         default:
-            LogPrint(0, "I HAVE TO DO THIS??? %02X\n", rtc->CurCmd);
+            LogPrint(LOG_UNIMP, "I HAVE TO DO THIS??? %02X\n", rtc->CurCmd);
             break;
     }
 }

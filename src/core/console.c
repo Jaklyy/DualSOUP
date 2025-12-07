@@ -179,6 +179,13 @@ void Console_DirectBoot(struct Console* sys)
     u32 arm7_ramaddr = sys->Gamecard.ROM[0x38/4];
     u32 arm7_romsize = sys->Gamecard.ROM[0x3C/4];
 
+    if (((arm9_romoffs + arm9_romsize) > sys->Gamecard.RomSize)
+     || ((arm7_romoffs + arm7_romsize) > sys->Gamecard.RomSize))
+    {
+        LogPrint(LOG_ALWAYS, "ROM CONTAINS INVALID A9/A7 PROGRAMS\n");
+        return;
+    }
+
     //fread(vars, 4*4*2, 1, rom);
 
     sys->ARM9.ARM.R12 = arm9_entryaddr;

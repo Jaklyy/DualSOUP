@@ -58,7 +58,7 @@ void ARM9_AHBAccess(struct ARM946ES* ARM9, timestamp* ts, const bool atomic, boo
         // it's more correct to do so but im not sure it matters in practice?
 
         // NOTE: this code path should't trigger with sequential accesses
-        if (*seq) LogPrint(LOG_ALWAYS, "Sequential in codepath that sequentials should'nt be...?\n");
+        if (*seq) LogPrint(LOG_UNIMP, "Sequential in codepath that sequentials should'nt be...?\n");
 
         // CHECKME: how exactly does latency and losing bus ownership work with sharing?
         *ts += bufferlatency;
@@ -340,17 +340,17 @@ u32 ARM9_ICacheLookup(struct ARM946ES* ARM9, const u32 addr)
         // TODO: Atomic access bug
         ARM9->ICache.b32[((index | set)<<3) + i] = ARM9_AHBRead(ARM9, &time, actualaddr+(i*4), u32_max, false, &seq);
         seq = true;
-        if (waittil == i)
+        if (i == waittil)
         {
             ARM9->ARM.Timestamp = time;
-            ARM9->IStream.ReadPtr = &ARM9->ICache.b32[((index | set)<<3) | (i)];
-            ARM9->IStream.Prog = 7;//i;
+            ARM9->IStream.Prog = i;
         }
-        else if (waittil > 0)
+        else if (i > 0)
         {
             ARM9->IStream.Times[i] = time;
         }
     }
+    ARM9->IStream.CacheIndex = (index | set) << 3;
     ARM9_FetchCycles(ARM9, 0); // dummy to ensure coherency.
     return ARM9->ICache.b32[((index | set)<<3) | ((addr/sizeof(u32)) & 0x7)];
 }
@@ -404,17 +404,17 @@ u32 ARM9_DCacheReadLookup(struct ARM946ES* ARM9, const u32 addr)
         // TODO: Atomic access bug
         ARM9->DCache.b32[((index | set)<<3) + i] = ARM9_AHBRead(ARM9, &time, actualaddr+(i*4), u32_max, false, &seq);
         seq = true;
-        if (waittil == i)
+        if (i == waittil)
         {
             ARM9->MemTimestamp = time;
-            ARM9->DStream.ReadPtr = &ARM9->DCache.b32[((index | set)<<3) | (i)];
-            ARM9->DStream.Prog = 7;//i;
+            ARM9->DStream.Prog = i;
         }
-        else if (waittil < i)
+        else if (i > 0)
         {
             ARM9->DStream.Times[i] = time;
         }
     }
+    ARM9->IStream.CacheIndex = (index | set) << 3;
     return ARM9->DCache.b32[((index | set)<<3) | ((addr/sizeof(u32)) & 0x7)];
 }
 
@@ -465,9 +465,9 @@ bool ARM9_ProgressCacheStream(timestamp* ts, struct ARM9_CacheStream* stream, u3
     if (*ts < stream->Times[stream->Prog])
         *ts = stream->Times[stream->Prog];
 
-    *ret = *stream->ReadPtr;
-    stream->ReadPtr += 4;
     stream->Prog += 1;
+
+    *ret = stream->CachePtr[stream->CacheIndex | stream->Prog];
     return true;
 }
 

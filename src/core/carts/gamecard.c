@@ -31,6 +31,12 @@ bool Gamecard_Init(Gamecard* card, FILE* rom, u8* bios7)
         LogPrint(LOG_ALWAYS, "FATAL: Gamecard ROM too big! must be <= 512MiB; currently %li\n", size);
         return false;
     }
+    if (size < KiB(4))
+    {
+        LogPrint(LOG_ALWAYS, "FATAL: Gamecard ROM too small! idk if this is actually an issue but it feels like one; currently %li\n", size);
+        return false;
+    }
+
     card->RomSize = fauxsize;
     card->ROM = malloc(fauxsize);
     if (card->ROM == NULL)

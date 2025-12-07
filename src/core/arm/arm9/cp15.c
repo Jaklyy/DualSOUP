@@ -160,7 +160,7 @@ void ARM9_ConfigureMPURegionPerms(struct ARM946ES* ARM9)
     }
 }
 
-bool ARM9_ProgressCacheStream(timestamp* ts, struct ARM9_CacheStream* stream, u32* ret, const bool seq);
+extern bool ARM9_ProgressCacheStream(timestamp* ts, struct ARM9_CacheStream* stream, u32* ret, const bool seq);
 
 // CHECKME: does flushing cache clean the tag ram and/or cache line entirely?
 

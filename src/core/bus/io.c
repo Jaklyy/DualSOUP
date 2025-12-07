@@ -62,7 +62,7 @@ u32 IPC_FIFORead(struct Console* sys, [[maybe_unused]] const u32 mask, const boo
         ret = recv->FIFO[recv->DrainPtr];
     }
 
-    printf("r%i %08X\n", a9, ret);
+    //printf("r%i %08X\n", a9, ret);
     return ret;
 }
 
@@ -74,7 +74,7 @@ void IPC_FIFOWrite(struct Console* sys, const u32 val, const u32 mask, const boo
     if (a9) Console_SyncWith7GT(sys, ts);
     else    Console_SyncWith9GT(sys, ts);
 
-    printf("w%i %08X\n", a9, val);
+    //printf("w%i %08X\n", a9, val);
 
     // CHECKME: do both sides need to be enabled for it to work?
     // CHECKME: halfword/byte accesses?
@@ -521,6 +521,11 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask)
             Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Scanline, true);
             return (sys->VCount << 16) | sys->DispStatRO9.Raw |  sys->DispStatRW9.Raw;
 
+        case 0x00'00'08:
+            return sys->PPU_A.BGCR[0].Raw | (sys->PPU_A.BGCR[1].Raw << 16);
+        case 0x00'00'0C:
+            return sys->PPU_A.BGCR[2].Raw | (sys->PPU_A.BGCR[3].Raw << 16);
+
         // DMA
         case 0x00'00'B0 ... 0x00'00'E0-1:
             return DMA_IOReadHandler(sys->DMA9.Channels, addr);
@@ -663,6 +668,16 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
                 sys->VCountNew = ((val & mask) >> 16) & 0x1F;
             }
             break;
+
+        case 0x00'00'08:
+            MaskedWrite(sys->PPU_A.BGCR[0].Raw, val, mask);
+            MaskedWrite(sys->PPU_A.BGCR[1].Raw, val>>16, mask>>16);
+            break;
+        case 0x00'00'0C:
+            MaskedWrite(sys->PPU_A.BGCR[2].Raw, val, mask);
+            MaskedWrite(sys->PPU_A.BGCR[3].Raw, val>>16, mask>>16);
+            break;
+
         // DMA
         case 0x00'00'B0 ... 0x00'00'E0-1:
             DMA9_IOWriteHandler(sys, sys->DMA9.Channels, addr, val, mask);
