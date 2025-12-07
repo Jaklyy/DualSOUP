@@ -62,7 +62,6 @@ void StartDMA9(struct Console* sys, timestamp start, u8 mode)
         if ((sys->DMA9.ChannelLastEnded[i] <= start) && ((sys->DMA9.ChannelTimestamps[i] < start) || (sys->DMA9.ChannelTimestamps[i] == timestamp_max))) // checkme: starting dma while already started?
             sys->DMA9.ChannelTimestamps[i] = start;
         else LogPrint(LOG_ALWAYS, "DMA9 START FAILURE tried: %li ended: %li current: %li mode: %i\n", start, sys->DMA9.ChannelLastEnded[i], sys->DMA9.ChannelTimestamps[i], mode);
-        printf("try %i\n", mode);
     }
     DMA_Schedule(sys, true);
 }
@@ -239,16 +238,11 @@ void DMA_Run(struct Console* sys, const bool a9)
     u32 wmask;
     struct DMA_Channel* channel = &cnt->Channels[id];
     u64 timecur = cnt->ChannelTimestamps[id];
-    printf("%i %li %li\n", a9, timecur, sys->AHB7.Timestamp);
     cnt->ChannelTimestamps[id] = timestamp_max;
-
-    //printf("%08X %08X %08X\n", channel->Latched_SrcAddr, channel->Latched_DstAddr, channel->Latched_NumWords);
 
     if (channel->CR.SourceCR == 3) channel->Latched_SrcAddr = channel->SrcAddr;
     if (channel->CR.DestCR == 3) channel->Latched_DstAddr = channel->DstAddr;
     channel->Latched_NumWords = (channel->CR.NumWords ? channel->CR.NumWords : 0x200000);
-
-    printf("%08X %08X %08X\n", channel->Latched_SrcAddr, channel->Latched_DstAddr, channel->Latched_NumWords);
 
 
     cnt->CurMask |= 1<<id;
@@ -256,31 +250,35 @@ void DMA_Run(struct Console* sys, const bool a9)
 
     if (channel->CR.Width32)
     {
-        rmask = wmask = u32_max;
+        rmask = (wmask = u32_max);
     }
-    else
-    {
-        rmask = ROR32(u16_max, (channel->Latched_SrcAddr & 2)*8);
-        wmask = ROR32(u16_max, (channel->Latched_DstAddr & 2)*8);
-    }
+
     bool rseq = false;
     bool wseq = false;
+    bool tseq = false;
     while(channel->Latched_NumWords > 0)
     {
+        if (!channel->CR.Width32)
+        {
+            rmask = ROR32(u16_max, (channel->Latched_SrcAddr & 2)*8);
+            wmask = ROR32(u16_max, (channel->Latched_DstAddr & 2)*8);
+        }
+
         if (!AHB_NegOwnership(sys, &timecur, false, a9))
         {
             rseq = false;
             wseq = false;
+            tseq = false; // checkme
         }
         timestamp diff = timecur;
         u32 read;
         if (a9)
         {
-            read = AHB9_Read(sys, &timecur, channel->Latched_SrcAddr, rmask, false, rseq, &rseq, true);
+            read = AHB9_Read(sys, &timecur, channel->Latched_SrcAddr, rmask, false, true, &rseq, true);
         }
         else
         {
-            read = AHB7_Read(sys, &timecur, channel->Latched_SrcAddr, rmask, false, rseq, &rseq, true, 0xFFFFFFFF /*checkme?*/);
+            read = AHB7_Read(sys, &timecur, channel->Latched_SrcAddr, rmask, false, true, &rseq, true, 0xFFFFFFFF /*checkme?*/);
         }
         diff = timecur - diff;
 
@@ -289,6 +287,7 @@ void DMA_Run(struct Console* sys, const bool a9)
         {
             rseq = false;
             wseq = false;
+            tseq = false; // checkme
         }
         if (a9)
         {
@@ -299,12 +298,13 @@ void DMA_Run(struct Console* sys, const bool a9)
             AHB7_Write(sys, &timecur, channel->Latched_DstAddr, read, wmask, false, &wseq, true, 0xFFFFFFFF /*checkme?*/);
         }
         // CHECKME: should this only apply to the actual first?
-        if (!rseq)
+        if (!tseq)
         {
             // TODO: figure out why exactly this happens?
             if (diff == 1)
                 timecur +=1;
         }
+        tseq = true;
 
         rseq = (channel->SrcInc > 0);
         wseq = (channel->DstInc > 0);
@@ -312,13 +312,9 @@ void DMA_Run(struct Console* sys, const bool a9)
         channel->Latched_DstAddr += channel->DstInc;
 
         channel->Latched_NumWords -= 1;
-
-        if (!channel->CR.Width32)
-        {
-            rmask = ROR32(u16_max, (channel->Latched_SrcAddr & 2)*8);
-            wmask = ROR32(u16_max, (channel->Latched_DstAddr & 2)*8);
-        }
     }
+
+    //Bus_MainRAM_ReleaseHold(sys, a9 ? &sys->AHB9 : &sys->AHB7); why isn't this necessary?
 
     // end
 
@@ -339,7 +335,6 @@ void DMA_Run(struct Console* sys, const bool a9)
         Console_ScheduleIRQs(sys, IRQ_DMA0+id, a9, timecur); // checkme: delay
 
     DMA_Schedule(sys, a9);
-    printf("fin\n");
 }
 
 u32 DMA_IOReadHandler(struct DMA_Channel* channels, u32 addr)

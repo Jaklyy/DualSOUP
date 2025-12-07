@@ -47,6 +47,7 @@ struct AHB
 {
     timestamp Timestamp; // AHB Timestamp.
     u32 CurOpenBus; // TODO: is this needed?
+    bool HoldingMainRAM;
 };
 
 // MainRAM is a type of FCRAM.
@@ -65,6 +66,7 @@ struct BusMainRAM
     bool WeirdStartAddr; // used for handling a quirk where main ram bursts will restart with certain start pos alignments
     bool LastWasRead; // if the last access was a read; used for some jank with mainram -> mainram dma ig
     bool LastWasARM9; // used for which cpu was the last to go
+    bool LastWasHeld; // if the last access was being held on to
 
     // pointers to timestamps for each bus that can access main ram.
     // if main ram is not in danger then that side should point to when they next awaken
@@ -145,3 +147,4 @@ void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
 [[nodiscard]] u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, const bool atomic, const bool hold, bool* seq, const bool timings, const u32 a7pc);
 void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, const u32 mask, const bool atomic, bool* seq, const bool timings, const u32 a7pc);
 bool AHB_NegOwnership(struct Console* sys, timestamp* cur, const bool atomic, const bool a9);
+void Bus_MainRAM_ReleaseHold(struct Console* sys, struct AHB* buscur);

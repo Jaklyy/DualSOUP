@@ -112,11 +112,12 @@ bool AHB_NegOwnership(struct Console* sys, timestamp* cur, const bool atomic, co
 }
 
 #define VRAMRET(x) \
+    any = true; \
     if (write) \
     { \
         if (timings) \
         { \
-            if (!any) Timing16(&sys->AHB9, mask);  \
+            Timing16(&sys->AHB9, mask);  \
             AddWriteContention(sys->AHBBusyTS, sys->AHB9.Timestamp, Dev_##x ); \
         } \
         MemoryWrite(32, sys-> x , addr, x##_Size, val, mask); \
@@ -126,11 +127,10 @@ bool AHB_NegOwnership(struct Console* sys, timestamp* cur, const bool atomic, co
         if (timings) \
         { \
             WriteContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_##x ); \
-            if (!any) Timing16(&sys->AHB9, mask); \
+            Timing16(&sys->AHB9, mask); \
         } \
         ret = MemoryRead(32, sys-> x , addr, x##_Size); \
     } \
-    any = true; \
 
 // Thanks to Arisotura for some notes on vram bank mirroring.
 // I never would've guessed that they mirror so weirdly within a given region.
@@ -438,17 +438,21 @@ u32 VRAM_ARM9(struct Console* sys, const u32 addr, const u32 mask, const bool wr
     }
 }
 
-// branches = ns
-// all others = s
 
-// thumb alternates between fetching a halfword and reading a latched halfword when doing uncached bus accesses
-// above needs more testing maybe? how does it work with cache streaming exactly?
 
-// first we need to check for cache streaming being active
-// if we're doing a nonsequential code fetch we need to stall until it's over
-// if we're doing a sequential code fetch we need to stall until the next access is ready
 
 // Welcome to my special little hell. :D
+void Bus_MainRAM_ReleaseHold(struct Console* sys, struct AHB* buscur)
+{
+    struct BusMainRAM* busmr = &sys->BusMR;
+    if (busmr->LastWasHeld)
+    {
+        busmr->LastWasHeld = false;
+        busmr->LastAccessTS = buscur->Timestamp+3;
+        busmr->BusyTS = buscur->Timestamp + 3;
+    }
+}
+
 u32 Bus_MainRAM_Read(struct Console* sys, struct AHB* buscur, const bool bus9, u32 addr, const u32 mask, const bool atomic, const bool hold, bool* seq, const bool timings)
 {
     struct BusMainRAM* busmr = &sys->BusMR;
@@ -459,6 +463,8 @@ u32 Bus_MainRAM_Read(struct Console* sys, struct AHB* buscur, const bool bus9, u
         if (*seq && !busmr->LastWasRead) *seq = false;
         busmr->LastWasRead = true;
 
+        if (!*seq) Bus_MainRAM_ReleaseHold(sys, buscur);
+
         // there are two known conditions where a burst will be forcibly restarted:
         // if a burst lasts longer than 241 cycles
         // if a burst that started in the last 6 bytes of a 32 byte chunk crosses the 32 byte boundary
@@ -466,6 +472,7 @@ u32 Bus_MainRAM_Read(struct Console* sys, struct AHB* buscur, const bool bus9, u
         // CHECKME: does the burst restart immediately or when the owner next attempts an access? (this matters for dma)
         if (*seq && (((buscur->Timestamp - busmr->BurstStartTS) > 241) || (busmr->WeirdStartAddr && ((addr & 0x1E) == 0))))
         {
+            // TODO: incur cooldown properly?
             *seq = false;
         }
 
@@ -549,13 +556,28 @@ u32 Bus_MainRAM_Read(struct Console* sys, struct AHB* buscur, const bool bus9, u
             }
             else // 8 / 16
             {
-                // always 1 cycle
-                buscur->Timestamp += 1;
+                if (hold)
+                {
+                    // i dont quite understand this but it's real.
+                    if (buscur->Timestamp < (busmr->LastAccessTS + 2))
+                    {
+                        buscur->Timestamp = (busmr->LastAccessTS + 2);
+                    }
+                    else
+                    {
+                        buscur->Timestamp += 1;
+                    }
+                }
+                else
+                {
+                    buscur->Timestamp += 1;
+                }
             }
         }
 
-        if (hold) busmr->LastAccessTS = buscur->Timestamp;
+        if (hold) busmr->LastAccessTS = buscur->Timestamp+(!*seq);
         busmr->BusyTS = buscur->Timestamp + 3;
+        busmr->LastWasHeld = hold;
     }
 
     return MemoryRead(32, sys->MainRAM, addr, MainRAM_Size);
@@ -571,6 +593,8 @@ void Bus_MainRAM_Write(struct Console* sys, struct AHB* buscur, const bool bus9,
         if (*seq && busmr->LastWasRead) *seq = false;
         busmr->LastWasRead = false;
 
+        Bus_MainRAM_ReleaseHold(sys, buscur);
+
         // there are two known conditions where a burst will be forcibly restarted:
         // if a burst lasts longer than 241 cycles
         // if a burst that started in the last 6 bytes of a 32 byte chunk crosses the 32 byte boundary
@@ -579,6 +603,7 @@ void Bus_MainRAM_Write(struct Console* sys, struct AHB* buscur, const bool bus9,
         // CHECKME: confirm writes too?
         if (*seq && (((buscur->Timestamp - busmr->BurstStartTS) > 241) || (busmr->WeirdStartAddr && ((addr & 0x1E) == 0))))
         {
+            // TODO: incur cooldown properly?
             *seq = false;
         }
 
@@ -663,6 +688,13 @@ u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
     {
         if (sys->AHB9.Timestamp < *ts)
             sys->AHB9.Timestamp = *ts;
+
+
+        if (sys->AHB9.HoldingMainRAM)
+        {
+            sys->AHB9.HoldingMainRAM = false;
+            if (((addr>>24) != 0x02) || !hold) Bus_MainRAM_ReleaseHold(sys, &sys->AHB9);
+        }
     }
 
     addr &= ~3; // 4 byte aligned value used to simplify read logic.
@@ -729,7 +761,7 @@ u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
 
     case 0x06: // VRAM
         // TODO: 2d gpu contention timings
-        ret = VRAM_ARM9(sys, addr, mask, false, 0, true);
+        ret = VRAM_ARM9(sys, addr, mask, false, 0, timings);
         break;
 
     case 0x07: // 2D GPU OAM
@@ -884,7 +916,7 @@ void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
         }
         else
         {
-            VRAM_ARM9(sys, addr, mask, true, val, true);
+            VRAM_ARM9(sys, addr, mask, true, val, timings);
         }
         break;
 
@@ -944,6 +976,12 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
     {
         if (sys->AHB7.Timestamp < *ts)
             sys->AHB7.Timestamp = *ts;
+
+        if (sys->AHB7.HoldingMainRAM)
+        {
+            sys->AHB7.HoldingMainRAM = false;
+            if (((addr>>24) != 0x02) || !hold) Bus_MainRAM_ReleaseHold(sys, &sys->AHB7);
+        }
     }
 
     addr &= ~3; // 4 byte aligned value used to simplify read logic.
@@ -1132,7 +1170,7 @@ void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
 
     case 0x060: // VRAM
     case 0x068: // VRAM
-        VRAM_ARM7(sys, addr, mask, true, val, true);
+        VRAM_ARM7(sys, addr, mask, true, val, timings);
         break;
 
     case 0x080 ... 0x098: // GBA Cartridge ROM
