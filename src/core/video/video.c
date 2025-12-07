@@ -1,5 +1,6 @@
 #include <SDL3/SDL_timer.h>
 #include <SDL3/SDL.h>
+#include <threads.h>
 #include "video.h"
 #include "../bus/io.h"
 #include "../scheduler.h"
@@ -15,11 +16,22 @@ void LCD_HBlank(struct Console* sys, timestamp now)
     // set hblank flag
     sys->DispStatRO9.HBlank = true;
     sys->DispStatRO7.HBlank = true;
+    if (sys->VCount == 0)
+    {
+        mtx_lock(&sys->FrameBufferMutex);
+    }
     if (sys->VCount < 192)
     {
         StartDMA9(sys, now+2+1, DMAStart_HBlank); // checkme: delay?
         PPU_RenderScanline(sys, false, sys->VCount);
         PPU_RenderScanline(sys, true, sys->VCount);
+    }
+    if (sys->VCount == 192)
+    {
+        mtx_unlock(&sys->FrameBufferMutex);
+
+        //while ((SDL_GetPerformanceCounter() - sys->OldTime) < sys->CyclesPerFrame);
+        //sys->OldTime = SDL_GetPerformanceCounter();
     }
     // schedule irq
     if (sys->DispStatRW9.HBlankIRQ) Console_ScheduleIRQs(sys, IRQ_HBlank, true, now+2); // CHECKME: delay?

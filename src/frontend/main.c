@@ -118,9 +118,6 @@ int main()
     SDL_SetTextureScaleMode(blit, SDL_SCALEMODE_NEAREST); // TODO: SDL_SCALEMODE_PIXELART when 3.4.0 is out?
     SDL_Event evts;
     u8* buffer;
-    //u64 countpersec = ;
-
-    //u64 oldtime = 0;
     while(true)
     {
         SDL_PollEvent(&evts);
@@ -163,20 +160,25 @@ int main()
 
         if (sys)
         {
-                int pitch;
-                SDL_LockTexture(blit, NULL, (void**)&buffer, &pitch);
-                for (int s = 0; s < 2; s++)
-                    for (int y = 0; y < 192; y++)
-                        for (int x = 0; x < pitch/4; x++)
-                            for (int b = 0; b < 4; b++)
-                            {
-                                if (b == 4) continue;
-                                buffer[(s*192*pitch)+(y*pitch)+(x*pitch/256)+b] = (((((sys->Framebuffer[s][y][x] >> (b*6)) & 0x3F) * 0xFF) / 0x3F));
-                            }
-                SDL_UnlockTexture(blit);
-                SDL_RenderTexture(ren, blit, NULL, NULL);
-                SDL_RenderPresent(ren);
-
+                int ret = mtx_trylock(&sys->FrameBufferMutex);
+                if (ret == thrd_success)
+                {
+                    int pitch; 
+                    SDL_LockTexture(blit, NULL, (void**)&buffer, &pitch);
+                    for (int s = 0; s < 2; s++)
+                        for (int y = 0; y < 192; y++)
+                            for (int x = 0; x < pitch/4; x++)
+                                for (int b = 0; b < 4; b++)
+                                {
+                                    if (b == 4) continue;
+                                    buffer[(s*192*pitch)+(y*pitch)+(x*pitch/256)+b] = (((((sys->Framebuffer[s][y][x] >> (b*6)) & 0x3F) * 0xFF) / 0x3F));
+                                }
+                    SDL_UnlockTexture(blit);
+                    mtx_unlock(&sys->FrameBufferMutex);
+                    SDL_RenderTexture(ren, blit, NULL, NULL);
+                    SDL_RenderPresent(ren);
+                }
+                // todo: handle thrd_error??? what am i even supposed to do with that information
                 /*char newtitle[30];
 
                 snprintf(newtitle, 30, "DualSOUP: %f ms", ((double)(newtime-oldtime) * (1.0 / countpersec)) * 1000);

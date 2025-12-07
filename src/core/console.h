@@ -461,7 +461,10 @@ struct Console
 
     void* Pad;
     mtx_t FrameBufferMutex;
-    volatile bool Blitted;
+
+    u64 OldTime;
+    double CyclesPerFrame;
+
     volatile bool KillThread;
 };
 

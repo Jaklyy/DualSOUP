@@ -1,3 +1,4 @@
+#include <SDL3/SDL_timer.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -132,6 +133,9 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
     sys->RTC.DataTime[4] = 1;
     sys->RTC.DataTime[5] = 1;
     sys->RTC.DataTime[6] = 1;
+
+    sys->OldTime = SDL_GetPerformanceCounter();
+    sys->CyclesPerFrame = SDL_GetPerformanceFrequency() / 59.82;
 
     // run power on/reset logic
     Console_Reset(sys);

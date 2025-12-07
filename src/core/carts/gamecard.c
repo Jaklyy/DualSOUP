@@ -145,7 +145,7 @@ u32 GamecardMisc_ROMReadHandler(Gamecard* card)
     // force it to stay within one 4 KiB area.
     if (!(card->Address & (KiB(4)-1)))
     {
-        LogPrint(LOG_CARD, "Gamecard read wrapping.\n");
+        if (card->NumWords) LogPrint(LOG_CARD, "Gamecard read wrapping.\n");
         card->Address -= KiB(4);
     }
 
@@ -243,7 +243,6 @@ void* GamecardMisc_ROMCommandHandler(struct Console* sys, const bool a9)
                 {
                     // data
                     card->Address = (bswap(cmd) >> 24) & (card->RomSize-4); // subtract 4 as a weird way to handle masking out bottom bits as well.
-                    printf("%08X %i\n", card->Address, card->NumWords);
                     if (!(card->Address & ~(KiB(4)-1)))
                     {
                         // secure area is rerouted to the 512 bytes above it
@@ -307,7 +306,7 @@ u32 Gamecard_ROMDataRead(struct Console* sys, timestamp cur, const bool a9)
 
     u32 ret = sys->GCROMData[a9];
 
-    if (card->Buffered)
+    /*if (card->Buffered)
     {
         QueueNextTransfer(sys, cur, a9);
         sys->GCROMData[a9] = card->WordBuffer;
@@ -315,7 +314,9 @@ u32 Gamecard_ROMDataRead(struct Console* sys, timestamp cur, const bool a9)
         if (a9) StartDMA9(sys, cur+1, DMAStart_NTRCard); // checkme: delay?
         else StartDMA7(sys, cur+1, DMAStart_NTRCard); // checkme: delay?
     }
-    else sys->GCROMCR[a9].DataReady = false;
+    else*/ sys->GCROMCR[a9].DataReady = false;
+
+        QueueNextTransfer(sys, cur, a9);
 
     return ret;
 }
@@ -326,13 +327,13 @@ void Gamecard_HandleSchedulingROM(struct Console* sys, timestamp now)
     bool a9 =!sys->ExtMemCR_Shared.NDSCardAccess;
 
     card->NumWords -= 1;
-    if (sys->GCROMCR[a9].DataReady)
+    /*if (sys->GCROMCR[a9].DataReady)
     {
         card->Buffered = true;
         card->WordBuffer = card->ReadHandler(card);
         Schedule_Event(sys, Gamecard_HandleSchedulingROM, Evt_Gamecard, timestamp_max);
     }
-    else
+    else*/
     {
         sys->GCROMData[a9] = card->ReadHandler(card);
         sys->GCROMCR[a9].DataReady = true;
