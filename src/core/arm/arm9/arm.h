@@ -161,8 +161,6 @@ union ARM9_RegionCR
 struct ARM9_CacheStream
 {
     timestamp Times[7];
-    u32 CacheIndex;
-    u32* CachePtr;
     u8 Prog; // 7 (or greater) means done
 };
 

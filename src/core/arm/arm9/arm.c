@@ -43,12 +43,6 @@ void ARM9_Init(struct ARM946ES* ARM9, struct Console* sys)
     ARM9->IStream.Prog = 7;
     ARM9->CP15.DCachePRNG = 0x0123456789ABCDEF;
     ARM9->CP15.ICachePRNG = 0xFEDCBA9876543210;
-
-    ARM9->DStream.CachePtr = ARM9->DCache.b32;
-    ARM9->IStream.CachePtr = ARM9->ICache.b32;
-    // finally something being initialized that isn't a constant!
-    // this needs to not be 0, because a lot of logic relies on this timestamp - 1
-    //ARM9->MemTimestamp = 1; nvm we dont need this actually i was dumb
 }
 
 union ARM_PSR ARM9_GetSPSR(struct ARM946ES* ARM9)

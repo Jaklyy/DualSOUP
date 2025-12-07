@@ -294,7 +294,7 @@ u64 ARM9_CachePRNG(u64* input)
 	return *input = x;
 }
 
-u32 ARM9_ICacheLookup(struct ARM946ES* ARM9, const u32 addr)
+u32 ARM9_ICacheLookup(struct ARM946ES* ARM9, const u32 addr, const bool timings)
 {
     ARM9_ICacheSetLookup
 
@@ -302,12 +302,14 @@ u32 ARM9_ICacheLookup(struct ARM946ES* ARM9, const u32 addr)
     if (set < ARM9_ICacheAssoc)
     {
         // use set to lookup into icache
+        if (timings)
+        {
+            if (ARM9->ARM.Timestamp < ARM9->InstrContTS)
+                ARM9->ARM.Timestamp += 1;
 
-        if (ARM9->ARM.Timestamp < ARM9->InstrContTS)
-            ARM9->ARM.Timestamp += 1;
-
-        ARM9_FetchCycles(ARM9, 1);
-        ARM9->InstrContTS = ARM9->ARM.Timestamp;
+            ARM9_FetchCycles(ARM9, 1);
+            ARM9->InstrContTS = ARM9->ARM.Timestamp;
+        }
 
         return ARM9->ICache.b32[((index | set)<<3) | ((addr/sizeof(u32)) & 0x7)];
     }
@@ -347,17 +349,17 @@ u32 ARM9_ICacheLookup(struct ARM946ES* ARM9, const u32 addr)
         }
         else if (i > 0)
         {
-            ARM9->IStream.Times[i] = time;
+            ARM9->IStream.Times[i-1] = time;
         }
     }
-    ARM9->IStream.CacheIndex = (index | set) << 3;
+
     ARM9_FetchCycles(ARM9, 0); // dummy to ensure coherency.
     return ARM9->ICache.b32[((index | set)<<3) | ((addr/sizeof(u32)) & 0x7)];
 }
 
 extern void DCache_CleanLine(struct ARM946ES* ARM9, const u32 idxset);
 
-u32 ARM9_DCacheReadLookup(struct ARM946ES* ARM9, const u32 addr)
+u32 ARM9_DCacheReadLookup(struct ARM946ES* ARM9, const u32 addr, const bool timings)
 {
     ARM9_DCacheSetLookup
 
@@ -365,7 +367,7 @@ u32 ARM9_DCacheReadLookup(struct ARM946ES* ARM9, const u32 addr)
     if (set < ARM9_DCacheAssoc)
     {
         // use set to lookup into icache
-        ARM9->MemTimestamp += 1;
+        if (timings) ARM9->MemTimestamp += 1;
         u32 val = ARM9->DCache.b32[((index | set)<<3) | ((addr/sizeof(u32)) & 0x7)];
         return val;
     }
@@ -411,10 +413,9 @@ u32 ARM9_DCacheReadLookup(struct ARM946ES* ARM9, const u32 addr)
         }
         else if (i > 0)
         {
-            ARM9->DStream.Times[i] = time;
+            ARM9->DStream.Times[i-1] = time;
         }
     }
-    ARM9->IStream.CacheIndex = (index | set) << 3;
     return ARM9->DCache.b32[((index | set)<<3) | ((addr/sizeof(u32)) & 0x7)];
 }
 
@@ -467,14 +468,14 @@ bool ARM9_ProgressCacheStream(timestamp* ts, struct ARM9_CacheStream* stream, u3
 
     stream->Prog += 1;
 
-    *ret = stream->CachePtr[stream->CacheIndex | stream->Prog];
+    //*ret = stream->CachePtr[stream->CacheIndex | stream->Prog];
     return true;
 }
 
 // CHECKME: need better research on how p. abt, cache streaming, and ahb accesses interact with i.bus contention and data itcm deference
 
 // always 32 bit
-u32 ARM9_InstrRead(struct ARM946ES* ARM9, const u32 addr, const struct ARM9_MPUPerms perms)
+u32 ARM9_InstrRead(struct ARM946ES* ARM9, const u32 addr, const struct ARM9_MPUPerms perms, const bool timings)
 {
     // itcm
     if (ARM9_ITCMTryRead(ARM9, addr))
@@ -490,7 +491,7 @@ u32 ARM9_InstrRead(struct ARM946ES* ARM9, const u32 addr, const struct ARM9_MPUP
 
     if (perms.ICache)
     {
-        return ARM9_ICacheLookup(ARM9, addr);
+        return ARM9_ICacheLookup(ARM9, addr, timings);
     }
 
     // TODO: run write buffer here (not drain)
@@ -508,17 +509,7 @@ u32 ARM9_InstrRead(struct ARM946ES* ARM9, const u32 addr, const struct ARM9_MPUP
 void ARM9_InstrRead32(struct ARM946ES* ARM9, const u32 addr)
 {
     u32 ret;
-    if (ARM9_ProgressCacheStream(&ARM9->ARM.Timestamp, &ARM9->IStream, &ret, ARM9->ARM.CodeSeq))
-    {
-        // add dummy cycles to ensure coherency
-        ARM9_FetchCycles(ARM9, 0);
-
-        ARM9->ARM.Instr[2] = (struct ARM_Instr){.Raw = ret,
-                                                .Aborted = false,
-                                                .CoprocPriv = ARM9->ARM.Privileged,
-                                                .Flushed = false};
-        return;
-    }
+    bool timings = !ARM9_ProgressCacheStream(&ARM9->ARM.Timestamp, &ARM9->IStream, &ret, ARM9->ARM.CodeSeq);
 
     const struct ARM9_MPUPerms perms = ARM9_RegionLookup(ARM9, addr, ARM9->ARM.Privileged);
     // TODO: prefetch abort
@@ -535,7 +526,7 @@ void ARM9_InstrRead32(struct ARM946ES* ARM9, const u32 addr)
     }
     else
     {
-        ARM9->ARM.Instr[2] = (struct ARM_Instr){.Raw = ARM9_InstrRead(ARM9, addr, perms),
+        ARM9->ARM.Instr[2] = (struct ARM_Instr){.Raw = ARM9_InstrRead(ARM9, addr, perms, timings),
                                                 .Aborted = false,
                                                 .CoprocPriv = ARM9->ARM.Privileged,
                                                 .Flushed = false};
@@ -575,12 +566,8 @@ void ARM9_InstrRead16(struct ARM946ES* ARM9, const u32 addr)
         }
         else
         { 
-            if (ARM9_ProgressCacheStream(&ARM9->ARM.Timestamp, &ARM9->IStream, &instr, ARM9->ARM.CodeSeq))
-            {
-                // add dummy cycles to ensure coherency
-                ARM9_FetchCycles(ARM9, 0);
-            }
-            else instr = ARM9_InstrRead(ARM9, addr, perms);
+            bool timings = ARM9_ProgressCacheStream(&ARM9->ARM.Timestamp, &ARM9->IStream, &instr, ARM9->ARM.CodeSeq);
+            instr = ARM9_InstrRead(ARM9, addr, perms, timings);
 
             if (addr & 2)
             {
@@ -619,10 +606,7 @@ u32 ARM9_DataRead(struct ARM946ES* ARM9, const u32 addr, const u32 mask, bool* s
     }
 
     u32 ret;
-    if (ARM9_ProgressCacheStream(&ARM9->MemTimestamp, &ARM9->DStream, &ret, *seq))
-    {
-        return ret & mask;
-    }
+    bool timings = !ARM9_ProgressCacheStream(&ARM9->MemTimestamp, &ARM9->DStream, &ret, *seq);
 
     // handle contention
     // CHECKME: does this apply to aborts?
@@ -659,7 +643,7 @@ u32 ARM9_DataRead(struct ARM946ES* ARM9, const u32 addr, const u32 mask, bool* s
     }
     else if (perms.DCache)
     {
-        ret = ARM9_DCacheReadLookup(ARM9, addr);
+        ret = ARM9_DCacheReadLookup(ARM9, addr, timings);
         *seq = true;
         return ret & mask;
     }
