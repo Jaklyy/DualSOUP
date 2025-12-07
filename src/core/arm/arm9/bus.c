@@ -343,8 +343,8 @@ u32 ARM9_ICacheLookup(struct ARM946ES* ARM9, const u32 addr)
         if (waittil == i)
         {
             ARM9->ARM.Timestamp = time;
-            ARM9->IStream.ReadPtr = &ARM9->ICache.b32[((index | set)<<3) | (i+1)];
-            ARM9->IStream.Prog = i;
+            ARM9->IStream.ReadPtr = &ARM9->ICache.b32[((index | set)<<3) | (i)];
+            ARM9->IStream.Prog = 7;//i;
         }
         else if (waittil > 0)
         {
@@ -407,8 +407,8 @@ u32 ARM9_DCacheReadLookup(struct ARM946ES* ARM9, const u32 addr)
         if (waittil == i)
         {
             ARM9->MemTimestamp = time;
-            ARM9->DStream.ReadPtr = &ARM9->DCache.b32[((index | set)<<3) | (i+1)];
-            ARM9->DStream.Prog = i;
+            ARM9->DStream.ReadPtr = &ARM9->DCache.b32[((index | set)<<3) | (i)];
+            ARM9->DStream.Prog = 7;//i;
         }
         else if (waittil < i)
         {

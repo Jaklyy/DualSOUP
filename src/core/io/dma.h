@@ -51,6 +51,7 @@ struct DMA_Channel
     s8 SrcInc;
     s8 DstInc;
     u8 CurrentMode;
+    bool DMAQueued;
 };
 
 struct DMA_Controller

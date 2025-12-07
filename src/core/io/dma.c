@@ -59,9 +59,8 @@ void StartDMA9(struct Console* sys, timestamp start, u8 mode)
     {
         if (!sys->DMA9.Channels[i].CR.Enable) continue;
         if (sys->DMA9.Channels[i].CurrentMode != mode) continue;
-        if ((sys->DMA9.ChannelLastEnded[i] <= start) && ((sys->DMA9.ChannelTimestamps[i] < start) || (sys->DMA9.ChannelTimestamps[i] == timestamp_max))) // checkme: starting dma while already started?
-            sys->DMA9.ChannelTimestamps[i] = start;
-        else LogPrint(LOG_ALWAYS, "DMA9 START FAILURE tried: %li ended: %li current: %li mode: %i\n", start, sys->DMA9.ChannelLastEnded[i], sys->DMA9.ChannelTimestamps[i], mode);
+        // checkme: starting dma while already started?
+        sys->DMA9.ChannelTimestamps[i] = start;
     }
     DMA_Schedule(sys, true);
 }
@@ -72,9 +71,8 @@ void StartDMA7(struct Console* sys, timestamp start, u8 mode)
     {
         if (!sys->DMA7.Channels[i].CR.Enable) continue;
         if (sys->DMA7.Channels[i].CurrentMode != mode) continue;
-        if ((sys->DMA7.ChannelLastEnded[i] <= start) && ((sys->DMA7.ChannelTimestamps[i] < start) || (sys->DMA7.ChannelTimestamps[i] == timestamp_max))) // checkme: starting dma while already started?
-            sys->DMA7.ChannelTimestamps[i] = start;
-        else LogPrint(LOG_ALWAYS, "DMA7 START FAILURE tried: %li ended: %li current: %li mode: %i\n", start, sys->DMA7.ChannelLastEnded[i], sys->DMA7.ChannelTimestamps[i], mode);
+        // checkme: starting dma while already started?
+        sys->DMA7.ChannelTimestamps[i] = start;
     }
     DMA_Schedule(sys, false);
 }
@@ -329,7 +327,10 @@ void DMA_Run(struct Console* sys, const bool a9)
     }
     cnt->CurMask &= ~1<<id;
 
-    cnt->ChannelLastEnded[id] = timecur;
+    //cnt->ChannelLastEnded[id] = timecur;
+
+    if (cnt->ChannelTimestamps[id] < timecur)
+        cnt->ChannelTimestamps[id] = timecur;
 
     if (channel->CR.IRQ) // TODO
         Console_ScheduleIRQs(sys, IRQ_DMA0+id, a9, timecur); // checkme: delay
