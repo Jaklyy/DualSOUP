@@ -37,12 +37,20 @@ void PPU_RenderText(struct Console* sys, const bool B, const u16 y, const u8 bg)
     u32 tilebase = ppu->BGCR[bg].CharBase * KiB(16);
     u32 screenbase = ppu->BGCR[bg].ScreenBase * KiB(2);
 
-    switch(ppu->BGCR[0].ScreenSize)
+    switch(ppu->BGCR[bg].ScreenSize)
     {
         case 0: screenbase += ((y / 8)*64); break;
         case 1: screenbase += ((y / 8)*128); break;
         case 2: screenbase += ((y / 8)*64); break;
         case 3: screenbase += ((y / 8)*128); break;
+    }
+    u32 width;
+    switch(ppu->BGCR[bg].ScreenSize)
+    {
+        case 0: width = 128; break;
+        case 1: width = 256; break;
+        case 2: width = 512; break;
+        case 3: width = 512; break;
     }
 
     u32 tileaddr;
@@ -57,15 +65,28 @@ void PPU_RenderText(struct Console* sys, const bool B, const u16 y, const u8 bg)
             pal = palbase + (tile.Palette * 16);
         }
 
-        u32 pixeladdr = tilebase + (tile.TileNum * 32) + ((x%8)/2) + ((y%8)*4);
-        u8 color = BG(sys, pixeladdr&~3, u32_max, false, 0, false) >> ((pixeladdr&3)*8);
-        color = (color >> ((x&1)*4)) & 0xF;
+        int xfrac = (!tile.HFlip ? (x%8) : (7-(x%8)));
+        int yfrac = (!tile.VFlip ? (y%8) : (7-(y%8)));
 
-        sys->Framebuffer[B][y][x] = RGB565to666(pal[color]);
+        if (ppu->BGCR[bg].Pal256)
+        {
+            u32 pixeladdr = tilebase + (tile.TileNum * 32) + (xfrac) + (yfrac*4);
+            u8 color = BG(sys, pixeladdr&~3, u32_max, false, 0, false) >> ((pixeladdr&3)*8);
+
+            sys->Framebuffer[B][y][x] = RGB565to666(palbase[color]);
+        }
+        else
+        {
+            u32 pixeladdr = tilebase + (tile.TileNum * 32) + (xfrac/2) + (yfrac*4);
+            u8 color = BG(sys, pixeladdr&~3, u32_max, false, 0, false) >> ((pixeladdr&3)*8);
+            color = (color >> ((xfrac&1)*4)) & 0xF;
+
+            sys->Framebuffer[B][y][x] = RGB565to666(pal[color]);
+        }
     }
 }
 
-void PPU_DrawBitmap(struct Console* sys, const bool B, const u16 y, const u8 bg, const bool dircolor)
+void PPU_RenderBitmap(struct Console* sys, const bool B, const u16 y, const u8 bg, const bool dircolor)
 {
     struct PPU* ppu = (B ? &sys->PPU_B : &sys->PPU_A);
     u32 (*BG)(struct Console*, const u32, const u32, const bool, const u32, const bool) = (B ? VRAM_BGB : VRAM_BGA);
@@ -73,18 +94,27 @@ void PPU_DrawBitmap(struct Console* sys, const bool B, const u16 y, const u8 bg,
 
     u32 screenbase = ppu->BGCR[bg].ScreenBase * KiB(16);
 
+    u32 width;
+    switch(ppu->BGCR[bg].ScreenSize)
+    {
+        case 0: width = 128; break;
+        case 1: width = 256; break;
+        case 2: width = 512; break;
+        case 3: width = 512; break;
+    }
+
     for (int x = 0; x < 256; x++)
     {
         if (dircolor)
         {
-            u32 addr = screenbase + (x*2) + (y*256);
+            u32 addr = screenbase + (x*2) + (y*(width*2));
             u16 color = BG(sys, addr&~3, u32_max, false, 0, false) >> ((addr & 2) * 8);
             if (color & 0x8000)
                 sys->Framebuffer[B][y][x] = RGB555to666(color);
         }
         else
         {
-            u32 addr = screenbase + x + (y*256);
+            u32 addr = screenbase + x + (y*width);
             u8 idx = BG(sys, addr&~3, u32_max, false, 0, false) >> ((addr & 3) * 8);
             sys->Framebuffer[B][y][x] = RGB565to666(palbase[idx]);
         }
@@ -103,9 +133,9 @@ void PPU_Extended(struct Console* sys, const bool B, const u16 y, const u8 bg)
 
     if (ppu->BGCR[bg].Pal256)
     {
-        PPU_DrawBitmap(sys, B, y, bg, ppu->BGCR[bg].CharBase & 1);
+        PPU_RenderBitmap(sys, B, y, bg, ppu->BGCR[bg].CharBase & 1);
     }
-    else LogPrint(LOG_PPU|LOG_UNIMP, "UNIMPLEMENTED: AFFINE/TEXT BG %i %08X\n", bg, ppu->BGCR[bg].Raw);
+    else PPU_RenderText(sys, B, y, bg); //LogPrint(LOG_PPU|LOG_UNIMP, "UNIMPLEMENTED: AFFINE/TEXT BG %i %08X\n", bg, ppu->BGCR[bg].Raw);
 }
 
 void PPU_Large(struct Console* sys, const bool B, const u16 y, const u8 bg)
@@ -121,7 +151,9 @@ void PPU_BG0_Lookup(struct Console* sys, const bool B, const u16 y)
     switch(ppu->DisplayCR.BGSetup)
     {
         case 0 ... 5:
-            // 3D?
+            // TODO: 3D?
+            if (ppu->DisplayCR.BG03D) return;
+            [[fallthrough]];
         case 7:
             return PPU_RenderText(sys, B, y, 0);
 
