@@ -16,10 +16,6 @@ void LCD_HBlank(struct Console* sys, timestamp now)
     // set hblank flag
     sys->DispStatRO9.HBlank = true;
     sys->DispStatRO7.HBlank = true;
-    if (sys->VCount == 0)
-    {
-        mtx_lock(&sys->FrameBufferMutex);
-    }
     if (sys->VCount < 192)
     {
         StartDMA9(sys, now+2+1, DMAStart_HBlank); // checkme: delay?
@@ -28,7 +24,9 @@ void LCD_HBlank(struct Console* sys, timestamp now)
     }
     if (sys->VCount == 192)
     {
-        mtx_unlock(&sys->FrameBufferMutex);
+        sys->BackBuf = !sys->BackBuf;
+        mtx_lock(&sys->FrameBufferMutex[sys->BackBuf]);
+        mtx_unlock(&sys->FrameBufferMutex[!sys->BackBuf]);
 
         //while ((SDL_GetPerformanceCounter() - sys->OldTime) < sys->CyclesPerFrame);
         //sys->OldTime = SDL_GetPerformanceCounter();

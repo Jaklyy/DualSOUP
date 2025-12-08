@@ -30,6 +30,7 @@ void PPU_RenderText(struct Console* sys, const bool B, const u16 y, const u8 bg)
 {
     struct PPU* ppu = (B ? &sys->PPU_B : &sys->PPU_A);
     u32 (*BG)(struct Console*, const u32, const u32, const bool, const u32, const bool) = (B ? VRAM_BGB : VRAM_BGA);
+    u32* scanline = sys->Framebuffer[sys->BackBuf][sys->PowerCR9.AOnBottom ? B : !B][y];
 
     u16* palbase = &sys->Palette.b16[0x200];
     u32 bgcol = RGB565to666(palbase[0]);
@@ -39,10 +40,10 @@ void PPU_RenderText(struct Console* sys, const bool B, const u16 y, const u8 bg)
 
     switch(ppu->BGCR[bg].ScreenSize)
     {
-        case 0: screenbase += ((y / 8)*64); break;
-        case 1: screenbase += ((y / 8)*128); break;
-        case 2: screenbase += ((y / 8)*64); break;
-        case 3: screenbase += ((y / 8)*128); break;
+        case 0: screenbase += ((y / 8)*(256/8)*2); break;
+        case 1: screenbase += ((y / 8)*(512/8)*2); break;
+        case 2: screenbase += ((y / 8)*(256/8)*2); break;
+        case 3: screenbase += ((y / 8)*(512/8)*2); break;
     }
     u32 width;
     switch(ppu->BGCR[bg].ScreenSize)
@@ -73,7 +74,7 @@ void PPU_RenderText(struct Console* sys, const bool B, const u16 y, const u8 bg)
             u32 pixeladdr = tilebase + (tile.TileNum * 32) + (xfrac) + (yfrac*4);
             u8 color = BG(sys, pixeladdr&~3, u32_max, false, 0, false) >> ((pixeladdr&3)*8);
 
-            sys->Framebuffer[B][y][x] = RGB565to666(palbase[color]);
+            scanline[x] = RGB565to666(palbase[color]);
         }
         else
         {
@@ -81,7 +82,7 @@ void PPU_RenderText(struct Console* sys, const bool B, const u16 y, const u8 bg)
             u8 color = BG(sys, pixeladdr&~3, u32_max, false, 0, false) >> ((pixeladdr&3)*8);
             color = (color >> ((xfrac&1)*4)) & 0xF;
 
-            sys->Framebuffer[B][y][x] = RGB565to666(pal[color]);
+            scanline[x] = RGB565to666(pal[color]);
         }
     }
 }
@@ -91,6 +92,7 @@ void PPU_RenderBitmap(struct Console* sys, const bool B, const u16 y, const u8 b
     struct PPU* ppu = (B ? &sys->PPU_B : &sys->PPU_A);
     u32 (*BG)(struct Console*, const u32, const u32, const bool, const u32, const bool) = (B ? VRAM_BGB : VRAM_BGA);
     u16* palbase = (B ? &sys->Palette.b16[0x200] : &sys->Palette.b16[0]);
+    u32* scanline = sys->Framebuffer[sys->BackBuf][sys->PowerCR9.AOnBottom ? B : !B][y];
 
     u32 screenbase = ppu->BGCR[bg].ScreenBase * KiB(16);
 
@@ -110,13 +112,13 @@ void PPU_RenderBitmap(struct Console* sys, const bool B, const u16 y, const u8 b
             u32 addr = screenbase + (x*2) + (y*(width*2));
             u16 color = BG(sys, addr&~3, u32_max, false, 0, false) >> ((addr & 2) * 8);
             if (color & 0x8000)
-                sys->Framebuffer[B][y][x] = RGB555to666(color);
+                scanline[x] = RGB555to666(color);
         }
         else
         {
             u32 addr = screenbase + x + (y*width);
             u8 idx = BG(sys, addr&~3, u32_max, false, 0, false) >> ((addr & 3) * 8);
-            sys->Framebuffer[B][y][x] = RGB565to666(palbase[idx]);
+            scanline[x] = RGB565to666(palbase[idx]);
         }
     }
 }
@@ -225,17 +227,18 @@ void PPU_RenderBG(struct Console* sys, const bool B, const u16 y)
 {
     struct PPU* ppu = (B ? &sys->PPU_B : &sys->PPU_A);
     u16* palbase = (B ? &sys->Palette.b16[0x200] : &sys->Palette.b16[0]);
+    u32* scanline = sys->Framebuffer[sys->BackBuf][sys->PowerCR9.AOnBottom ? B : !B][y];
 
     if (ppu->DisplayCR.ForceBlank)
     {
         for (int x = 0; x < 256; x++)
-            sys->Framebuffer[B][y][x] = 0x3FFFF;
+            scanline[x] = 0x3FFFF;
         return;
     }
 
     u32 color = RGB565to666(palbase[0]);
     for (int x = 0; x < 256; x++)
-        sys->Framebuffer[B][y][x] = color;
+        scanline[x] = color;
 
     // todo: windows
 
@@ -256,12 +259,13 @@ void PPU_RenderBG(struct Console* sys, const bool B, const u16 y)
 void PPU_RenderScanline(struct Console* sys, const bool B, const u16 y)
 {
     struct PPU* ppu = (B ? &sys->PPU_B : &sys->PPU_A);
+    u32* scanline = sys->Framebuffer[sys->BackBuf][sys->PowerCR9.AOnBottom ? B : !B][y];
 
     switch(ppu->DisplayCR.DisplayMode)
     {
         case 0:
             for (int x = 0; x < 256; x++)
-                sys->Framebuffer[B][y][x] = 0x3FFFF;
+                scanline[x] = 0x3FFFF;
             return;
         case 1:
             break;
@@ -270,7 +274,7 @@ void PPU_RenderScanline(struct Console* sys, const bool B, const u16 y)
             u32 addr = (ppu->DisplayCR.VRAMSel * KiB(128)) + (256*2*y);
             for (int x = 0; x < 256; x++)
             {
-                sys->Framebuffer[B][y][x] = RGB555to666(VRAM_LCD(sys, addr&~3, u32_max, false, 0, false) >> ((addr & 2)*8));
+                scanline[x] = RGB555to666(VRAM_LCD(sys, addr&~3, u32_max, false, 0, false) >> ((addr & 2)*8));
                 addr += 2;
             }
             return;

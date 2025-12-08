@@ -78,7 +78,7 @@ int Core_Init(void* pass)
 
 int main()
 {
-    LogMask = u64_max; // temp
+    LogMask = 0;//u64_max; // temp
 
     // TODO investigate: SDL_HINT_TIMER_RESOLUTION
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
@@ -118,6 +118,7 @@ int main()
     SDL_SetTextureScaleMode(blit, SDL_SCALEMODE_NEAREST); // TODO: SDL_SCALEMODE_PIXELART when 3.4.0 is out?
     SDL_Event evts;
     u8* buffer;
+    bool buf = false;
     while(true)
     {
         SDL_PollEvent(&evts);
@@ -160,8 +161,8 @@ int main()
 
         if (sys)
         {
-                int ret = mtx_trylock(&sys->FrameBufferMutex);
-                if (ret == thrd_success)
+                //int ret = mtx_trylock(&sys->FrameBufferMutex[buf]);
+                //if (ret == thrd_success)
                 {
                     int pitch; 
                     SDL_LockTexture(blit, NULL, (void**)&buffer, &pitch);
@@ -171,10 +172,10 @@ int main()
                                 for (int b = 0; b < 4; b++)
                                 {
                                     if (b == 4) continue;
-                                    buffer[(s*192*pitch)+(y*pitch)+(x*pitch/256)+b] = (((((sys->Framebuffer[s][y][x] >> (b*6)) & 0x3F) * 0xFF) / 0x3F));
+                                    buffer[(s*192*pitch)+(y*pitch)+(x*pitch/256)+b] = (((((sys->Framebuffer[!sys->BackBuf][s][y][x] >> (b*6)) & 0x3F) * 0xFF) / 0x3F));
                                 }
                     SDL_UnlockTexture(blit);
-                    mtx_unlock(&sys->FrameBufferMutex);
+                    //mtx_unlock(&sys->FrameBufferMutex[buf]);
                     SDL_RenderTexture(ren, blit, NULL, NULL);
                     SDL_RenderPresent(ren);
                 }

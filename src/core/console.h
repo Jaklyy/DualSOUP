@@ -432,7 +432,6 @@ struct Console
 #ifdef MonitorFPS
     u64 OldTime;
 #endif
-    alignas(HOST_CACHEALIGN) u32 Framebuffer[2][192][256];
 
     alignas(HOST_CACHEALIGN)
     // FCRAM
@@ -459,11 +458,11 @@ struct Console
     MEMORY(WiFiRAM,    WiFiRAM_Size);
     alignas(HOST_CACHEALIGN)
 
-    void* Pad;
-    mtx_t FrameBufferMutex;
+    alignas(HOST_CACHEALIGN) u32 Framebuffer[2][2][192][256];
 
-    u64 OldTime;
-    double CyclesPerFrame;
+    bool BackBuf;
+    void* Pad;
+    mtx_t FrameBufferMutex[2];
 
     volatile bool KillThread;
 };

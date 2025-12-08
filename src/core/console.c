@@ -37,7 +37,8 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
         // TODO: dont do this?
         CR_Free(sys->HandleARM9);
         CR_Free(sys->HandleARM7);
-        mtx_destroy(&sys->FrameBufferMutex);
+        mtx_destroy(&sys->FrameBufferMutex[0]);
+        mtx_destroy(&sys->FrameBufferMutex[1]);
         mtx_destroy(&sys->Sched.SchedulerMtx);
         Flash_Cleanup(&sys->Firmware);
         Gamecard_Cleanup(&sys->Gamecard);
@@ -60,15 +61,16 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
     bool gcinit = Gamecard_Init(&sys->Gamecard, rom, sys->NTRBios7.b8);
     sys->HandleMain = CR_Active();
 
-    bool mtxinit = (mtx_init(&sys->FrameBufferMutex, mtx_plain) == thrd_success);
+    bool mtxinit = (mtx_init(&sys->FrameBufferMutex[0], mtx_plain) == thrd_success);
+    bool mtxinit3 = (mtx_init(&sys->FrameBufferMutex[1], mtx_plain) == thrd_success);
     bool mtxinit2 = (mtx_init(&sys->Sched.SchedulerMtx, mtx_recursive) == thrd_success);
 
-    if ((!cr7init) || (!cr9init)|| (num9 != 1) || (num7 != 1) || !firminit || !gcinit || !mtxinit || !mtxinit2)
+    if ((!cr7init) || (!cr9init)|| (num9 != 1) || (num7 != 1) || !firminit || !gcinit || !mtxinit || !mtxinit2|| !mtxinit3)
     {
         // return error messages
         if ((!cr7init) || (!cr9init))
             LogPrint(LOG_ALWAYS, "FATAL: Coroutine handle creation failed:%s%s\n", ( cr7init ? " 7": ""), ( cr9init ? " 9": ""));
-        if (!mtxinit || !mtxinit2)
+        if (!mtxinit || !mtxinit2|| !mtxinit3)
             LogPrint(LOG_ALWAYS, "FATAL: Mutex init failed.\n");
         if (num9 != 1)
             LogPrint(LOG_ALWAYS, "FATAL: ARM9 BIOS did not load properly.\n");
@@ -80,7 +82,8 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
         CR_Free(sys->HandleARM7);
         Flash_Cleanup(&sys->Firmware);
         Gamecard_Cleanup(&sys->Gamecard);
-        if (mtxinit) mtx_destroy(&sys->FrameBufferMutex);
+        if (mtxinit) mtx_destroy(&sys->FrameBufferMutex[0]);
+        if (mtxinit3) mtx_destroy(&sys->FrameBufferMutex[1]);
         if (mtxinit2) mtx_destroy(&sys->Sched.SchedulerMtx);
         free(sys);
 
@@ -133,9 +136,6 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
     sys->RTC.DataTime[4] = 1;
     sys->RTC.DataTime[5] = 1;
     sys->RTC.DataTime[6] = 1;
-
-    sys->OldTime = SDL_GetPerformanceCounter();
-    sys->CyclesPerFrame = SDL_GetPerformanceFrequency() / 59.82;
 
     // run power on/reset logic
     Console_Reset(sys);
@@ -457,6 +457,7 @@ void Console_ScheduleIRQs(struct Console* sys, const u8 irq, const bool a9, time
 void Console_MainLoop(struct Console* sys)
 {
     CR_Start = true;
+    mtx_lock(&sys->FrameBufferMutex[sys->BackBuf]);
     Scheduler_UpdateTargets(sys);
     while(true)
     {
