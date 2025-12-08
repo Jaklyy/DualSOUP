@@ -19,9 +19,9 @@ void ARM9_Reset(struct ARM946ES* ARM9, const bool itcm, const bool hivec)
 
     // we probably want to wait for the cache stream to end...?
     // it might be interrupted immediately though...?
-    bool ARM9_ProgressCacheStream(timestamp* ts, struct ARM9_CacheStream* stream, u32* ret, const bool seq);
-    ARM9_ProgressCacheStream(&ARM9->ARM.Timestamp, &ARM9->IStream, nullptr, false);
-    ARM9_ProgressCacheStream(&ARM9->ARM.Timestamp, &ARM9->DStream, nullptr, false);
+    extern bool ARM9_ProgressCacheStream(timestamp* ts, struct ARM9_CacheStream* stream, const bool seq);
+    ARM9_ProgressCacheStream(&ARM9->ARM.Timestamp, &ARM9->IStream, false);
+    ARM9_ProgressCacheStream(&ARM9->ARM.Timestamp, &ARM9->DStream, false);
 
     // SPECULATIVE: arm docs explicitly state that R14_SVC and SPSR_SVC have an "unpredictable value" when reset is de-asserted
     // which could mean literally anything

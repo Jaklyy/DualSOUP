@@ -1,79 +1,73 @@
 #include <stdckdint.h>
 #include <stdbit.h>
 #include <stdlib.h>
+#include <string.h>
 #include <stdio.h>
 #include "flash.h"
 
 
 
 
-bool Flash_Init(Flash* flash, FILE* ram, bool writeprot)
+bool Flash_Init(Flash* flash, FILE* ram, u64 size, bool writeprot, const int id, const char* str)
 {
-    fseek(ram, 0, SEEK_END);
-    u64 size = ftell(ram);
-    fseek(ram, 0, SEEK_SET);
+    if (ram != NULL)
+    {
+        // get size from submitted file
+        fseek(ram, 0, SEEK_END);
+        size = ftell(ram);
+        fseek(ram, 0, SEEK_SET);
+    }
     if (stdc_count_ones(size) != 1)
     {
-        LogPrint(LOG_ALWAYS, "FATAL: Firmware Flash size %li is not a power of 2!\n", size);
+        LogPrint(LOG_ALWAYS, "FATAL: %s size %li is not a power of 2!\n", str, size);
         return false;
     }
-    if (size > 0xFFFFFF)
+    if (size-1 > 0xFFFFFF)
     {
-        LogPrint(LOG_ALWAYS, "FATAL: Firmware Flash too big! must be <= 8MiB; currently %li\n", size);
+        LogPrint(LOG_ALWAYS, "FATAL: %s too big! must be <= 16 MiB; currently %li\n", str, size);
         return false;
     }
+    if (size < 256)
+    {
+        LogPrint(LOG_ALWAYS, "FATAL: %s too small! must be >= 256 bytes; currently %li\n", str, size);
+        return false;
+    }
+
     flash->RAMSize = size;
     flash->WriteProt = writeprot ? ~((size/4)-1) : 0;
     flash->RAM = malloc(size);
     if (flash->RAM == NULL)
     {
-        LogPrint(LOG_ALWAYS, "FATAL: Firmware Flash allocation failed\n");
+        LogPrint(LOG_ALWAYS, "FATAL: %s allocation failed\n", str);
         return false;
     }
 
-    if (fread(flash->RAM, flash->RAMSize, 1, ram) == 0)
+    if (ram == NULL)
     {
-        LogPrint(LOG_ALWAYS, "FATAL: Firmware Flash read failed\n");
-        return false;
+        memset(flash->RAM, 0, flash->RAMSize);
     }
-    // TODO: make configurable
-    flash->ID[0] = 1;
-    flash->ID[1] = 1;
-    flash->ID[2] = 1;
-    return true;
-}
-
-bool Flash_InitB(Flash* flash, u64 size) // temp
-{
-    if (stdc_count_ones(size) != 1)
+    else if (fread(flash->RAM, flash->RAMSize, 1, ram) != 1)
     {
-        LogPrint(LOG_ALWAYS, "FATAL: Firmware Flash size %li is not a power of 2!\n", size);
-        return false;
-    }
-    if (size > 0xFFFFFF)
-    {
-        LogPrint(LOG_ALWAYS, "FATAL: Firmware Flash too big! must be <= 8MiB; currently %li\n", size);
-        return false;
-    }
-    flash->RAMSize = size;
-    flash->RAM = malloc(size);
-    if (flash->RAM == NULL)
-    {
-        LogPrint(LOG_ALWAYS, "FATAL: Firmware Flash allocation failed\n");
+        LogPrint(LOG_ALWAYS, "FATAL: %s read failed\n", str);
+        free(flash->RAM);
+        flash->RAM = nullptr;
         return false;
     }
 
-    // TODO: make configurable
-    flash->ID[0] = 1;
-    flash->ID[1] = 1;
-    flash->ID[2] = 1;
+    flash->ID[0] = (id>> 0) & 0xFF;
+    flash->ID[1] = (id>> 8) & 0xFF;
+    flash->ID[2] = (id>>16) & 0xFF;
     return true;
 }
 
 void Flash_Cleanup(Flash* flash)
 {
     // TODO: flush changes
-    free(flash->RAM);
+    if (flash->RAM != nullptr)
+    {
+        free(flash->RAM);
+        flash->RAM = nullptr;
+    }
 }
 
 void Flash_Reset(Flash* flash)
@@ -190,19 +184,17 @@ u8 Flash_PageWrite(Flash* flash, const u8 val, const bool chipsel)
     }
     else if (flash->CurAddr & flash->WriteProt)
     {
-        if (chipsel)
+        if ((flash->CmdLen - 4) >= 256)
         {
-            if ((flash->CmdLen - 4) >= 256)
-            {
-                flash->CmdLen = 256 + 4;
-            }
-
-            // checkme: how does it actually do masking?
-            flash->DataBuffer[flash->WritePos++] = val;
-
-            flash->WritePos &= 0xFF;
+            flash->CmdLen = 256 + 4;
         }
-        else
+
+        // checkme: how does it actually do masking?
+        flash->DataBuffer[flash->WritePos++] = val;
+
+        flash->WritePos &= 0xFF;
+
+        if (!chipsel)
         {
             // CHECKME: is this correct behavior for buffer overflow?
             for (int i = 0; i < flash->CmdLen - 4; i++)
@@ -337,7 +329,7 @@ u8 Flash_CMDSend(Flash* flash, const u8 val, const bool chipsel)
         case 0xD8: ret = Flash_SectorErase(flash, val); break;
         case 0xB9: ret = Flash_EnterDeepPowerDown(flash, chipsel); break;
         case 0xA9: ret = Flash_ExitDeepPowerDown(flash, chipsel); break;
-        default: ret = 0xFF; break;
+        default: ret = 0xFF; LogPrint(LOG_FLASH | LOG_ODD, "UNKNOWN FLASH COMMAND %02X\n", flash->CurCmd); break;
     }
     // this is probably overkill but eh
     u16 cmdtmp;

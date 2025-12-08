@@ -1,15 +1,23 @@
-#include "gamecard.h"
-#include "../console.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include "gamecard.h"
+#include "../console.h"
+#include "../sram/flash.h"
+#include "../sram/eeprom.h"
 
 
 
-
-// todo SRAM
-bool Gamecard_Init(Gamecard* card, FILE* rom, u8* bios7)
+bool Gamecard_Init(Gamecard* card, const char* romname, u8* bios7)
 {
+    FILE* rom = fopen(romname, "rb");
+
+    if (rom == NULL)
+    {
+        LogPrint(LOG_ALWAYS, "ERROR: Could not open provided ROM\n");
+        return false;
+    }
+
     fseek(rom, 0, SEEK_END);
     u64 size = ftell(rom);
     fseek(rom, 0, SEEK_SET);
@@ -28,12 +36,12 @@ bool Gamecard_Init(Gamecard* card, FILE* rom, u8* bios7)
 
     if (size > MiB(512))
     {
-        LogPrint(LOG_ALWAYS, "FATAL: Gamecard ROM too big! must be <= 512MiB; currently %li\n", size);
+        LogPrint(LOG_ALWAYS, "ERROR: Gamecard ROM too big! must be <= 512MiB; currently %lu\n", size);
         return false;
     }
     if (size < KiB(4))
     {
-        LogPrint(LOG_ALWAYS, "FATAL: Gamecard ROM too small! idk if this is actually an issue but it feels like one; currently %li\n", size);
+        LogPrint(LOG_ALWAYS, "ERROR: Gamecard ROM too small! idk if this is actually an issue but it feels like one; currently %lu\n", size);
         return false;
     }
 
@@ -41,7 +49,7 @@ bool Gamecard_Init(Gamecard* card, FILE* rom, u8* bios7)
     card->ROM = malloc(fauxsize);
     if (card->ROM == NULL)
     {
-        LogPrint(LOG_ALWAYS, "FATAL: Gamecard ROM allocation failed\n");
+        LogPrint(LOG_ALWAYS, "ERROR: Gamecard ROM allocation failed\n");
         return false;
     }
 
@@ -52,21 +60,219 @@ bool Gamecard_Init(Gamecard* card, FILE* rom, u8* bios7)
 
     if (fread(card->ROM, size, 1, rom) == 0)
     {
-        LogPrint(LOG_ALWAYS, "FATAL: Gamecard ROM read failed\n");
+        LogPrint(LOG_ALWAYS, "ERROR: Could not read gamecard ROM\n");
+        fclose(rom);
         return false;
     }
 
+    fclose(rom);
+
     memcpy(card->Key1, &bios7[0xC6D0], 1042);
 
-    if (!Flash_InitB(&card->SRAM, KiB(256))) return false;
-    // TODO: make configurable
+
+    // BEGIN SOUP PARSING
+
+    card->SPI = nullptr;
     card->ChipID = 0x010101C2;
+
+    char soupname[512]; // if you make a longer file path i *will* cry.
+
+    strncpy(soupname, romname, 512-5); 
+
+    char* end = strrchr(soupname, '.');
+
+    if (end == NULL)
+    {
+        printf("ERROR: Could not find the part of the file path that's actually a file extension????\n");
+        return true;
+    }
+
+    end[1] = 's';
+    end[2] = 'o';
+    end[3] = 'u';
+    end[4] = 'p';
+    end[5] = '\0';
+
+    FILE* soup = fopen(soupname, "r");
+
+    if (soup == NULL)
+    {
+        LogPrint(LOG_ALWAYS, "NOTE: Could not locate .soup for this ROM; It probably wont boot properly.\n");
+        return true;
+    }
+
+    char* soupbowl;
+
+    fseek(soup, 0, SEEK_END);
+    u64 soupsize = ftell(soup);
+    fseek(soup, 0, SEEK_SET);
+
+    if (soupsize > KiB(1))
+    {
+        LogPrint(LOG_ALWAYS, "ERROR: Why is this .soup so big?? Max size: 1 KiB. Actual size: %lu\n", soupsize);
+        fclose(soup);
+        return true;
+    }
+    if (soupsize == 0)
+    {
+        LogPrint(LOG_ALWAYS, "ERROR: This .soup is empty???\n");
+        fclose(soup);
+        return true;
+    }
+
+    soupbowl = malloc(soupsize+32); // overallocate to make my life easier
+
+    memset(soupbowl, 0, soupsize+32);
+
+    if (fread(soupbowl, soupsize, 1, soup) == 0)
+    {
+        LogPrint(LOG_ALWAYS, "ERROR: Could not read .soup\n");
+        fclose(soup);
+        return true;
+    }
+
+    soupbowl[soupsize+31] = '\0'; // im kinda just assuming i have to do this
+
+    char* spoon = strstr(soupbowl, "chipid:");
+
+    if (spoon != NULL)
+    {
+        char* end;
+        card->ChipID = strtoul(&spoon[8], &end, 16);
+    }
+
+    int sramsize = 0;
+    spoon = strstr(soupbowl, "sramsize:");
+
+    if (spoon != NULL)
+    {
+        sramsize = atoi(&spoon[9]);
+    }
+
+    if (sramsize > 0 && sramsize <= 24)
+    {
+        spoon = strstr(soupbowl, "spi:");
+
+        u64 search = (spoon[4] == ' ') ? 5 : 4; // make spaces optional ig
+
+        if (memcmp(&spoon[search], "flash", 5) == 0)
+        {
+            printf("FLASH\n");
+            card->SPI = malloc(sizeof(Flash));
+            if (card->SPI == NULL)
+            {
+                LogPrint(LOG_ALWAYS, "Could not allocate RAM for gamecard SPI\n");
+                card->SPI = nullptr;
+                fclose(soup);
+                return true;
+            }
+
+            spoon = strstr(soupbowl, "flashid:");
+
+            u32 id = 0x010101;
+
+            if (spoon != NULL)
+            {
+                char* end;
+                id = strtoul(&spoon[8], &end, 16);
+            }
+
+            if (!Flash_Init(card->SPI, NULL /* TODO */, 1<<sramsize, false, id, "SRAM Flash"))
+            {
+                Flash_Cleanup(card->SPI);
+
+                card->SPI = nullptr;
+            }
+            else
+            {
+                card->SPI_CMDSend = (void*)Flash_CMDSend;
+                card->SPI_Cleanup = (void*)Flash_Cleanup;
+            }
+        }
+        else if (memcmp(&spoon[search], "eep9", 4) == 0)
+        {
+            printf("EEP9\n");
+            card->SPI = malloc(sizeof(EEPROM));
+            if (card->SPI == NULL)
+            {
+                LogPrint(LOG_ALWAYS, "Could not allocate RAM for gamecard SPI\n");
+                card->SPI = nullptr;
+                fclose(soup);
+                return true;
+            }
+
+            if (!EEPROM_Init(card->SPI, NULL /* TODO */, 1<<sramsize, 1, 0 /* TODO */))
+            {
+                EEPROM_Cleanup(card->SPI);
+
+                card->SPI = nullptr;
+            }
+            else
+            {
+                card->SPI_CMDSend = (void*)EEPROM_CMDSend;
+                card->SPI_Cleanup = (void*)EEPROM_Cleanup;
+            }
+        }
+        else if (memcmp(&spoon[search], "eep16", 5) == 0)
+        {
+            card->SPI = malloc(sizeof(EEPROM));
+            if (card->SPI == NULL)
+            {
+                LogPrint(LOG_ALWAYS, "Could not allocate RAM for gamecard SPI\n");
+                card->SPI = nullptr;
+                fclose(soup);
+                return true;
+            }
+
+            if (!EEPROM_Init(card->SPI, NULL /* TODO */, 1<<sramsize, 2, 0 /* TODO */))
+            {
+                EEPROM_Cleanup(card->SPI);
+
+                card->SPI = nullptr;
+            }
+            else
+            {
+                card->SPI_CMDSend = (void*)EEPROM_CMDSend;
+                card->SPI_Cleanup = (void*)EEPROM_Cleanup;
+            }
+        }
+        else if (memcmp(&spoon[search], "eep24", 5) == 0)
+        {
+            card->SPI = malloc(sizeof(EEPROM));
+            if (card->SPI == NULL)
+            {
+                LogPrint(LOG_ALWAYS, "Could not allocate RAM for gamecard SPI\n");
+                card->SPI = nullptr;
+                fclose(soup);
+                return true;
+            }
+
+            if (!EEPROM_Init(card->SPI, NULL /* TODO */, 1<<sramsize, 3, 0 /* TODO */))
+            {
+                EEPROM_Cleanup(card->SPI);
+
+                card->SPI = nullptr;
+            }
+            else
+            {
+                card->SPI_CMDSend = (void*)EEPROM_CMDSend;
+                card->SPI_Cleanup = (void*)EEPROM_Cleanup;
+            }
+        }
+    }
     return true;
 }
 
 void Gamecard_Cleanup(Gamecard* card)
 {
+    if (card->SPI != nullptr)
+    {
+        card->SPI_Cleanup((card->SPI));
+        free(card->SPI);
+        card->SPI = nullptr;
+    }
     free(card->ROM);
+    card->ROM = nullptr;
 }
 
 // TODO: reset func?
@@ -295,19 +501,19 @@ void QueueNextTransfer(struct Console* sys, timestamp cur, const bool a9)
 
         transtime *= ((sys->GCROMCR[a9].ClockDivider) ? 8 : 5);
 
-        Schedule_Event(sys, Gamecard_HandleSchedulingROM, Evt_Gamecard, cur+transtime);
+        Schedule_Event(sys, Gamecard_HandleSchedulingROM, Evt_CardROM, cur+transtime);
     }
     else
     {
         sys->GCROMCR[a9].Start = false;
         if (sys->GCSPICR[a9].ROMDataReadyIRQ) Console_ScheduleIRQs(sys, IRQ_GamecardTransferComplete, a9, cur); // todo: delay?
-        Schedule_Event(sys, Gamecard_HandleSchedulingROM, Evt_Gamecard, timestamp_max);
+        Schedule_Event(sys, Gamecard_HandleSchedulingROM, Evt_CardROM, timestamp_max);
     }
 }
 
 u32 Gamecard_ROMDataRead(struct Console* sys, timestamp cur, const bool a9)
 {
-    Scheduler_RunEventManual(sys, cur, Evt_Gamecard, a9);
+    Scheduler_RunEventManual(sys, cur, Evt_CardROM, a9);
     Gamecard* card = &sys->Gamecard;
 
     u32 ret = sys->GCROMData[a9];
@@ -339,7 +545,7 @@ void Gamecard_HandleSchedulingROM(struct Console* sys, timestamp now)
     {
         card->Buffered = true;
         card->WordBuffer = card->ReadHandler(card);
-        Schedule_Event(sys, Gamecard_HandleSchedulingROM, Evt_Gamecard, timestamp_max);
+        Schedule_Event(sys, Gamecard_HandleSchedulingROM, Evt_CardROM, timestamp_max);
     }
     else
     {
@@ -379,12 +585,26 @@ void Gamecard_ROMCommandSubmit(struct Console* sys, timestamp cur, const bool a9
     transfertime *= ((sys->GCROMCR[a9].ClockDivider) ? 8 : 5);
     transfertime += 3;
 
-    Schedule_Event(sys, Gamecard_HandleSchedulingROM, Evt_Gamecard, cur+transfertime);
+    Schedule_Event(sys, Gamecard_HandleSchedulingROM, Evt_CardROM, cur+transfertime);
+}
+
+void Gamecard_SPIFinish9(struct Console* sys, [[maybe_unused]] timestamp cur)
+{
+    sys->GCSPIOut[true] = sys->SPIBuf;
+    sys->GCSPICR[true].Busy = false;
+    Schedule_Event(sys, NULL, Evt_CardSPI, timestamp_max);
+}
+
+void Gamecard_SPIFinish7(struct Console* sys, [[maybe_unused]] timestamp cur)
+{
+    sys->GCSPIOut[false] = sys->SPIBuf;
+    sys->GCSPICR[false].Busy = false;
+    Schedule_Event(sys, NULL, Evt_CardSPI, timestamp_max);
 }
 
 u32 Gamecard_IOReadHandler(struct Console* sys, u32 addr, timestamp cur, const bool a9)
 {
-    Scheduler_RunEventManual(sys, cur, Evt_Gamecard, a9);
+    Scheduler_RunEventManual(sys, cur, Evt_CardROM, a9);
     addr -= 0x040001A0;
 
     // a7 is set for exmemcnt bits
@@ -393,8 +613,10 @@ u32 Gamecard_IOReadHandler(struct Console* sys, u32 addr, timestamp cur, const b
     switch(addr & 0x1C)
     {
         case 0x00:
+            Scheduler_RunEventManual(sys, cur, Evt_CardSPI, a9);
             return sys->GCSPICR[a9].Raw | (sys->GCSPIOut[a9] << 16);
         case 0x04:
+            Scheduler_RunEventManual(sys, cur, Evt_CardROM, a9);
             return sys->GCROMCR[a9].Raw;
         default:
             return 0;
@@ -404,7 +626,7 @@ u32 Gamecard_IOReadHandler(struct Console* sys, u32 addr, timestamp cur, const b
 void Gamecard_IOWriteHandler(struct Console* sys, u32 addr, const u32 val, const u32 mask, timestamp cur, const bool a9)
 {
     addr -= 0x040001A0;
-    Scheduler_RunEventManual(sys, cur, Evt_Gamecard, a9);
+    Scheduler_RunEventManual(sys, cur, Evt_CardROM, a9);
 
     // a7 is set for exmemcnt bits
     if (sys->ExtMemCR_Shared.NDSCardAccess == a9) return; // checkme: all of them?
@@ -413,18 +635,20 @@ void Gamecard_IOWriteHandler(struct Console* sys, u32 addr, const u32 val, const
     {
         case 0x00:
         {
-            MaskedWrite(sys->GCSPICR[a9].Raw, val, mask);
+            MaskedWrite(sys->GCSPICR[a9].Raw, val, mask & 0xE043);
             if (mask & 0xFF0000)
             {
-                // TODO: SPI Comms
-                MaskedWrite(sys->GCSPICR[a9].Raw, val, mask & 0xE043);
-                sys->GCSPIOut[a9] = Flash_CMDSend(&sys->Gamecard.SRAM, (val>>16)&0xFF, sys->GCSPICR[a9].ChipSelect);
-                //LogPrint(LOG_UNIMP|LOG_CARD, "SPI COMMS REQUESTED\n");
+                if (sys->Gamecard.SPI == nullptr) sys->GCSPIBuf = 0xFF;
+                else sys->GCSPIBuf = sys->Gamecard.SPI_CMDSend(&sys->Gamecard.SPI, (val>>16)&0xFF, sys->GCSPICR[a9].ChipSelect);
+
+                sys->GCSPICR[a9].Busy = true;
+                Schedule_Event(sys, (a9 ? Gamecard_SPIFinish9 : Gamecard_SPIFinish7), Evt_CardSPI, cur + (8*(8<<sys->GCSPICR[a9].Baudrate))); // checkme: delay
             }
             break;
         }
         case 0x04:
         {
+            Scheduler_RunEventManual(sys, cur, Evt_CardROM, a9);
             MaskedWrite(sys->GCROMCR[a9].Raw, val, mask & 0x5F7F7FFF);
 
             if (val & mask & (1<<15))

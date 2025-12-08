@@ -18,7 +18,7 @@
 
 
 // TODO: this function probably shouldn't manage memory on its own?
-struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* firmware, FILE* rom, void* pad)
+struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* firmware, const char* rom, void* pad)
 {
     if (sys == nullptr)
     {
@@ -49,15 +49,15 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
     CR_Start = false;
 
 
-    int num9;
+    int num9 = 0;
     if (ntr9 != NULL) num9 = fread(sys->NTRBios9.b8, NTRBios9_Size, 1, ntr9);
-    int num7;
+    int num7 = 0;
     if (ntr7 != NULL) num7 = fread(sys->NTRBios7.b8, NTRBios7_Size, 1, ntr7);
 
     // allocate shit
     bool cr7init = CR_Create(&sys->HandleARM9, (void*)ARM9_MainLoop, &sys->ARM9);
     bool cr9init = CR_Create(&sys->HandleARM7, (void*)ARM7_MainLoop, &sys->ARM7);
-    bool firminit = Flash_Init(&sys->Firmware, firmware, true);
+    bool firminit = Flash_Init(&sys->Firmware, firmware, 0, true, 0x010101, "Firmware Flash");
     bool gcinit = Gamecard_Init(&sys->Gamecard, rom, sys->NTRBios7.b8);
     sys->HandleMain = CR_Active();
 
@@ -77,15 +77,21 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
         if (num7 != 1)
             LogPrint(LOG_ALWAYS, "FATAL: ARM7 BIOS did not load properly.\n");
 
+        if (!gcinit)
+        {
+            LogPrint(LOG_ALWAYS, "FATAL: Gamecard failed init.\n");
+        }
+
         // cleanup ones that actually allocated correctly
-        CR_Free(sys->HandleARM9);
-        CR_Free(sys->HandleARM7);
-        Flash_Cleanup(&sys->Firmware);
-        Gamecard_Cleanup(&sys->Gamecard);
+        if (cr9init) CR_Free(sys->HandleARM9);
+        if (cr7init) CR_Free(sys->HandleARM7);
+        if (firminit) Flash_Cleanup(&sys->Firmware);
+        if (gcinit) Gamecard_Cleanup(&sys->Gamecard);
         if (mtxinit) mtx_destroy(&sys->FrameBufferMutex[0]);
         if (mtxinit3) mtx_destroy(&sys->FrameBufferMutex[1]);
         if (mtxinit2) mtx_destroy(&sys->Sched.SchedulerMtx);
         free(sys);
+        sys = nullptr;
 
         return nullptr;
     }

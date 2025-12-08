@@ -448,7 +448,7 @@ bool ARM9_DCacheWriteLookup(struct ARM946ES* ARM9, const u32 addr, const u32 val
     return false;
 }
 
-bool ARM9_ProgressCacheStream(timestamp* ts, struct ARM9_CacheStream* stream, u32* ret, const bool seq)
+bool ARM9_ProgressCacheStream(timestamp* ts, struct ARM9_CacheStream* stream, const bool seq)
 {
     // check if stream is even active
     if (stream->Prog >= 7) return false;
@@ -508,8 +508,7 @@ u32 ARM9_InstrRead(struct ARM946ES* ARM9, const u32 addr, const struct ARM9_MPUP
 // arm
 void ARM9_InstrRead32(struct ARM946ES* ARM9, const u32 addr)
 {
-    u32 ret;
-    bool timings = !ARM9_ProgressCacheStream(&ARM9->ARM.Timestamp, &ARM9->IStream, &ret, ARM9->ARM.CodeSeq);
+    bool timings = !ARM9_ProgressCacheStream(&ARM9->ARM.Timestamp, &ARM9->IStream, ARM9->ARM.CodeSeq);
 
     const struct ARM9_MPUPerms perms = ARM9_RegionLookup(ARM9, addr, ARM9->ARM.Privileged);
     // TODO: prefetch abort
@@ -566,7 +565,7 @@ void ARM9_InstrRead16(struct ARM946ES* ARM9, const u32 addr)
         }
         else
         { 
-            bool timings = ARM9_ProgressCacheStream(&ARM9->ARM.Timestamp, &ARM9->IStream, &instr, ARM9->ARM.CodeSeq);
+            bool timings = ARM9_ProgressCacheStream(&ARM9->ARM.Timestamp, &ARM9->IStream, ARM9->ARM.CodeSeq);
             instr = ARM9_InstrRead(ARM9, addr, perms, timings);
 
             if (addr & 2)
@@ -606,7 +605,7 @@ u32 ARM9_DataRead(struct ARM946ES* ARM9, const u32 addr, const u32 mask, bool* s
     }
 
     u32 ret;
-    bool timings = !ARM9_ProgressCacheStream(&ARM9->MemTimestamp, &ARM9->DStream, &ret, *seq);
+    bool timings = !ARM9_ProgressCacheStream(&ARM9->MemTimestamp, &ARM9->DStream, *seq);
 
     // handle contention
     // CHECKME: does this apply to aborts?
@@ -699,7 +698,7 @@ void ARM9_DataWrite(struct ARM946ES* ARM9, u32 addr, const u32 val, const u32 ma
         *seq = false;
     }
 
-    ARM9_ProgressCacheStream(&ARM9->MemTimestamp, &ARM9->DStream, NULL, false);
+    ARM9_ProgressCacheStream(&ARM9->MemTimestamp, &ARM9->DStream, false);
 
     // handle contention
     // CHECKME: does this apply to aborts?

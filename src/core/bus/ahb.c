@@ -1,3 +1,4 @@
+#include <stddef.h>
 #include <stdbit.h>
 #include "ahb.h"
 #include "../utils.h"
@@ -725,6 +726,7 @@ u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
                 ret = sys->SharedWRAM.b32[((addr & ((SharedWRAM_Size/2)-1)))/4]; break;
             case 3:
                 ret = 0; break;
+            default: unreachable();
         }
         break;
 
@@ -869,6 +871,7 @@ void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
                 MaskedWrite(sys->SharedWRAM.b32[((addr & ((SharedWRAM_Size/2)-1)))/4], val, mask); break;
             case 3:
                 break;
+            default: unreachable();
         }
         break;
 
@@ -1047,6 +1050,7 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
                 ret = sys->SharedWRAM.b32[((addr & ((SharedWRAM_Size/2)-1)) + (SharedWRAM_Size/2))/4]; break;
             case 3:
                 ret = sys->SharedWRAM.b32[((addr & ((SharedWRAM_Size)-1)))/4]; break;
+            default: unreachable();
         }
         break;
 
@@ -1145,6 +1149,7 @@ void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
                 MaskedWrite(sys->SharedWRAM.b32[((addr & ((SharedWRAM_Size/2)-1)) + (SharedWRAM_Size/2))/4], val, mask); break;
             case 3:
                 MaskedWrite(sys->SharedWRAM.b32[((addr & ((SharedWRAM_Size)-1)))/4], val, mask); break;
+            default: unreachable();
         }
         break;
 

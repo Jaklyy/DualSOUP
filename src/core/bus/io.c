@@ -306,6 +306,7 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask)
             return Gamecard_IOReadHandler(sys, addr, sys->AHB7.Timestamp, false);
 
         case 0x00'01'C0:
+            Scheduler_RunEventManual(sys, sys->AHB7.Timestamp, Evt_SPI, false);
             return sys->SPICR.Raw | (sys->SPIOut << 16);
 
         case 0x00'02'04: // External Memory Control
@@ -429,7 +430,7 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
                     sys->SPIBuf = Flash_CMDSend(&sys->Firmware, val>>16, sys->SPICR.ChipSelect);
                     break;
                 case 2:
-                    LogPrint(LOG_ARM7|LOG_UNIMP, "TSC UNIMPLEMENTED!\n");
+                    //LogPrint(LOG_ARM7|LOG_UNIMP, "TSC UNIMPLEMENTED!\n");
                     sys->SPIBuf = 0;
                     break;
                 case 3:
@@ -525,6 +526,15 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask)
             return sys->PPU_A.BGCR[0].Raw | (sys->PPU_A.BGCR[1].Raw << 16);
         case 0x00'00'0C:
             return sys->PPU_A.BGCR[2].Raw | (sys->PPU_A.BGCR[3].Raw << 16);
+
+        case 0x00'00'10:
+            return sys->PPU_A.Xoff[0] | (sys->PPU_A.Yoff[0] << 16);
+        case 0x00'00'14:
+            return sys->PPU_A.Xoff[1] | (sys->PPU_A.Yoff[1] << 16);
+        case 0x00'00'18:
+            return sys->PPU_A.Xoff[2] | (sys->PPU_A.Yoff[2] << 16);
+        case 0x00'00'1C:
+            return sys->PPU_A.Xoff[3] | (sys->PPU_A.Yoff[3] << 16);
 
         // DMA
         case 0x00'00'B0 ... 0x00'00'E0-1:
@@ -627,6 +637,15 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask)
         case 0x00'10'0C:
             return sys->PPU_B.BGCR[2].Raw | (sys->PPU_B.BGCR[3].Raw << 16);
 
+        case 0x00'10'10:
+            return sys->PPU_B.Xoff[0] | (sys->PPU_B.Yoff[0] << 16);
+        case 0x00'10'14:
+            return sys->PPU_B.Xoff[1] | (sys->PPU_B.Yoff[1] << 16);
+        case 0x00'10'18:
+            return sys->PPU_B.Xoff[2] | (sys->PPU_B.Yoff[2] << 16);
+        case 0x00'10'1C:
+            return sys->PPU_B.Xoff[3] | (sys->PPU_B.Yoff[3] << 16);
+
         case 0x00'03'00:
             Console_SyncWith7GT(sys, sys->AHB9.Timestamp);
             return sys->PostFlag | (sys->PostFlagA9Bit << 1);
@@ -676,6 +695,23 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
         case 0x00'00'0C:
             MaskedWrite(sys->PPU_A.BGCR[2].Raw, val, mask);
             MaskedWrite(sys->PPU_A.BGCR[3].Raw, val>>16, mask>>16);
+            break;
+
+        case 0x00'00'10:
+            MaskedWrite(sys->PPU_A.Xoff[0], val, mask&0x1FF);
+            MaskedWrite(sys->PPU_A.Yoff[0], val>>16, (mask>>16)&0x1FF);
+            break;
+        case 0x00'00'14:
+            MaskedWrite(sys->PPU_A.Xoff[1], val, mask&0x1FF);
+            MaskedWrite(sys->PPU_A.Yoff[1], val>>16, (mask>>16)&0x1FF);
+            break;
+        case 0x00'00'18:
+            MaskedWrite(sys->PPU_A.Xoff[2], val, mask&0x1FF);
+            MaskedWrite(sys->PPU_A.Yoff[2], val>>16, (mask>>16)&0x1FF);
+            break;
+        case 0x00'00'1C:
+            MaskedWrite(sys->PPU_A.Xoff[3], val, mask&0x1FF);
+            MaskedWrite(sys->PPU_A.Yoff[3], val>>16, (mask>>16)&0x1FF);
             break;
 
         // DMA
@@ -860,6 +896,23 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
         case 0x00'10'0C:
             MaskedWrite(sys->PPU_B.BGCR[2].Raw, val, mask);
             MaskedWrite(sys->PPU_B.BGCR[3].Raw, val>>16, mask>>16);
+            break;
+
+        case 0x00'10'10:
+            MaskedWrite(sys->PPU_B.Xoff[0], val, mask&0x1FF);
+            MaskedWrite(sys->PPU_B.Yoff[0], val>>16, (mask>>16)&0x1FF);
+            break;
+        case 0x00'10'14:
+            MaskedWrite(sys->PPU_B.Xoff[1], val, mask&0x1FF);
+            MaskedWrite(sys->PPU_B.Yoff[1], val>>16, (mask>>16)&0x1FF);
+            break;
+        case 0x00'10'18:
+            MaskedWrite(sys->PPU_B.Xoff[2], val, mask&0x1FF);
+            MaskedWrite(sys->PPU_B.Yoff[2], val>>16, (mask>>16)&0x1FF);
+            break;
+        case 0x00'10'1C:
+            MaskedWrite(sys->PPU_B.Xoff[3], val, mask&0x1FF);
+            MaskedWrite(sys->PPU_B.Yoff[3], val>>16, (mask>>16)&0x1FF);
             break;
 
 

@@ -160,7 +160,7 @@ void ARM9_ConfigureMPURegionPerms(struct ARM946ES* ARM9)
     }
 }
 
-extern bool ARM9_ProgressCacheStream(timestamp* ts, struct ARM9_CacheStream* stream, u32* ret, const bool seq);
+extern bool ARM9_ProgressCacheStream(timestamp* ts, struct ARM9_CacheStream* stream, const bool seq);
 
 // CHECKME: does flushing cache clean the tag ram and/or cache line entirely?
 
@@ -168,7 +168,7 @@ void ICache_FlushAddr(struct ARM946ES* ARM9, u32 addr)
 {
     // TODO: TIMINGS
     // TODO: IMPROVE CACHE STREAMING HANDLING
-    ARM9_ProgressCacheStream(&ARM9->ARM.Timestamp, &ARM9->IStream, NULL, false);
+    ARM9_ProgressCacheStream(&ARM9->ARM.Timestamp, &ARM9->IStream, false);
     ARM9_ICacheSetLookup
     if (set < ARM9_ICacheAssoc)
     {
@@ -180,27 +180,27 @@ void ICache_FlushAll(struct ARM946ES* ARM9)
 {
     // TODO: TIMINGS
     // TODO: IMPROVE CACHE STREAMING HANDLING
-    ARM9_ProgressCacheStream(&ARM9->ARM.Timestamp, &ARM9->IStream, NULL, false);
+    ARM9_ProgressCacheStream(&ARM9->ARM.Timestamp, &ARM9->IStream, false);
     for (unsigned i = 0; i < (sizeof(ARM9->ITagRAM)/sizeof(ARM9->ITagRAM[0])); i++)
         ARM9->ITagRAM[i].Valid = false;
 }
 
-u32 ARM9_ICacheLookup(struct ARM946ES* ARM9, const u32 addr);
+extern u32 ARM9_ICacheLookup(struct ARM946ES* ARM9, const u32 addr, const bool timings);
 
 void ICache_Prefetch(struct ARM946ES* ARM9, const u32 addr)
 {
     // TODO: TIMINGS
     // TODO: IMPROVE CACHE STREAMING HANDLING
-    ARM9_ProgressCacheStream(&ARM9->ARM.Timestamp, &ARM9->IStream, NULL, false);
-    ARM9_ICacheLookup(ARM9, addr);
-    ARM9_ProgressCacheStream(&ARM9->ARM.Timestamp, &ARM9->IStream, NULL, false);
+    ARM9_ProgressCacheStream(&ARM9->ARM.Timestamp, &ARM9->IStream, false);
+    ARM9_ICacheLookup(ARM9, addr, true /* checkme */);
+    ARM9_ProgressCacheStream(&ARM9->ARM.Timestamp, &ARM9->IStream, false);
 }
 
 void DCache_FlushAddr(struct ARM946ES* ARM9, u32 addr)
 {
     // TODO: TIMINGS
     // TODO: IMPROVE CACHE STREAMING HANDLING
-    ARM9_ProgressCacheStream(&ARM9->MemTimestamp, &ARM9->DStream, NULL, false);
+    ARM9_ProgressCacheStream(&ARM9->MemTimestamp, &ARM9->DStream, false);
     ARM9_DCacheSetLookup
     if (set < ARM9_DCacheAssoc)
     {
@@ -212,7 +212,7 @@ void DCache_FlushAll(struct ARM946ES* ARM9)
 {
     // TODO: TIMINGS
     // TODO: IMPROVE CACHE STREAMING HANDLING
-    ARM9_ProgressCacheStream(&ARM9->MemTimestamp, &ARM9->DStream, NULL, false);
+    ARM9_ProgressCacheStream(&ARM9->MemTimestamp, &ARM9->DStream, false);
     for (unsigned i = 0; i < (sizeof(ARM9->DTagRAM)/sizeof(ARM9->DTagRAM[0])); i++)
         ARM9->DTagRAM[i].Valid = false;
 }
@@ -269,7 +269,7 @@ void DCache_CleanIdxSet(struct ARM946ES* ARM9, const u32 val)
 {
     // TODO: TIMINGS
     // TODO: IMPROVE CACHE STREAMING HANDLING
-    ARM9_ProgressCacheStream(&ARM9->MemTimestamp, &ARM9->DStream, NULL, false);
+    ARM9_ProgressCacheStream(&ARM9->MemTimestamp, &ARM9->DStream, false);
 
     u32 idxset = (val >> 30) | (((val >> 5) & 0x1F) << 2);
 
@@ -280,7 +280,7 @@ void DCache_CleanFlushIdxSet(struct ARM946ES* ARM9, const u32 val)
 {
     // TODO: TIMINGS
     // TODO: IMPROVE CACHE STREAMING HANDLING
-    ARM9_ProgressCacheStream(&ARM9->MemTimestamp, &ARM9->DStream, NULL, false);
+    ARM9_ProgressCacheStream(&ARM9->MemTimestamp, &ARM9->DStream, false);
 
     u32 idxset = (val >> 30) | (((val >> 5) & 0x1F) << 2);
 
@@ -291,7 +291,7 @@ void DCache_CleanAddr(struct ARM946ES* ARM9, const u32 addr)
 {
     // TODO: TIMINGS
     // TODO: IMPROVE CACHE STREAMING HANDLING
-    ARM9_ProgressCacheStream(&ARM9->MemTimestamp, &ARM9->DStream, NULL, false);
+    ARM9_ProgressCacheStream(&ARM9->MemTimestamp, &ARM9->DStream, false);
     ARM9_DCacheSetLookup
 
     if (set < ARM9_DCacheAssoc)
@@ -304,7 +304,7 @@ void DCache_CleanFlushAddr(struct ARM946ES* ARM9, const u32 addr)
 {
     // TODO: TIMINGS
     // TODO: IMPROVE CACHE STREAMING HANDLING
-    ARM9_ProgressCacheStream(&ARM9->MemTimestamp, &ARM9->DStream, NULL, false);
+    ARM9_ProgressCacheStream(&ARM9->MemTimestamp, &ARM9->DStream, false);
     ARM9_DCacheSetLookup
 
     if (set < ARM9_DCacheAssoc)

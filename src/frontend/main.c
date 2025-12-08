@@ -45,14 +45,7 @@ int Core_Init(void* pass)
         exit(EXIT_FAILURE);
     }
 
-    FILE* ztst = fopen((char*)mailbox[1], "rb");
-    if (ztst == NULL)
-    {
-        printf("no ztst :(\n");
-        mailbox[3] = (void*)true;
-        initflag = true;
-        return EXIT_FAILURE;
-    }
+    char* ztst = (char*)mailbox[1];
 
     // initialize main emulator state struct
     struct Console* sys = Console_Init((struct Console*)mailbox[2], ntr9, ntr7, firmware, ztst, (void*)mailbox[0]);
@@ -66,7 +59,6 @@ int Core_Init(void* pass)
 
     fclose(ntr9);
     fclose(ntr7);
-    fclose(ztst);
 
     Console_DirectBoot(sys);
     Console_MainLoop(sys);
@@ -161,8 +153,8 @@ int main()
 
         if (sys)
         {
-                //int ret = mtx_trylock(&sys->FrameBufferMutex[buf]);
-                //if (ret == thrd_success)
+                int ret = mtx_trylock(&sys->FrameBufferMutex[buf]);
+                if (ret == thrd_success)
                 {
                     int pitch; 
                     SDL_LockTexture(blit, NULL, (void**)&buffer, &pitch);
@@ -172,10 +164,11 @@ int main()
                                 for (int b = 0; b < 4; b++)
                                 {
                                     if (b == 4) continue;
-                                    buffer[(s*192*pitch)+(y*pitch)+(x*pitch/256)+b] = (((((sys->Framebuffer[!sys->BackBuf][s][y][x] >> (b*6)) & 0x3F) * 0xFF) / 0x3F));
+                                    buffer[(s*192*pitch)+(y*pitch)+(x*pitch/256)+b] = (((((sys->Framebuffer[buf][s][y][x] >> (b*6)) & 0x3F) * 0xFF) / 0x3F));
                                 }
                     SDL_UnlockTexture(blit);
-                    //mtx_unlock(&sys->FrameBufferMutex[buf]);
+                    mtx_unlock(&sys->FrameBufferMutex[buf]);
+                    buf = !buf;
                     SDL_RenderTexture(ren, blit, NULL, NULL);
                     SDL_RenderPresent(ren);
                 }

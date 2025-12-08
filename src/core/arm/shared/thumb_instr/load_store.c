@@ -292,7 +292,7 @@ void THUMB_Push(struct ARM* cpu, const struct ARM_Instr instr_data)
     unsigned nregs = stdc_count_ones(instr.FullRList);
 
     unsigned truenregs = nregs;
-    timestamp oldts;
+    timestamp oldts = 0;
     if (cpu->CPUID == ARM9ID) oldts = ARM9Cast->MemTimestamp;
 
     u16 rlist = instr.RList;
@@ -399,7 +399,7 @@ void THUMB_Pop(struct ARM* cpu, const struct ARM_Instr instr_data)
     u16 rlist = instr.RList;
 
     unsigned truenregs = nregs;
-    timestamp oldts;
+    timestamp oldts = 0;
     if (cpu->CPUID == ARM9ID) oldts = ARM9Cast->MemTimestamp;
 
     // TODO: empty RList timings
@@ -522,7 +522,7 @@ void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
     unsigned nregs = stdc_count_ones((u8)instr.RList);
 
     unsigned truenregs = nregs;
-    timestamp oldts;
+    timestamp oldts = 0;
     if (cpu->CPUID == ARM9ID) oldts = ARM9Cast->MemTimestamp;
 
     // TODO: empty RList timings

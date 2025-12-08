@@ -21,7 +21,8 @@ enum Scheduler_Events : u8
     Evt_SPI,
 
     Evt_Scanline,
-    Evt_Gamecard,
+    Evt_CardROM,
+    Evt_CardSPI,
 
     Evt_Max
 };

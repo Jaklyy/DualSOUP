@@ -26,40 +26,35 @@ extern u32 VRAM_BGA(struct Console* sys, const u32 addr, const u32 mask, const b
 
 
 
-void PPU_RenderText(struct Console* sys, const bool B, const u16 y, const u8 bg)
+void PPU_RenderText(struct Console* sys, const bool B, u16 y, const u8 bg)
 {
     struct PPU* ppu = (B ? &sys->PPU_B : &sys->PPU_A);
     u32 (*BG)(struct Console*, const u32, const u32, const bool, const u32, const bool) = (B ? VRAM_BGB : VRAM_BGA);
     u32* scanline = sys->Framebuffer[sys->BackBuf][sys->PowerCR9.AOnBottom ? B : !B][y];
 
     u16* palbase = &sys->Palette.b16[0x200];
-    u32 bgcol = RGB565to666(palbase[0]);
 
     u32 tilebase = ppu->BGCR[bg].CharBase * KiB(16);
     u32 screenbase = ppu->BGCR[bg].ScreenBase * KiB(2);
 
-    switch(ppu->BGCR[bg].ScreenSize)
-    {
-        case 0: screenbase += ((y / 8)*(256/8)*2); break;
-        case 1: screenbase += ((y / 8)*(512/8)*2); break;
-        case 2: screenbase += ((y / 8)*(256/8)*2); break;
-        case 3: screenbase += ((y / 8)*(512/8)*2); break;
-    }
-    u32 width;
-    switch(ppu->BGCR[bg].ScreenSize)
-    {
-        case 0: width = 128; break;
-        case 1: width = 256; break;
-        case 2: width = 512; break;
-        case 3: width = 512; break;
-    }
+
+
+    u16 width = (ppu->BGCR[bg].ScreenSize & 1) ? 512 : 256;
+    u16 height = (ppu->BGCR[bg].ScreenSize & 2) ? 512 : 256;
+
+    y = (y+ppu->Yoff[bg]) & (height-1);
+    screenbase += ((y / 8)*((width/8)*2));
+
 
     u32 tileaddr;
     union TextTileData tile;
-    u16* pal;
-    for (int x = 0; x < 256; x++)
+    u16* pal = nullptr;
+    for (int xf = 0; xf < 256; xf++)
     {
-        if ((x%8) == 0)
+        int x = (xf+ppu->Xoff[bg]) & (width-1);
+        //printf("x%i y%i", x, y);
+
+        if (((x%8) == 0) || (xf == 0))
         {
             tileaddr = screenbase+((x / 8) * 2);
             tile.Raw = BG(sys, tileaddr&~3, u32_max, false, 0, false) >> ((tileaddr & 2)*8);
@@ -72,22 +67,22 @@ void PPU_RenderText(struct Console* sys, const bool B, const u16 y, const u8 bg)
         if (ppu->BGCR[bg].Pal256)
         {
             u32 pixeladdr = tilebase + (tile.TileNum * 32) + (xfrac) + (yfrac*4);
-            u8 color = BG(sys, pixeladdr&~3, u32_max, false, 0, false) >> ((pixeladdr&3)*8);
+            u8 idx = BG(sys, pixeladdr&~3, u32_max, false, 0, false) >> ((pixeladdr&3)*8);
 
-            scanline[x] = RGB565to666(palbase[color]);
+            if (idx) scanline[x] = RGB565to666(palbase[idx]);
         }
         else
         {
             u32 pixeladdr = tilebase + (tile.TileNum * 32) + (xfrac/2) + (yfrac*4);
-            u8 color = BG(sys, pixeladdr&~3, u32_max, false, 0, false) >> ((pixeladdr&3)*8);
-            color = (color >> ((xfrac&1)*4)) & 0xF;
+            u8 idx = BG(sys, pixeladdr&~3, u32_max, false, 0, false) >> ((pixeladdr&3)*8);
+            idx = (idx >> ((xfrac&1)*4)) & 0xF;
 
-            scanline[x] = RGB565to666(pal[color]);
+            if (idx) scanline[xf] = RGB565to666(pal[idx]);
         }
     }
 }
 
-void PPU_RenderBitmap(struct Console* sys, const bool B, const u16 y, const u8 bg, const bool dircolor)
+void PPU_RenderBitmap(struct Console* sys, const bool B, u16 y, const u8 bg, const bool dircolor)
 {
     struct PPU* ppu = (B ? &sys->PPU_B : &sys->PPU_A);
     u32 (*BG)(struct Console*, const u32, const u32, const bool, const u32, const bool) = (B ? VRAM_BGB : VRAM_BGA);
@@ -95,7 +90,6 @@ void PPU_RenderBitmap(struct Console* sys, const bool B, const u16 y, const u8 b
     u32* scanline = sys->Framebuffer[sys->BackBuf][sys->PowerCR9.AOnBottom ? B : !B][y];
 
     u32 screenbase = ppu->BGCR[bg].ScreenBase * KiB(16);
-
     u32 width;
     switch(ppu->BGCR[bg].ScreenSize)
     {
@@ -118,7 +112,7 @@ void PPU_RenderBitmap(struct Console* sys, const bool B, const u16 y, const u8 b
         {
             u32 addr = screenbase + x + (y*width);
             u8 idx = BG(sys, addr&~3, u32_max, false, 0, false) >> ((addr & 3) * 8);
-            scanline[x] = RGB565to666(palbase[idx]);
+            if (idx) scanline[x] = RGB565to666(palbase[idx]);
         }
     }
 }

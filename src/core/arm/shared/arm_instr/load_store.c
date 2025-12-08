@@ -806,7 +806,7 @@ void ARM_Swap(struct ARM* cpu, const struct ARM_Instr instr_data)
     ARM_ExeCycles(1, 1, 0);
 
     ARM_StepPC(cpu, false);
-    timestamp oldts;
+    timestamp oldts = 0;
     if (cpu->CPUID == ARM9ID) oldts = ARM9Cast->MemTimestamp;
 
     if (cpu->CPUID == ARM7ID)

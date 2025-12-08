@@ -68,6 +68,9 @@ struct PPU
             bool OverflowWrap : 1; 
         };
     } BGCR[4];
+
+    u16 Xoff[4];
+    u16 Yoff[4];
 };
 
 struct Console;

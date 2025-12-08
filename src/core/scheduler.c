@@ -10,13 +10,11 @@
 void Scheduler_UpdateTargets(struct Console* sys)
 {
     timestamp next = timestamp_max;
-    int b = 0;
     for (int i = 0; i < Evt_Max; i++)
     {
         if (next > sys->Sched.EventTimes[i])
         {
             next = sys->Sched.EventTimes[i];
-            b = i;
         }
     }
     sys->ARM7Target = next;
