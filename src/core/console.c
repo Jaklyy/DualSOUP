@@ -13,6 +13,7 @@
 #include "video/video.h"
 #include "bus/io.h"
 #include "sram/flash.h"
+#include "sram/eeprom.h"
 
 
 
@@ -480,6 +481,8 @@ void Console_MainLoop(struct Console* sys)
         while((Console_GetARM7Max(sys) < sys->ARM7Target) || (Console_GetARM9Max(sys) < sys->ARM7Target))
         {
             //printf("9i %lu %lu s:%i\n", Console_GetARM9Max(sys), sys->ARM7Target, sys->ARM9.ARM.DeadAsleep);
+            //printf("%lX %lX %lX %lX\n", sys->ARM9.ARM.Timestamp, sys->ARM9.MemTimestamp, sys->AHB9.Timestamp, sys->DMA9.NextTime);
+            //if (sys->ARM9.ARM.Timestamp > 0x3FFFFFFFFFFFFFFF || sys->ARM9.MemTimestamp > 0x3FFFFFFFFFFFFFFF || sys->AHB9.Timestamp > 0x3FFFFFFFFFFFFFFF) CrashSpectacularly("BORK\n");
             //printf("7i %lu %lu s:%i\n", Console_GetARM7Max(sys), sys->ARM7Target, sys->ARM7.ARM.DeadAsleep);
             if (Console_GetARM9Max(sys) < sys->ARM7Target)
                 CR_Switch(sys->HandleARM9);

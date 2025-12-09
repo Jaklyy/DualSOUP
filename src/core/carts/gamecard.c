@@ -638,11 +638,18 @@ void Gamecard_IOWriteHandler(struct Console* sys, u32 addr, const u32 val, const
             MaskedWrite(sys->GCSPICR[a9].Raw, val, mask & 0xE043);
             if (mask & 0xFF0000)
             {
-                if (sys->Gamecard.SPI == nullptr) sys->GCSPIBuf = 0xFF;
-                else sys->GCSPIBuf = sys->Gamecard.SPI_CMDSend(&sys->Gamecard.SPI, (val>>16)&0xFF, sys->GCSPICR[a9].ChipSelect);
+                if (sys->GCSPICR[a9].Busy)
+                {
+                    LogPrint(LOG_CARD|LOG_ODD, "Gamecard SPI writes while busy?\n");
+                }
+                else
+                {
+                    if (sys->Gamecard.SPI == nullptr) sys->GCSPIBuf = 0xFF;
+                    else sys->GCSPIBuf = sys->Gamecard.SPI_CMDSend(sys->Gamecard.SPI, (val>>16)&0xFF, sys->GCSPICR[a9].ChipSelect);
 
-                sys->GCSPICR[a9].Busy = true;
-                Schedule_Event(sys, (a9 ? Gamecard_SPIFinish9 : Gamecard_SPIFinish7), Evt_CardSPI, cur + (8*(8<<sys->GCSPICR[a9].Baudrate))); // checkme: delay
+                    sys->GCSPICR[a9].Busy = true;
+                    Schedule_Event(sys, (a9 ? Gamecard_SPIFinish9 : Gamecard_SPIFinish7), Evt_CardSPI, cur + (8*(8<<sys->GCSPICR[a9].Baudrate))); // checkme: delay
+                }
             }
             break;
         }

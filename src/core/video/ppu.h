@@ -4,6 +4,17 @@
 
 
 
+constexpr unsigned TileWidth = 8;
+constexpr unsigned TileHeight = 8;
+constexpr unsigned TileSize = TileWidth*TileHeight;
+constexpr unsigned BytesPerTile = 2;
+constexpr unsigned ScreenWidthTiles = 32;
+constexpr unsigned ScreenHeightTiles = 32;
+constexpr unsigned ScreenSizeTiles = ScreenWidthTiles * ScreenHeightTiles;
+constexpr unsigned ScreenWidthPx = TileWidth * ScreenWidthTiles;
+constexpr unsigned ScreenHeightPx = TileHeight * ScreenHeightTiles;
+constexpr unsigned ScreenSizePx = ScreenWidthPx * ScreenHeightPx;
+
 union TextTileData
 {
     u16 Raw;
@@ -58,9 +69,15 @@ struct PPU
             u16 CharBase : 4;
             bool Mosaic : 1;
             bool Pal256 : 1;
-            u32 ScreenBase : 5;
+            u16 ScreenBase : 5;
             bool ExtPalSlot : 1; // bg0/bg1
-            u32 ScreenSize : 2;
+            u16 ScreenSize : 2;
+        };
+        struct
+        {
+            u16 : 14;
+            bool Wide : 1;
+            bool Tall : 1;
         };
         struct
         {

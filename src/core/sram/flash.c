@@ -207,6 +207,7 @@ u8 Flash_PageWrite(Flash* flash, const u8 val, const bool chipsel)
             }
         }
     }
+    if (!chipsel) flash->WriteEnabled = false;
     return 0;
 }
 
@@ -250,10 +251,11 @@ u8 Flash_PageProgram(Flash* flash, const u8 val, const bool chipsel)
             }
         }
     }
+    if (!chipsel) flash->WriteEnabled = false;
     return 0;
 }
 
-u8 Flash_PageErase(Flash* flash, const u8 val)
+u8 Flash_PageErase(Flash* flash, const u8 val, const bool chipsel)
 {
     if (flash->PowerDown || !flash->WriteEnabled || flash->Busy) return 0xFF;
 
@@ -275,10 +277,11 @@ u8 Flash_PageErase(Flash* flash, const u8 val)
             flash->RAM[flash->CurAddr++ & (flash->RAMSize-1)] = 0xFF;
         }
     }
+    if (!chipsel) flash->WriteEnabled = false;
     return 0;
 }
 
-u8 Flash_SectorErase(Flash* flash, const u8 val)
+u8 Flash_SectorErase(Flash* flash, const u8 val, const bool chipsel)
 {
     if (flash->PowerDown || !flash->WriteEnabled || flash->Busy) return 0xFF;
 
@@ -300,6 +303,7 @@ u8 Flash_SectorErase(Flash* flash, const u8 val)
             flash->RAM[flash->CurAddr++ & (flash->RAMSize-1)] = 0xFF;
         }
     }
+    if (!chipsel) flash->WriteEnabled = false;
     return 0;
 }
 
@@ -325,8 +329,8 @@ u8 Flash_CMDSend(Flash* flash, const u8 val, const bool chipsel)
         case 0x0B: ret = Flash_ReadDataFast(flash, val); break;
         case 0x0A: ret = Flash_PageWrite(flash, val, chipsel); break;
         case 0x02: ret = Flash_PageProgram(flash, val, chipsel); break;
-        case 0xDB: ret = Flash_PageErase(flash, val); break;
-        case 0xD8: ret = Flash_SectorErase(flash, val); break;
+        case 0xDB: ret = Flash_PageErase(flash, val, chipsel); break;
+        case 0xD8: ret = Flash_SectorErase(flash, val, chipsel); break;
         case 0xB9: ret = Flash_EnterDeepPowerDown(flash, chipsel); break;
         case 0xA9: ret = Flash_ExitDeepPowerDown(flash, chipsel); break;
         default: ret = 0xFF; LogPrint(LOG_FLASH | LOG_ODD, "UNKNOWN FLASH COMMAND %02X\n", flash->CurCmd); break;

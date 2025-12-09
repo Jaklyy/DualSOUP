@@ -81,7 +81,7 @@ void EEPROM_Reset(EEPROM* eep)
 u8 EEPROM_WriteEnable(EEPROM* eep, const bool chipsel)
 {
     // CHECKME: does this work with chipsel held?
-    if (chipsel) return 0xFF;
+    //if (chipsel) return 0xFF;
     eep->WriteEnabled = true;
     return 0;
 }
@@ -96,7 +96,7 @@ u8 EEPROM_WriteDisable(EEPROM* eep, const bool chipsel)
 
 u8 EEPROM_ReadStatus(EEPROM* eep)
 {
-    if (eep->AddrBytes == 1) return 0xFF;
+    //if (eep->AddrBytes == 1) return 0xFF;
     return (eep->WriteProt << 2) | (eep->WriteEnabled << 1) | eep->Busy;
 }
 
@@ -132,7 +132,7 @@ u8 EEPROM_ReadData(EEPROM* eep, const u8 val)
     }
 }
 
-u8 EEPROM_WriteData(EEPROM* eep, const u8 val)
+u8 EEPROM_WriteData(EEPROM* eep, const u8 val, const bool chipsel)
 {
     if (!eep->WriteEnabled || eep->Busy) return 0xFF;
 
@@ -146,18 +146,18 @@ u8 EEPROM_WriteData(EEPROM* eep, const u8 val)
     }
     else
     {
-        printf("wr:%08X\n", eep->CurAddr);
         eep->RAM[eep->CurAddr] = val;
         eep->CurAddr = (eep->CurAddr + 1) & (eep->RAMSize-1);
-
         // TODO: handle pages?
         // TODO: write protection?
     }
+    if (!chipsel) eep->WriteEnabled = false;
     return 0;
 }
 
 u8 EEPROM_CMDSend(EEPROM* eep, const u8 val, const bool chipsel)
 {
+    //printf("EEP %02X %i\n", val, chipsel);
     if (!eep->PrevChipSelect)
     {
         eep->CurCmd = val;
@@ -196,7 +196,7 @@ u8 EEPROM_CMDSend(EEPROM* eep, const u8 val, const bool chipsel)
                 eep->CurAddr = 0x0100;
                 [[fallthrough]];
             }
-        case 0x02: ret = EEPROM_WriteData(eep, val); break;
+        case 0x02: ret = EEPROM_WriteData(eep, val, chipsel); break;
 
         default: ret = 0xFF; LogPrint(LOG_FLASH | LOG_ODD, "UNKNOWN EEPROM COMMAND %02X\n", eep->CurCmd); break;
     }

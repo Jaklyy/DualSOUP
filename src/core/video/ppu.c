@@ -1,5 +1,6 @@
-#include "ppu.h"
+#include <stdckdint.h>
 #include "../console.h"
+#include "ppu.h"
 
 
 
@@ -23,6 +24,38 @@ extern u32 VRAM_LCD(struct Console* sys, const u32 addr, const u32 mask, const b
 extern u32 VRAM_BGB(struct Console* sys, const u32 addr, const u32 mask, const bool write, const u32 val, const bool timings);
 extern u32 VRAM_BGA(struct Console* sys, const u32 addr, const u32 mask, const bool write, const u32 val, const bool timings);
 
+u16 VRAM_BGAExtPal(struct Console* sys, const u16 idx)
+{
+    u16 val = 0;
+    if (sys->VRAMCR[4].Raw == 0x84)
+    {
+        val = sys->VRAM_E.b16[idx];
+    }
+    if ((sys->VRAMCR[5].Raw & 0x87) == 0x84)
+    {
+        if ((sys->VRAMCR[5].Offset * KiB(16)) == (idx & KiB(16)))
+        {
+            val |= sys->VRAM_F.b16[idx & (VRAM_F_Size-1)];
+        }
+    }
+    if ((sys->VRAMCR[6].Raw & 0x87) == 0x84)
+    {
+        if ((sys->VRAMCR[6].Offset * KiB(16)) == (idx & KiB(16)))
+        {
+            val |= sys->VRAM_G.b16[idx & (VRAM_G_Size-1)];
+        }
+    }
+    return val;
+}
+
+u16 VRAM_BGBExtPal(struct Console* sys, const u16 idx)
+{
+    if (sys->VRAMCR[7].Raw == 0x82)
+    {
+        return sys->VRAM_H.b16[idx];
+    }
+    else return 0;
+}
 
 
 
@@ -30,55 +63,80 @@ void PPU_RenderText(struct Console* sys, const bool B, u16 y, const u8 bg)
 {
     struct PPU* ppu = (B ? &sys->PPU_B : &sys->PPU_A);
     u32 (*BG)(struct Console*, const u32, const u32, const bool, const u32, const bool) = (B ? VRAM_BGB : VRAM_BGA);
+    u16 (*BGExtPal)(struct Console*, const u16) = (B ? VRAM_BGBExtPal : VRAM_BGAExtPal);
     u32* scanline = sys->Framebuffer[sys->BackBuf][sys->PowerCR9.AOnBottom ? B : !B][y];
 
-    u16* palbase = &sys->Palette.b16[0x200];
+    u16* palbase = &sys->Palette.b16[(B) ? 0x200 : 0];
 
     u32 tilebase = ppu->BGCR[bg].CharBase * KiB(16);
     u32 screenbase = ppu->BGCR[bg].ScreenBase * KiB(2);
 
+    if (!B)
+    {
+        tilebase += ppu->DisplayCR.CharBase * KiB(64);
+        screenbase += ppu->DisplayCR.ScreenBase * KiB(64);
+    }
 
+    y += ppu->Yoff[bg];
 
-    u16 width = (ppu->BGCR[bg].ScreenSize & 1) ? 512 : 256;
-    u16 height = (ppu->BGCR[bg].ScreenSize & 2) ? 512 : 256;
+    // screens are laid out somewhat unintuitively in vram so we need to do some weird things to index them properly
+    if (ppu->BGCR[bg].Tall)
+    {
+        // 512 height
+        screenbase += ((y & (512-1)) / TileWidth) * (ScreenWidthTiles * BytesPerTile);
+        // if it is also wide then we have to offset the height some to get the proper screen offset if it's past the 256th pixel.
+        if (ppu->BGCR[bg].Wide) screenbase += ((y / ScreenWidthPx * ScreenWidthPx) / TileWidth) * (ScreenWidthTiles * BytesPerTile);
+    }
+    else
+    {
+        // 256 height
+        screenbase += ((y & (256-1)) / TileWidth) * (ScreenWidthTiles * BytesPerTile);
+    }
 
-    y = (y+ppu->Yoff[bg]) & (height-1);
-    screenbase += ((y / 8)*((width/8)*2));
+    u32 extpalbase = bg*KiB(8);
+    if (bg <= 1 && ppu->BGCR[bg].ExtPalSlot) extpalbase += KiB(16);
 
 
     u32 tileaddr;
     union TextTileData tile;
-    u16* pal = nullptr;
+    //u16* pal = nullptr;
+    // isolate out msb since it needs to be special cased for properly indexing screens
+    u8 x = ppu->Xoff[bg] & 0xFF;
+    bool xmsb = (ppu->Xoff[bg] >> 8) & ppu->BGCR[bg].Wide;
     for (int xf = 0; xf < 256; xf++)
     {
-        int x = (xf+ppu->Xoff[bg]) & (width-1);
-        //printf("x%i y%i", x, y);
-
         if (((x%8) == 0) || (xf == 0))
         {
-            tileaddr = screenbase+((x / 8) * 2);
-            tile.Raw = BG(sys, tileaddr&~3, u32_max, false, 0, false) >> ((tileaddr & 2)*8);
-            pal = palbase + (tile.Palette * 16);
+            tileaddr = screenbase + ((x / 8) * 2) + (xmsb << (8+3));
+            tile.Raw = (BG(sys, tileaddr&~3, u32_max, false, 0, false) >> ((tileaddr & 2)*8)) & 0xFFFF;
         }
 
+        // get in tile coordinate component to index into the tiles
         int xfrac = (!tile.HFlip ? (x%8) : (7-(x%8)));
         int yfrac = (!tile.VFlip ? (y%8) : (7-(y%8)));
 
-        if (ppu->BGCR[bg].Pal256)
+        if (ppu->BGCR[bg].Pal256) // 8 bpp
         {
-            u32 pixeladdr = tilebase + (tile.TileNum * 32) + (xfrac) + (yfrac*4);
+            u32 pixeladdr = tilebase + (((tile.TileNum * (TileWidth*TileHeight)) + (yfrac*TileWidth)) + xfrac);
             u8 idx = BG(sys, pixeladdr&~3, u32_max, false, 0, false) >> ((pixeladdr&3)*8);
 
-            if (idx) scanline[x] = RGB565to666(palbase[idx]);
+            if (ppu->DisplayCR.BGExtPalEn)
+            {
+                if (idx) scanline[xf] = RGB565to666(BGExtPal(sys, extpalbase+idx));
+            }
+            else if (idx) scanline[xf] = RGB565to666(palbase[idx]);
         }
-        else
+        else // pal 16 4bpp
         {
-            u32 pixeladdr = tilebase + (tile.TileNum * 32) + (xfrac/2) + (yfrac*4);
+            u32 pixeladdr = tilebase + ((((tile.TileNum * (TileWidth*TileHeight)) + (yfrac*TileWidth)) / 2) + (xfrac/2));
             u8 idx = BG(sys, pixeladdr&~3, u32_max, false, 0, false) >> ((pixeladdr&3)*8);
-            idx = (idx >> ((xfrac&1)*4)) & 0xF;
+            idx = ((idx >> ((xfrac&1)*4)) & 0xF);
 
-            if (idx) scanline[xf] = RGB565to666(pal[idx]);
+            // ext pal doesn't apply for 4bpp tilesets for w/e reason
+            if (idx) scanline[xf] = RGB565to666(palbase[idx+(tile.Palette*16)]);
         }
+
+        xmsb ^= ckd_add(&x, x, 1) & ppu->BGCR[bg].Wide;
     }
 }
 

@@ -163,6 +163,9 @@ void ARM9_CheckInterlocks(struct ARM946ES* ARM9, s8* stall, const int reg, const
     // but i dont think this is possible to work around without losing accuracy.
     s8 diff = ARM9->RegIL[reg][portc] - cycledelay;
     if (*stall < diff) *stall = diff;
+    // TODO: this *can* be done branchless according to a friend; but it needs profiling.
+    //s8 x = *stall - diff;
+    //*stall = (x & ~(x>>7)) + diff;
 }
 
 void ARM9_FetchCycles(struct ARM946ES* ARM9, const int fetch)
@@ -181,17 +184,21 @@ void ARM9_ExecuteCycles(struct ARM946ES* ARM9, const int execute, const int memo
 
     // catch the memory timestamp up
     // save the difference between old and new so we can also catch up the interlock timestamps
-    s8 diff = (cpu->Timestamp + memory) - ARM9->MemTimestamp;
+    s64 diff = (cpu->Timestamp + memory) - ARM9->MemTimestamp;
     ARM9->MemTimestamp += diff;
+    if (diff > s8_max) diff = s8_max;
+    if (diff < s8_min) diff = s8_min;
 
     ARM9_UpdateInterlocks(ARM9, diff);
 
     cpu->CodeSeq = true;
 }
 
-void ARM9_FixupLoadStore(struct ARM946ES* ARM9, const int execute, const int memdiff)
+void ARM9_FixupLoadStore(struct ARM946ES* ARM9, const int execute, s64 memdiff)
 {
     cpu->Timestamp += execute - 1;
+    if (memdiff > s8_max) memdiff = s8_max;
+    if (memdiff < s8_min) memdiff = s8_min;
     ARM9_UpdateInterlocks(ARM9, memdiff);
 }
 
