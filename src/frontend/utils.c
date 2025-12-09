@@ -79,7 +79,7 @@ u16 Input_PollExtra(void* pad)
                | (0<<7); // fold
     if (pad == NULL)
     {
-        return 0x003F;
+        inputs |= 0x003F;
     }
     else
     {
