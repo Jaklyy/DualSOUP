@@ -1,4 +1,5 @@
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_scancode.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include "../core/utils.h"
@@ -52,6 +53,17 @@ u16 Input_PollMain(void* pad)
     inputs |= !SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN) << 7;
     inputs |= !SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER) << 8;
     inputs |= !SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER) << 9;
+
+    inputs &= ~(SDL_GetKeyboardState(NULL)[SDL_SCANCODE_APOSTROPHE] << 0);
+    inputs &= ~(SDL_GetKeyboardState(NULL)[SDL_SCANCODE_SEMICOLON] << 1);
+    inputs &= ~(SDL_GetKeyboardState(NULL)[SDL_SCANCODE_RSHIFT] << 2);
+    inputs &= ~(SDL_GetKeyboardState(NULL)[SDL_SCANCODE_RETURN] << 3);
+    inputs &= ~(SDL_GetKeyboardState(NULL)[SDL_SCANCODE_D] << 4);
+    inputs &= ~(SDL_GetKeyboardState(NULL)[SDL_SCANCODE_A] << 5);
+    inputs &= ~(SDL_GetKeyboardState(NULL)[SDL_SCANCODE_W] << 6);
+    inputs &= ~(SDL_GetKeyboardState(NULL)[SDL_SCANCODE_S] << 7);
+    inputs &= ~(SDL_GetKeyboardState(NULL)[SDL_SCANCODE_LEFTBRACKET] << 8);
+    inputs &= ~(SDL_GetKeyboardState(NULL)[SDL_SCANCODE_Q] << 9);
     return inputs;
 }
 
@@ -68,6 +80,8 @@ u16 Input_PollExtra(void* pad)
     //inputs |= !SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_LEFT_STICK) << 3;
     inputs |= !SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_NORTH) << 0;
     inputs |= !SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_WEST) << 1;
+    inputs &= ~(SDL_GetKeyboardState(NULL)[SDL_SCANCODE_P] << 0);
+    inputs &= ~(SDL_GetKeyboardState(NULL)[SDL_SCANCODE_L] << 1);
     return inputs;
 }
 
