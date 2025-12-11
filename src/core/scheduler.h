@@ -15,6 +15,8 @@ enum Scheduler_Events : u8
     Evt_Divider,
     Evt_Sqrt,
     Evt_Timer9,
+    Evt_GXExec,
+    Evt_GXFIFO,
 
     Evt_IF7Update,
     Evt_Timer7,
@@ -41,5 +43,7 @@ void Scheduler_UpdateTargets(struct Console* sys);
 void Scheduler_Run(struct Console* sys);
 // check to run an event manually
 void Scheduler_RunEventManual(struct Console* sys, timestamp time, const u8 event, const u8 a9);
+// stall until an event is run
+void Scheduler_StallToRunEvent(struct Console* sys, timestamp* time, const u8 event, const u8 a9);
 // schedule an event to run
 void Schedule_Event(struct Console* sys, void (*callback) (struct Console*, timestamp), u8 event, timestamp time);

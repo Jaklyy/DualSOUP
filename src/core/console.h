@@ -17,6 +17,7 @@
 #include "carts/gamecard.h"
 #include "io/rtc.h"
 #include "io/powman.h"
+#include "video/3dgeom.h"
 
 
 
@@ -147,8 +148,12 @@ struct Console
     bool PostFlagA9Bit;
     u32 IE9;
     u32 IF9;
+    u32 IF9HoldQueue;
+    u32 IF9Held;
     u32 IE7;
     u32 IF7;
+    u32 IF7HoldQueue;
+    u32 IF7Held;
     u32 DMAFill[4];
     union
     {
@@ -337,6 +342,8 @@ struct Console
     struct PPU PPU_A;
     struct PPU PPU_B;
 
+    GX3D GX3D;
+
     Flash Firmware;
 
     union
@@ -482,6 +489,8 @@ void Console_DirectBoot(struct Console* sys);
 
 
 void Console_ScheduleIRQs(struct Console* sys, const u8 irq, const bool a9, timestamp time);
+void Console_ScheduleHeldIRQs(struct Console* sys, const u8 irq, const bool a9, timestamp time);
+void Console_ClearHeldIRQs(struct Console* sys, const u8 irq, const bool a9);
 timestamp Console_GetARM7Max(struct Console* sys);
 timestamp Console_GetARM9Max(struct Console* sys);
 void Console_SyncWith7GTE(struct Console* sys, timestamp now);

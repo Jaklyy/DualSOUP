@@ -345,7 +345,7 @@ u32 ARM9_ICacheLookup(struct ARM946ES* ARM9, const u32 addr, const bool timings)
         if (i == waittil)
         {
             ARM9->ARM.Timestamp = time;
-            ARM9->IStream.Prog = i;
+            ARM9->IStream.Prog = 7;//i;
         }
         else if (i > 0)
         {
@@ -409,7 +409,7 @@ u32 ARM9_DCacheReadLookup(struct ARM946ES* ARM9, const u32 addr, const bool timi
         if (i == waittil)
         {
             ARM9->MemTimestamp = time;
-            ARM9->DStream.Prog = i;
+            ARM9->DStream.Prog = 7;//i;
         }
         else if (i > 0)
         {

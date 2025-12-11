@@ -96,8 +96,8 @@ u8 EEPROM_WriteDisable(EEPROM* eep, const bool chipsel)
 
 u8 EEPROM_ReadStatus(EEPROM* eep)
 {
-    //if (eep->AddrBytes == 1) return 0xFF;
-    return (eep->WriteProt << 2) | (eep->WriteEnabled << 1) | eep->Busy;
+    if (eep->AddrBytes == 1) return 0xFF;
+    return 0xF0 |(eep->WriteProt << 2) | (eep->WriteEnabled << 1) | eep->Busy;
 }
 
 u8 EEPROM_WriteStatus(EEPROM* eep, const u8 val)
@@ -125,9 +125,11 @@ u8 EEPROM_ReadData(EEPROM* eep, const u8 val)
     }
     else
     {
+        eep->CurAddr &= (eep->RAMSize-1);
         // checkme: how does it actually do masking?
         u32 ret = eep->RAM[eep->CurAddr];
-        eep->CurAddr = (eep->CurAddr + 1) & (eep->RAMSize-1);
+        printf("r %06X %02X\n", eep->CurAddr, ret);
+        eep->CurAddr++;
         return ret;
     }
 }
@@ -146,8 +148,10 @@ u8 EEPROM_WriteData(EEPROM* eep, const u8 val, const bool chipsel)
     }
     else
     {
+        eep->CurAddr &= (eep->RAMSize-1);
+        printf("w %06X %02X\n", eep->CurAddr, val);
         eep->RAM[eep->CurAddr] = val;
-        eep->CurAddr = (eep->CurAddr + 1) & (eep->RAMSize-1);
+        eep->CurAddr++;
         // TODO: handle pages?
         // TODO: write protection?
     }

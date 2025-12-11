@@ -134,6 +134,10 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
 
     sys->Powman.BacklightLevels.AlwaysSet = true;
 
+    sys->GX3D.Status.FIFOHalfEmpty = true;
+    sys->GX3D.Status.FIFOEmpty = true;
+    sys->GX3D.BufferFree = true;
+
     sys->Pad = pad;
 
     sys->RTC.DataTime[0] = 1;
@@ -389,6 +393,10 @@ void IF9_Update(struct Console* sys, timestamp now)
         if (time >= sys->IRQSched9[i])
         {
             sys->IF9 |= (1<<i);
+
+            sys->IF9Held |= sys->IF9HoldQueue & (1<<i);
+            sys->IF9HoldQueue &= ~(1<<i);
+
             sys->IRQSched9[i] = timestamp_max;
         }
         if (next > sys->IRQSched9[i])
@@ -416,6 +424,10 @@ void IF7_Update(struct Console* sys, timestamp now)
         if (time >= sys->IRQSched7[i])
         {
             sys->IF7 |= (1<<i);
+
+            sys->IF7Held |= sys->IF7HoldQueue & (1<<i);
+            sys->IF7HoldQueue &= ~(1<<i);
+
             sys->IRQSched7[i] = timestamp_max;
         }
         if (next > sys->IRQSched7[i])
@@ -461,6 +473,29 @@ void Console_ScheduleIRQs(struct Console* sys, const u8 irq, const bool a9, time
         Schedule_Event(sys, IF7_Update, Evt_IF7Update, time);
 }
 
+void Console_ScheduleHeldIRQs(struct Console* sys, const u8 irq, const bool a9, timestamp time)
+{
+    if (a9) sys->IF9HoldQueue |= 1<<irq;
+    else    sys->IF7HoldQueue |= 1<<irq;
+
+    Console_ScheduleIRQs(sys, irq, a9, time);
+}
+
+void Console_ClearHeldIRQs(struct Console* sys, const u8 irq, const bool a9)
+{
+    if (a9)
+    {
+        sys->IF9HoldQueue &= ~(1<<irq);
+        sys->IF9Held &= ~(1<<irq); // idk??
+    }
+    else
+    {
+        sys->IF7HoldQueue &= ~(1<<irq);
+        sys->IF7Held &= ~(1<<irq); // idk??
+    }
+    Console_ScheduleIRQs(sys, irq, a9, timestamp_max);
+}
+
 void Console_MainLoop(struct Console* sys)
 {
     CR_Start = true;
@@ -482,7 +517,7 @@ void Console_MainLoop(struct Console* sys)
         {
             //printf("9i %lu %lu s:%i\n", Console_GetARM9Max(sys), sys->ARM7Target, sys->ARM9.ARM.DeadAsleep);
             //printf("%lX %lX %lX %lX\n", sys->ARM9.ARM.Timestamp, sys->ARM9.MemTimestamp, sys->AHB9.Timestamp, sys->DMA9.NextTime);
-            //if (sys->ARM9.ARM.Timestamp > 0x3FFFFFFFFFFFFFFF || sys->ARM9.MemTimestamp > 0x3FFFFFFFFFFFFFFF || sys->AHB9.Timestamp > 0x3FFFFFFFFFFFFFFF) CrashSpectacularly("BORK\n");
+            if (sys->ARM9.ARM.Timestamp > 0x3FFFFFFFFFFFFFFF || sys->ARM9.MemTimestamp > 0x3FFFFFFFFFFFFFFF || sys->AHB9.Timestamp > 0x3FFFFFFFFFFFFFFF || sys->ARM7.ARM.Timestamp > 0x3FFFFFFFFFFFFFFF || sys->AHB7.Timestamp > 0x3FFFFFFFFFFFFFFF) CrashSpectacularly("TIMESTAMP BORK\n");
             //printf("7i %lu %lu s:%i\n", Console_GetARM7Max(sys), sys->ARM7Target, sys->ARM7.ARM.DeadAsleep);
             if (Console_GetARM9Max(sys) < sys->ARM7Target)
                 CR_Switch(sys->HandleARM9);

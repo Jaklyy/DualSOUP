@@ -62,6 +62,28 @@ void Scheduler_RunEventManual(struct Console* sys, timestamp time, const u8 even
 #endif
 }
 
+void Scheduler_StallToRunEvent(struct Console* sys, timestamp* time, const u8 event, const u8 a9)
+{
+    // need to catch up other components to ensure coherency
+    if (sys->Sched.EventTimes[event] == timestamp_max) return;
+
+    if (*time < sys->Sched.EventTimes[event])
+        *time = sys->Sched.EventTimes[event];
+
+    if (a9) Console_SyncWith7GT(sys, *time);
+    else Console_SyncWith9GT(sys, *time);
+
+    while (*time >= sys->Sched.EventTimes[event])
+#ifdef UseThreads
+        ;
+#else
+    {
+        sys->Sched.EventCallbacks[event](sys, sys->Sched.EventTimes[event]);
+        Scheduler_UpdateTargets(sys);
+    }
+#endif
+}
+
 void Schedule_Event(struct Console* sys, void (*callback) (struct Console*, timestamp), u8 event, timestamp time)
 {
 #ifdef UseThreads

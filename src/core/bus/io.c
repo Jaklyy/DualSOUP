@@ -455,6 +455,7 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
         case 0x00'02'14: // IF
             Scheduler_RunEventManual(sys, sys->AHB7.Timestamp, Evt_IF7Update, false);
             sys->IF7 &= ~(val & mask);
+            sys->IF7 |= sys->IF7Held;
             break;
 
         case 0x00'03'00:
@@ -569,6 +570,7 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask)
         case 0x00'02'10: // IE
             return sys->IE9;
         case 0x00'02'14: // IF
+            // TODO: this should run more events?
             Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_IF9Update, true);
             return sys->IF9;
 
@@ -627,6 +629,13 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask)
 
         case 0x00'03'04:
             return sys->PowerCR9.Raw;
+
+        case 0x00'03'20 ... 0x00'03'FF:
+            if (!sys->PowerCR9.GPURasterizerPower) return 0;
+            return GX_IORead(sys, addr);
+        case 0x00'04'00 ... 0x00'07'00:
+            if (!sys->PowerCR9.GPUGeometryPower) return 0;
+            return GX_IORead(sys, addr);
 
 
         case 0x00'10'00:
@@ -778,8 +787,11 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             MaskedWrite(sys->IE9, val, mask & 0x003F3F7F);
             break;
         case 0x00'02'14: // IF
+            // TODO: this should run more events?
             Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_IF9Update, true);
+            u32 oldif = sys->IF9;
             sys->IF9 &= ~(val & mask);
+            sys->IF9 |= sys->IF9Held;
             break;
 
         // VRAM/WRAM Control
@@ -883,6 +895,15 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
 
         case 0x00'03'04:
             MaskedWrite(sys->PowerCR9.Raw, val, mask & 0x820F);
+            break;
+
+        case 0x00'03'20 ... 0x00'03'FF:
+            if (!sys->PowerCR9.GPURasterizerPower) break;
+            GX_IOWrite(sys, addr, mask, val);
+            break;
+        case 0x00'04'00 ... 0x00'07'00:
+            if (!sys->PowerCR9.GPUGeometryPower) break;
+            GX_IOWrite(sys, addr, mask, val);
             break;
 
         case 0x00'10'00:

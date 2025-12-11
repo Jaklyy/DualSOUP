@@ -60,8 +60,10 @@ void StartDMA9(struct Console* sys, timestamp start, u8 mode)
         if (!sys->DMA9.Channels[i].CR.Enable) continue;
         if (sys->DMA9.Channels[i].CurrentMode != mode) continue;
         // checkme: starting dma while already started?
+        if (mode == DMAStart_3DFIFO) printf("YES\n");
         sys->DMA9.ChannelTimestamps[i] = start;
     }
+        if (mode == DMAStart_3DFIFO) printf("EXIST\n");
     DMA_Schedule(sys, true);
 }
 
@@ -82,7 +84,6 @@ void DMA7_Enable(struct Console* sys, struct DMA_Channel* channel, u8 channel_id
 {
     channel->Latched_SrcAddr = channel->SrcAddr;
     channel->Latched_DstAddr = channel->DstAddr;
-    channel->Latched_NumWords = (channel->CR.NumWords ? channel->CR.NumWords : ((channel_id == 3) ? 0x10000 : 0x4000));
 
     switch(channel->CR.StartMode7)
     {
@@ -170,6 +171,14 @@ void DMA9_Enable(struct Console* sys, struct DMA_Channel* channel)
         channel->CurrentMode = DMAStart_NTRCard;
         break;
     }
+    case 7: // 3D Command FIFO
+    {
+        channel->CurrentMode = DMAStart_3DFIFO;
+        printf("DMA\n");
+        if (sys->GX3D.Status.FIFOHalfEmpty)
+            StartDMA9(sys, sys->AHB9.Timestamp+1, DMAStart_3DFIFO);
+        break;
+    }
     #if 0
     case 3: // synchronize to start of display(??)
     {
@@ -188,11 +197,6 @@ void DMA9_Enable(struct Console* sys, struct DMA_Channel* channel)
         channel->CurrentMode = DMAStart_AGBPakIRQ;
         // TODO: how does this work?
         // is it even hooked up?
-        break;
-    }
-    case 7: // 3D Command FIFO
-    {
-        channel->CurrentMode = DMAStart_3DFIFO;
         break;
     }
     #endif
@@ -238,9 +242,11 @@ void DMA_Run(struct Console* sys, const bool a9)
     u64 timecur = cnt->ChannelTimestamps[id];
     cnt->ChannelTimestamps[id] = timestamp_max;
 
+    // CHECKME: idk, where and when things are latched needs testing.
     if (channel->CR.SourceCR == 3) channel->Latched_SrcAddr = channel->SrcAddr;
     if (channel->CR.DestCR == 3) channel->Latched_DstAddr = channel->DstAddr;
-    channel->Latched_NumWords = (channel->CR.NumWords ? channel->CR.NumWords : 0x200000);
+
+    if (channel->Latched_NumWords == 0) channel->Latched_NumWords = (channel->CR.NumWords ? channel->CR.NumWords : 0x200000);
 
 
     cnt->CurMask |= 1<<id;
@@ -254,7 +260,13 @@ void DMA_Run(struct Console* sys, const bool a9)
     bool rseq = false;
     bool wseq = false;
     bool tseq = false;
-    while(channel->Latched_NumWords > 0)
+    u32 numword = channel->Latched_NumWords;
+    if (channel->CurrentMode == DMAStart_3DFIFO)
+    {
+        if (numword > 112) numword = 112;
+    }
+
+    while(numword > 0)
     {
         if (!channel->CR.Width32)
         {
@@ -310,21 +322,26 @@ void DMA_Run(struct Console* sys, const bool a9)
         channel->Latched_DstAddr += channel->DstInc;
 
         channel->Latched_NumWords -= 1;
+        numword -= 1;
     }
 
     //Bus_MainRAM_ReleaseHold(sys, a9 ? &sys->AHB9 : &sys->AHB7); why isn't this necessary?
 
     // end
 
-    if (channel->CR.Repeat)
+    if (channel->Latched_NumWords == 0)
     {
-        // TODO: reschedule
-        LogPrint(LOG_UNIMP, "UNIMP: DMA WANTS RESCHEDULE %i\n", channel->CurrentMode);
+        if (channel->CR.Repeat)
+        {
+            // TODO: reschedule
+            LogPrint(LOG_UNIMP, "UNIMP: DMA WANTS RESCHEDULE %i\n", channel->CurrentMode);
+        }
+        else
+        {
+            channel->CR.Enable = false;
+        }
     }
-    else
-    {
-        channel->CR.Enable = false;
-    }
+
     cnt->CurMask &= ~1<<id;
 
     //cnt->ChannelLastEnded[id] = timecur;
