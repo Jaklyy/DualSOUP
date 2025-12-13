@@ -200,7 +200,9 @@ void ARM7_Step(struct ARM7TDMI* ARM7)
             }
         }
     }
-    //ARM7_Log(ARM7);
+    //if (cpu->PC == 0x3800478)
+    //if (cpu->PC > 0x3800440 && cpu->PC < 0x380048C)
+    //{printf("FUNNY\n"); ARM7_Log(ARM7);}
 }
 
 #undef ILCheck

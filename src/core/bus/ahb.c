@@ -1162,6 +1162,7 @@ void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
             Timing32(&sys->AHB7);
             AddWriteContention(sys->AHBBusyTS, sys->AHB7.Timestamp, Dev_WRAM7);
         }
+        //if (addr == 0x38096E8) { printf("HIIIIIIIII %08X %08X\n", val, mask); ARM7_Log(&sys->ARM7); }
         MemoryWrite(32, sys->ARM7WRAM, addr, ARM7WRAM_Size, val, mask);
         break;
 

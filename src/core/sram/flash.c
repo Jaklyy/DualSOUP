@@ -34,7 +34,7 @@ bool Flash_Init(Flash* flash, FILE* ram, u64 size, bool writeprot, const int id,
     }
 
     flash->RAMSize = size;
-    flash->WriteProt = writeprot ? ~((size/4)-1) : 0;
+    flash->WriteProt = writeprot ? ~((size/4)-1) : ~0;
     flash->RAM = malloc(size);
     if (flash->RAM == NULL)
     {
@@ -83,7 +83,11 @@ void Flash_Reset(Flash* flash)
 u8 Flash_WriteEnable(Flash* flash, const bool chipsel)
 {
     // CHECKME: does this work with chipsel held?
-    if (flash->PowerDown || chipsel) return 0xFF;
+    if (flash->PowerDown || chipsel)
+    {
+        LogPrint(LOG_FLASH|LOG_ODD, "Flash: Busy Write Enable?\n");
+        return 0xFF;
+    }
     flash->WriteEnabled = true;
     return 0;
 }
@@ -91,7 +95,11 @@ u8 Flash_WriteEnable(Flash* flash, const bool chipsel)
 u8 Flash_WriteDisable(Flash* flash, const bool chipsel)
 {
     // CHECKME: does this work with chipsel held?
-    if (flash->PowerDown || chipsel) return 0xFF;
+    if (flash->PowerDown || chipsel)
+    {
+        LogPrint(LOG_FLASH|LOG_ODD, "Flash: Busy Write Disable?\n");
+        return 0xFF;
+    }
     flash->WriteEnabled = false;
     return 0;
 }
@@ -99,7 +107,11 @@ u8 Flash_WriteDisable(Flash* flash, const bool chipsel)
 u8 Flash_EnterDeepPowerDown(Flash* flash, const bool chipsel)
 {
     // CHECKME: does this work with chipsel held?
-    if (chipsel || flash->Busy) return 0xFF;
+    if (chipsel || flash->Busy)
+    {
+        LogPrint(LOG_FLASH|LOG_ODD, "Flash: Busy Enter Power Down?\n");
+        return 0xFF;
+    }
     flash->PowerDown = true;
     return 0;
 }
@@ -107,14 +119,22 @@ u8 Flash_EnterDeepPowerDown(Flash* flash, const bool chipsel)
 u8 Flash_ExitDeepPowerDown(Flash* flash, const bool chipsel)
 {
     // CHECKME: does this work with chipsel held?
-    if (chipsel || flash->Busy) return 0xFF;
+    if (chipsel || flash->Busy) 
+    {
+        LogPrint(LOG_FLASH|LOG_ODD, "Flash: Busy Exit Power Down?\n");
+        return 0xFF;
+    }
     flash->PowerDown = false;
     return 0;
 }
 
 u8 Flash_ReadID(Flash* flash)
 {
-    if (flash->PowerDown || flash->Busy) return 0xFF;
+    if (flash->PowerDown || flash->Busy)
+    {
+        LogPrint(LOG_FLASH|LOG_ODD, "Flash: Busy Read ID?\n");
+        return 0xFF;
+    }
 
     if (flash->CmdLen < 3)
     {
@@ -125,39 +145,52 @@ u8 Flash_ReadID(Flash* flash)
 
 u8 Flash_ReadStatus(Flash* flash)
 {
-    if (flash->PowerDown) return 0xFF;
+    if (flash->PowerDown)
+    {
+        LogPrint(LOG_FLASH|LOG_ODD, "Flash: Busy Read Status?\n");
+        return 0xFF;
+    }
 
     return (flash->WriteEnabled << 1) | flash->Busy;
 }
 
 u8 Flash_ReadData(Flash* flash, const u8 val)
 {
-    if (flash->PowerDown || flash->Busy) return 0xFF;
+    if (flash->PowerDown || flash->Busy)
+    {
+        LogPrint(LOG_FLASH|LOG_ODD, "Flash: Busy Read Data?\n");
+        return 0xFF;
+    }
 
-    if ((flash->CmdLen < 4))
+    if (flash->CmdLen < 4)
     {
         if (flash->CmdLen != 0)
         {
-            flash->CurAddr |= val << ((flash->CmdLen-1)*8);
+            flash->CurAddr = (flash->CurAddr << 8) | val;
         }
-        return 0;
     }
     else
     {
         // checkme: how does it actually do masking?
-        return flash->RAM[flash->CurAddr++ & (flash->RAMSize-1)];
+        u8 ret = flash->RAM[flash->CurAddr++ & (flash->RAMSize-1)];
+        return ret;
     }
+    return 0;
 }
 
 u8 Flash_ReadDataFast(Flash* flash, const u8 val)
 {
-    if (flash->PowerDown || flash->Busy) return 0xFF;
+    if (flash->PowerDown || flash->Busy)
+    {
+        LogPrint(LOG_FLASH|LOG_ODD, "Flash: Busy Read Data Fast?\n");
+        return 0xFF;
+    }
 
-    if ((flash->CmdLen < 5))
+    if (flash->CmdLen < 5)
     {
         if (flash->CmdLen != 0 && flash->CmdLen != 4)
         {
-            flash->CurAddr |= val << ((flash->CmdLen-1)*8);
+            flash->CurAddr = (flash->CurAddr << 8) | val;
         }
         return 0;
     }
@@ -172,32 +205,37 @@ u8 Flash_ReadDataFast(Flash* flash, const u8 val)
 
 u8 Flash_PageWrite(Flash* flash, const u8 val, const bool chipsel)
 {
-    if (flash->PowerDown || !flash->WriteEnabled || flash->Busy) return 0xFF;
+    if (flash->PowerDown || !flash->WriteEnabled || flash->Busy)
+    {
+        LogPrint(LOG_FLASH|LOG_ODD, "Flash: Busy Page Write?\n");
+        return 0xFF;
+    }
 
     if ((flash->CmdLen < 4))
     {
         if (flash->CmdLen != 0)
         {
-            flash->CurAddr |= val << ((flash->CmdLen-1)*8);
+            flash->CurAddr = (flash->CurAddr << 8) | val;
         }
         return 0;
     }
     else if (flash->CurAddr & flash->WriteProt)
     {
-        if ((flash->CmdLen - 4) >= 256)
+        if ((flash->CmdLen - 3) >= 256)
         {
-            flash->CmdLen = 256 + 4;
+            flash->CmdLen = 256 + 3;
         }
 
         // checkme: how does it actually do masking?
-        flash->DataBuffer[flash->WritePos++] = val;
+        flash->DataBuffer[flash->WritePos] = val;
+        flash->WritePos++;
 
         flash->WritePos &= 0xFF;
 
         if (!chipsel)
         {
             // CHECKME: is this correct behavior for buffer overflow?
-            for (int i = 0; i < flash->CmdLen - 4; i++)
+            for (int i = 0; i < flash->CmdLen - 3; i++)
             {
                 flash->RAM[flash->CurAddr++ & (flash->RAMSize-1)] = flash->DataBuffer[i];
 
@@ -213,13 +251,17 @@ u8 Flash_PageWrite(Flash* flash, const u8 val, const bool chipsel)
 
 u8 Flash_PageProgram(Flash* flash, const u8 val, const bool chipsel)
 {
-    if (flash->PowerDown || !flash->WriteEnabled || flash->Busy) return 0xFF;
+    if (flash->PowerDown || !flash->WriteEnabled || flash->Busy)
+    {
+        LogPrint(LOG_FLASH|LOG_ODD, "Flash: Busy Page Program?\n");
+        return 0xFF;
+    }
 
     if ((flash->CmdLen < 4))
     {
         if (flash->CmdLen != 0)
         {
-            flash->CurAddr |= val << ((flash->CmdLen-1)*8);
+            flash->CurAddr = (flash->CurAddr << 8) | val;
         }
         return 0;
     }
@@ -227,9 +269,9 @@ u8 Flash_PageProgram(Flash* flash, const u8 val, const bool chipsel)
     {
         if (chipsel)
         {
-            if ((flash->CmdLen - 4) >= 256)
+            if ((flash->CmdLen - 3) >= 256)
             {
-                flash->CmdLen = 256 + 4;
+                flash->CmdLen = 256 + 3;
             }
 
             // checkme: how does it actually do masking?
@@ -240,7 +282,7 @@ u8 Flash_PageProgram(Flash* flash, const u8 val, const bool chipsel)
         else
         {
             // CHECKME: is this correct behavior for buffer overflow?
-            for (int i = 0; i < flash->CmdLen - 4; i++)
+            for (int i = 0; i < flash->CmdLen - 3; i++)
             {
                 // checkme: what does this actually do...?
                 flash->RAM[flash->CurAddr++ & (flash->RAMSize-1)] &= ~flash->DataBuffer[i];
@@ -257,7 +299,11 @@ u8 Flash_PageProgram(Flash* flash, const u8 val, const bool chipsel)
 
 u8 Flash_PageErase(Flash* flash, const u8 val, const bool chipsel)
 {
-    if (flash->PowerDown || !flash->WriteEnabled || flash->Busy) return 0xFF;
+    if (flash->PowerDown || !flash->WriteEnabled || flash->Busy)
+    {
+        LogPrint(LOG_FLASH|LOG_ODD, "Flash: Busy Page Erase?\n");
+        return 0xFF;
+    }
 
     // TODO chipsel?
     if ((flash->CmdLen < 4))
@@ -265,7 +311,7 @@ u8 Flash_PageErase(Flash* flash, const u8 val, const bool chipsel)
         // just dont set the low byte tbh
         if (flash->CmdLen > 1)
         {
-            flash->CurAddr |= val << ((flash->CmdLen-1)*8);
+            flash->CurAddr = (flash->CurAddr << 8) | val;
         }
         return 0;
     }
@@ -283,7 +329,11 @@ u8 Flash_PageErase(Flash* flash, const u8 val, const bool chipsel)
 
 u8 Flash_SectorErase(Flash* flash, const u8 val, const bool chipsel)
 {
-    if (flash->PowerDown || !flash->WriteEnabled || flash->Busy) return 0xFF;
+    if (flash->PowerDown || !flash->WriteEnabled || flash->Busy)
+    {
+        LogPrint(LOG_FLASH|LOG_ODD, "Flash: Busy Sector Erase?\n");
+        return 0xFF;
+    }
 
     // TODO chipsel?
     if ((flash->CmdLen < 4))
@@ -291,7 +341,7 @@ u8 Flash_SectorErase(Flash* flash, const u8 val, const bool chipsel)
         // just dont set the low bytes tbh
         if (flash->CmdLen > 2)
         {
-            flash->CurAddr |= val << ((flash->CmdLen-1)*8);
+            flash->CurAddr = (flash->CurAddr << 8) | val;
         }
         return 0;
     }
@@ -341,7 +391,6 @@ u8 Flash_CMDSend(Flash* flash, const u8 val, const bool chipsel)
     {
         flash->CmdLen = cmdtmp;
     }
-
     flash->PrevChipSelect = chipsel;
 
     return ret;

@@ -81,7 +81,7 @@ void EEPROM_Reset(EEPROM* eep)
 u8 EEPROM_WriteEnable(EEPROM* eep, const bool chipsel)
 {
     // CHECKME: does this work with chipsel held?
-    //if (chipsel) return 0xFF;
+    if (chipsel) return 0xFF;
     eep->WriteEnabled = true;
     return 0;
 }
@@ -96,14 +96,12 @@ u8 EEPROM_WriteDisable(EEPROM* eep, const bool chipsel)
 
 u8 EEPROM_ReadStatus(EEPROM* eep)
 {
-    if (eep->AddrBytes == 1) return 0xFF;
     return 0xF0 |(eep->WriteProt << 2) | (eep->WriteEnabled << 1) | eep->Busy;
 }
 
 u8 EEPROM_WriteStatus(EEPROM* eep, const u8 val)
 {
     // TODO: setup write protection.
-    if (eep->AddrBytes == 1) return 0xFF;
 
     eep->WriteProt = (val >> 2) & 0x3;
 
@@ -119,7 +117,7 @@ u8 EEPROM_ReadData(EEPROM* eep, const u8 val)
     {
         if (eep->CmdLen != 0)
         {
-            eep->CurAddr |= val << ((eep->CmdLen-1)*8);
+            eep->CurAddr = (eep->CurAddr << 8) | val;
         }
         return 0;
     }
@@ -128,7 +126,7 @@ u8 EEPROM_ReadData(EEPROM* eep, const u8 val)
         eep->CurAddr &= (eep->RAMSize-1);
         // checkme: how does it actually do masking?
         u32 ret = eep->RAM[eep->CurAddr];
-        printf("r %06X %02X\n", eep->CurAddr, ret);
+        //printf("r %06X %02X\n", eep->CurAddr, ret);
         eep->CurAddr++;
         return ret;
     }
@@ -142,14 +140,14 @@ u8 EEPROM_WriteData(EEPROM* eep, const u8 val, const bool chipsel)
     {
         if (eep->CmdLen != 0)
         {
-            eep->CurAddr |= val << ((eep->CmdLen-1)*8);
+            eep->CurAddr = (eep->CurAddr << 8) | val;
         }
         return 0;
     }
     else
     {
         eep->CurAddr &= (eep->RAMSize-1);
-        printf("w %06X %02X\n", eep->CurAddr, val);
+        //printf("w %06X %02X\n", eep->CurAddr, val);
         eep->RAM[eep->CurAddr] = val;
         eep->CurAddr++;
         // TODO: handle pages?
@@ -185,7 +183,7 @@ u8 EEPROM_CMDSend(EEPROM* eep, const u8 val, const bool chipsel)
             }
             else
             {
-                eep->CurAddr = 0x0100;
+                eep->CurAddr = 0x01;
                 [[fallthrough]];
             }
         case 0x03: ret = EEPROM_ReadData(eep, val); break;
@@ -197,7 +195,7 @@ u8 EEPROM_CMDSend(EEPROM* eep, const u8 val, const bool chipsel)
             }
             else
             {
-                eep->CurAddr = 0x0100;
+                eep->CurAddr = 0x01;
                 [[fallthrough]];
             }
         case 0x02: ret = EEPROM_WriteData(eep, val, chipsel); break;

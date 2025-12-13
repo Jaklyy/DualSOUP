@@ -13,7 +13,6 @@
 #include "video/video.h"
 #include "bus/io.h"
 #include "sram/flash.h"
-#include "sram/eeprom.h"
 
 
 
@@ -523,6 +522,7 @@ void Console_MainLoop(struct Console* sys)
                 CR_Switch(sys->HandleARM9);
             if (Console_GetARM7Max(sys) < sys->ARM7Target)
                 CR_Switch(sys->HandleARM7);
+            //if ((Console_GetARM7Max(sys) > sys->ARM7Target) && (Console_GetARM9Max(sys) > sys->ARM7Target)) printf("zzz, 9: %lu %08X %08X 7: %lu %08X %08X\n", Console_GetARM9Max(sys), sys->IE9, sys->IF9, Console_GetARM7Max(sys), sys->IE7, sys->IF7);
         }
         //printf("9e %lu %lu s:%i\n", Console_GetARM9Max(sys), sys->ARM7Target, sys->ARM9.ARM.DeadAsleep);
         //printf("7e %lu %lu s:%i\n", Console_GetARM7Max(sys), sys->ARM7Target, sys->ARM7.ARM.DeadAsleep);

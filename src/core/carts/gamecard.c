@@ -83,7 +83,7 @@ bool Gamecard_Init(Gamecard* card, const char* romname, u8* bios7)
 
     if (end == NULL)
     {
-        printf("ERROR: Could not find the part of the file path that's actually a file extension????\n");
+        LogPrint(LOG_ALWAYS, "ERROR: Could not find the part of the file path that's actually a file extension????\n");
         return true;
     }
 
@@ -157,7 +157,6 @@ bool Gamecard_Init(Gamecard* card, const char* romname, u8* bios7)
 
         if (memcmp(&spoon[search], "flash", 5) == 0)
         {
-            printf("FLASH\n");
             card->SPI = malloc(sizeof(Flash));
             if (card->SPI == NULL)
             {
@@ -191,7 +190,6 @@ bool Gamecard_Init(Gamecard* card, const char* romname, u8* bios7)
         }
         else if (memcmp(&spoon[search], "eep9", 4) == 0)
         {
-            printf("EEP9\n");
             card->SPI = malloc(sizeof(EEPROM));
             if (card->SPI == NULL)
             {
@@ -590,16 +588,16 @@ void Gamecard_ROMCommandSubmit(struct Console* sys, timestamp cur, const bool a9
 
 void Gamecard_SPIFinish9(struct Console* sys, [[maybe_unused]] timestamp cur)
 {
-    sys->GCSPIOut[true] = sys->SPIBuf;
+    sys->GCSPIOut[true] = sys->GCSPIBuf;
     sys->GCSPICR[true].Busy = false;
-    Schedule_Event(sys, NULL, Evt_CardSPI, timestamp_max);
+    Schedule_Event(sys, nullptr, Evt_CardSPI, timestamp_max);
 }
 
 void Gamecard_SPIFinish7(struct Console* sys, [[maybe_unused]] timestamp cur)
 {
-    sys->GCSPIOut[false] = sys->SPIBuf;
+    sys->GCSPIOut[false] = sys->GCSPIBuf;
     sys->GCSPICR[false].Busy = false;
-    Schedule_Event(sys, NULL, Evt_CardSPI, timestamp_max);
+    Schedule_Event(sys, nullptr, Evt_CardSPI, timestamp_max);
 }
 
 u32 Gamecard_IOReadHandler(struct Console* sys, u32 addr, timestamp cur, const bool a9)
@@ -638,7 +636,7 @@ void Gamecard_IOWriteHandler(struct Console* sys, u32 addr, const u32 val, const
             MaskedWrite(sys->GCSPICR[a9].Raw, val, mask & 0xE043);
             if (mask & 0xFF0000)
             {
-                if (sys->GCSPICR[a9].Busy)
+                if (sys->GCSPICR[a9].Busy && !sys->GCSPICR[a9].SlotEnable && !sys->GCSPICR[a9].CardSPIMode)
                 {
                     LogPrint(LOG_CARD|LOG_ODD, "Gamecard SPI writes while busy?\n");
                 }
