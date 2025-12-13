@@ -17,7 +17,7 @@
 #include "carts/gamecard.h"
 #include "io/rtc.h"
 #include "io/powman.h"
-#include "video/3dgeom.h"
+#include "video/3d.h"
 
 
 

@@ -789,7 +789,6 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
         case 0x00'02'14: // IF
             // TODO: this should run more events?
             Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_IF9Update, true);
-            u32 oldif = sys->IF9;
             sys->IF9 &= ~(val & mask);
             sys->IF9 |= sys->IF9Held;
             break;

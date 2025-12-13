@@ -1,341 +1,902 @@
-#include "3dgeom.h"
+#include "3d.h"
+#include "3d.h"
 #include "../console.h"
-#include "../io/dma.h"
-#include <stdio.h>
+#include <stdbit.h>
 
 
 
 
-void GX_UpdateIRQ(struct Console* sys, const timestamp time)
+Matrix GX_MatrixMultiply(Matrix a, Matrix b)
+{
+    Matrix Out;
+    Out.Row[0] = ((a.Arr[0] * b.Row[0]) + (a.Arr[1] * b.Row[1]) + (a.Arr[2] * b.Row[2]) + (a.Arr[3] * b.Row[3]));
+    Out.Row[1] = ((a.Arr[4] * b.Row[0]) + (a.Arr[5] * b.Row[1]) + (a.Arr[6] * b.Row[2]) + (a.Arr[7] * b.Row[3]));
+    Out.Row[2] = ((a.Arr[8] * b.Row[0]) + (a.Arr[9] * b.Row[1]) + (a.Arr[10] * b.Row[2]) + (a.Arr[11] * b.Row[3]));
+    Out.Row[3] = ((a.Arr[12] * b.Row[0]) + (a.Arr[13] * b.Row[1]) + (a.Arr[14] * b.Row[2]) + (a.Arr[15] * b.Row[3]));
+    Out.Vec = (Out.Vec << 20) >> 32;
+
+    return Out;
+}
+
+void GX_MatrixScale(Matrix* a, Vector b)
+{
+    a->Vec[0] = ((a->Vec[0] * b.X ) << 20) >> 12;
+    a->Vec[1] = ((a->Vec[1] * b.Y ) << 20) >> 12;
+    a->Vec[2] = ((a->Vec[2] * b.Z ) << 20) >> 12;
+}
+
+void GX_MatrixTranslate(Matrix* a, Vector b)
+{
+    a->Vec[3] = (((a->Vec[0] * b.X) + (a->Vec[1] * b.Y) + (a->Vec[2] * b.Z)) << 20) >> 12;
+}
+
+void GX_UpdateClip(struct Console* sys)
 {
     GX3D* gx = &sys->GX3D;
 
-    printf("gx->Status.Raw %08X\n", gx->Status.Raw);
-    switch (gx->Status.FIFOIRQMode)
+    if (gx->ClipDirty)
     {
-    case 1:
-    {
-        if (sys->GX3D.Status.FIFOHalfEmpty)
-        {
-            printf("irq\n");
-            Console_ScheduleHeldIRQs(sys, IRQ_3DFIFO, true, time);
-        }
-        else 
-        {
-            printf("unirq\n");
-            Console_ClearHeldIRQs(sys, IRQ_3DFIFO, true);
-        }
-        break;
+        gx->ClipMatrix = GX_MatrixMultiply(gx->ProjectionMatrix, gx->PositionMatrix);
+        gx->ClipDirty = false;
     }
-    case 2:
+}
+
+
+void GX_FinalizePolygon(struct Console* sys, unsigned nvert)
+{
+    GX3D* gx = &sys->GX3D;
+    PolygonTmp poly = gx->PolygonTmp;
+    bool frontfacing;
+
+    // calculate dot product to determine polygon facing direction for culling and rasterization
+
+    Vector v0, v1;
+    v0.Vec = poly.Vertices[0].Vec - poly.Vertices[2].Vec;
+    v1.Vec = poly.Vertices[1].Vec - poly.Vertices[2].Vec;
+
+    // for some reason if one of the vectors is entirely 0 its automatically accepted, even if neither face is allowed to render, and is treated as frontfacing for rasterization.
+    // im not entirely sure why though... possibly to do with the normalization step?
+    // or maybe they do some weird-ass algorithm instead of doing things normally?
+    if (((v0.X|v0.Y|v0.W) == 0) || ((v1.X|v1.Y|v1.W) == 0))
     {
-        if (sys->GX3D.Status.FIFOEmpty)
+        frontfacing = true;
+    }
+    else
+    {
+        // calculate cross product
+        Vector cross; cross.Vec = (v0.Vec * (Vec){v1.W, v1.X, v1.Y}) - ((Vec){v0.W, v0.X, v0.Y} * (Vec){v0.Y, v0.W, v0.X});
+
+        // TODO: somehow precision is lost here and im not quite sure how
+
+        // calc dot product
+        // supposedly we can use any vertex as a "camera vector" im not sure how that works, but sure.
+        // going with vertex 2 based on my gut, since hw was using that as the center vertex.
+        cross.Vec *= (poly.Vertices[2].Vec - poly.Vertices[2].W); // checkme: do i actually need to removed the added W here?
+
+        s64 dot = cross.X + cross.Y + cross.Z;
+
+        frontfacing = (dot >= 0);
+        // if the dot is 0 then it will render if either front or back are enabled.
+        if (!(((dot >= 0) && gx->CurPolyAttr.RenderFront) || ((dot <= 0) && gx->CurPolyAttr.RenderBack)))
         {
-            printf("irq\n");
-            Console_ScheduleHeldIRQs(sys, IRQ_3DFIFO, true, time);
+            return;
+        }
+    }
+
+    // todo: polygon clipping
+
+    if ((nvert == 0) || (gx->PolyRAMPtr >= 2048) || ((gx->VtxRAMPtr + nvert) > 6144)) return;
+
+    Polygon fin;
+    {
+        unsigned vtx = 0;
+        if ((gx->SharedVtx[0] != nullptr) && (gx->SharedVtx[1] != nullptr))
+        {
+            vtx = 2;
+            fin.Vertices[0] = gx->SharedVtx[0];
+            fin.Vertices[1] = gx->SharedVtx[1];
+        }
+
+        // allocate remaining vertices
+        for (; vtx < nvert; vtx++)
+        {
+            fin.Vertices[vtx] = &gx->VtxRAM[gx->VtxRAMPtr+vtx];
+        }
+    }
+
+    // all vertices are always updated, even ones that were already created by a previous polygon in a strip.
+    // this allows for a bug when manipulating the viewport mid-strip.
+    for (unsigned i = 0; i < nvert; i++)
+    {
+        poly.Vertices[i].W &= 0x1FFFFFF;
+
+        s64 x = poly.Vertices[i].X, y = poly.Vertices[i].Y;
+        u32 w = poly.Vertices[i].W;
+        // w can easily be 0 here
+        if (w == 0)
+        {
+            // checkme
+            fin.Vertices[i]->X = 0;
+            fin.Vertices[i]->Y = 0;
         }
         else
         {
-            printf("unirq\n");
-            Console_ClearHeldIRQs(sys, IRQ_3DFIFO, true);
+            x *= gx->ViewportWidth;
+            y *= gx->ViewportHeight;
+
+            if (w > 0x1FFFF)
+            {
+                x >>= 2;
+                y >>= 2;
+                w >>= 2;
+            }
+
+            fin.Vertices[i]->X = ((x / w) + gx->ViewportLeft) & 0x1FF;
+            fin.Vertices[i]->Y = ((y / w) + gx->ViewportBot) & 0xFF;
+        }
+    }
+
+    // zero dot
+
+    // melonds does timings here ig?
+
+    // set up for next polygon in a strip
+    if (gx->PolygonType == Poly_TriStrip)
+    {
+        if (gx->TriStripOdd)
+        {
+            gx->SharedVtx[0] = (poly.Clipped) ? nullptr : fin.Vertices[2];
+            gx->SharedVtx[1] = (poly.Clipped) ? nullptr : fin.Vertices[1];
+        }
+        else
+        {
+            gx->SharedVtx[0] = (poly.Clipped) ? nullptr : fin.Vertices[0];
+            gx->SharedVtx[1] = (poly.Clipped) ? nullptr : fin.Vertices[2];
+        }
+    }
+    else if (gx->PolygonType == Poly_QuadStrip)
+    {
+        gx->SharedVtx[0] = (poly.Clipped) ? nullptr : fin.Vertices[3];
+        gx->SharedVtx[1] = (poly.Clipped) ? nullptr : fin.Vertices[2];
+    }
+
+    fin.Frontfacing = frontfacing;
+    fin.Attrs = gx->CurPolyAttr;
+    fin.Trans = ((fin.Attrs.Alpha > 0) && (fin.Attrs.Alpha < 31)); // TODO: Texture params impact this!!
+
+    u32 ytop = 192, ybot = 0, vtop;
+
+    int wsize;
+    for (unsigned i = 0; i < nvert; i++)
+    {
+        fin.Vertices[i]->Color = poly.Color[i];
+        if (ytop < fin.Vertices[i]->Y)
+        {
+            ytop = fin.Vertices[i]->Y;
+            vtop = i;
+        }
+        if (ybot > fin.Vertices[i]->Y)
+            ybot = fin.Vertices[i]->Y;
+
+        // get value to normal W with
+        int temp = (((24 - (stdc_leading_zeros(poly.Vertices[i].W>>1) - 7)) + (0xF)) >> 4) << 4;
+
+        if (wsize < temp)
+        {
+            wsize = temp;
+        }
+    }
+
+    fin.WDecompress = wsize;
+
+    for (unsigned i = 0; i < nvert; i++)
+    {
+        // normalize W to fit into 16 bits
+        s32 wnorm = poly.Vertices[i].W >> 1;
+        if (wsize < 16)
+        {
+            wnorm = wnorm << (16-wsize);
+        }
+        else
+        {
+            wnorm = wnorm >> 8;
+        }
+
+        fin.Vertices[i]->W = wnorm;
+
+        // compress Z into 16 bits
+        if (poly.Vertices[i].W != 0)
+        {
+            fin.Vertices[i]->Z = ((((poly.Vertices[i].Z * 2) - poly.Vertices[i].W) * 0x4000) / poly.Vertices[i].W);
+        }
+        else fin.Vertices[i]->Z = 0;
+
+        fin.Vertices[i]->Z += 0x3FFF;
+
+        if (fin.Vertices[i]->Z > 0xFFFF)
+            fin.Vertices[i]->Z = 0xFFFF;
+    }
+
+    fin.VTop = vtop;
+
+    // transparent polygons are sorted last, and ties are broken based on initial index
+    fin.SortKey = (fin.Trans << 31) | (gx->PolyRAMPtr);
+    // sort by polygon top and bottom, can opt out for transparent polygons.
+    if (!fin.Trans || !gx->ManualTransSort)
+        fin.SortKey |= ((ybot << 8) | ytop) << 12;
+
+    gx->PolyRAM[gx->PolyRAMPtr] = fin;
+
+    gx->VtxRAMPtr += nvert;
+    gx->PolyRAMPtr++;
+}
+
+void GX_SubmitVertex(struct Console* sys)
+{
+    GX3D* gx = &sys->GX3D;
+
+    gx->PolygonTmp.Vertices[gx->TmpPolygonPtr].Vec = ((gx->TmpVertex.X * gx->ClipMatrix.Row[0]) + (gx->TmpVertex.Y * gx->ClipMatrix.Row[1]) + (gx->TmpVertex.Z * gx->ClipMatrix.Row[2]) + (gx->TmpVertex.W * gx->ClipMatrix.Row[3])) >> 12;
+
+    // y needs to be negated
+    gx->PolygonTmp.Vertices[gx->TmpPolygonPtr].Y = -gx->PolygonTmp.Vertices[gx->TmpPolygonPtr].Y;
+
+    // all vertex coordinates are incremented by W
+    gx->PolygonTmp.Vertices[gx->TmpPolygonPtr].Vec += gx->PolygonTmp.Vertices[gx->TmpPolygonPtr].W;
+
+    gx->PolygonTmp.Color[gx->TmpPolygonPtr] = gx->VertexColor;
+
+    // TODO: texcoords
+
+    gx->TmpPolygonPtr++;
+    gx->PartialPolygon = true;
+    switch(gx->PolygonType)
+    {
+    case Poly_Tri:
+    {
+        if (gx->TmpPolygonPtr == 3)
+        {
+            gx->TmpPolygonPtr = 0;
+            gx->PartialPolygon = false;
+            GX_FinalizePolygon(sys, 3);
         }
         break;
     }
-    default: // checkme: mode 3?
-            printf("unirq\n");
-        Console_ClearHeldIRQs(sys, IRQ_3DFIFO, true);
+    case Poly_Quad:
+    {
+        if (gx->TmpPolygonPtr == 4)
+        {
+            gx->TmpPolygonPtr = 0;
+            gx->PartialPolygon = false;
+            GX_FinalizePolygon(sys, 4);
+        }
         break;
     }
-}
-
-void GX_RunFIFO(struct Console* sys, const timestamp until);
-
-bool GXFIFO_Fill(struct Console* sys, const u8 cmd, const u32 param)
-{
-    GX3D* gx = &sys->GX3D;
-
-    if (gx->FIFOFullness == 256) return false;
-
-    gx->FIFO[gx->FIFOWrPtr] = (GXCmd){cmd, param};
-
-    gx->FIFOWrPtr = (gx->FIFOWrPtr + 1) % 256;
-
-
-    if (gx->FIFOFullness == 0)
+    case Poly_TriStrip:
     {
-        gx->Status.FIFOEmpty = false;
-        GX_UpdateIRQ(sys, gx->Timestamp);
-    }
-    else if (gx->FIFOFullness == 127)
-    {
-        gx->Status.FIFOHalfEmpty = false;
-        GX_UpdateIRQ(sys, gx->Timestamp);
-        //StartDMA9(sys, timestamp_max, DMAStart_3DFIFO); // TODO: everything involvind when and how this dma type triggers?
-    }
-    gx->FIFOFullness++;
-
-    // busy flag is set once there's actually something in the fifo
-    gx->Status.GXBusy = true;
-    // CHECKME: other busy flags get set here?
-    // test busy flag is set weirdly i think?
-    // so stack busy might also be...?
-    return true;
-}
-
-bool GXPipe_Fill(struct Console* sys)
-{
-    GX3D* gx = &sys->GX3D;
-
-    // pipe is full
-    if (gx->PipeRdPtr == gx->PipeWrPtr) return false;
-    // fifo is empty
-    if (gx->FIFOFullness == 0) return false;
-
-    // reset empty flag
-    if (gx->PipeWrPtr == 4)
-    {
-        gx->PipeWrPtr = 0;
-        gx->PipeRdPtr = 0;
-    }
-
-    gx->Pipe[gx->PipeWrPtr] = gx->FIFO[gx->FIFORdPtr];
-
-    gx->PipeWrPtr = (gx->PipeWrPtr + 1) % 4;
-    gx->FIFORdPtr = (gx->FIFORdPtr + 1) % 256;
-
-    gx->FIFOFullness--;
-    if (gx->FIFOFullness == 0)
-    {
-        gx->Status.FIFOEmpty = true;
-        GX_UpdateIRQ(sys, gx->Timestamp);
-    }
-    else if (gx->FIFOFullness == 127)
-    {
-        gx->Status.FIFOHalfEmpty = true;
-        GX_UpdateIRQ(sys, gx->Timestamp);
-        StartDMA9(sys, gx->Timestamp, DMAStart_3DFIFO); // TODO: everything involvind when and how this dma type triggers?
-        // checkme:?
-    }
-
-    return true;
-}
-
-bool GXPipe_Drain(struct Console* sys)
-{
-    GX3D* gx = &sys->GX3D;
-    timestamp* ts = &sys->AHB9.Timestamp;
-
-    //if (gx->PipeTS >= *ts)
-
-    if (gx->PipeWrPtr == 4) return false; // pipe is empty
-
-    gx->CurCmd = gx->Pipe[gx->PipeRdPtr];
-
-    gx->PipeRdPtr = (gx->PipeRdPtr + 1) % 4;
-    // set pipe empty flag
-    if (gx->PipeRdPtr == gx->PipeWrPtr)
-    {
-        gx->PipeWrPtr = 4;
-    }
-
-    return true;
-}
-
-bool GX_FetchParams(struct Console* sys)
-{
-    GX3D* gx = &sys->GX3D;
-
-    //if (gx->CmdBusy) return false;
-
-    bool suc = GXPipe_Drain(sys);
-
-    // TODO: commands and the fifo are weird when you start mixing cmd ports
-    // figure out how hardware actually tracks parameters for commands.
-    gx->Status.GXBusy = (gx->FIFOFullness != 0) || (gx->CmdBusy) || (gx->PipeWrPtr != 4);
-    return suc;
-}
-
-bool GX_RunCommand(struct Console* sys)
-{
-    GX3D* gx = &sys->GX3D;
-
-    return GX_FetchParams(sys);
-}
-
-
-bool GXFIFO_Unpack(struct Console* sys)
-{
-    GX3D* gx = &sys->GX3D;
-
-    // search until we find a non-00 command; somehow this takes 0 cycles
-    while (gx->PackBuffer.CurCmd == 0)
-    {
-        gx->PackBuffer.All >>= 8;
-        // if there's none we return; *unless* there were no commands period, then a nop is submitted
-        if (gx->PackBuffer.All == 0)
+        if (gx->TmpPolygonPtr == 3)
         {
-            if (gx->FreshBuffer)
+            gx->TmpPolygonPtr = 0;
+            gx->PartialPolygon = false;
+            if (gx->TriStripOdd)
             {
-                bool suc = GXFIFO_Fill(sys, gx->PackBuffer.CurCmd, 0);
-                gx->FreshBuffer = !suc;
-                return false;
+                Vector tmp = gx->PolygonTmp.Vertices[1];
+                gx->PolygonTmp.Vertices[1] = gx->PolygonTmp.Vertices[0];
+                gx->PolygonTmp.Vertices[0] = tmp;
+                GX_FinalizePolygon(sys, 3);
             }
             else
             {
-                //printf("exit?\n");
-                gx->BufferFree = true;
-                return true;
+                GX_FinalizePolygon(sys, 3);
+                gx->PolygonTmp.Vertices[0] = gx->PolygonTmp.Vertices[1];
             }
+            gx->PolygonTmp.Vertices[1] = gx->PolygonTmp.Vertices[2];
+            gx->TriStripOdd = !gx->TriStripOdd;
         }
+        break;
     }
-    gx->ParamRem = ParamLUT[gx->PackBuffer.CurCmd];
-    gx->FreshBuffer = false;
-
-    // if cmd has no params we submit it immediately
-    if (gx->ParamRem <= 0)
+    case Poly_QuadStrip:
     {
-        bool suc = GXFIFO_Fill(sys, gx->PackBuffer.CurCmd, 0);
-        if (suc)
+        if (gx->TmpPolygonPtr == 4)
         {
-            gx->PackBuffer.All >>= 8;
-            gx->ParamRem = ParamLUT[gx->PackBuffer.CurCmd];
+            gx->TmpPolygonPtr = 2;
+            gx->PartialPolygon = false;
+            GX_FinalizePolygon(sys, 4);
         }
-        return false;
+        break;
     }
-    return false;
+    }
+
 }
 
-void GX_RunFIFO(struct Console* sys, const timestamp until)
+void GX_UpdateNormal(struct Console* sys, const u32 param)
 {
     GX3D* gx = &sys->GX3D;
 
-    bool empty;
-    bool test;
-    empty =  test = !GX_RunCommand(sys);
-    //printf("1:%i\n", test);
-    empty &= test = !GXPipe_Fill(sys);
-    //printf("2:%i\n", test);
-    empty &= test = GXFIFO_Unpack(sys);
-    //printf("3:%i\n4:%i\n", test, empty);
+    // s1.9
+    s64 dir[3] = {(s64)((s32)(param >>  0) << 22) >> 22,
+                  (s64)((s32)(param >>  5) << 12) >> 22,
+                  (s64)((s32)(param >> 10) <<  2) >> 22};
 
-    //printf("%lu\n", until);
+    // TODO: normal texcoord update
 
-    if (empty) Schedule_Event(sys, nullptr, Evt_GXFIFO, timestamp_max);
-    else       Schedule_Event(sys, GX_RunFIFO, Evt_GXFIFO, until+1);
+    // translate normal vector
+    Vector normal; normal.Vec = (dir[0] * gx->VectorMatrix.Row[0]) + (dir[1] * gx->VectorMatrix.Row[1]) + (dir[2] * gx->VectorMatrix.Row[2]);
+    // s11
+    normal.Vec = normal.Vec << 41 >> 53;
 
-    gx->Timestamp = until;
-}
 
-void GXFIFO_PackedSubmit(struct Console* sys, const u32 val)
-{
-    GX3D* gx = &sys->GX3D;
-    timestamp* ts = &sys->AHB9.Timestamp;
+    // initialize light with emissive color
+    Colors color; color.RGB = gx->EmisColor.RGB << 14;
 
-    // loop until we can submit a new command.
-    while (true)
+    // is it possible to parallelize each light calc efficiently?
+    for (int l = 0; l < 4; l++)
     {
-        Scheduler_RunEventManual(sys, *ts, Evt_GXFIFO, true);
-        //printf("%lu %lu\n", *ts, gx->Timestamp);
-        //if (*ts < gx->Timestamp)
-        //    *ts = gx->Timestamp;
-        //printf("huh %lu %lu\n", sys->Sched.EventTimes[Evt_GXFIFO], *ts);
+        if (!(gx->CurPolyAttr.LightEnables & (1<<l))) continue;
 
-        if (gx->ParamRem > 0) // submit a new parameter if needed.
+        // calculate dot product of light dir and normal
+        // Note: for some reason they discard precision before adding, specifically here?
+        // CHECKME: not sure how big the dot can be, might not be able to reach the limit...?
+        Vector tmp; tmp.Vec = (gx->LightVec[l].Vec * normal.Vec) >> 9;
+        s32 dot = tmp.X + tmp.Y + tmp.Z;
+
+        s32 speclevel;
+        // i wanna say the dot gets clamped to min 0?
+        if (dot > 0)
         {
-            if (GXFIFO_Fill(sys, gx->PackBuffer.CurCmd, val))
+            // checkme: this should be safe to discard for specular too?
+            // I can't remember why i didn't do that for melonDS's implementation.
+            // s1.10 i think
+            dot = (dot << 21) >> 21;
+            // truncate diffuse color to u20 before adding to final color.
+            color.RGB += (gx->DiffColor.RGB * gx->LightColor[l].RGB * dot) & 0xFFFFF;
+
+            // calc specular level
+
+            // add the z component of the normal
+            dot += normal.Z;
+
+            // truncate to s11 again...
+            dot = dot << 21 >> 21;
+            // square dot and truncate to u10
+            dot = ((dot * dot) >> 10) & 0x3FF;
+
+            // multiply dot by reciprocal and subtract "1"
+            speclevel = (dot * gx->LightRecip[l] >> 8) - (1<<9);
+
+            // CHECKME: is this actually full s32?
+            // clamp min 0?
+            if (speclevel < 0) speclevel = 0;
+            else
             {
-                gx->ParamRem--;
-                if (gx->ParamRem <= 0)
-                {
-                    gx->PackBuffer.All >>= 8;
-                    gx->ParamRem = ParamLUT[gx->PackBuffer.CurCmd];
-                }
-                Schedule_Event(sys, GX_RunFIFO, Evt_GXFIFO, *ts+1);
-                //gx->Timestamp = *ts+1;
-                return;
+                // i dont know why it does this.
+                // surely this isn't actually what it does?
+                // s14, then clamp value to min 0, max 511.
+                speclevel = (speclevel << 18) >> 18;
+                if (speclevel < 0) speclevel = 0;
+                else if (speclevel > 0x1FF) speclevel = 0x1FF;
             }
         }
-        else if (gx->BufferFree) // if the buffer is empty then add a new command.
-        {
-            //gx->UnpackTS = *ts+1; // checkme: +1?
-            gx->PackBuffer.All = val;
-            gx->FreshBuffer = true;
-            gx->BufferFree = false;
+        else speclevel = 0;
 
-            Schedule_Event(sys, GX_RunFIFO, Evt_GXFIFO, *ts+1);
-            //gx->Timestamp = *ts+1;
-            return;
+        if (gx->UseSpecTable)
+        {
+            speclevel >>= 2;
+            speclevel = gx->SpecTable[speclevel] << 1;
         }
-        //Scheduler_RunEventManual(sys, *ts, Evt_GXFIFO, true);
-        //if (*ts < gx->Timestamp)
-        //    *ts = gx->Timestamp;
-        Scheduler_StallToRunEvent(sys, ts, Evt_GXFIFO, true);
-        CR_Switch(sys->HandleMain);
-        //++*ts;
+
+        color.RGB += ((gx->SpecColor.RGB * speclevel) + (gx->AmbiColor.RGB << 9)) * gx->LightColor[l].RGB;
     }
+
+    // remove fractional component
+    color.RGB >>= 14;
+
+    gx->VertexColor.R = (color.R > 31) ? 31 : color.R;
+    gx->VertexColor.G = (color.G > 31) ? 31 : color.G;
+    gx->VertexColor.B = (color.B > 31) ? 31 : color.B;
 }
 
-void GXFIFO_PortSubmit(struct Console* sys, const u32 addr, const u32 val)
+
+bool GX_RunCommand(struct Console* sys, const timestamp now)
 {
     GX3D* gx = &sys->GX3D;
-    timestamp* ts = &sys->AHB9.Timestamp;
 
-    // loop until we can submit a new command.
-    while (true)
+    if (gx->CmdReady) // checkme
     {
-        Scheduler_RunEventManual(sys, *ts, Evt_GXFIFO, true);
+        gx->CmdReady = false;
+        u32 param = gx->CurCmd.Param;
+        gx->ExecTS = now;
 
-        if (GXFIFO_Fill(sys, addr/4, val))
+        switch(gx->CurCmd.Cmd)
         {
-            Schedule_Event(sys, GX_RunFIFO, Evt_GXFIFO, *ts+1);
-            gx->Timestamp = *ts;
-            return;
-        }
-        Scheduler_StallToRunEvent(sys, ts, Evt_GXFIFO, true);
-        CR_Switch(sys->HandleMain);
-    }
-}
-
-void GX_IOWrite(struct Console* sys, const u32 addr, const u32 mask, const u32 val)
-{
-    switch(addr & 0x7FF)
-    {
-        case 0x400 ... 0x43C:
-            printf("subm2 %08X\n", val);
-            if (mask != 0xFFFFFFFF) LogPrint(LOG_GX|LOG_UNIMP, "Non 32 bit packed command write?\n");
-            GXFIFO_PackedSubmit(sys, val);
-            break;
-
-        case 0x440 ... 0x5FC:
-            printf("subm %08X\n", addr);
-            if (mask != 0xFFFFFFFF) LogPrint(LOG_GX|LOG_UNIMP, "Non 32 bit command port write?\n");
-            GXFIFO_PortSubmit(sys, addr, val);
-            break;
-
-        case 0x600:
+        case GX_MtxMode:
         {
-            MaskedWrite(sys->GX3D.Status.Raw, val, mask & 0xC0000000);
-            printf("write %08X\n", sys->GX3D.Status.Raw);
-            GX_UpdateIRQ(sys, sys->AHB9.Timestamp);
+            gx->CurMatrixMode = param & 3;
             break;
         }
 
-        default:
-            LogPrint(LOG_GX|LOG_UNIMP, "UNIMPLEMENTED GX COMMAND WRITE %08X %08X\n", addr, val);
+        case GX_MtxPush:
+        {
+            if (gx->CurMatrixMode == Mtx_Pos || gx->CurMatrixMode == Mtx_Vec)
+            {
+                gx->Status.StackError |= (gx->PosVecMtxStackPtr > 30);
+
+                gx->PosMatrixStack[gx->PosVecMtxStackPtr&0x1F] = gx->PositionMatrix;
+                gx->VecMatrixStack[gx->PosVecMtxStackPtr&0x1F] = gx->VectorMatrix;
+
+                gx->PosVecMtxStackPtr = (gx->PosVecMtxStackPtr + 1) & 0x3F;
+            }
+            else if (gx->CurMatrixMode == Mtx_Proj)
+            {
+                gx->Status.StackError |= (gx->ProjMtxStackPtr);
+
+                gx->ProjMatrixStack = gx->ProjectionMatrix;
+
+                gx->ProjMtxStackPtr = !gx->ProjMtxStackPtr;
+            }
+            else // tex matrix
+            {
+                gx->Status.StackError |= (gx->TexMtxStackPtr);
+
+                gx->TexMatrixStack = gx->TextureMatrix;
+
+                gx->TexMtxStackPtr = !gx->TexMtxStackPtr;
+            }
+            gx->ExecTS+=16;
             break;
-    }
-}
+        }
 
-u32 GX_IORead(struct Console* sys, const u32 addr)
-{
-    switch(addr & 0x7FF)
-    {
-        case 0x600:
-            printf("stat %08X\n", sys->GX3D.Status.Raw | (sys->GX3D.FIFOFullness << 16));
-            return sys->GX3D.Status.Raw | (sys->GX3D.FIFOFullness << 16);
+        case GX_MtxPop:
+        {
+            if (gx->CurMatrixMode == Mtx_Pos || gx->CurMatrixMode == Mtx_Vec)
+            {
+                // checkme: s6?
+                s8 offs = ((s32)param << 26 >> 26);
+                gx->PosVecMtxStackPtr = (gx->PosVecMtxStackPtr - offs) & 0x3F;
+                gx->Status.StackError |= (gx->PosVecMtxStackPtr > 30);
 
+                gx->PositionMatrix = gx->PosMatrixStack[gx->PosVecMtxStackPtr&0x1F];
+                gx->VectorMatrix = gx->VecMatrixStack[gx->PosVecMtxStackPtr&0x1F];
+                gx->ClipDirty = true;
+                gx->ExecTS+=35;
+            }
+            else if (gx->CurMatrixMode == Mtx_Proj)
+            {
+                gx->ProjMtxStackPtr = !gx->ProjMtxStackPtr;
+                gx->Status.StackError |= (gx->ProjMtxStackPtr);
+
+                gx->ProjectionMatrix = gx->ProjMatrixStack;
+                gx->ClipDirty = true;
+                gx->ExecTS+=35;
+            }
+            else // tex matrix
+            {
+                gx->TexMtxStackPtr = !gx->TexMtxStackPtr;
+                gx->Status.StackError |= (gx->TexMtxStackPtr);
+
+                gx->TextureMatrix = gx->TexMatrixStack;
+                gx->ExecTS+=17;
+            }
+            break;
+        }
+
+        case GX_MtxStore:
+        {
+            if (gx->CurMatrixMode == Mtx_Pos || gx->CurMatrixMode == Mtx_Vec)
+            {
+                gx->Status.StackError |= ((param & 0x1F) > 30);
+
+                gx->PosMatrixStack[(param & 0x1F)] = gx->PositionMatrix;
+                gx->VecMatrixStack[(param & 0x1F)] = gx->VectorMatrix;
+            }
+            else if (gx->CurMatrixMode == Mtx_Proj)
+            {
+                gx->ProjMatrixStack = gx->ProjectionMatrix;
+            }
+            else // tex matrix
+            {
+                gx->TexMatrixStack = gx->TextureMatrix;
+            }
+            gx->ExecTS+=16;
+            break;
+        }
+
+        case GX_MtxRestore:
+        {
+            if (gx->CurMatrixMode == Mtx_Pos || gx->CurMatrixMode == Mtx_Vec)
+            {
+                gx->Status.StackError |= ((param & 0x1F) > 30);
+
+                gx->PositionMatrix = gx->PosMatrixStack[(param & 0x1F)];
+                gx->VectorMatrix = gx->VecMatrixStack[(param & 0x1F)];
+                gx->ExecTS+=35;
+            }
+            else if (gx->CurMatrixMode == Mtx_Proj)
+            {
+                gx->ProjectionMatrix = gx->ProjMatrixStack;
+                gx->ExecTS+=35;
+            }
+            else // tex matrix
+            {
+                gx->TextureMatrix = gx->TexMatrixStack;
+                gx->ExecTS+=17;
+            }
+            break;
+        }
+
+        case GX_MtxIdentity:
+        {
+            gx->Matrices[gx->CurMatrixMode] = IdentityMatrix;
+            if (gx->CurMatrixMode == Mtx_Vec)
+            {
+                gx->Matrices[Mtx_Pos] = IdentityMatrix;
+            }
+            if (gx->CurMatrixMode < Mtx_Tex)
+            {
+                gx->ClipDirty = true;
+                gx->ExecTS+=18;
+            }
+            break;
+        }
+
+        case GX_MtxLoad4x4:
+        {
+            gx->TempMatrix.Arr[gx->TempMtxPtr] = (s64)(s32)param;
+            // CHECKME: how does this ptr actually work?
+            (gx->TempMtxPtr)++;
+            if (gx->TempMtxPtr == 16)
+            {
+                gx->TempMtxPtr = 0;
+                gx->Matrices[gx->CurMatrixMode] = gx->TempMatrix;
+
+                if (gx->CurMatrixMode == Mtx_Vec)
+                {
+                    gx->Matrices[Mtx_Pos] = gx->TempMatrix;
+                }
+                if (gx->CurMatrixMode < Mtx_Tex)
+                {
+                    gx->ClipDirty = true;
+                    gx->ExecTS+=18;
+                }
+                else gx->ExecTS+=10;
+            }
+            break;
+        }
+
+        case GX_MtxLoad4x3:
+        {
+            gx->TempMatrix.Arr[gx->TempMtxPtr] = (s64)(s32)param;
+            // CHECKME: how does this ptr actually work?
+            (gx->TempMtxPtr)++;
+            gx->TempMtxPtr %= 16;
+            if (gx->TempMtxPtr == 12)
+            {
+                gx->TempMatrix.Arr[3] = IdentityMatrix.Arr[3];
+                gx->TempMatrix.Arr[7] = IdentityMatrix.Arr[7];
+                gx->TempMatrix.Arr[11] = IdentityMatrix.Arr[11];
+                gx->TempMatrix.Arr[15] = IdentityMatrix.Arr[15];
+                gx->TempMtxPtr = 0;
+                gx->Matrices[gx->CurMatrixMode] = gx->TempMatrix;
+
+                if (gx->CurMatrixMode == Mtx_Vec)
+                {
+                    gx->Matrices[Mtx_Pos] = gx->TempMatrix;
+                }
+                if (gx->CurMatrixMode < Mtx_Tex)
+                {
+                    gx->ClipDirty = true;
+                    gx->ExecTS+=18;
+                }
+                else gx->ExecTS+=7;
+            }
+            break;
+        }
+
+        case GX_MtxMul4x4:
+        {
+            gx->TempMatrix.Arr[gx->TempMtxPtr] = (s64)(s32)param;
+            // CHECKME: how does this ptr actually work?
+            (gx->TempMtxPtr)++;
+            if (gx->TempMtxPtr == 16)
+            {
+                gx->TempMtxPtr = 0;
+                gx->Matrices[gx->CurMatrixMode] = GX_MatrixMultiply(gx->Matrices[gx->CurMatrixMode], gx->TempMatrix);
+
+                if (gx->CurMatrixMode == Mtx_Vec)
+                {
+                    gx->Matrices[Mtx_Pos] = GX_MatrixMultiply(gx->Matrices[Mtx_Pos], gx->TempMatrix);
+                    gx->ExecTS+=30;
+                }
+                if (gx->CurMatrixMode < Mtx_Tex)
+                {
+                    gx->ClipDirty = true;
+                    gx->ExecTS+=35-16;
+                }
+                else gx->ExecTS+=33-16;
+            }
+            break;
+        }
+
+        case GX_MtxMul4x3:
+        {
+            gx->TempMatrix.Arr[gx->TempMtxPtr] = (s64)(s32)param;
+            // CHECKME: how does this ptr actually work?
+            (gx->TempMtxPtr)++;
+            gx->TempMtxPtr %= 16;
+            if (gx->TempMtxPtr == 12)
+            {
+                gx->TempMatrix.Arr[3] = IdentityMatrix.Arr[3];
+                gx->TempMatrix.Arr[7] = IdentityMatrix.Arr[7];
+                gx->TempMatrix.Arr[11] = IdentityMatrix.Arr[11];
+                gx->TempMatrix.Arr[15] = IdentityMatrix.Arr[15];
+                gx->TempMtxPtr = 0;
+                gx->Matrices[gx->CurMatrixMode] = GX_MatrixMultiply(gx->Matrices[gx->CurMatrixMode], gx->TempMatrix);
+
+                if (gx->CurMatrixMode == Mtx_Vec)
+                {
+                    gx->Matrices[Mtx_Pos] = GX_MatrixMultiply(gx->Matrices[Mtx_Pos], gx->TempMatrix);
+                    gx->ExecTS+=30;
+                }
+                if (gx->CurMatrixMode < Mtx_Tex)
+                {
+                    gx->ClipDirty = true;
+                    gx->ExecTS+=35-12;
+                }
+                else gx->ExecTS+=33-12;
+            }
+            break;
+        }
+
+        case GX_MtxMul3x3:
+        {
+            gx->TempMatrix.Arr[gx->TempMtxPtr] = (s64)(s32)param;
+            // CHECKME: how does this ptr actually work?
+            (gx->TempMtxPtr)++;
+            gx->TempMtxPtr %= 16;
+            if (gx->TempMtxPtr == 9)
+            {
+                gx->TempMatrix.Arr[3] = IdentityMatrix.Arr[3];
+                gx->TempMatrix.Arr[7] = IdentityMatrix.Arr[7];
+                gx->TempMatrix.Arr[11] = IdentityMatrix.Arr[11];
+                gx->TempMatrix.Row[3] = IdentityMatrix.Row[3];
+                gx->TempMtxPtr = 0;
+                gx->Matrices[gx->CurMatrixMode] = GX_MatrixMultiply(gx->Matrices[gx->CurMatrixMode], gx->TempMatrix);
+
+                if (gx->CurMatrixMode == Mtx_Vec)
+                {
+                    gx->Matrices[Mtx_Pos] = GX_MatrixMultiply(gx->Matrices[Mtx_Pos], gx->TempMatrix);
+                    gx->ExecTS+=30;
+                }
+                if (gx->CurMatrixMode < Mtx_Tex)
+                {
+                    gx->ClipDirty = true;
+                    gx->ExecTS+=35-9;
+                }
+                else gx->ExecTS+=33-9;
+            }
+            break;
+        }
+
+        case GX_MtxScale:
+        {
+            gx->ScaleTransVec.Arr[gx->ScaleTransPtr] = (s64)(s32)param;
+            gx->ScaleTransPtr++;
+            if (gx->ScaleTransPtr == 3)
+            {
+                gx->ScaleTransPtr = 0;
+                if (gx->CurMatrixMode == Mtx_Vec)
+                {
+                    GX_MatrixScale(&gx->Matrices[Mtx_Pos], gx->ScaleTransVec); // checkme
+                }
+                else GX_MatrixScale(&gx->Matrices[gx->CurMatrixMode], gx->ScaleTransVec);
+                if (gx->CurMatrixMode < Mtx_Tex)
+                {
+                    gx->ClipDirty = true;
+                    gx->ExecTS+=35-3;
+                }
+                else gx->ExecTS+=33-3;
+            }
+            break;
+        }
+
+        case GX_MtxTrans:
+        {
+            gx->ScaleTransVec.Arr[gx->ScaleTransPtr] = (s64)(s32)param;
+            gx->ScaleTransPtr++;
+            if (gx->ScaleTransPtr == 3)
+            {
+                gx->ScaleTransPtr = 0;
+                GX_MatrixTranslate(&gx->Matrices[gx->CurMatrixMode], gx->ScaleTransVec);
+                if (gx->CurMatrixMode == Mtx_Vec)
+                {
+                    GX_MatrixTranslate(&gx->Matrices[Mtx_Pos], gx->ScaleTransVec);
+                }
+                if (gx->CurMatrixMode < Mtx_Tex)
+                {
+                    gx->ClipDirty = true;
+                    gx->ExecTS+=35-3;
+                }
+                else gx->ExecTS+=33-3;
+            }
+            break;
+        }
+
+        case GX_VtxColor:
+        {
+            gx->VertexColor.R = (param >>  0) & 0x1F;
+            gx->VertexColor.G = (param >>  5) & 0x1F;
+            gx->VertexColor.B = (param >> 10) & 0x1F;
+            break;
+        }
+
+        case GX_LgtNormal:
+        {
+            GX_UpdateNormal(sys, param);
+            break;
+        }
+
+        case GX_Vtx16:
+        {
+            if (!gx->TmpVertexPtr)
+            {
+                gx->TmpVertex.X = (s64)(s32)(param << 16) >> 16;
+                gx->TmpVertex.Y = (s64)(s32)param >> 16;
+            }
+            else
+            {
+                gx->TmpVertex.Z = (s64)(s32)(param << 16) >> 16;
+                GX_SubmitVertex(sys);
+            }
+
+            gx->TmpVertexPtr = !gx->TmpVertexPtr;
+            break;
+        }
+
+        case GX_Vtx10:
+        {
+            gx->TmpVertex.Vec = (Vec){((s64)((s32)(param << 22)) >> 22), ((s64)((s16)(param << 12)) >> 12), ((s64)((s16)(param << 2)) >> 2), (1<<12)};
+            GX_SubmitVertex(sys);
+            break;
+        }
+
+        case GX_VtxXY:
+        {
+            gx->TmpVertex.X = (s64)(s32)(param << 16) >> 16;
+            gx->TmpVertex.Y = (s64)(s32)param >> 16;
+            GX_SubmitVertex(sys);
+            break;
+        }
+
+        case GX_VtxXZ:
+        {
+            gx->TmpVertex.X = (s64)(s32)(param << 16) >> 16;
+            gx->TmpVertex.Z = (s64)(s32)param >> 16;
+            GX_SubmitVertex(sys);
+            break;
+        }
+
+        case GX_VtxYZ:
+        {
+            gx->TmpVertex.Y = (s64)(s32)(param << 16) >> 16;
+            gx->TmpVertex.Z = (s64)(s32)param >> 16;
+            GX_SubmitVertex(sys);
+            break;
+        }
+
+        case GX_VtxDiff:
+        {
+            gx->TmpVertex.Vec += (Vec){((s64)((s32)(param << 22)) >> 22), ((s64)((s16)(param << 12)) >> 12), ((s64)((s16)(param << 2)) >> 2), 0};
+            GX_SubmitVertex(sys);
+            break;
+        }
+
+        case GX_PlyAttr:
+        {
+            gx->NextPolyAttr.Raw = param;
+            break;
+        }
+
+        case GX_LgtDifAmb:
+        {
+            gx->DiffColor.R = (param >>  0) & 0x1F;
+            gx->DiffColor.G = (param >>  5) & 0x1F;
+            gx->DiffColor.B = (param >> 10) & 0x1F;
+
+            gx->AmbiColor.R = (param >> 16) & 0x1F;
+            gx->AmbiColor.G = (param >> 21) & 0x1F;
+            gx->AmbiColor.B = (param >> 26) & 0x1F;
+
+            if (param & (1<<15)) gx->VertexColor = gx->DiffColor;
+            gx->ExecTS += 3;
+            break;
+        }
+
+        case GX_LgtSpeEmi:
+        {
+            gx->SpecColor.R = (param >>  0) & 0x1F;
+            gx->SpecColor.G = (param >>  5) & 0x1F;
+            gx->SpecColor.B = (param >> 10) & 0x1F;
+
+            gx->EmisColor.R = (param >> 16) & 0x1F;
+            gx->EmisColor.G = (param >> 21) & 0x1F;
+            gx->EmisColor.B = (param >> 26) & 0x1F;
+
+            gx->UseSpecTable = (param & (1<<15));
+            gx->ExecTS += 3;
+            break;
+        }
+
+        case GX_LgtVector:
+        {
+            // s1.9
+            s64 dir[3] = {(s64)((s32)(param >>  0) << 22) >> 22,
+                          (s64)((s32)(param >>  5) << 12) >> 22,
+                          (s64)((s32)(param >> 10) <<  2) >> 22};
+
+            gx->LightVec[param>>30].Vec = (dir[0] * gx->VectorMatrix.Row[0]) + (dir[1] * gx->VectorMatrix.Row[1]) + (dir[2] * gx->VectorMatrix.Row[2]);
+
+            // calculate reciprocal to use for specular lighting
+            // Note: convert to s1.10 -> negate; this is different from the actual vector calc for some reason?
+            s32 den = -((gx->LightVec[param>>30].Z << 41) >> 53) + (1<<9);
+            gx->LightRecip[param>>30] = ((den == 0) ? 0 : ((1<<18) / den));
+
+            // Note: negate -> convert to s1.10; this is different than the reciprocal calc for some reason?
+            gx->LightVec[param>>30].Vec = (-(gx->LightVec[param>>30].Vec>>12) << 53) >> 53;
+            gx->ExecTS += 5;
+            break;
+        }
+
+        case GX_LgtColor:
+        {
+            // TODO: 8 cycle delay after vertex command
+            gx->LightColor[param>>30].R = (param >>  0) & 0x1F;
+            gx->LightColor[param>>30].G = (param >>  5) & 0x1F;
+            gx->LightColor[param>>30].B = (param >> 10) & 0x1F;
+            gx->ExecTS += 3;
+            break;
+        }
+
+        case GX_LgtSpecTable:
+        {
+            gx->SpecTableb32[gx->SpecTablePtr] = param;
+            gx->SpecTablePtr = (gx->SpecTablePtr + 1) % (128/sizeof(u32));
+            break;
+        }
+
+        case GX_PlyBegin:
+        {
+            gx->PolygonType = param & 3;
+            gx->CurPolyAttr = gx->NextPolyAttr;
+            gx->SharedVtx[0] = nullptr;
+            gx->SharedVtx[1] = nullptr;
+            gx->TriStripOdd = false;
+            gx->TmpPolygonPtr = 0;
+            if (gx->PartialPolygon) gx->ExecTS = timestamp_max;
+            break;
+        }
+
+        case GX_Viewport:
+        {
+            gx->ViewportLeft = param & 0xFF;
+            gx->ViewportBot = (191 - (param >> 8)) & 0xFF;
+            gx->ViewportWidth = (((param>>16) & 0xFF) - gx->ViewportLeft + 1) & 0x1FF; // x coord is u9
+            gx->ViewportWidth = (((param>>24) & 0xFF) - gx->ViewportBot + 1) & 0x1FF; // y coord is u8
+            break;
+        }
+
+        case 0x00: // nop
+            break;
         default:
-            LogPrint(LOG_GX|LOG_UNIMP, "UNIMPLEMENTED GX COMMAND READ %08X\n", addr);
-            return 0;
+        {
+            LogPrint(LOG_GX|LOG_UNIMP, "Unimplemented GX Command: %02X %08X\n", gx->CurCmd.Cmd, gx->CurCmd.Param);
+            break;
+        }
+        }
+        return true; // TODO/CHECKME?
+    }
+    else
+    {
+        bool suc = GX_FetchParams(sys);
+        gx->CmdReady = suc;
+        return suc;
     }
 }

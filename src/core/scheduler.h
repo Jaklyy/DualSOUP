@@ -15,8 +15,8 @@ enum Scheduler_Events : u8
     Evt_Divider,
     Evt_Sqrt,
     Evt_Timer9,
-    Evt_GXExec,
-    Evt_GXFIFO,
+    //Evt_GXExec,
+    Evt_GX,
 
     Evt_IF7Update,
     Evt_Timer7,
