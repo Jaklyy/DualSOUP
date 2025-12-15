@@ -8,6 +8,7 @@
 #include "../io/dma.h"
 #include "../utils.h"
 #include "ppu.h"
+#include "3d.h"
 
 
 
@@ -100,6 +101,8 @@ void LCD_Scanline(struct Console* sys, timestamp now)
         if (sys->DispStatRW7.VBlankIRQ) Console_ScheduleIRQs(sys, IRQ_VBlank, false, now+2); // CHECKME: delay correct for arm7 too?
         StartDMA9(sys, now+2+1, DMAStart_VBlank); // checkme: delay?
         StartDMA9(sys, now+2+1, DMAStart_VBlank); // checkme: delay?
+
+        GX_Swap(sys, now);
     }
     else if (sys->VCount == 262)
     {
@@ -111,6 +114,11 @@ void LCD_Scanline(struct Console* sys, timestamp now)
         // just clear hblank
         sys->DispStatRO9.HBlank = false;
         sys->DispStatRO7.HBlank = false;
+    }
+
+    if (sys->VCount == 214)
+    {
+        SWRen_RasterizerFrame(sys);
     }
 
     // todo: vcount write

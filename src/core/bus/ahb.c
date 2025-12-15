@@ -422,7 +422,7 @@ u32 VRAM_ARM7(struct Console* sys, const u32 addr, const u32 mask, const bool wr
     if (any && !write && timings) Timing16(bus, mask);
     if (!any && timings)
     {
-        LogPrint(LOG_ARM9|LOG_ODD|LOG_VRAM, "UNMAPPED ARM7 VRAM ACCESS? %08X %08X\n", val, addr);
+        //LogPrint(LOG_ARM9|LOG_ODD|LOG_VRAM, "UNMAPPED ARM7 VRAM ACCESS? %08X %08X\n", val, addr);
         Timing32(&sys->AHB7);
     }
     return ret;

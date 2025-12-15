@@ -198,6 +198,18 @@ void PPU_Large(struct Console* sys, const bool B, const u16 y, const u8 bg)
     LogPrint(LOG_PPU|LOG_UNIMP, "UNIMPLEMENTED: LARGE BG %i %08X\n", bg, ppu->BGCR[bg].Raw);
 }
 
+void PPU_3D(struct Console* sys, const u16 y)
+{
+    struct PPU* ppu = &sys->PPU_A;
+    u32* scanline = sys->Framebuffer[sys->BackBuf][sys->PowerCR9.AOnBottom ? 0 : 1][y];
+
+    for (int x = 0; x < 256; x++)
+    {
+        if (sys->GX3D.CBuf[0][y][x] >> 24)
+            scanline[x] = sys->GX3D.CBuf[0][y][x] & 0xFFFFFF;
+    }
+}
+
 void PPU_BG0_Lookup(struct Console* sys, const bool B, const u16 y)
 {
     struct PPU* ppu = (B ? &sys->PPU_B : &sys->PPU_A);
@@ -205,13 +217,22 @@ void PPU_BG0_Lookup(struct Console* sys, const bool B, const u16 y)
     switch(ppu->DisplayCR.BGSetup)
     {
         case 0 ... 5:
-            // TODO: 3D?
-            if (ppu->DisplayCR.BG03D) return;
+            if (ppu->DisplayCR.BG03D && !B)
+            {
+                PPU_3D(sys, y);
+                break;
+            }
             [[fallthrough]];
         case 7:
-            return PPU_RenderText(sys, B, y, 0);
+            PPU_RenderText(sys, B, y, 0);
+            break;
 
-        case 6: return; // 3D?
+        case 6:
+            if (!B)
+            {
+                PPU_3D(sys, y); // wtf happens to engine b?
+            }
+            break;
     }
 }
 

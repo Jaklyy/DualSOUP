@@ -147,6 +147,12 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
     sys->RTC.DataTime[5] = 1;
     sys->RTC.DataTime[6] = 1;
 
+    sys->GX3D.GXPolyRAM = sys->GX3D.PolyRAMA;
+    sys->GX3D.RenderPolyRAM = sys->GX3D.PolyRAMB;
+    sys->GX3D.GXVtxRAM = sys->GX3D.VtxRAMA;
+    sys->GX3D.RenderVtxRAM = sys->GX3D.VtxRAMB;
+    sys->GX3D.TmpVertex.W = 1<<12;
+
     // run power on/reset logic
     Console_Reset(sys);
 

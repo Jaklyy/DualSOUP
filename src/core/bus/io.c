@@ -288,7 +288,8 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask)
             return Input_PollMain(sys->Pad);
 
         case 0x00'01'34:
-            return sys->RCR | (Input_PollExtra(sys->Pad) << 16);
+            u32 ret = sys->RCR | (Input_PollExtra(sys->Pad) << 16);
+            return ret;
 
         case 0x00'01'38:
             return sys->RTC.CR.Raw;
@@ -537,6 +538,9 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask)
         case 0x00'00'1C:
             return sys->PPU_A.Xoff[3] | (sys->PPU_A.Yoff[3] << 16);
 
+        case 0x00'00'60:
+            return sys->GX3D.RasterCR.Raw;
+
         // DMA
         case 0x00'00'B0 ... 0x00'00'E0-1:
             return DMA_IOReadHandler(sys->DMA9.Channels, addr);
@@ -721,6 +725,10 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
         case 0x00'00'1C:
             MaskedWrite(sys->PPU_A.Xoff[3], val, mask&0x1FF);
             MaskedWrite(sys->PPU_A.Yoff[3], val>>16, (mask>>16)&0x1FF);
+            break;
+
+        case 0x00'00'60:
+            MaskedWrite(sys->GX3D.RasterCR.Raw, val, mask & 0x7FFF);
             break;
 
         // DMA

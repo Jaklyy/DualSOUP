@@ -198,7 +198,7 @@ typedef union
 typedef struct
 {
     u16 X; // u9
-    u16 Z; // u16?
+    s16 Z; // s16?
     u16 W; // u16?
     u8 Y; // u8
     Colors Color;
@@ -212,17 +212,75 @@ typedef struct
     u8 NumVert;
     bool Trans;
     u8 VTop;
+    u8 VBot;
+    u8 Top;
+    u8 Bot;
     u32 SortKey;
     int WDecompress;
     u8 SlopeY[10]; // u8; slope start/end y coordinates; this is stored with the polygon data instead of the vertex data for some reason.
 } Polygon;
 
+typedef struct 
+{
+    Vector Coords;
+    Vector CoordsInitial;
+    Colors Color;
+} VertexTmp;
+
 typedef struct
 {
-    Vector Vertices[10];
-    Colors Color[10];
+    VertexTmp Vertices[10];
     bool Clipped;
 } PolygonTmp;
+
+typedef union
+{
+    u32 Raw;
+    struct
+    {
+        bool TXMajor : 1;
+        bool RYMajor : 1;
+    };
+} AttrBuf;
+
+
+typedef union
+{
+    u16 Raw;
+    struct
+    {
+        bool Texture : 1;
+        bool ShadingMode : 1;
+        bool AlphaTest : 1;
+        bool AlphaBlend : 1;
+        bool AntiAlias : 1;
+        bool EdgeMark : 1;
+        bool FogMode : 1;
+        bool Fog : 1;
+        u16 FogShift : 4;
+        bool ScanlineUnderrun : 1;
+        bool VtxPolyRAMLimit : 1;
+        bool BitmapRearPlane : 1;
+    };
+} RasterCR; // 3d display control
+
+typedef union
+{
+    u32 Raw;
+    struct
+    {
+        u32 R : 5;
+        u32 G : 5;
+        u32 B : 5;
+        bool Fog : 1;
+        u32 Alpha : 5;
+        u32 : 3;
+        u32 ID : 6;
+    };
+} RearAttr;
+
+
+
 
 typedef struct
 {
@@ -308,16 +366,19 @@ typedef struct
     bool TriStripOdd;
     PolygonTmp PolygonTmp;
 
-    Vertex VtxRAM[6144];
-    Polygon PolyRAM[2048];
+    Vertex VtxRAMA[6144];
+    Polygon PolyRAMA[2048];
+    Vertex VtxRAMB[6144];
+    Polygon PolyRAMB[2048];
     u16 PolyRAMPtr;
     u16 VtxRAMPtr;
-    bool CurRAMSet;
+    Vertex* GXVtxRAM;
+    Polygon* GXPolyRAM;
 
     Vertex* SharedVtx[2];
 
     u8 ViewportLeft;
-    u8 ViewportBot;
+    u8 ViewportTop;
     u8 ViewportHeight;
     u16 ViewportWidth;
 
@@ -326,6 +387,8 @@ typedef struct
 
     bool ManualTransSort;
     bool WBuffer;
+
+    bool SwapReq;
 
     union
     {
@@ -348,16 +411,34 @@ typedef struct
         };
     } Status;
 
+    RasterCR RasterCR;
+    RearAttr RearAttr;
+    u16 RearDepth;
+
+
+
     alignas(HOST_CACHEALIGN)
-    Vertex RenderVtxRAM[6144];
-    Polygon RenderPolyRAM[2048];
+    Vertex* RenderVtxRAM;
+    Polygon* RenderPolyRAM;
+    u16 RenderPolyCount;
     bool RenderWBuffer;
+    RasterCR LatRasterCR;
+    RearAttr LatRearAttr;
+    u16 LatRearDepth;
+
+    alignas(HOST_CACHEALIGN)
+    u32 CBuf[2][192][256];
+    u32 ZBuf[2][192][256];
+    AttrBuf ABuf[2][192][256];
 } GX3D;
 
 struct Console;
 
 bool GX_FetchParams(struct Console* sys);
 bool GX_RunCommand(struct Console* sys, const timestamp now);
+void GX_Swap(struct Console* sys, const timestamp now);
+void GX_RunFIFO(struct Console* sys, const timestamp until);
+void SWRen_RasterizerFrame(struct Console* sys);
 
 void GX_IOWrite(struct Console* sys, const u32 addr, const u32 mask, const u32 val);
 u32 GX_IORead(struct Console* sys, const u32 addr);

@@ -9,19 +9,19 @@ void GX_UpdateIRQ(struct Console* sys, const timestamp time)
 {
     GX3D* gx = &sys->GX3D;
 
-    printf("gx->Status.Raw %08X\n", gx->Status.Raw);
+    //printf("gx->Status.Raw %08X\n", gx->Status.Raw);
     switch (gx->Status.FIFOIRQMode)
     {
     case 1:
     {
         if (sys->GX3D.Status.FIFOHalfEmpty)
         {
-            printf("irq\n");
+            //printf("irq\n");
             Console_ScheduleHeldIRQs(sys, IRQ_3DFIFO, true, time);
         }
         else 
         {
-            printf("unirq\n");
+            //printf("unirq\n");
             Console_ClearHeldIRQs(sys, IRQ_3DFIFO, true);
         }
         break;
@@ -30,18 +30,18 @@ void GX_UpdateIRQ(struct Console* sys, const timestamp time)
     {
         if (sys->GX3D.Status.FIFOEmpty)
         {
-            printf("irq\n");
+            //printf("irq\n");
             Console_ScheduleHeldIRQs(sys, IRQ_3DFIFO, true, time);
         }
         else
         {
-            printf("unirq\n");
+            //printf("unirq\n");
             Console_ClearHeldIRQs(sys, IRQ_3DFIFO, true);
         }
         break;
     }
     default: // checkme: mode 3?
-            printf("unirq\n");
+            //printf("unirq\n");
         Console_ClearHeldIRQs(sys, IRQ_3DFIFO, true);
         break;
     }
@@ -298,14 +298,22 @@ void GX_IOWrite(struct Console* sys, const u32 addr, const u32 mask, const u32 v
 {
     switch(addr & 0x7FF)
     {
+        case 0x350:
+            MaskedWrite(sys->GX3D.RearAttr.Raw, val, mask & 0x3F1FFFFF);
+            break;
+
+        case 0x354:
+            MaskedWrite(sys->GX3D.RearDepth, val, mask & 0x7FFF);
+            break;
+
         case 0x400 ... 0x43C:
-            printf("subm2 %08X\n", val);
+            //printf("subm2 %08X\n", val);
             if (mask != 0xFFFFFFFF) LogPrint(LOG_GX|LOG_UNIMP, "Non 32 bit packed command write?\n");
             GXFIFO_PackedSubmit(sys, val);
             break;
 
         case 0x440 ... 0x5FC:
-            printf("subm %08X %08X\n", addr, val);
+            //printf("subm %08X %08X\n", addr, val);
             if (mask != 0xFFFFFFFF) LogPrint(LOG_GX|LOG_UNIMP, "Non 32 bit command port write?\n");
             GXFIFO_PortSubmit(sys, addr, val);
             break;
@@ -313,7 +321,7 @@ void GX_IOWrite(struct Console* sys, const u32 addr, const u32 mask, const u32 v
         case 0x600:
         {
             MaskedWrite(sys->GX3D.Status.Raw, val, mask & 0xC0000000);
-            printf("write %08X\n", sys->GX3D.Status.Raw);
+            //printf("write %08X\n", sys->GX3D.Status.Raw);
             GX_UpdateIRQ(sys, sys->AHB9.Timestamp);
             break;
         }

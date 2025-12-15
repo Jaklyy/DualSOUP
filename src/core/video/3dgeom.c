@@ -1,7 +1,7 @@
-#include "3d.h"
-#include "3d.h"
-#include "../console.h"
 #include <stdbit.h>
+#include <stdlib.h>
+#include "../console.h"
+#include "3d.h"
 
 
 
@@ -42,6 +42,89 @@ void GX_UpdateClip(struct Console* sys)
 }
 
 
+#define Interp(var) \
+    out.var = a->var - (((a->var - b->var) * recip) >> 24)
+
+VertexTmp GX_InterpolateVertex(VertexTmp* a, VertexTmp* b, const u8 dir, const bool positive)
+{
+    s64 den, num, recip;
+
+    if (positive)
+    {
+        num = a->Coords.W - a->Coords.Arr[dir];
+        den = num - (a->Coords.W - a->Coords.Arr[dir]);
+    }
+    else
+    {
+        num = a->Coords.Arr[dir];
+        den = num - a->Coords.Arr[dir];
+    }
+
+    if (!den) recip = num << 24; // checkme
+    else recip = (num << 24) / den;
+
+    VertexTmp out = {};
+
+    if (dir != 0) Interp(Coords.X);
+    if (dir != 1) Interp(Coords.Y);
+    if (dir != 2) Interp(Coords.Z);
+    Interp(Coords.W);
+    out.Coords.Arr[dir] = ((positive) ? a->Coords.W : 0);
+
+    Interp(Color.R);
+    Interp(Color.G);
+    Interp(Color.B);
+
+    return out;
+}
+
+PolygonTmp GX_ClipVertex(GX3D* gx, PolygonTmp* poly, unsigned* nvert, const int dir, const bool positive)
+{
+    PolygonTmp tmp;
+    unsigned cur = 0;
+    for (unsigned i = 0; i < *nvert; i++)
+    {
+        if ((positive) ? (poly->Vertices[i].Coords.Arr[dir] > poly->Vertices[i].Coords.W)
+                       : (poly->Vertices[i].Coords.Arr[dir] < 0))
+        {
+            // check if the polygon should be discarded entirely
+            if ((dir == 2) && positive && !gx->CurPolyAttr.RenderFarPlaneClipped)
+            {
+                *nvert = 0;
+                return tmp;
+            }
+
+            unsigned prev = (i-1)%*nvert;
+            if ((positive) ? (poly->Vertices[prev].Coords.Arr[dir] <= poly->Vertices[prev].Coords.W)
+                           : (poly->Vertices[prev].Coords.Arr[dir] >= 0))
+            {
+                tmp.Vertices[cur++] = GX_InterpolateVertex(&poly->Vertices[i], &poly->Vertices[prev], dir, positive);
+            }
+
+            unsigned next = (i+1)%*nvert;
+            if ((positive) ? (poly->Vertices[next].Coords.Arr[dir] <= poly->Vertices[next].Coords.W)
+                           : (poly->Vertices[next].Coords.Arr[dir] >= 0))
+            {
+                tmp.Vertices[cur++] = GX_InterpolateVertex(&poly->Vertices[next], &poly->Vertices[i], dir, positive);
+            }
+        }
+        else tmp.Vertices[cur++] = poly->Vertices[i];
+    }
+
+    *nvert = cur;
+    return tmp;
+}
+
+void GX_ClipPolygon(GX3D* gx, PolygonTmp* poly, unsigned* nvert)
+{
+    *poly = GX_ClipVertex(gx, poly, nvert, 2, true);
+    *poly = GX_ClipVertex(gx, poly, nvert, 2, false);
+    *poly = GX_ClipVertex(gx, poly, nvert, 1, true);
+    *poly = GX_ClipVertex(gx, poly, nvert, 1, false);
+    *poly = GX_ClipVertex(gx, poly, nvert, 0, true);
+    *poly = GX_ClipVertex(gx, poly, nvert, 0, false);
+}
+
 void GX_FinalizePolygon(struct Console* sys, unsigned nvert)
 {
     GX3D* gx = &sys->GX3D;
@@ -51,8 +134,8 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert)
     // calculate dot product to determine polygon facing direction for culling and rasterization
 
     Vector v0, v1;
-    v0.Vec = poly.Vertices[0].Vec - poly.Vertices[2].Vec;
-    v1.Vec = poly.Vertices[1].Vec - poly.Vertices[2].Vec;
+    v0.Vec = poly.Vertices[0].Coords.Vec - poly.Vertices[2].Coords.Vec;
+    v1.Vec = poly.Vertices[1].Coords.Vec - poly.Vertices[2].Coords.Vec;
 
     // for some reason if one of the vectors is entirely 0 its automatically accepted, even if neither face is allowed to render, and is treated as frontfacing for rasterization.
     // im not entirely sure why though... possibly to do with the normalization step?
@@ -64,18 +147,18 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert)
     else
     {
         // calculate cross product
-        Vector cross; cross.Vec = (v0.Vec * (Vec){v1.W, v1.X, v1.Y}) - ((Vec){v0.W, v0.X, v0.Y} * (Vec){v0.Y, v0.W, v0.X});
+        Vector cross; cross.Vec = ((Vec){v0.Y, v0.W, 0, v0.X} * (Vec){v1.W, v1.X, 0, v1.Y}) - ((Vec){v0.W, v0.X, 0, v0.Y} * (Vec){v1.Y, v1.W, 0, v1.X});
 
         // TODO: somehow precision is lost here and im not quite sure how
 
         // calc dot product
         // supposedly we can use any vertex as a "camera vector" im not sure how that works, but sure.
         // going with vertex 2 based on my gut, since hw was using that as the center vertex.
-        cross.Vec *= (poly.Vertices[2].Vec - poly.Vertices[2].W); // checkme: do i actually need to removed the added W here?
+        cross.Vec *= poly.Vertices[2].Coords.Vec ; // checkme: do i actually need to removed the added W here?
 
-        s64 dot = cross.X + cross.Y + cross.Z;
+        s64 dot = cross.X + cross.Y + cross.W;
 
-        frontfacing = (dot >= 0);
+        frontfacing = (dot <= 0);
         // if the dot is 0 then it will render if either front or back are enabled.
         if (!(((dot >= 0) && gx->CurPolyAttr.RenderFront) || ((dot <= 0) && gx->CurPolyAttr.RenderBack)))
         {
@@ -83,7 +166,7 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert)
         }
     }
 
-    // todo: polygon clipping
+    GX_ClipPolygon(gx, &poly, &nvert);
 
     if ((nvert == 0) || (gx->PolyRAMPtr >= 2048) || ((gx->VtxRAMPtr + nvert) > 6144)) return;
 
@@ -100,7 +183,7 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert)
         // allocate remaining vertices
         for (; vtx < nvert; vtx++)
         {
-            fin.Vertices[vtx] = &gx->VtxRAM[gx->VtxRAMPtr+vtx];
+            fin.Vertices[vtx] = &gx->GXVtxRAM[gx->VtxRAMPtr+vtx];
         }
     }
 
@@ -108,10 +191,12 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert)
     // this allows for a bug when manipulating the viewport mid-strip.
     for (unsigned i = 0; i < nvert; i++)
     {
-        poly.Vertices[i].W &= 0x1FFFFFF;
+        poly.Vertices[i].Coords.W &= 0x1FFFFFF;
 
-        s64 x = poly.Vertices[i].X, y = poly.Vertices[i].Y;
-        u32 w = poly.Vertices[i].W;
+        s64 x = poly.Vertices[i].Coords.X, y = poly.Vertices[i].Coords.Y;
+        u32 w = poly.Vertices[i].Coords.W;
+
+
         // w can easily be 0 here
         if (w == 0)
         {
@@ -132,7 +217,7 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert)
             }
 
             fin.Vertices[i]->X = ((x / w) + gx->ViewportLeft) & 0x1FF;
-            fin.Vertices[i]->Y = ((y / w) + gx->ViewportBot) & 0xFF;
+            fin.Vertices[i]->Y = ((y / w) + gx->ViewportTop) & 0xFF;
         }
     }
 
@@ -163,23 +248,29 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert)
     fin.Frontfacing = frontfacing;
     fin.Attrs = gx->CurPolyAttr;
     fin.Trans = ((fin.Attrs.Alpha > 0) && (fin.Attrs.Alpha < 31)); // TODO: Texture params impact this!!
+    fin.NumVert = nvert;
 
-    u32 ytop = 192, ybot = 0, vtop;
+    s32 ytop = 193, ybot = -1, vtop = 0, vbot = 0;
 
     int wsize;
     for (unsigned i = 0; i < nvert; i++)
     {
-        fin.Vertices[i]->Color = poly.Color[i];
-        if (ytop < fin.Vertices[i]->Y)
+        fin.Vertices[i]->Color = poly.Vertices[i].Color;
+        fin.SlopeY[i] = fin.Vertices[i]->Y;
+
+        if (fin.Vertices[i]->Y < ytop)
         {
             ytop = fin.Vertices[i]->Y;
             vtop = i;
         }
-        if (ybot > fin.Vertices[i]->Y)
+        if (fin.Vertices[i]->Y > ybot)
+        {
             ybot = fin.Vertices[i]->Y;
+            vbot = i;
+        }
 
         // get value to normal W with
-        int temp = (((24 - (stdc_leading_zeros(poly.Vertices[i].W>>1) - 7)) + (0xF)) >> 4) << 4;
+        int temp = (((24 - (stdc_leading_zeros(poly.Vertices[i].Coords.W>>1) - 7)) + (0xF)) >> 4) << 4;
 
         if (wsize < temp)
         {
@@ -187,12 +278,14 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert)
         }
     }
 
+    printf("ytop %i %i\n", ytop, ybot);
+
     fin.WDecompress = wsize;
 
     for (unsigned i = 0; i < nvert; i++)
     {
         // normalize W to fit into 16 bits
-        s32 wnorm = poly.Vertices[i].W >> 1;
+        s32 wnorm = poly.Vertices[i].Coords.W >> 1;
         if (wsize < 16)
         {
             wnorm = wnorm << (16-wsize);
@@ -205,19 +298,26 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert)
         fin.Vertices[i]->W = wnorm;
 
         // compress Z into 16 bits
-        if (poly.Vertices[i].W != 0)
+        if (poly.Vertices[i].Coords.W != 0)
         {
-            fin.Vertices[i]->Z = ((((poly.Vertices[i].Z * 2) - poly.Vertices[i].W) * 0x4000) / poly.Vertices[i].W);
+            fin.Vertices[i]->Z = ((((poly.Vertices[i].Coords.Z * 2) - poly.Vertices[i].Coords.W) * 0x4000) / poly.Vertices[i].Coords.W);
         }
         else fin.Vertices[i]->Z = 0;
 
         fin.Vertices[i]->Z += 0x3FFF;
 
-        if (fin.Vertices[i]->Z > 0xFFFF)
-            fin.Vertices[i]->Z = 0xFFFF;
+        if (fin.Vertices[i]->Z < 0) 
+            fin.Vertices[i]->Z = 0;
+        else if (fin.Vertices[i]->Z > 0x7FFF)
+        {
+            fin.Vertices[i]->Z = 0x7FFF;
+        }
     }
 
     fin.VTop = vtop;
+    fin.VBot = vbot;
+    fin.Top = ytop;
+    fin.Bot = ybot;
 
     // transparent polygons are sorted last, and ties are broken based on initial index
     fin.SortKey = (fin.Trans << 31) | (gx->PolyRAMPtr);
@@ -225,7 +325,7 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert)
     if (!fin.Trans || !gx->ManualTransSort)
         fin.SortKey |= ((ybot << 8) | ytop) << 12;
 
-    gx->PolyRAM[gx->PolyRAMPtr] = fin;
+    gx->GXPolyRAM[gx->PolyRAMPtr] = fin;
 
     gx->VtxRAMPtr += nvert;
     gx->PolyRAMPtr++;
@@ -234,16 +334,20 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert)
 void GX_SubmitVertex(struct Console* sys)
 {
     GX3D* gx = &sys->GX3D;
+    GX_UpdateClip(sys);
 
-    gx->PolygonTmp.Vertices[gx->TmpPolygonPtr].Vec = ((gx->TmpVertex.X * gx->ClipMatrix.Row[0]) + (gx->TmpVertex.Y * gx->ClipMatrix.Row[1]) + (gx->TmpVertex.Z * gx->ClipMatrix.Row[2]) + (gx->TmpVertex.W * gx->ClipMatrix.Row[3])) >> 12;
+    gx->PolygonTmp.Vertices[gx->TmpPolygonPtr].Coords.Vec = ((gx->TmpVertex.X * gx->ClipMatrix.Row[0]) + (gx->TmpVertex.Y * gx->ClipMatrix.Row[1]) + (gx->TmpVertex.Z * gx->ClipMatrix.Row[2]) + (gx->TmpVertex.W * gx->ClipMatrix.Row[3])) >> 12;
+
+    // CHECKME: save a copy of the coordinates for polygon orientation calcs
+    //gx->PolygonTmp.Vertices[gx->TmpPolygonPtr].CoordsInitial.Vec = gx->PolygonTmp.Vertices[gx->TmpPolygonPtr].Coords.Vec;
 
     // y needs to be negated
-    gx->PolygonTmp.Vertices[gx->TmpPolygonPtr].Y = -gx->PolygonTmp.Vertices[gx->TmpPolygonPtr].Y;
+    gx->PolygonTmp.Vertices[gx->TmpPolygonPtr].Coords.Y = -gx->PolygonTmp.Vertices[gx->TmpPolygonPtr].Coords.Y;
 
     // all vertex coordinates are incremented by W
-    gx->PolygonTmp.Vertices[gx->TmpPolygonPtr].Vec += gx->PolygonTmp.Vertices[gx->TmpPolygonPtr].W;
+    gx->PolygonTmp.Vertices[gx->TmpPolygonPtr].Coords.Vec += gx->PolygonTmp.Vertices[gx->TmpPolygonPtr].Coords.W;
 
-    gx->PolygonTmp.Color[gx->TmpPolygonPtr] = gx->VertexColor;
+    gx->PolygonTmp.Vertices[gx->TmpPolygonPtr].Color = gx->VertexColor;
 
     // TODO: texcoords
 
@@ -279,7 +383,7 @@ void GX_SubmitVertex(struct Console* sys)
             gx->PartialPolygon = false;
             if (gx->TriStripOdd)
             {
-                Vector tmp = gx->PolygonTmp.Vertices[1];
+                VertexTmp tmp = gx->PolygonTmp.Vertices[1];
                 gx->PolygonTmp.Vertices[1] = gx->PolygonTmp.Vertices[0];
                 gx->PolygonTmp.Vertices[0] = tmp;
                 GX_FinalizePolygon(sys, 3);
@@ -874,12 +978,24 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
             break;
         }
 
+        case GX_SwapBuffers:
+        {
+            gx->ManualTransSort = param & 1;
+            gx->WBuffer = param & 2;
+            gx->ExecTS = timestamp_max;
+            if (!gx->PartialPolygon)
+            {
+                gx->SwapReq = true;
+            }
+            break;
+        }
+
         case GX_Viewport:
         {
             gx->ViewportLeft = param & 0xFF;
-            gx->ViewportBot = (191 - (param >> 8)) & 0xFF;
+            gx->ViewportTop = 191-((param>>24) & 0xFF);
             gx->ViewportWidth = (((param>>16) & 0xFF) - gx->ViewportLeft + 1) & 0x1FF; // x coord is u9
-            gx->ViewportWidth = (((param>>24) & 0xFF) - gx->ViewportBot + 1) & 0x1FF; // y coord is u8
+            gx->ViewportHeight = (((191 - (param >> 8)) & 0xFF) - gx->ViewportTop + 1) & 0xFF; // y coord is u8
             break;
         }
 
@@ -898,5 +1014,45 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
         bool suc = GX_FetchParams(sys);
         gx->CmdReady = suc;
         return suc;
+    }
+}
+
+int GX_Cmp(const void* a, const void* b)
+{
+    return ((Polygon*)a)->SortKey - ((Polygon*)b)->SortKey;
+}
+
+void GX_Swap(struct Console* sys, const timestamp now)
+{
+    GX3D* gx = &sys->GX3D;
+
+    if (gx->SwapReq)
+    {
+        gx->ExecTS = now + 325;
+        gx->SwapReq = false;
+
+        // sort polygon ram
+        qsort(gx->GXPolyRAM, sizeof(gx->PolyRAMA)/sizeof(gx->PolyRAMA[0]), sizeof(gx->PolyRAMA[0]), GX_Cmp);
+
+        gx->VtxRAMPtr = 0;
+        gx->RenderPolyCount = gx->PolyRAMPtr;
+        gx->PolyRAMPtr = 0;
+
+        void* tmp;
+        tmp = gx->GXPolyRAM;
+        gx->GXPolyRAM = gx->RenderPolyRAM;
+        gx->RenderPolyRAM = tmp;
+
+        tmp = gx->GXVtxRAM;
+        gx->GXVtxRAM = gx->RenderVtxRAM;
+        gx->RenderVtxRAM = tmp;
+
+        gx->LatRasterCR = gx->RasterCR;
+        gx->LatRearAttr = gx->RearAttr;
+        gx->LatRearDepth = gx->RearDepth;
+
+        // make sure to reschedule if needed, since we probably ended up getting this scheduled 5 years into the future, and that might cause problems.
+        if (sys->Sched.EventTimes[Evt_GX] > gx->ExecTS)
+            Schedule_Event(sys, GX_RunFIFO, Evt_GX, gx->ExecTS);
     }
 }
