@@ -39,8 +39,8 @@ constexpr unsigned SoundMixerOutput = 32768; //
 
 // yoinked from melonDS; should be validated personally.
 // they're written this way in melonDS; I'm not sure why? Probably makes sense with 2d gpu knowledge.
-constexpr unsigned ActiveRender_Cycles = 24+(256*3); // How long the PPUs are actively rendering graphics in a given scanline. (note: 24 cycles are not actually spent rendering)
-constexpr unsigned HBlank_Cycles       = 91*3; // length of the HBlank period.
+constexpr unsigned ActiveRender_Cycles = 48+(256*6); // How long the PPUs are actively rendering graphics in a given scanline. (note: 24 cycles are not actually spent rendering)
+constexpr unsigned HBlank_Cycles       = 91*6; // length of the HBlank period.
 constexpr unsigned Scanline_Cycles     = HBlank_Cycles + ActiveRender_Cycles; // total length of a scanline in 16 MHz cycles.
 constexpr unsigned Frame_Cycles        = Scanline_Cycles * 263; // total frame length.
 constexpr long double FPS       = 59.8260982881; // how do I represent this losslessly.
@@ -339,8 +339,8 @@ struct Console
     struct IPCFIFO IPCFIFO7;
     struct IPCFIFO IPCFIFO9;
 
-    struct PPU PPU_A;
-    struct PPU PPU_B;
+    PPU PPU_A;
+    PPU PPU_B;
 
     GX3D GX3D;
 
@@ -464,15 +464,22 @@ struct Console
     MEMORY(NTRBios9,    NTRBios9_Size);
     MEMORY(NTRBios7,    NTRBios7_Size);
     MEMORY(WiFiRAM,    WiFiRAM_Size);
-    alignas(HOST_CACHEALIGN)
+
+    alignas(HOST_CACHEALIGN) // ppu a sync area
     volatile timestamp PPUATimestamp;
     thrd_t PPUAThread;
 
-    alignas(HOST_CACHEALIGN)
+    alignas(HOST_CACHEALIGN) // ppu a internal area
+    CompositeBuffer CompositeBufferA[5][256];
+
+    alignas(HOST_CACHEALIGN) // ppu b sync area
     volatile timestamp PPUBTimestamp;
     thrd_t PPUBThread;
 
-    alignas(HOST_CACHEALIGN)
+    alignas(HOST_CACHEALIGN) // ppu b internal area
+    CompositeBuffer CompositeBufferB[5][256];
+
+    alignas(HOST_CACHEALIGN) // ppu shared sync area
     volatile timestamp PPUTarget;
     volatile bool KillPPUs; 
     volatile bool PPUStart;

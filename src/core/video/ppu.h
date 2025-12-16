@@ -15,7 +15,7 @@ constexpr unsigned ScreenWidthPx = TileWidth * ScreenWidthTiles;
 constexpr unsigned ScreenHeightPx = TileHeight * ScreenHeightTiles;
 constexpr unsigned ScreenSizePx = ScreenWidthPx * ScreenHeightPx;
 
-union TextTileData
+typedef union
 {
     u16 Raw;
     struct
@@ -25,9 +25,18 @@ union TextTileData
         bool VFlip : 1;
         u16 Palette : 4;
     };
-};
+} TextTileData;
 
-struct PPU
+typedef struct
+{
+    u32 Index : 24;
+    bool Empty : 1;
+    bool NotPal : 1;
+    bool ExtPal : 1;
+    bool GPU3D : 1;
+} CompositeBuffer;
+
+typedef struct
 {
     union
     {
@@ -88,7 +97,7 @@ struct PPU
 
     u16 Xoff[4];
     u16 Yoff[4];
-};
+} PPU;
 
 struct Console;
 void PPU_RenderScanline(struct Console* sys, const bool B, const u16 y);

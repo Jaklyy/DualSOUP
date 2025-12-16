@@ -16,7 +16,7 @@
 void PPU_SetTarget(struct Console* sys, const timestamp now)
 {
 #ifndef PPUST
-    sys->PPUTarget = now>>1;
+    sys->PPUTarget = now;
 #else
     PPU_RenderScanline(sys, false, sys->VCount);
     PPU_RenderScanline(sys, true, sys->VCount);
@@ -28,7 +28,6 @@ void PPU_Sync(struct Console* sys, timestamp now)
 #ifndef PPUST
     if (!sys->PPUStart) return;
     PPU_SetTarget(sys, now);
-    now >>= 1;
     //printf("%li %li %li\n", sys->PPUATimestamp, sys->PPUBTimestamp, now);
     while ((sys->PPUATimestamp < now) || (sys->PPUBTimestamp < now)) thrd_yield();
 #endif
@@ -80,7 +79,7 @@ void LCD_HBlank(struct Console* sys, timestamp now)
     if (sys->DispStatRW7.HBlankIRQ) Console_ScheduleIRQs(sys, IRQ_HBlank, false, now+2); // CHECKME: delay?
 
     // schedule hblank
-    Schedule_Event(sys, LCD_Scanline, Evt_Scanline, now + (HBlank_Cycles*2));
+    Schedule_Event(sys, LCD_Scanline, Evt_Scanline, now + HBlank_Cycles);
 }
 
 void LCD_Scanline(struct Console* sys, timestamp now)
@@ -179,5 +178,5 @@ void LCD_Scanline(struct Console* sys, timestamp now)
     if (sys->TargetVCount9 == sys->VCount) Console_ScheduleIRQs(sys, IRQ_VCount, true, now+2); // checkme: delay?
 
     // schedule hblank
-    Schedule_Event(sys, LCD_HBlank, Evt_Scanline, now + (ActiveRender_Cycles*2));
+    Schedule_Event(sys, LCD_HBlank, Evt_Scanline, now + ActiveRender_Cycles);
 }
