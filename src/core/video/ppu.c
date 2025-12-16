@@ -366,22 +366,15 @@ int PPUA_MainLoop(void* ptr)
     struct Console* sys = ptr;
     while (!sys->PPUStart) thrd_yield();
 
-    int y = 0;
     while (!sys->KillPPUs)
     {
-        //for (int y = 0; y < 192; y++)
+        for (int y = 0; y < 192; y++)
         {
-            PPU_Wait(sys, sys->PPUATimestamp);
-            //printf("vca %i %i\n", sys->VCount, y);
-            if (y < 192)
-            {
-                PPU_RenderScanline(sys, false, y);
-            }
             sys->PPUATimestamp += Scanline_Cycles;
-            y++;
-            y %= 263;
+            PPU_Wait(sys, sys->PPUATimestamp);
+            PPU_RenderScanline(sys, false, y);
         }
-        //sys->PPUBTimestamp += Scanline_Cycles*71;
+        sys->PPUATimestamp += Scanline_Cycles*71;
     }
     return 0;
 }
@@ -390,22 +383,15 @@ int PPUB_MainLoop(void* ptr)
     struct Console* sys = ptr;
     while (!sys->PPUStart) thrd_yield();
 
-    int y = 0;
     while (!sys->KillPPUs)
     {
-        //for (int y = 0; y < 192; y++)
+        for (int y = 0; y < 192; y++)
         {
-            PPU_Wait(sys, sys->PPUBTimestamp);
-            //printf("vcb %i %i\n", sys->VCount, y);
-            if (y < 192)
-            {
-                PPU_RenderScanline(sys, true, y);
-            }
             sys->PPUBTimestamp += Scanline_Cycles;
-            y++;
-            y %= 263;
+            PPU_Wait(sys, sys->PPUBTimestamp);
+            PPU_RenderScanline(sys, true, y);
         }
-        //sys->PPUBTimestamp += Scanline_Cycles*71;
+        sys->PPUBTimestamp += Scanline_Cycles*71;
     }
     return 0;
 }

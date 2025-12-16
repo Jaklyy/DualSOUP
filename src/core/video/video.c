@@ -57,7 +57,6 @@ void LCD_HBlank(struct Console* sys, timestamp now)
     // set hblank flag
     sys->DispStatRO9.HBlank = true;
     sys->DispStatRO7.HBlank = true;
-    if (sys->VCount == 0) PPU_Init(sys, now);
     if (sys->VCount < 192)
     {
         StartDMA9(sys, now+2+1, DMAStart_HBlank); // checkme: delay?
@@ -93,6 +92,7 @@ void LCD_Scanline(struct Console* sys, timestamp now)
 
     // check for vblank; clear hblank.
     // this occurs before vcount writes
+    if (sys->VCount == 0) PPU_Init(sys, now);
     if (sys->VCount == 192)
     {
         if (SDL_GetGamepadButton(sys->Pad, SDL_GAMEPAD_BUTTON_LEFT_STICK))
