@@ -15,30 +15,41 @@
 
 void PPU_SetTarget(struct Console* sys, const timestamp now)
 {
+#ifndef PPUST
     sys->PPUTarget = now>>1;
+#else
+    PPU_RenderScanline(sys, false, sys->VCount);
+    PPU_RenderScanline(sys, true, sys->VCount);
+#endif
 }
 
 void PPU_Sync(struct Console* sys, timestamp now)
 {
+#ifndef PPUST
     if (!sys->PPUStart) return;
     PPU_SetTarget(sys, now);
     now >>= 1;
     //printf("%li %li %li\n", sys->PPUATimestamp, sys->PPUBTimestamp, now);
     while ((sys->PPUATimestamp < now) || (sys->PPUBTimestamp < now)) thrd_yield();
+#endif
 }
 
 void PPU_Wait(struct Console* sys, const timestamp now)
 {
+#ifndef PPUST
     while (now >= sys->PPUTarget) thrd_yield();
+#endif
 }
 
 void PPU_Init(struct Console* sys, const timestamp now)
 {
+#ifndef PPUST
     if (sys->PPUStart) return;
     sys->PPUTarget = now;
     sys->PPUATimestamp = now;
     sys->PPUBTimestamp = now;
     sys->PPUStart = true;
+#endif
 }
 
 void LCD_HBlank(struct Console* sys, timestamp now)

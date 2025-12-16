@@ -91,5 +91,6 @@ struct PPU
 };
 
 struct Console;
+void PPU_RenderScanline(struct Console* sys, const bool B, const u16 y);
 int PPUA_MainLoop(void* ptr);
 int PPUB_MainLoop(void* ptr);

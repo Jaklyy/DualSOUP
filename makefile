@@ -23,6 +23,10 @@ ifeq ($(THRD), 1) # use threads instead of coroutines
 else
 endif
 
+ifeq ($(PPUST), 1)
+	CFLAGS += -DPPUST
+endif
+
 ifeq ($(DEB), 1) # debug build
 	BUILDDIR := $(DEBDIR)
 	CFLAGS += -g -Og
