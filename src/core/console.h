@@ -465,6 +465,17 @@ struct Console
     MEMORY(NTRBios7,    NTRBios7_Size);
     MEMORY(WiFiRAM,    WiFiRAM_Size);
     alignas(HOST_CACHEALIGN)
+    volatile timestamp PPUATimestamp;
+    thrd_t PPUAThread;
+
+    alignas(HOST_CACHEALIGN)
+    volatile timestamp PPUBTimestamp;
+    thrd_t PPUBThread;
+
+    alignas(HOST_CACHEALIGN)
+    volatile timestamp PPUTarget;
+    volatile bool KillPPUs; 
+    volatile bool PPUStart;
 
     alignas(HOST_CACHEALIGN) u32 Framebuffer[2][2][192][256];
 

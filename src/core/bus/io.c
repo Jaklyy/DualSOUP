@@ -5,6 +5,7 @@
 #include "../sram/flash.h"
 #include "../carts/gamecard.h"
 #include "../io/powman.h"
+#include "../video/video.h"
 
 
 
@@ -119,7 +120,14 @@ void IPC_FIFOCRWrite(struct Console* sys, const u32 val, const u32 mask, bool a9
     if (a9) Console_SyncWith7GT(sys, ts);
     else    Console_SyncWith9GT(sys, ts);
 
+    u16 old = recv->CR.Raw;
     MaskedWrite(recv->CR.Raw, val, mask & 0x8404);
+
+    if (((old & 0x500) == 0x000) && recv->CR.RecvFIFONotEmptyIRQ) // checkme
+        Console_ScheduleIRQs(sys, IRQ_IPCFIFONotEmpty, a9, ts);
+
+    if (((old & 0x5) == 0x1) && recv->CR.SendFIFOEmptyIRQ) // checkme
+        Console_ScheduleIRQs(sys, IRQ_IPCFIFOEmpty, a9, ts);
 
     // FIFO Flush; CHECKME: does this need power?
     if (mask & val & (1<<3))
@@ -680,6 +688,7 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
     switch (addr & 0xFF'FF'FC)
     {
         case 0x00'00'00:
+            PPU_Sync(sys, sys->AHB9.Timestamp);
             MaskedWrite(sys->PPU_A.DisplayCR.Raw, val, mask);
             break;
 
@@ -702,27 +711,33 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             break;
 
         case 0x00'00'08:
+            PPU_Sync(sys, sys->AHB9.Timestamp);
             MaskedWrite(sys->PPU_A.BGCR[0].Raw, val, mask);
             MaskedWrite(sys->PPU_A.BGCR[1].Raw, val>>16, mask>>16);
             break;
         case 0x00'00'0C:
+            PPU_Sync(sys, sys->AHB9.Timestamp);
             MaskedWrite(sys->PPU_A.BGCR[2].Raw, val, mask);
             MaskedWrite(sys->PPU_A.BGCR[3].Raw, val>>16, mask>>16);
             break;
 
         case 0x00'00'10:
+            PPU_Sync(sys, sys->AHB9.Timestamp);
             MaskedWrite(sys->PPU_A.Xoff[0], val, mask&0x1FF);
             MaskedWrite(sys->PPU_A.Yoff[0], val>>16, (mask>>16)&0x1FF);
             break;
         case 0x00'00'14:
+            PPU_Sync(sys, sys->AHB9.Timestamp);
             MaskedWrite(sys->PPU_A.Xoff[1], val, mask&0x1FF);
             MaskedWrite(sys->PPU_A.Yoff[1], val>>16, (mask>>16)&0x1FF);
             break;
         case 0x00'00'18:
+            PPU_Sync(sys, sys->AHB9.Timestamp);
             MaskedWrite(sys->PPU_A.Xoff[2], val, mask&0x1FF);
             MaskedWrite(sys->PPU_A.Yoff[2], val>>16, (mask>>16)&0x1FF);
             break;
         case 0x00'00'1C:
+            PPU_Sync(sys, sys->AHB9.Timestamp);
             MaskedWrite(sys->PPU_A.Xoff[3], val, mask&0x1FF);
             MaskedWrite(sys->PPU_A.Yoff[3], val>>16, (mask>>16)&0x1FF);
             break;
@@ -805,6 +820,7 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
         // TODO: Does disabling a VRAM Bank actually decay bits? Test that pls.
         case 0x00'02'40:
         {
+            PPU_Sync(sys, sys->AHB9.Timestamp);
             if (mask & 0x000000FF)
             {
                 sys->VRAMCR[0].Raw = val & 0x9B;
@@ -827,6 +843,7 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
         }
         case 0x00'02'44:
         {
+            PPU_Sync(sys, sys->AHB9.Timestamp);
             if (mask & 0x000000FF)
             {
                 sys->VRAMCR[4].Raw = val & 0x87;
@@ -847,6 +864,7 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
         }
         case 0x00'02'48:
         {
+            PPU_Sync(sys, sys->AHB9.Timestamp);
             if (mask & 0x000000FF)
             {
                 sys->VRAMCR[7].Raw = val & 0x83;
@@ -901,6 +919,7 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             break;
 
         case 0x00'03'04:
+            PPU_Sync(sys, sys->AHB9.Timestamp);
             MaskedWrite(sys->PowerCR9.Raw, val, mask & 0x820F);
             break;
 
@@ -914,31 +933,39 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             break;
 
         case 0x00'10'00:
+            PPU_Sync(sys, sys->AHB9.Timestamp);
             MaskedWrite(sys->PPU_B.DisplayCR.Raw, val, mask);
             break;
 
         case 0x00'10'08:
+            PPU_Sync(sys, sys->AHB9.Timestamp);
             MaskedWrite(sys->PPU_B.BGCR[0].Raw, val, mask);
             MaskedWrite(sys->PPU_B.BGCR[1].Raw, val>>16, mask>>16);
             break;
+
         case 0x00'10'0C:
+            PPU_Sync(sys, sys->AHB9.Timestamp);
             MaskedWrite(sys->PPU_B.BGCR[2].Raw, val, mask);
             MaskedWrite(sys->PPU_B.BGCR[3].Raw, val>>16, mask>>16);
             break;
 
         case 0x00'10'10:
+            PPU_Sync(sys, sys->AHB9.Timestamp);
             MaskedWrite(sys->PPU_B.Xoff[0], val, mask&0x1FF);
             MaskedWrite(sys->PPU_B.Yoff[0], val>>16, (mask>>16)&0x1FF);
             break;
         case 0x00'10'14:
+            PPU_Sync(sys, sys->AHB9.Timestamp);
             MaskedWrite(sys->PPU_B.Xoff[1], val, mask&0x1FF);
             MaskedWrite(sys->PPU_B.Yoff[1], val>>16, (mask>>16)&0x1FF);
             break;
         case 0x00'10'18:
+            PPU_Sync(sys, sys->AHB9.Timestamp);
             MaskedWrite(sys->PPU_B.Xoff[2], val, mask&0x1FF);
             MaskedWrite(sys->PPU_B.Yoff[2], val>>16, (mask>>16)&0x1FF);
             break;
         case 0x00'10'1C:
+            PPU_Sync(sys, sys->AHB9.Timestamp);
             MaskedWrite(sys->PPU_B.Xoff[3], val, mask&0x1FF);
             MaskedWrite(sys->PPU_B.Yoff[3], val>>16, (mask>>16)&0x1FF);
             break;

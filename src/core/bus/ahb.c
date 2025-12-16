@@ -4,6 +4,7 @@
 #include "../utils.h"
 #include "../io/dma.h"
 #include "../console.h"
+#include "../video/video.h"
 #include "io.h"
 
 
@@ -124,6 +125,7 @@ bool AHB_NegOwnership(struct Console* sys, timestamp* cur, const bool atomic, co
             Timing16(&sys->AHB9, mask);  \
             AddWriteContention(sys->AHBBusyTS, sys->AHB9.Timestamp, Dev_##x ); \
         } \
+        PPU_Sync(sys, sys->AHB9.Timestamp); \
         MemoryWrite(32, sys-> x , addr, x##_Size, val, mask); \
     } \
     else /* read */ \
@@ -230,6 +232,7 @@ u32 VRAM_LCD(struct Console* sys, const u32 addr, const u32 mask, const bool wri
                 if (!any) Timing16(bus, mask); \
                 AddWriteContention(sys->AHBBusyTS, bus->Timestamp, Dev_##x ); \
             } \
+            PPU_Sync(sys, sys->AHB9.Timestamp); \
             MemoryWrite(32, sys-> x , addr, x##_Size, val, mask); \
         } \
         else /* read */ \
@@ -904,6 +907,7 @@ void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
             {
                 Timing16(&sys->AHB9, mask);
                 AddWriteContention(sys->AHBBusyTS, sys->AHB9.Timestamp, Dev_Palette);
+                PPU_Sync(sys, sys->AHB9.Timestamp);
             }
             MemoryWrite(32, sys->Palette, addr, Palette_Size, val, mask);
         }
@@ -943,6 +947,7 @@ void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
             {
                 Timing32(&sys->AHB9);
                 AddWriteContention(sys->AHBBusyTS, sys->AHB9.Timestamp, Dev_OAM);
+                PPU_Sync(sys, sys->AHB9.Timestamp);
             }
             MemoryWrite(32, sys->OAM, addr, OAM_Size, val, mask);
         }

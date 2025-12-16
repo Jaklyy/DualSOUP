@@ -10,6 +10,7 @@
 #include "io/dma.h"
 #include "scheduler.h"
 #include "utils.h"
+#include "video/ppu.h"
 #include "video/video.h"
 #include "bus/io.h"
 #include "sram/flash.h"
@@ -64,6 +65,8 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
     bool mtxinit = (mtx_init(&sys->FrameBufferMutex[0], mtx_plain) == thrd_success);
     bool mtxinit3 = (mtx_init(&sys->FrameBufferMutex[1], mtx_plain) == thrd_success);
     bool mtxinit2 = (mtx_init(&sys->Sched.SchedulerMtx, mtx_recursive) == thrd_success);
+    thrd_create(&sys->PPUAThread, PPUA_MainLoop, sys);
+    thrd_create(&sys->PPUBThread, PPUB_MainLoop, sys);
 
     if ((!cr7init) || (!cr9init)|| (num9 != 1) || (num7 != 1) || !firminit || !gcinit || !mtxinit || !mtxinit2|| !mtxinit3)
     {

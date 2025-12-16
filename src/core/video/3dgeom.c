@@ -9,10 +9,10 @@
 Matrix GX_MatrixMultiply(Matrix a, Matrix b)
 {
     Matrix Out;
-    Out.Row[0] = ((a.Arr[0] * b.Row[0]) + (a.Arr[1] * b.Row[1]) + (a.Arr[2] * b.Row[2]) + (a.Arr[3] * b.Row[3]));
-    Out.Row[1] = ((a.Arr[4] * b.Row[0]) + (a.Arr[5] * b.Row[1]) + (a.Arr[6] * b.Row[2]) + (a.Arr[7] * b.Row[3]));
-    Out.Row[2] = ((a.Arr[8] * b.Row[0]) + (a.Arr[9] * b.Row[1]) + (a.Arr[10] * b.Row[2]) + (a.Arr[11] * b.Row[3]));
-    Out.Row[3] = ((a.Arr[12] * b.Row[0]) + (a.Arr[13] * b.Row[1]) + (a.Arr[14] * b.Row[2]) + (a.Arr[15] * b.Row[3]));
+    Out.Row[0] = ((b.Arr[0] * a.Row[0]) + (b.Arr[1] * a.Row[1]) + (b.Arr[2] * a.Row[2]) + (b.Arr[3] * a.Row[3]));
+    Out.Row[1] = ((b.Arr[4] * a.Row[0]) + (b.Arr[5] * a.Row[1]) + (b.Arr[6] * a.Row[2]) + (b.Arr[7] * a.Row[3]));
+    Out.Row[2] = ((b.Arr[8] * a.Row[0]) + (b.Arr[9] * a.Row[1]) + (b.Arr[10] * a.Row[2]) + (b.Arr[11] * a.Row[3]));
+    Out.Row[3] = ((b.Arr[12] * a.Row[0]) + (b.Arr[13] * a.Row[1]) + (b.Arr[14] * a.Row[2]) + (b.Arr[15] * a.Row[3]));
     Out.Vec = (Out.Vec << 20) >> 32;
 
     return Out;
@@ -20,14 +20,14 @@ Matrix GX_MatrixMultiply(Matrix a, Matrix b)
 
 void GX_MatrixScale(Matrix* a, Vector b)
 {
-    a->Vec[0] = ((a->Vec[0] * b.X ) << 20) >> 12;
-    a->Vec[1] = ((a->Vec[1] * b.Y ) << 20) >> 12;
-    a->Vec[2] = ((a->Vec[2] * b.Z ) << 20) >> 12;
+    a->Vec[0] = ((a->Vec[0] * b.X ) << 20) >> 32;
+    a->Vec[1] = ((a->Vec[1] * b.Y ) << 20) >> 32;
+    a->Vec[2] = ((a->Vec[2] * b.Z ) << 20) >> 32;
 }
 
 void GX_MatrixTranslate(Matrix* a, Vector b)
 {
-    a->Vec[3] = (((a->Vec[0] * b.X) + (a->Vec[1] * b.Y) + (a->Vec[2] * b.Z)) << 20) >> 12;
+    a->Vec[3] = (((a->Vec[0] * b.X) + (a->Vec[1] * b.Y) + (a->Vec[2] * b.Z)) << 20) >> 32;
 }
 
 void GX_UpdateClip(struct Console* sys)
@@ -52,12 +52,12 @@ VertexTmp GX_InterpolateVertex(VertexTmp* a, VertexTmp* b, const u8 dir, const b
     if (positive)
     {
         num = a->Coords.W - a->Coords.Arr[dir];
-        den = num - (a->Coords.W - a->Coords.Arr[dir]);
+        den = num - (b->Coords.W - b->Coords.Arr[dir]);
     }
     else
     {
         num = a->Coords.Arr[dir];
-        den = num - a->Coords.Arr[dir];
+        den = num - b->Coords.Arr[dir];
     }
 
     if (!den) recip = num << 24; // checkme
@@ -78,6 +78,8 @@ VertexTmp GX_InterpolateVertex(VertexTmp* a, VertexTmp* b, const u8 dir, const b
     return out;
 }
 
+#undef Interp
+
 PolygonTmp GX_ClipVertex(GX3D* gx, PolygonTmp* poly, unsigned* nvert, const int dir, const bool positive)
 {
     PolygonTmp tmp;
@@ -94,18 +96,21 @@ PolygonTmp GX_ClipVertex(GX3D* gx, PolygonTmp* poly, unsigned* nvert, const int 
                 return tmp;
             }
 
-            unsigned prev = (i-1)%*nvert;
+            unsigned prev = (i-1);
+            if (prev >= *nvert) prev = *nvert - 1;
             if ((positive) ? (poly->Vertices[prev].Coords.Arr[dir] <= poly->Vertices[prev].Coords.W)
                            : (poly->Vertices[prev].Coords.Arr[dir] >= 0))
             {
                 tmp.Vertices[cur++] = GX_InterpolateVertex(&poly->Vertices[i], &poly->Vertices[prev], dir, positive);
+                poly->Clipped = true;
             }
 
-            unsigned next = (i+1)%*nvert;
+            unsigned next = (i+1) % *nvert;
             if ((positive) ? (poly->Vertices[next].Coords.Arr[dir] <= poly->Vertices[next].Coords.W)
                            : (poly->Vertices[next].Coords.Arr[dir] >= 0))
             {
                 tmp.Vertices[cur++] = GX_InterpolateVertex(&poly->Vertices[next], &poly->Vertices[i], dir, positive);
+                poly->Clipped = true;
             }
         }
         else tmp.Vertices[cur++] = poly->Vertices[i];
@@ -160,7 +165,7 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert)
 
         frontfacing = (dot <= 0);
         // if the dot is 0 then it will render if either front or back are enabled.
-        if (!(((dot >= 0) && gx->CurPolyAttr.RenderFront) || ((dot <= 0) && gx->CurPolyAttr.RenderBack)))
+        if (!(((dot <= 0) && gx->CurPolyAttr.RenderFront) || ((dot >= 0) && gx->CurPolyAttr.RenderBack)))
         {
             return;
         }
@@ -278,7 +283,7 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert)
         }
     }
 
-    printf("ytop %i %i\n", ytop, ybot);
+    //printf("ytop %i %i\n", ytop, ybot);
 
     fin.WDecompress = wsize;
 
@@ -671,8 +676,8 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
             gx->TempMatrix.Arr[gx->TempMtxPtr] = (s64)(s32)param;
             // CHECKME: how does this ptr actually work?
             (gx->TempMtxPtr)++;
-            gx->TempMtxPtr %= 16;
-            if (gx->TempMtxPtr == 12)
+            if ((gx->TempMtxPtr % 4) == 3) gx->TempMtxPtr++;
+            if (gx->TempMtxPtr == 16)
             {
                 gx->TempMatrix.Arr[3] = IdentityMatrix.Arr[3];
                 gx->TempMatrix.Arr[7] = IdentityMatrix.Arr[7];
@@ -725,8 +730,8 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
             gx->TempMatrix.Arr[gx->TempMtxPtr] = (s64)(s32)param;
             // CHECKME: how does this ptr actually work?
             (gx->TempMtxPtr)++;
-            gx->TempMtxPtr %= 16;
-            if (gx->TempMtxPtr == 12)
+            if ((gx->TempMtxPtr % 4) == 3) gx->TempMtxPtr++;
+            if (gx->TempMtxPtr == 16)
             {
                 gx->TempMatrix.Arr[3] = IdentityMatrix.Arr[3];
                 gx->TempMatrix.Arr[7] = IdentityMatrix.Arr[7];
@@ -754,9 +759,9 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
         {
             gx->TempMatrix.Arr[gx->TempMtxPtr] = (s64)(s32)param;
             // CHECKME: how does this ptr actually work?
-            (gx->TempMtxPtr)++;
-            gx->TempMtxPtr %= 16;
-            if (gx->TempMtxPtr == 9)
+            gx->TempMtxPtr++;
+            if ((gx->TempMtxPtr % 4) == 3) gx->TempMtxPtr++;
+            if (gx->TempMtxPtr == 12)
             {
                 gx->TempMatrix.Arr[3] = IdentityMatrix.Arr[3];
                 gx->TempMatrix.Arr[7] = IdentityMatrix.Arr[7];

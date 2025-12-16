@@ -1,5 +1,6 @@
 #include <stdckdint.h>
 #include "../console.h"
+#include "video.h"
 #include "ppu.h"
 
 
@@ -205,8 +206,8 @@ void PPU_3D(struct Console* sys, const u16 y)
 
     for (int x = 0; x < 256; x++)
     {
-        if (sys->GX3D.CBuf[0][y][x] >> 24)
-            scanline[x] = sys->GX3D.CBuf[0][y][x] & 0xFFFFFF;
+        if (sys->GX3D.CBuf[0][y][x] >> 18)
+            scanline[x] = sys->GX3D.CBuf[0][y][x] & 0x3FFFF;
     }
 }
 
@@ -358,4 +359,53 @@ void PPU_RenderScanline(struct Console* sys, const bool B, const u16 y)
     }
 
     PPU_RenderBG(sys, B, y);
+}
+
+int PPUA_MainLoop(void* ptr)
+{
+    struct Console* sys = ptr;
+    while (!sys->PPUStart) thrd_yield();
+
+    int y = 0;
+    while (!sys->KillPPUs)
+    {
+        //for (int y = 0; y < 192; y++)
+        {
+            PPU_Wait(sys, sys->PPUATimestamp);
+            //printf("vca %i %i\n", sys->VCount, y);
+            if (y < 192)
+            {
+                PPU_RenderScanline(sys, false, y);
+            }
+            sys->PPUATimestamp += Scanline_Cycles;
+            y++;
+            y %= 263;
+        }
+        //sys->PPUBTimestamp += Scanline_Cycles*71;
+    }
+    return 0;
+}
+int PPUB_MainLoop(void* ptr)
+{
+    struct Console* sys = ptr;
+    while (!sys->PPUStart) thrd_yield();
+
+    int y = 0;
+    while (!sys->KillPPUs)
+    {
+        //for (int y = 0; y < 192; y++)
+        {
+            PPU_Wait(sys, sys->PPUBTimestamp);
+            //printf("vcb %i %i\n", sys->VCount, y);
+            if (y < 192)
+            {
+                PPU_RenderScanline(sys, true, y);
+            }
+            sys->PPUBTimestamp += Scanline_Cycles;
+            y++;
+            y %= 263;
+        }
+        //sys->PPUBTimestamp += Scanline_Cycles*71;
+    }
+    return 0;
 }

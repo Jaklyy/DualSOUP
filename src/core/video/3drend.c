@@ -4,40 +4,72 @@
 
 
 
-void SWRen_CalcSlope(u16 x0, u16 x1, u8 y0, u8 y1, u8 y, s16* xstart, s16* xend, bool* xmajor)
+s32 SWRen_CalcSlope(u16 x0, u16 x1, u8 y0, u8 y1, u8 y, s16* xstart, s16* xend, const bool dir)
 {
     //printf("sl%i %i %i %i\n", x0, x1, y0, y1);
     s16 xlen = x1 - x0;
     u8 ylen = y1 - y0;
 
-    s32 incr;
+    s32 slope;
     if (ylen == 0)
     {
-        incr = (1<<18) * xlen;
+        slope = (1<<18) * xlen;
     }
     else
     {
-        incr = (1<<18 / ylen) * xlen;
+        slope = ((1<<18) / ylen) * xlen;
     }
 
-    s32 xreal = x0 << 18;
+    // get start coordinate
+    s32 xreal = (x0-dir) << 18;
 
-    *xmajor = (incr > (1<<18));
+    //printf("%i %i %i\n", slope, y, y0);
 
-    if (incr > (1<<18)) xreal += ((1<<18)/2);
+    bool xmajor = (slope > (1<<18)) || (slope < -(1<<18));
 
-    xreal += ((s32)y - y0) * incr;
+    // xmajor slopes are shifted half a pixel to the right
+    if (xmajor) xreal += ((1<<18)/2);
 
-    *xstart = xreal >> 18;
-    *xend = ((xreal & 0xFFFFE00) + incr) >> 18;
+    // right facing slopes are stupid.
+    if (dir) xreal += (1<<18);
+    if (dir && !xmajor && (slope != 0)) xreal += (1<<18);
+
+    // specific ymajor slopes must be incremented one time less for w/e reason.
+    if (((dir && (slope > 0)) || (!dir && (slope < 0))) && !xmajor) xreal -= slope;
+
+    // calc y coordinate
+    xreal += (y - y0) * slope;
+
+    // calculate slope ranges
+    if (slope < 0)
+    {
+        *xend = xreal >> 18;
+        *xstart = ((xreal & 0xFFFFE00) + slope) >> 18;
+    }
+    else
+    {
+        *xstart = xreal >> 18;
+        *xend = ((xreal & 0xFFFFE00) + slope) >> 18;
+    }
+
+    //if (dir) printf("%i %i %i %i\n", *xstart, *xend, slope, xmajor);
+    return slope;
 }
 
-void SWRen_FindSlope(Polygon* poly, u8 y, s16* xstart, s16* xend, bool* xmajor, u8* vcur, u8* vnex, const bool dir)
+s32 SWRen_FindSlope(Polygon* poly, u8 y, s16* xstart, s16* xend, u8* vcur, u8* vnex, const bool dir)
 {
     // cursed note: for some reason the modulo operations must be done on separate lines or else the compiler will optimize them away
     // i dont fucking know honestly.
     *vcur = poly->VTop;
-    *vnex = poly->VTop + ((poly->Frontfacing ^ dir) ? 1 : -1);
+    if (poly->Frontfacing ^ dir)
+    {
+        *vnex = (*vcur + 1) % poly->NumVert;
+    }
+    else
+    {
+        *vnex = *vcur - 1;
+        if (*vnex >= poly->NumVert) *vnex = poly->NumVert-1;
+    }
     *vnex %= poly->NumVert;
 
     while ((y >= poly->SlopeY[*vnex]) && (*vcur != poly->VBot))
@@ -45,24 +77,31 @@ void SWRen_FindSlope(Polygon* poly, u8 y, s16* xstart, s16* xend, bool* xmajor, 
         *vcur = *vnex;
         if (poly->Frontfacing ^ dir)
         {
-            *vnex = *vcur + 1;
+            *vnex = (*vcur + 1) % poly->NumVert;
         }
         else
         {
             *vnex = *vcur - 1;
+            if (*vnex >= poly->NumVert) *vnex = poly->NumVert-1;
         }
-        *vnex %= poly->NumVert;
     }
 
     //printf("verts; %i %i %i\n", poly->Vertices[*vcur]->X, poly->Vertices[*vnex]->X, dir);
 
-    SWRen_CalcSlope(poly->Vertices[*vcur]->X, poly->Vertices[*vnex]->X, poly->Vertices[*vcur]->Y, poly->Vertices[*vnex]->Y, y, xstart, xend, xmajor);
+    return SWRen_CalcSlope(poly->Vertices[*vcur]->X, poly->Vertices[*vnex]->X, poly->Vertices[*vcur]->Y, poly->Vertices[*vnex]->Y, y, xstart, xend, dir);
 }
 
 bool SWRen_DepthTest_LessThan(const GX3D* gx, const u16 x, const u8 y, const u32 z, const u8 flag, const bool bot)
 {
     //printf("%i %i\n", z, gx->ZBuf[bot][y][x]);
     return ((z < gx->ZBuf[bot][y][x]) || ((flag & gx->ABuf[bot][y][x].Raw) && (z <= gx->ZBuf[bot][y][x])));
+}
+
+Colors SWRen_RGB555to666(Colors color)
+{
+    color.RGB <<= 1;
+    color.RGB += ((color.RGB > 1) >> 31);
+    return color;
 }
 
 void SWRen_RasterizePixel(GX3D* gx, Polygon* poly, u16 x, u8 y, u32 z, Colors color)
@@ -82,41 +121,63 @@ void SWRen_RasterizePixel(GX3D* gx, Polygon* poly, u16 x, u8 y, u32 z, Colors co
     gx->CBuf[true][y][x] = gx->CBuf[false][y][x];
 
     gx->ZBuf[bot][y][x] = z;
-    gx->CBuf[bot][y][x] = color.R | (color.G << 8) | (color.B << 16) | 0x1F << 24;
+    gx->CBuf[bot][y][x] = color.R | (color.G << 6) | (color.B << 12) | 0x1F << 18;
 }
 
 void SWRen_RasterizePoly(GX3D* gx, Polygon* poly, const u8 y)
 {
+    if ((y == poly->Bot) && (y != poly->Top)) return; // checkme: timings?
+
     s16 ls, le, rs, re;
-    bool lxmajor, rxmajor;
+    s32 lslope, rslope;
     u8 lc, ln, rc, rn;
-    SWRen_FindSlope(poly, y, &ls, &le, &lxmajor, &lc, &ln, false);
-    SWRen_FindSlope(poly, y, &rs, &re, &rxmajor, &rc, &rn, true);
+    lslope = SWRen_FindSlope(poly, y, &ls, &le, &lc, &ln, false);
+    rslope = SWRen_FindSlope(poly, y, &rs, &re, &rc, &rn, true);
+
+    //if (rslope == 0) { rs--; re--; }
+
+    re--;
+    rs--;
+    if (rs >= re) rs = re-1;
+
+    if (ls > re)
+    {
+        DS_SWAP(ls, re)
+
+        rs = re - 1;
+        le = ls + 1;
+        DS_SWAP(lc, rc)
+        DS_SWAP(ln, rn)
+    }
 
     u32 z = (poly->Vertices[lc]->Z << 1) | poly->Frontfacing;
-    Colors color = poly->Vertices[lc]->Color;
+    Colors color = SWRen_RGB555to666(poly->Vertices[lc]->Color);
 
     //printf("%i %i %i %i\n", ls, le, rs, re);
 
     //AttrBuf attr = {.TXMajor};
 
+    if (le > re) le = re;
     if (ls < 0) ls = 0;
     if (le <= ls) le = ls+1;
 
     //printf("%i %i %i %i\n", lc, ln, rc, rn);
 
-    for (s16 x = ls; (x < le) && (x < 256); x++)
+    s16 x = ls;
+    for (; (x < le) && (x < 256); x++)
+    {
+        //Colors colory = {.B = 0x3F};
+        SWRen_RasterizePixel(gx, poly, x, y, z, color);
+    }
+
+    for (; (x <= rs) && (x < 256); x++)
     {
         SWRen_RasterizePixel(gx, poly, x, y, z, color);
     }
 
-    for (s16 x = le; (x < rs) && (x < 256); x++)
+    for (; (x <= re) && (x < 256); x++)
     {
-        SWRen_RasterizePixel(gx, poly, x, y, z, color);
-    }
-
-    for (s16 x = rs; (x < re) && (x < 256); x++)
-    {
+        //Colors colory = {.R = 0x3F};
         SWRen_RasterizePixel(gx, poly, x, y, z, color);
     }
 }
@@ -136,8 +197,10 @@ void SWRen_ClearScanline(GX3D* gx, u8 y)
     {
         gx->ZBuf[false][y][x] = gx->LatRearDepth << 1;
         gx->ZBuf[true][y][x] = gx->LatRearDepth << 1;
-        gx->CBuf[false][y][x] = gx->LatRearAttr.R | (gx->LatRearAttr.B << 8) | (gx->LatRearAttr.G << 16) | (gx->LatRearAttr.Alpha << 24);
-        gx->CBuf[true][y][x] = gx->LatRearAttr.R | (gx->LatRearAttr.B << 8) | (gx->LatRearAttr.G << 16) | (gx->LatRearAttr.Alpha << 24);
+
+        Colors color = SWRen_RGB555to666((Colors){.R = gx->LatRearAttr.R, .G = gx->LatRearAttr.B, .B = gx->LatRearAttr.G});
+        gx->CBuf[false][y][x] = color.R | (color.B << 6) | (color.G << 12) | (gx->LatRearAttr.Alpha << 18);
+        gx->CBuf[true][y][x] = color.R | (color.B << 6) | (color.G << 12) | (gx->LatRearAttr.Alpha << 18);
     }
 }
 

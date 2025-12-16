@@ -96,6 +96,12 @@ union { \
     : (((accesssize) == 16) ? ((memory.b##16)[(((addr) & ((memsize)-1))/sizeof(u16))] = (((memory.b##16)[(((addr) & ((memsize)-1))/sizeof(u16))] & ~(mask)) | ((write) & (mask)))) \
                             : ((memory.b##8) [(((addr) & ((memsize)-1))/sizeof(u8) )] = (((memory.b##8) [(((addr) & ((memsize)-1))/sizeof(u8) )] & ~(mask)) | ((write) & (mask))))))
 
+#define DS_SWAP(l, r) \
+{ typeof(l) tmp = l; l = r; r = tmp; }
+
+#define DS_CLAMP(l, op, r) \
+if (l op r) \
+    l = r;
 
 enum CPU_IDs : u8
 {

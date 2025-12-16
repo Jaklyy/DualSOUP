@@ -12,19 +12,52 @@
 
 
 
+
+void PPU_SetTarget(struct Console* sys, const timestamp now)
+{
+    sys->PPUTarget = now>>1;
+}
+
+void PPU_Sync(struct Console* sys, timestamp now)
+{
+    if (!sys->PPUStart) return;
+    PPU_SetTarget(sys, now);
+    now >>= 1;
+    //printf("%li %li %li\n", sys->PPUATimestamp, sys->PPUBTimestamp, now);
+    while ((sys->PPUATimestamp < now) || (sys->PPUBTimestamp < now)) thrd_yield();
+}
+
+void PPU_Wait(struct Console* sys, const timestamp now)
+{
+    while (now >= sys->PPUTarget) thrd_yield();
+}
+
+void PPU_Init(struct Console* sys, const timestamp now)
+{
+    if (sys->PPUStart) return;
+    sys->PPUTarget = now;
+    sys->PPUATimestamp = now;
+    sys->PPUBTimestamp = now;
+    sys->PPUStart = true;
+}
+
 void LCD_HBlank(struct Console* sys, timestamp now)
 {
     // set hblank flag
     sys->DispStatRO9.HBlank = true;
     sys->DispStatRO7.HBlank = true;
+    if (sys->VCount == 0) PPU_Init(sys, now);
     if (sys->VCount < 192)
     {
         StartDMA9(sys, now+2+1, DMAStart_HBlank); // checkme: delay?
-        PPU_RenderScanline(sys, false, sys->VCount);
-        PPU_RenderScanline(sys, true, sys->VCount);
+        //PPU_RenderScanline(sys, false, sys->VCount);
+        //PPU_RenderScanline(sys, true, sys->VCount);
+        //printf("%i\n", sys->VCount);
+        PPU_SetTarget(sys, now);
     }
     if (sys->VCount == 192)
     {
+        PPU_Sync(sys, now);
         sys->BackBuf = !sys->BackBuf;
         mtx_lock(&sys->FrameBufferMutex[sys->BackBuf]);
         mtx_unlock(&sys->FrameBufferMutex[!sys->BackBuf]);

@@ -113,6 +113,7 @@ enum PolyTypes
     Poly_QuadStrip,
 };
 
+typedef u32 u32x4 __attribute__ ((vector_size(sizeof(u32)*4)));
 typedef s64 Vec __attribute__ ((vector_size(sizeof(s64)*4)));
 typedef s64 Mtx __attribute__ ((vector_size(sizeof(s64)*16)));
 
@@ -127,7 +128,7 @@ typedef union
 {
     alignas(4)
     u32 Arr[3];
-    u32 RGB __attribute__ ((vector_size(sizeof(u32)*4)));
+    u32x4 RGB;
     struct
     {
         u32 R;
