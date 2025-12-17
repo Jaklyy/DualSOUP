@@ -1,4 +1,5 @@
 build*/
+prof/
 DualSOUP
 *.bin
 .vscode

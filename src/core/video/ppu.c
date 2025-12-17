@@ -347,6 +347,7 @@ void PPU_Composite(struct Console* sys, const bool B, const u16 y)
             }
             else
             {
+                AddBusContention(sys->AHBBusyTS, *time, Dev_Palette);
                 color = palbase[index.Index];
             }
             scanline[x] = (index.GPU3D ? color : RGB565to666(color));

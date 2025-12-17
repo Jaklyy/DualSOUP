@@ -60,7 +60,7 @@ void Timing32(struct AHB* bus)
     bus->Timestamp += 1;
 }
 
-void WriteContention(timestamp* busyts, timestamp* cur, const u8 device)
+void BusContention(timestamp* busyts, timestamp* cur, const u8 device)
 {
     // check if the device we're accessing is busy
     // sequential accesses shouldn't need to be checked on
@@ -70,7 +70,7 @@ void WriteContention(timestamp* busyts, timestamp* cur, const u8 device)
     }
 }
 
-static inline void AddWriteContention(timestamp* busyts, const timestamp cur, const u8 device)
+void AddBusContention(timestamp* busyts, const timestamp cur, const u8 device)
 {
     busyts[device] = cur+1;
 }
@@ -123,7 +123,7 @@ bool AHB_NegOwnership(struct Console* sys, timestamp* cur, const bool atomic, co
         if (timings) \
         { \
             Timing16(&sys->AHB9, mask);  \
-            AddWriteContention(sys->AHBBusyTS, sys->AHB9.Timestamp, Dev_##x ); \
+            AddBusContention(sys->AHBBusyTS, sys->AHB9.Timestamp, Dev_##x ); \
         } \
         PPU_Sync(sys, sys->AHB9.Timestamp); \
         MemoryWrite(32, sys-> x , addr, x##_Size, val, mask); \
@@ -132,7 +132,7 @@ bool AHB_NegOwnership(struct Console* sys, timestamp* cur, const bool atomic, co
     { \
         if (timings) \
         { \
-            WriteContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_##x ); \
+            BusContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_##x ); \
             Timing16(&sys->AHB9, mask); \
         } \
         ret = MemoryRead(32, sys-> x , addr, x##_Size); \
@@ -230,7 +230,7 @@ u32 VRAM_LCD(struct Console* sys, const u32 addr, const u32 mask, const bool wri
             if (timings) \
             { \
                 if (!any) Timing16(bus, mask); \
-                AddWriteContention(sys->AHBBusyTS, bus->Timestamp, Dev_##x ); \
+                AddBusContention(sys->AHBBusyTS, bus->Timestamp, Dev_##x ); \
             } \
             PPU_Sync(sys, sys->AHB9.Timestamp); \
             MemoryWrite(32, sys-> x , addr, x##_Size, val, mask); \
@@ -239,7 +239,7 @@ u32 VRAM_LCD(struct Console* sys, const u32 addr, const u32 mask, const bool wri
         { \
             if (timings) \
             { \
-                WriteContention(sys->AHBBusyTS, &bus->Timestamp, Dev_##x ); \
+                BusContention(sys->AHBBusyTS, &bus->Timestamp, Dev_##x ); \
             } \
             ret = MemoryRead(32, sys-> x , addr, x##_Size); \
         } \
@@ -719,7 +719,7 @@ u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
         // NOTE: it seems to still have write contention even if unmapped?
         if (timings)
         {
-            WriteContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_WRAM9);
+            BusContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_WRAM9);
             Timing32(&sys->AHB9);
         }
         switch(sys->WRAMCR)
@@ -739,7 +739,7 @@ u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
     case 0x04: // Memory Mapped IO
         if (timings)
         {
-            WriteContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_IO9); // checkme: does all of IO have write contention at the same time?
+            BusContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_IO9); // checkme: does all of IO have write contention at the same time?
             Timing32(&sys->AHB9); // checkme: does all of IO have the exact same timings?
         }
         ret = IO9_Read(sys, addr, mask);
@@ -760,8 +760,18 @@ u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
         {
             if (timings)
             {
-                WriteContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_Palette);
-                Timing16(&sys->AHB9, mask);
+                PPU_Sync(sys, sys->AHB9.Timestamp);
+                BusContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_Palette);
+                Timing32(&sys->AHB9); // this is correct, trust.
+            }
+            if (mask == u32_max)
+            {
+                if (timings)
+                {
+                    PPU_Sync(sys, sys->AHB9.Timestamp);
+                    BusContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_Palette);
+                    Timing32(&sys->AHB9); // this is correct, trust.
+                }
             }
             ret = MemoryRead(32, sys->Palette, addr, Palette_Size);
         }
@@ -787,7 +797,7 @@ u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
         {
             if (timings)
             {
-                WriteContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_Palette);
+                BusContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_Palette);
                 Timing32(&sys->AHB9);
             }
             ret = MemoryRead(32, sys->OAM, addr, OAM_Size);
@@ -865,7 +875,7 @@ void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
         if (timings)
         {
             Timing32(&sys->AHB9);
-            AddWriteContention(sys->AHBBusyTS, sys->AHB9.Timestamp, Dev_WRAM9);
+            AddBusContention(sys->AHBBusyTS, sys->AHB9.Timestamp, Dev_WRAM9);
         }
         switch(sys->WRAMCR)
         {
@@ -885,7 +895,7 @@ void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
         if (timings)
         {
             Timing32(&sys->AHB9); // checkme: does all of IO have the exact same timings?
-            AddWriteContention(sys->AHBBusyTS, sys->AHB9.Timestamp, Dev_IO9);
+            AddBusContention(sys->AHBBusyTS, sys->AHB9.Timestamp, Dev_IO9);
         }
         IO9_Write(sys, addr, val, mask);
         break;
@@ -903,13 +913,22 @@ void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
         }
         else
         {
-            if (timings)
+            if (mask & 0x0000FFFF)
             {
-                Timing16(&sys->AHB9, mask);
-                AddWriteContention(sys->AHBBusyTS, sys->AHB9.Timestamp, Dev_Palette);
+                Timing32(&sys->AHB9);
                 PPU_Sync(sys, sys->AHB9.Timestamp);
+                BusContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_Palette);
+                AddBusContention(sys->AHBBusyTS, sys->AHB9.Timestamp, Dev_Palette);
+                MemoryWrite(32, sys->Palette, addr, Palette_Size, val, mask&0x0000FFFF);
             }
-            MemoryWrite(32, sys->Palette, addr, Palette_Size, val, mask);
+            if (mask & 0xFFFF0000)
+            {
+                Timing32(&sys->AHB9);
+                PPU_Sync(sys, sys->AHB9.Timestamp);
+                BusContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_Palette);
+                AddBusContention(sys->AHBBusyTS, sys->AHB9.Timestamp, Dev_Palette);
+                MemoryWrite(32, sys->Palette, addr, Palette_Size, val, mask&0xFFFF0000);
+            }
         }
         break;
 
@@ -946,7 +965,7 @@ void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
             if (timings)
             {
                 Timing32(&sys->AHB9);
-                AddWriteContention(sys->AHBBusyTS, sys->AHB9.Timestamp, Dev_OAM);
+                AddBusContention(sys->AHBBusyTS, sys->AHB9.Timestamp, Dev_OAM);
                 PPU_Sync(sys, sys->AHB9.Timestamp);
             }
             MemoryWrite(32, sys->OAM, addr, OAM_Size, val, mask);
@@ -1010,7 +1029,7 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
             if (timings)
             {
                 // CHECKME: does bios7 write contention work weirdly with bios prot?
-                WriteContention(sys->AHBBusyTS, &sys->AHB7.Timestamp, Dev_Bios7);
+                BusContention(sys->AHBBusyTS, &sys->AHB7.Timestamp, Dev_Bios7);
                 Timing32(&sys->AHB7);
             }
             // a7 bios reads have protection
@@ -1044,7 +1063,7 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
     case 0x030: // Shared WRAM
         if (timings)
         {
-            WriteContention(sys->AHBBusyTS, &sys->AHB7.Timestamp, Dev_WRAM7);
+            BusContention(sys->AHBBusyTS, &sys->AHB7.Timestamp, Dev_WRAM7);
             Timing32(&sys->AHB7);
             Console_SyncWith9GT(sys, sys->AHB7.Timestamp);
         }
@@ -1065,7 +1084,7 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
     case 0x038: // ARM7 WRAM
         if (timings)
         {
-            WriteContention(sys->AHBBusyTS, &sys->AHB7.Timestamp, Dev_WRAM7);
+            BusContention(sys->AHBBusyTS, &sys->AHB7.Timestamp, Dev_WRAM7);
             Timing32(&sys->AHB7);
         }
         ret = MemoryRead(32, sys->ARM7WRAM, addr, ARM7WRAM_Size);
@@ -1074,7 +1093,7 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
     case 0x040: // Memory Mapped IO
         if (timings)
         {
-            WriteContention(sys->AHBBusyTS, &sys->AHB7.Timestamp, Dev_IO7); // checkme: does all of IO have write contention at the same time?
+            BusContention(sys->AHBBusyTS, &sys->AHB7.Timestamp, Dev_IO7); // checkme: does all of IO have write contention at the same time?
             Timing32(&sys->AHB7); // checkme: does all of IO have the exact same timings?
         }
         ret = IO7_Read(sys, addr, mask);
@@ -1131,7 +1150,7 @@ void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
         {
             // CHECKME: does bios7 write contention work weirdly with bios prot?
             Timing32(&sys->AHB7);
-            AddWriteContention(sys->AHBBusyTS, sys->AHB7.Timestamp, Dev_Bios7);
+            AddBusContention(sys->AHBBusyTS, sys->AHB7.Timestamp, Dev_Bios7);
         }
         break;
 
@@ -1144,7 +1163,7 @@ void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
         if (timings)
         {
             Timing32(&sys->AHB7);
-            AddWriteContention(sys->AHBBusyTS, sys->AHB7.Timestamp, Dev_WRAM7);
+            AddBusContention(sys->AHBBusyTS, sys->AHB7.Timestamp, Dev_WRAM7);
             Console_SyncWith9GT(sys, sys->AHB7.Timestamp);
         }
         switch(sys->WRAMCR)
@@ -1165,7 +1184,7 @@ void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
         if (timings)
         {
             Timing32(&sys->AHB7);
-            AddWriteContention(sys->AHBBusyTS, sys->AHB7.Timestamp, Dev_WRAM7);
+            AddBusContention(sys->AHBBusyTS, sys->AHB7.Timestamp, Dev_WRAM7);
         }
         //if (addr == 0x38096E8) { printf("HIIIIIIIII %08X %08X\n", val, mask); ARM7_Log(&sys->ARM7); }
         MemoryWrite(32, sys->ARM7WRAM, addr, ARM7WRAM_Size, val, mask);
@@ -1175,7 +1194,7 @@ void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
         if (timings)
         {
             Timing32(&sys->AHB7); // checkme: does all of IO have the exact same timings?
-            AddWriteContention(sys->AHBBusyTS, sys->AHB7.Timestamp, Dev_IO7);
+            AddBusContention(sys->AHBBusyTS, sys->AHB7.Timestamp, Dev_IO7);
         }
         IO7_Write(sys, addr, val, mask, a7pc);
         break;

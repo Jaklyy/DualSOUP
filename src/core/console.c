@@ -537,10 +537,8 @@ void Console_MainLoop(struct Console* sys)
         }
 
 #ifdef UseThreads
-        while (Console_GetARM9Max(sys) < sys->ARM7Target) ;//printf("9 %li %li 7 %li %li\n", sys->ARM9.ARM.Timestamp, sys->ARM9Target, sys->ARM7.ARM.Timestamp, sys->ARM7Target);
-        while (Console_GetARM7Max(sys) < sys->ARM7Target) ;//printf("7 %li %li 9 %li %li\n", sys->ARM7.ARM.Timestamp, sys->ARM7Target, sys->ARM9.ARM.Timestamp, sys->ARM9Target);
+        while ((Console_GetARM9Max(sys) < sys->ARM7Target) || (Console_GetARM7Max(sys) < sys->ARM7Target)); //printf("9 %li %li 7 %li %li\n", sys->ARM9.ARM.Timestamp, sys->ARM9Target, sys->ARM7.ARM.Timestamp, sys->ARM7Target);
 #else
-
         while((Console_GetARM7Max(sys) < sys->ARM7Target) || (Console_GetARM9Max(sys) < sys->ARM7Target))
         {
             //printf("9i %lu %lu s:%i\n", Console_GetARM9Max(sys), sys->ARM7Target, sys->ARM9.ARM.DeadAsleep);

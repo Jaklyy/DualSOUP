@@ -100,7 +100,7 @@ bool SWRen_DepthTest_LessThan(const GX3D* gx, const u16 x, const u8 y, const u32
 Colors SWRen_RGB555to666(Colors color)
 {
     color.RGB <<= 1;
-    color.RGB += ((color.RGB > 1) >> 31);
+    color.RGB += ((color.RGB > 0) >> 31);
     return color;
 }
 

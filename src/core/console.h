@@ -39,7 +39,7 @@ constexpr unsigned SoundMixerOutput = 32768; //
 
 // yoinked from melonDS; should be validated personally.
 // they're written this way in melonDS; I'm not sure why? Probably makes sense with 2d gpu knowledge.
-constexpr unsigned ActiveRender_Cycles = 48+(256*6); // How long the PPUs are actively rendering graphics in a given scanline. (note: 24 cycles are not actually spent rendering)
+constexpr unsigned ActiveRender_Cycles = 48+(256*6); // How long the PPUs are actively rendering graphics in a given scanline.
 constexpr unsigned HBlank_Cycles       = 91*6; // length of the HBlank period.
 constexpr unsigned Scanline_Cycles     = HBlank_Cycles + ActiveRender_Cycles; // total length of a scanline in 16 MHz cycles.
 constexpr unsigned Frame_Cycles        = Scanline_Cycles * 263; // total frame length.

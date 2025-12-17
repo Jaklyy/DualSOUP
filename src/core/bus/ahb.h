@@ -148,3 +148,4 @@ void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
 void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, const u32 mask, const bool atomic, bool* seq, const bool timings, const u32 a7pc);
 bool AHB_NegOwnership(struct Console* sys, timestamp* cur, const bool atomic, const bool a9);
 void Bus_MainRAM_ReleaseHold(struct Console* sys, struct AHB* buscur);
+void AddBusContention(timestamp* busyts, const timestamp cur, const u8 device);
