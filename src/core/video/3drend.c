@@ -99,8 +99,8 @@ bool SWRen_DepthTest_LessThan(const GX3D* gx, const u16 x, const u8 y, const u32
 
 Colors SWRen_RGB555to666(Colors color)
 {
-    color.RGB <<= 1;
-    color.RGB += ((color.RGB > 0) >> 31);
+    // the cast makes it faster i swear.
+    color.RGB = (color.RGB << 1) - ((s32x4)color.RGB > 0);
     return color;
 }
 

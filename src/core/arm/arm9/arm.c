@@ -164,8 +164,10 @@ void ARM9_CheckInterlocks(struct ARM946ES* ARM9, s8* stall, const int reg, const
     s8 diff = ARM9->RegIL[reg][portc] - cycledelay;
     if (*stall < diff) *stall = diff;
     // TODO: this *can* be done branchless according to a friend; but it needs profiling.
-    //s8 x = *stall - diff;
-    //*stall = (x & ~(x>>7)) + diff;
+#if 0
+    s8 x = *stall - diff;
+    *stall = (x & ~(x>>7)) + diff;
+#endif
 }
 
 void ARM9_FetchCycles(struct ARM946ES* ARM9, const int fetch)

@@ -24,6 +24,8 @@ u32 RGB555to666(u16 color)
 extern u32 VRAM_LCD(struct Console* sys, const u32 addr, const u32 mask, const bool write, const u32 val, const bool timings);
 extern u32 VRAM_BGB(struct Console* sys, const u32 addr, const u32 mask, const bool write, const u32 val, const bool timings);
 extern u32 VRAM_BGA(struct Console* sys, const u32 addr, const u32 mask, const bool write, const u32 val, const bool timings);
+extern u32 VRAM_OBJB(struct Console* sys, const u32 addr, const u32 mask, const bool write, const u32 val, const bool timings);
+extern u32 VRAM_OBJA(struct Console* sys, const u32 addr, const u32 mask, const bool write, const u32 val, const bool timings);
 
 u16 VRAM_BGAExtPal(struct Console* sys, const u16 idx)
 {
@@ -60,16 +62,16 @@ u16 VRAM_BGBExtPal(struct Console* sys, const u16 idx)
 
 
 
-void PPU_RenderText(struct Console* sys, const bool B, u16 y, const u8 bg)
+void PPU_RenderText(struct Console* sys, const bool b, u16 y, const u8 bg)
 {
-    PPU* ppu = (B ? &sys->PPU_B : &sys->PPU_A);
-    u32 (*BG)(struct Console*, const u32, const u32, const bool, const u32, const bool) = (B ? VRAM_BGB : VRAM_BGA);
-    CompositeBuffer* buffer = (B ? sys->CompositeBufferB[bg] : sys->CompositeBufferA[bg]);
+    PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
+    u32 (*BG)(struct Console*, const u32, const u32, const bool, const u32, const bool) = (b ? VRAM_BGB : VRAM_BGA);
+    CompositeBuffer* buffer = (b ? sys->CompositeBufferB[bg] : sys->CompositeBufferA[bg]);
 
     u32 tilebase = ppu->BGCR[bg].CharBase * KiB(16);
     u32 screenbase = ppu->BGCR[bg].ScreenBase * KiB(2);
 
-    if (!B)
+    if (!b)
     {
         tilebase += ppu->DisplayCR.CharBase * KiB(64);
         screenbase += ppu->DisplayCR.ScreenBase * KiB(64);
@@ -115,7 +117,7 @@ void PPU_RenderText(struct Console* sys, const bool B, u16 y, const u8 bg)
             u32 pixeladdr = tilebase + (((tile.TileNum * (TileWidth*TileHeight)) + (yfrac*TileWidth)) + xfrac);
             u8 idx = BG(sys, pixeladdr&~3, u32_max, false, 0, false) >> ((pixeladdr&3)*8);
 
-            buffer[xf] = (CompositeBuffer){idx, !idx, false, ppu->DisplayCR.BGExtPalEn, false};
+            buffer[xf] = (CompositeBuffer){idx, 0, !idx, false, ppu->DisplayCR.BGExtPalEn, false};
         }
         else // pal 16 4bpp
         {
@@ -124,18 +126,18 @@ void PPU_RenderText(struct Console* sys, const bool B, u16 y, const u8 bg)
             idx = ((idx >> ((xfrac&1)*4)) & 0xF);
 
             // ext pal doesn't apply for 4bpp tilesets for w/e reason
-            buffer[xf] = (CompositeBuffer){idx+(tile.Palette*16), !idx, false, false, false};
+            buffer[xf] = (CompositeBuffer){idx+(tile.Palette*16), 0, !idx, false, false, false};
         }
 
         xmsb ^= ckd_add(&x, x, 1) & ppu->BGCR[bg].Wide;
     }
 }
 
-void PPU_RenderBitmap(struct Console* sys, const bool B, u16 y, const u8 bg, const bool dircolor)
+void PPU_RenderBitmap(struct Console* sys, const bool b, u16 y, const u8 bg, const bool dircolor)
 {
-    PPU* ppu = (B ? &sys->PPU_B : &sys->PPU_A);
-    u32 (*BG)(struct Console*, const u32, const u32, const bool, const u32, const bool) = (B ? VRAM_BGB : VRAM_BGA);
-    CompositeBuffer* buffer = (B ? sys->CompositeBufferB[bg] : sys->CompositeBufferA[bg]);
+    PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
+    u32 (*BG)(struct Console*, const u32, const u32, const bool, const u32, const bool) = (b ? VRAM_BGB : VRAM_BGA);
+    CompositeBuffer* buffer = (b ? sys->CompositeBufferB[bg] : sys->CompositeBufferA[bg]);
 
     u32 screenbase = ppu->BGCR[bg].ScreenBase * KiB(16);
     u32 width;
@@ -153,40 +155,40 @@ void PPU_RenderBitmap(struct Console* sys, const bool B, u16 y, const u8 bg, con
         {
             u32 addr = screenbase + (x*2) + (y*(width*2));
             u16 color = BG(sys, addr&~3, u32_max, false, 0, false) >> ((addr & 2) * 8);
-            buffer[x] = (CompositeBuffer){color, !(color & 0x8000), true, false, false};
+            buffer[x] = (CompositeBuffer){color&0x7FFF, 0, !(color & 0x8000), true, false, false};
         }
         else
         {
             u32 addr = screenbase + x + (y*width);
             u8 idx = BG(sys, addr&~3, u32_max, false, 0, false) >> ((addr & 3) * 8);
-            buffer[x] = (CompositeBuffer){idx, !idx, false, false, false};
+            buffer[x] = (CompositeBuffer){idx, 0, !idx, false, false, false};
         }
     }
 }
 
-void PPU_Affine(struct Console* sys, const bool B, const u16 y, const u8 bg)
+void PPU_Affine(struct Console* sys, const bool b, const u16 y, const u8 bg)
 {
-    PPU* ppu = (B ? &sys->PPU_B : &sys->PPU_A);
+    PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
     LogPrint(LOG_PPU|LOG_UNIMP, "UNIMPLEMENTED: AFFINE BG %i %08X\n", bg, ppu->BGCR[bg].Raw);
 }
 
-void PPU_Extended(struct Console* sys, const bool B, const u16 y, const u8 bg)
+void PPU_Extended(struct Console* sys, const bool b, const u16 y, const u8 bg)
 {
-    PPU* ppu = (B ? &sys->PPU_B : &sys->PPU_A);
+    PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
 
     if (ppu->BGCR[bg].Pal256)
     {
-        PPU_RenderBitmap(sys, B, y, bg, ppu->BGCR[bg].CharBase & 1);
+        PPU_RenderBitmap(sys, b, y, bg, ppu->BGCR[bg].CharBase & 1);
     }
-    else PPU_RenderText(sys, B, y, bg); //LogPrint(LOG_PPU|LOG_UNIMP, "UNIMPLEMENTED: AFFINE/TEXT BG %i %08X\n", bg, ppu->BGCR[bg].Raw);
+    else PPU_RenderText(sys, b, y, bg); //LogPrint(LOG_PPU|LOG_UNIMP, "UNIMPLEMENTED: AFFINE/TEXT BG %i %08X\n", bg, ppu->BGCR[bg].Raw);
 }
 
-void PPU_Large(struct Console* sys, const bool B, const u16 y, const u8 bg)
+void PPU_Large(struct Console* sys, const bool b, const u16 y, const u8 bg)
 {
-    PPU* ppu = (B ? &sys->PPU_B : &sys->PPU_A);
-    CompositeBuffer* buffer = (B ? sys->CompositeBufferB[bg] : sys->CompositeBufferA[bg]);
+    PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
+    CompositeBuffer* buffer = (b ? sys->CompositeBufferB[bg] : sys->CompositeBufferA[bg]);
     for (int x = 0; x < 256; x++)
-        buffer[x] = (CompositeBuffer){0, true, false, false, false};
+        buffer[x] = (CompositeBuffer){0, 0, true, false, false, false};
     LogPrint(LOG_PPU|LOG_UNIMP, "UNIMPLEMENTED: LARGE BG %i %08X\n", bg, ppu->BGCR[bg].Raw);
 }
 
@@ -196,35 +198,35 @@ void PPU_3D(struct Console* sys, const u16 y)
     CompositeBuffer* buffer = sys->CompositeBufferA[0];
 
     for (int x = 0; x < 256; x++)
-        buffer[x] = (CompositeBuffer){sys->GX3D.CBuf[0][y][x] & 0x3FFFF, !(sys->GX3D.CBuf[0][y][x] >> 18) /* TODO */, true, false, true};
+        buffer[x] = (CompositeBuffer){sys->GX3D.CBuf[0][y][x] & 0x3FFFF, 0, !(sys->GX3D.CBuf[0][y][x] >> 18) /* TODO */, true, false, true};
 }
 
-void PPU_None(struct Console* sys, const bool B, const u8 bg)
+void PPU_None(struct Console* sys, const bool b, const u8 bg)
 {
-    CompositeBuffer* buffer = (B ? sys->CompositeBufferB[bg] : sys->CompositeBufferA[bg]);
+    CompositeBuffer* buffer = (b ? sys->CompositeBufferB[bg] : sys->CompositeBufferA[bg]);
     for (int x = 0; x < 256; x++)
-        buffer[x] = (CompositeBuffer){0, true, false, false, false};
+        buffer[x] = (CompositeBuffer){0, 0, true, false, false, false};
 }
 
-void PPU_BG0_Lookup(struct Console* sys, const bool B, const u16 y)
+void PPU_BG0_Lookup(struct Console* sys, const bool b, const u16 y)
 {
-    PPU* ppu = (B ? &sys->PPU_B : &sys->PPU_A);
-    if (!ppu->DisplayCR.BG0Enable) return PPU_None(sys, B, 0);
+    PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
+    if (!ppu->DisplayCR.BG0Enable) return PPU_None(sys, b, 0);
     switch(ppu->DisplayCR.BGSetup)
     {
         case 0 ... 5:
-            if (ppu->DisplayCR.BG03D && !B)
+            if (ppu->DisplayCR.BG03D && !b)
             {
                 PPU_3D(sys, y);
                 break;
             }
             [[fallthrough]];
         case 7:
-            PPU_RenderText(sys, B, y, 0);
+            PPU_RenderText(sys, b, y, 0);
             break;
 
         case 6:
-            if (!B)
+            if (!b)
             {
                 PPU_3D(sys, y); // wtf happens to engine b?
             }
@@ -232,90 +234,90 @@ void PPU_BG0_Lookup(struct Console* sys, const bool B, const u16 y)
     }
 }
 
-void PPU_BG1_Lookup(struct Console* sys, const bool B, const u16 y)
+void PPU_BG1_Lookup(struct Console* sys, const bool b, const u16 y)
 {
-    PPU* ppu = (B ? &sys->PPU_B : &sys->PPU_A);
-    if (!ppu->DisplayCR.BG1Enable) return PPU_None(sys, B, 1);
+    PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
+    if (!ppu->DisplayCR.BG1Enable) return PPU_None(sys, b, 1);
     switch(ppu->DisplayCR.BGSetup)
     {
         case 0 ... 5:
         case 7:
-            return PPU_RenderText(sys, B, y, 1);
+            return PPU_RenderText(sys, b, y, 1);
 
         case 6:
-            return PPU_None(sys, B, 1);
+            return PPU_None(sys, b, 1);
 
     }
 }
 
 
-void PPU_BG2_Lookup(struct Console* sys, const bool B, const u16 y)
+void PPU_BG2_Lookup(struct Console* sys, const bool b, const u16 y)
 {
-    PPU* ppu = (B ? &sys->PPU_B : &sys->PPU_A);
-    if (!ppu->DisplayCR.BG2Enable) return PPU_None(sys, B, 2);
+    PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
+    if (!ppu->DisplayCR.BG2Enable) return PPU_None(sys, b, 2);
     switch(ppu->DisplayCR.BGSetup)
     {
         case 0 ... 1:
         case 3:
-            return PPU_RenderText(sys, B, y, 2);
+            return PPU_RenderText(sys, b, y, 2);
 
         case 2:
         case 4:
-            return PPU_Affine(sys, B, y, 2);
+            return PPU_Affine(sys, b, y, 2);
 
         case 5:
-            return PPU_Extended(sys, B, y, 2);
+            return PPU_Extended(sys, b, y, 2);
 
         case 6:
-            return PPU_Large(sys, B, y, 2);
+            return PPU_Large(sys, b, y, 2);
 
         case 7:
-            return PPU_None(sys, B, 2);
+            return PPU_None(sys, b, 2);
 
     }
 }
 
 
-void PPU_BG3_Lookup(struct Console* sys, const bool B, const u16 y)
+void PPU_BG3_Lookup(struct Console* sys, const bool b, const u16 y)
 {
-    PPU* ppu = (B ? &sys->PPU_B : &sys->PPU_A);
-    if (!ppu->DisplayCR.BG3Enable) return PPU_None(sys, B, 3);
+    PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
+    if (!ppu->DisplayCR.BG3Enable) return PPU_None(sys, b, 3);
     switch(ppu->DisplayCR.BGSetup)
     {
         case 0:
-            return PPU_RenderText(sys, B, y, 3);
+            return PPU_RenderText(sys, b, y, 3);
 
         case 1 ... 2:
-            return PPU_Affine(sys, B, y, 3);
+            return PPU_Affine(sys, b, y, 3);
 
         case 3 ... 5:
-            return PPU_Extended(sys, B, y, 3);
+            return PPU_Extended(sys, b, y, 3);
 
         case 6 ... 7:
-            return PPU_None(sys, B, 3);
+            return PPU_None(sys, b, 3);
     }
 }
 
 
-void PPU_RenderBG(struct Console* sys, const bool B, const u16 y)
+void PPU_BuildBGs(struct Console* sys, const bool b, const u16 y)
 {
 
     // todo: windows
 
     // sprite mosaic???
-    PPU_BG0_Lookup(sys, B, y);
-    PPU_BG1_Lookup(sys, B, y);
-    PPU_BG2_Lookup(sys, B, y);
-    PPU_BG3_Lookup(sys, B, y);
+    PPU_BG0_Lookup(sys, b, y);
+    PPU_BG1_Lookup(sys, b, y);
+    PPU_BG2_Lookup(sys, b, y);
+    PPU_BG3_Lookup(sys, b, y);
 }
 
-void PPU_Composite(struct Console* sys, const bool B, const u16 y)
+void PPU_Composite(struct Console* sys, const bool b, const u16 y)
 {
-    PPU* ppu = (B ? &sys->PPU_B : &sys->PPU_A);
-    volatile u16* palbase = (B ? &sys->Palette.b16[0x200] : &sys->Palette.b16[0]);
-    u16 (*BGExtPal)(struct Console*, const u16) = (B ? VRAM_BGBExtPal : VRAM_BGAExtPal);
-    u32* scanline = sys->Framebuffer[sys->BackBuf][sys->PowerCR9.AOnBottom ? B : !B][y];
-    volatile timestamp* time = (B ? (&sys->PPUBTimestamp) : (&sys->PPUATimestamp));
+    PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
+    volatile u16* palbase = (b ? &sys->Palette.b16[0x400/sizeof(u16)] : &sys->Palette.b16[0]);
+    u16 (*BGExtPal)(struct Console*, const u16) = (b ? VRAM_BGBExtPal : VRAM_BGAExtPal);
+    u32* scanline = sys->Framebuffer[sys->BackBuf][sys->PowerCR9.AOnBottom ? b : !b][y];
+    volatile timestamp* time = (b ? (&sys->PPUBTimestamp) : (&sys->PPUATimestamp));
 
     u8 bgorder[4];
     int i = 0;
@@ -334,8 +336,19 @@ void PPU_Composite(struct Console* sys, const bool B, const u16 y)
     {
         for (int bg = 0;; bg++)
         {
-            CompositeBuffer index = ((bg >= 4) ? (CompositeBuffer){0, false, false, false /* checkme? */, false} : (B ? sys->CompositeBufferB[bgorder[bg]][x] : sys->CompositeBufferA[bgorder[bg]][x]));
-            if (index.Empty) continue;
+            CompositeBuffer index;
+            if (bg < 4)
+            {
+                // try to composite sprites
+                index = (b ? sys->CompositeBufferB[4][x] : sys->CompositeBufferA[4][x]);
+                if (index.Empty || (index.SprBG != ppu->BGCR[bgorder[bg]].BGPriority))
+                {
+                    // otherwise try to composite the bg
+                    index = (b ? sys->CompositeBufferB[bgorder[bg]][x] : sys->CompositeBufferA[bgorder[bg]][x]);
+                    if (index.Empty) continue;
+                }
+            } // if all else fails there's always the background color.
+            else index = (CompositeBuffer){0, 0, false, false, false /* checkme? */, false};
 
             u16 color;
             if (index.NotPal) color = index.Index;
@@ -360,49 +373,179 @@ void PPU_Composite(struct Console* sys, const bool B, const u16 y)
     *time += 2+HBlank_Cycles;
 }
 
-void PPU_RenderScanline(struct Console* sys, const bool B, const u16 y)
+void PPU_SpriteNormal(struct Console* sys, const bool b, const SprAttrs01 attr1, const SprAttrs2 attr2, const u8 width, const u8 height, u8 y)
 {
-    PPU* ppu = (B ? &sys->PPU_B : &sys->PPU_A);
-    u32* scanline = sys->Framebuffer[sys->BackBuf][sys->PowerCR9.AOnBottom ? B : !B][y];
-    volatile timestamp* time = (B ? (&sys->PPUBTimestamp) : (&sys->PPUATimestamp));
+    PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
+    CompositeBuffer* buffer = (b ? sys->CompositeBufferB[4] : sys->CompositeBufferA[4]);
+    u32 (*OBJ)(struct Console*, const u32, const u32, const bool, const u32, const bool) = (b ? VRAM_OBJB : VRAM_OBJA);
 
-    switch(ppu->DisplayCR.DisplayMode)
+    if (attr1.VFlip) y = (height - 1 - y);
+
+    s16 x = attr1.X;
+    s16 xend = x + width;
+    s16 xmod = (x < 0) ? 0-x : 0;
+    if (x < 0) x = 0;
+
+    if (attr1.Mode == 3)
     {
-        case 0:
+        LogPrint(LOG_PPU|LOG_UNIMP, "UNIMPLEMENTED: BITMAP SPRITES\n");
+    }
+    else if (attr1.Mode == 2)
+    {
+        LogPrint(LOG_PPU|LOG_UNIMP, "UNIMPLEMENTED: WINDOW SPRITES\n");
+    }
+    else
+    {
+        u32 baseaddr = attr2.TileNum;
+        if (ppu->DisplayCR.TileOBJ1D)
+        {
+            baseaddr <<= ppu->DisplayCR.TileOBJ1DBound;
+            baseaddr += ((y/8) * (width/8)) << attr1.Pal256;
+        }
+        else
+        {
+            baseaddr += (y/8)*32;
+        }
+
+        if (attr1.Pal256)
+        {
+            baseaddr = (baseaddr * 32) + ((y%8) * 8);
+
+            for (;x < xend && x < 256; x++, xmod++)
+            {
+                u32 addr = baseaddr + (attr1.HFlip ? (((width-1-xmod)/8*8*8) + ((width-1-xmod)%8)) : ((xmod/8*8*8) + (xmod%8)));
+                u8 index = OBJ(sys, addr&~3, 0xFFFFFFFF, false, 0, false) >> ((addr&3)*8);
+                if (index && (buffer[x].Empty || (buffer[x].SprBG < attr2.BGPriority))) buffer[x] = (CompositeBuffer){index+0x100, attr2.BGPriority, false, false, ppu->DisplayCR.SprExtPalEn, false};
+            }
+        }
+        else
+        {
+            baseaddr = (baseaddr * 32) + ((y%8) * 4);
+
+            for (;x < xend && x < 256; x++, xmod++)
+            { 
+                u32 addr = baseaddr + (attr1.HFlip ? (((width-1-xmod)/8*8*4) + ((width-1-xmod)%8/2)) : ((xmod/8*8*4) + (xmod%8/2)));
+                u8 index = OBJ(sys, addr&~3, 0xFFFFFFFF, false, 0, false) >> ((addr&3)*8);
+                index = ((index >> (((xmod&1)^attr1.HFlip)*4)) & 0xF);
+                if (index && (buffer[x].Empty || (buffer[x].SprBG < attr2.BGPriority))) buffer[x] = (CompositeBuffer){index+(attr2.PaletteOffset<<4)+0x100, attr2.BGPriority, false, false, false, false};
+            }
+        }
+    }
+}
+
+void PPU_BuildSprites(struct Console* sys, const bool b, const u8 y)
+{
+    PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
+    volatile u32* oambase = (b ? &sys->OAM.b32[0x400/sizeof(u32)] : &sys->OAM.b32[0]);
+
+    PPU_None(sys, b, 4); // clear sprite buffer
+    if (!ppu->DisplayCR.SprEnable) return;
+
+    for (int spr = 0; spr < 128; spr++)
+    {
+        SprAttrs01 attr = {.Raw = oambase[spr*2]};
+
+        if (attr.RotScal)
+        {
+            LogPrint(LOG_PPU|LOG_UNIMP, "UNIMPLEMENTED: AFFINE SPRITES\n");
+        }
+        else
+        {
+            if (attr.Disable) continue;
+
+            // step 1: calc sprite y bounds
+            u8 width = 8 << attr.Size;
+            u8 height = 8 << attr.Size;
+
+            if (attr.Shape == 1)
+            {
+                height >>= 1;
+                if (height <= 8)
+                {
+                    height = 8;
+                    width <<= 1;
+                }
+            }
+            else if (attr.Shape == 2)
+            {
+                width >>= 1;
+                if (width <= 8)
+                {
+                    width = 8;
+                    height <<= 1;
+                }
+            }
+            else if (attr.Shape == 3) // checkme?
+            {
+                width = 8;
+                height = 8;
+            }
+
+            u8 sy = y - attr.Y & 0xFF;
+            if (sy >= height) continue;
+
+            // checkme: does it skip sprites based on x coordinate?
+
+            // fetch attribute 2 now that we know this sprite will render
+            SprAttrs2 attr2 = {.Raw = (oambase[(spr*2)+1] & 0xFFFF)};
+
+            PPU_SpriteNormal(sys, b, attr, attr2, width, height, sy);
+        }
+    }
+}
+
+void PPU_RenderScanline(struct Console* sys, const bool b, const s16 y)
+{
+    PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
+    u32* scanline = sys->Framebuffer[sys->BackBuf][sys->PowerCR9.AOnBottom ? b : !b][y];
+    volatile timestamp* time = (b ? (&sys->PPUBTimestamp) : (&sys->PPUATimestamp));
+
+    if (y >= 0)
+    {
+        switch(ppu->DisplayCR.DisplayMode)
+        {
+            case 0:
+                *time += 1538 + HBlank_Cycles;
+                for (int x = 0; x < 256; x++)
+                    scanline[x] = 0x3FFFF;
+                return;
+            case 1:
+                break;
+            case 2:
+            {
+                u32 addr = (ppu->DisplayCR.VRAMSel * KiB(128)) + (256*2*y);
+                *time += 1538 + HBlank_Cycles;
+                PPU_Wait(sys, *time);
+                for (int x = 0; x < 256; x++)
+                {
+                    scanline[x] = RGB555to666(VRAM_LCD(sys, addr&~3, u32_max, false, 0, false) >> ((addr & 2)*8));
+                    addr += 2;
+                }
+                return;
+            }
+            case 3:
+                LogPrint(LOG_PPU|LOG_UNIMP, "INVALID PPU MODE 3\n");
+                *time += 1538 + HBlank_Cycles;
+                return;
+        }
+
+        if (ppu->DisplayCR.ForceBlank)
+        {
             *time += 1538 + HBlank_Cycles;
             for (int x = 0; x < 256; x++)
                 scanline[x] = 0x3FFFF;
             return;
-        case 1:
-            break;
-        case 2:
-        {
-            u32 addr = (ppu->DisplayCR.VRAMSel * KiB(128)) + (256*2*y);
-            *time += 1538 + HBlank_Cycles;
-            PPU_Wait(sys, *time);
-            for (int x = 0; x < 256; x++)
-            {
-                scanline[x] = RGB555to666(VRAM_LCD(sys, addr&~3, u32_max, false, 0, false) >> ((addr & 2)*8));
-                addr += 2;
-            }
-            return;
         }
-        case 3:
-            LogPrint(LOG_PPU|LOG_UNIMP, "INVALID PPU MODE 3\n");
-            *time += 1538 + HBlank_Cycles;
-            return;
-    }
 
-    if (ppu->DisplayCR.ForceBlank)
+        PPU_BuildBGs(sys, b, y);
+        PPU_Composite(sys, b, y);
+    }
+    if (y < 191)
     {
-        *time += 1538 + HBlank_Cycles;
-        for (int x = 0; x < 256; x++)
-            scanline[x] = 0x3FFFF;
-        return;
+        if (y == -1)
+            *time += 1538 + HBlank_Cycles;
+        PPU_BuildSprites(sys, b, y+1);
     }
-
-    PPU_RenderBG(sys, B, y);
-    PPU_Composite(sys, B, y);
 }
 
 int PPUA_MainLoop(void* ptr)
@@ -412,13 +555,13 @@ int PPUA_MainLoop(void* ptr)
 
     while (!sys->KillPPUs)
     {
-        for (int y = 0; y < 192; y++)
+        for (int y = -1; y < 192; y++)
         {
             sys->PPUATimestamp += 46;
             PPU_Wait(sys, sys->PPUATimestamp);
             PPU_RenderScanline(sys, false, y);
         }
-        sys->PPUATimestamp += Scanline_Cycles*71;
+        sys->PPUATimestamp += Scanline_Cycles*70;
     }
     return 0;
 }
@@ -430,13 +573,13 @@ int PPUB_MainLoop(void* ptr)
 
     while (!sys->KillPPUs)
     {
-        for (int y = 0; y < 192; y++)
+        for (int y = -1; y < 192; y++)
         {
             sys->PPUBTimestamp += 46;
             PPU_Wait(sys, sys->PPUBTimestamp);
             PPU_RenderScanline(sys, true, y);
         }
-        sys->PPUBTimestamp += Scanline_Cycles*71;
+        sys->PPUBTimestamp += Scanline_Cycles*70;
     }
     return 0;
 }

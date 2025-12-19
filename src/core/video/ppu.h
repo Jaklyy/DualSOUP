@@ -30,11 +30,50 @@ typedef union
 typedef struct
 {
     u32 Index : 24;
+    u32 SprBG : 2;
     bool Empty : 1;
     bool NotPal : 1;
     bool ExtPal : 1;
     bool GPU3D : 1;
 } CompositeBuffer;
+
+typedef union
+{
+    u32 Raw;
+    struct
+    {
+        u32 Y : 8;
+        bool RotScal : 1;
+        bool Disable : 1; // normal spr
+        u32 Mode : 2;
+        bool Mosaic : 1;
+        bool Pal256 : 1;
+        u32 Shape : 2;
+        s32 X : 9;
+        u32 : 3;
+        bool HFlip : 1;
+        bool VFlip : 1;
+        u32 Size : 2;
+    };
+    struct
+    {
+        u32 : 9;
+        bool DoubleSize : 1; // rotscale
+        u32 : 15;
+        u32 RotScaleParam : 5;
+    };
+} SprAttrs01;
+
+typedef union
+{
+    u16 Raw;
+    struct
+    {
+        u32 TileNum : 10;
+        u32 BGPriority : 2;
+        u32 PaletteOffset : 4;
+    };
+} SprAttrs2;
 
 typedef struct
 {
@@ -53,7 +92,7 @@ typedef struct
             bool BG1Enable : 1;
             bool BG2Enable : 1;
             bool BG3Enable : 1;
-            bool OBJEnable : 1;
+            bool SprEnable : 1;
             bool Win0Enable : 1;
             bool Win1Enable : 1;
             bool OBJWinEnable : 1;
@@ -65,7 +104,7 @@ typedef struct
             u32 CharBase : 3;
             u32 ScreenBase : 3;
             bool BGExtPalEn : 1;
-            bool OBJExtPalEn : 1;
+            bool SprExtPalEn : 1;
         };
     } DisplayCR;
 
@@ -100,6 +139,6 @@ typedef struct
 } PPU;
 
 struct Console;
-void PPU_RenderScanline(struct Console* sys, const bool B, const u16 y);
+void PPU_RenderScanline(struct Console* sys, const bool b, const s16 y);
 int PPUA_MainLoop(void* ptr);
 int PPUB_MainLoop(void* ptr);

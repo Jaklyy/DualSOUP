@@ -41,6 +41,10 @@ typedef uint64_t u64;
 #define u64_max (UINT64_MAX)
 
 
+typedef u32 u32x4 __attribute__ ((vector_size(sizeof(u32)*4)));
+typedef s32 s32x4 __attribute__ ((vector_size(sizeof(u32)*4)));
+
+
 // in theory we could use smaller timestamps and use ckd_add and chk_sub to adjust all the timestamps when one overflows.
 // this might incur a noticeable performance penalty on every single timestamp increment.
 // but it would allow for the system to be infinitely running (mind you 727 years is probably a long enough time already)

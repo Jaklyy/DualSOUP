@@ -113,7 +113,6 @@ enum PolyTypes
     Poly_QuadStrip,
 };
 
-typedef u32 u32x4 __attribute__ ((vector_size(sizeof(u32)*4)));
 typedef s64 Vec __attribute__ ((vector_size(sizeof(s64)*4)));
 typedef s64 Mtx __attribute__ ((vector_size(sizeof(s64)*16)));
 
