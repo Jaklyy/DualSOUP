@@ -67,7 +67,7 @@ bool Gamecard_Init(Gamecard* card, const char* romname, u8* bios7)
 
     fclose(rom);
 
-    memcpy(card->Key1, &bios7[0xC6D0], 1042);
+    memcpy(card->Key1, &bios7[0x30], sizeof(card->Key1));
 
 
     // BEGIN SOUP PARSING
@@ -342,7 +342,7 @@ void Key1_Apply(Gamecard* card, u32* code, u32 mod)
 // this is just ripped from melonds
 void GamecardMisc_InitKey1(Gamecard* card)
 {
-    u32 code[3] = {card->ROM[0xC], card->ROM[0xC]>>1 ,card->ROM[0xC]<<1};
+    u32 code[3] = {card->ROM[0xC/sizeof(u32)], card->ROM[0xC/sizeof(u32)]>>1 ,card->ROM[0xC/sizeof(u32)]<<1};
     Key1_Apply(card, code, 2);
     Key1_Apply(card, code, 2);
     card->Mode = Key1;
@@ -405,6 +405,7 @@ void* GamecardMisc_ROMCommandHandler(struct Console* sys, const bool a9)
     {
         case Unenc:
         {
+            //printf("enenc: %016lX\n", cmd);
             switch(cmd & 0xFF)
             {
                 case 0x9F:
@@ -427,7 +428,9 @@ void* GamecardMisc_ROMCommandHandler(struct Console* sys, const bool a9)
         case Key1:
         {
             cmd = bswap(cmd);
-            Key1_Decrypt(card, (u32*)&cmd); // type punning...
+            u32 bleh[2] = {cmd & 0xFFFFFFFF, cmd >> 32};
+            Key1_Decrypt(card, bleh); // type punning...
+            cmd = bleh[0] | (u64)bleh[1] << 32;
             cmd = bswap(cmd);
 
             switch(cmd & 0xF0)
