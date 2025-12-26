@@ -6,7 +6,6 @@
 
 s32 SWRen_CalcSlope(u16 x0, u16 x1, u8 y0, u8 y1, u8 y, s16* xstart, s16* xend, const bool dir)
 {
-    //printf("sl%i %i %i %i\n", x0, x1, y0, y1);
     s16 xlen = x1 - x0;
     u8 ylen = y1 - y0;
 
@@ -22,8 +21,6 @@ s32 SWRen_CalcSlope(u16 x0, u16 x1, u8 y0, u8 y1, u8 y, s16* xstart, s16* xend, 
 
     // get start coordinate
     s32 xreal = (x0-dir) << 18;
-
-    //printf("%i %i %i\n", slope, y, y0);
 
     bool xmajor = (slope > (1<<18)) || (slope < -(1<<18));
 
@@ -52,7 +49,6 @@ s32 SWRen_CalcSlope(u16 x0, u16 x1, u8 y0, u8 y1, u8 y, s16* xstart, s16* xend, 
         *xend = ((xreal & 0xFFFFE00) + slope) >> 18;
     }
 
-    //if (dir) printf("%i %i %i %i\n", *xstart, *xend, slope, xmajor);
     return slope;
 }
 
@@ -86,14 +82,11 @@ s32 SWRen_FindSlope(Polygon* poly, u8 y, s16* xstart, s16* xend, u8* vcur, u8* v
         }
     }
 
-    //printf("verts; %i %i %i\n", poly->Vertices[*vcur]->X, poly->Vertices[*vnex]->X, dir);
-
     return SWRen_CalcSlope(poly->Vertices[*vcur]->X, poly->Vertices[*vnex]->X, poly->Vertices[*vcur]->Y, poly->Vertices[*vnex]->Y, y, xstart, xend, dir);
 }
 
 bool SWRen_DepthTest_LessThan(const GX3D* gx, const u16 x, const u8 y, const u32 z, const u8 flag, const bool bot)
 {
-    //printf("%i %i\n", z, gx->ZBuf[bot][y][x]);
     return ((z < gx->ZBuf[bot][y][x]) || ((flag & gx->ABuf[bot][y][x].Raw) && (z <= gx->ZBuf[bot][y][x])));
 }
 
@@ -112,7 +105,6 @@ void SWRen_RasterizePixel(GX3D* gx, Polygon* poly, u16 x, u8 y, u32 z, Colors co
         bot = true;
         if (!SWRen_DepthTest_LessThan(gx, x, y, z, 0, bot))
         {
-            //printf("fail\n");
             return;
         }
     }
@@ -134,8 +126,6 @@ void SWRen_RasterizePoly(GX3D* gx, Polygon* poly, const u8 y)
     lslope = SWRen_FindSlope(poly, y, &ls, &le, &lc, &ln, false);
     rslope = SWRen_FindSlope(poly, y, &rs, &re, &rc, &rn, true);
 
-    //if (rslope == 0) { rs--; re--; }
-
     re--;
     rs--;
     if (rs >= re) rs = re-1;
@@ -153,20 +143,14 @@ void SWRen_RasterizePoly(GX3D* gx, Polygon* poly, const u8 y)
     u32 z = (poly->Vertices[lc]->Z << 1) | poly->Frontfacing;
     Colors color = SWRen_RGB555to666(poly->Vertices[lc]->Color);
 
-    //printf("%i %i %i %i\n", ls, le, rs, re);
-
-    //AttrBuf attr = {.TXMajor};
 
     if (le > re) le = re;
     if (ls < 0) ls = 0;
     if (le <= ls) le = ls+1;
 
-    //printf("%i %i %i %i\n", lc, ln, rc, rn);
-
     s16 x = ls;
     for (; (x < le) && (x < 256); x++)
     {
-        //Colors colory = {.B = 0x3F};
         SWRen_RasterizePixel(gx, poly, x, y, z, color);
     }
 
@@ -177,7 +161,6 @@ void SWRen_RasterizePoly(GX3D* gx, Polygon* poly, const u8 y)
 
     for (; (x <= re) && (x < 256); x++)
     {
-        //Colors colory = {.R = 0x3F};
         SWRen_RasterizePixel(gx, poly, x, y, z, color);
     }
 }
@@ -187,7 +170,9 @@ void SWRen_RasterizeScanline(GX3D* gx, u8 y)
     for (int i = 0; i < gx->RenderPolyCount; i++)
     {
         if ((y >= gx->RenderPolyRAM[i].Top) && (y <= gx->RenderPolyRAM[i].Bot))
+        {
             SWRen_RasterizePoly(gx, &gx->RenderPolyRAM[i], y);
+        }
     }
 }
 

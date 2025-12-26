@@ -10,8 +10,8 @@
 // TODO: making this compile time generated might enable better compiler optimizations?
 void (*ARM9_InstructionLUT[0x1000])(struct ARM*, struct ARM_Instr);
 s8 (*ARM9_InterlockLUT[0x1000])(struct ARM946ES*, struct ARM_Instr);
-void (*THUMB9_InstructionLUT[0x1000])(struct ARM*, struct ARM_Instr);
-s8 (*THUMB9_InterlockLUT[0x1000])(struct ARM946ES*, struct ARM_Instr);
+void (*THUMB9_InstructionLUT[64])(struct ARM*, struct ARM_Instr);
+s8 (*THUMB9_InterlockLUT[64])(struct ARM946ES*, struct ARM_Instr);
 
 
 // these should all be sorted in order of likelyhood of usage:

@@ -439,6 +439,7 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
                     sys->SPIBuf = Flash_CMDSend(&sys->Firmware, val>>16, sys->SPICR.ChipSelect);
                     break;
                 case 2:
+                    printf("TSC???\n");
                     LogPrint(LOG_ARM7|LOG_UNIMP, "TSC UNIMPLEMENTED!\n");
                     sys->SPIBuf = 0;
                     break;

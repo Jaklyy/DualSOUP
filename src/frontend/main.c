@@ -60,7 +60,7 @@ int Core_Init(void* pass)
     fclose(ntr9);
     fclose(ntr7);
 
-    Console_DirectBoot(sys);
+    //Console_DirectBoot(sys);
     Console_MainLoop(sys);
 
     sys->KillThread = false;
@@ -70,7 +70,7 @@ int Core_Init(void* pass)
 
 int main()
 {
-    LogMask = u64_max; // temp
+    LogMask = LOG_RTC | LOG_UNIMP;//u64_max; // temp
 
     // TODO investigate: SDL_HINT_TIMER_RESOLUTION
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");

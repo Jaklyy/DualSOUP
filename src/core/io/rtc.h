@@ -47,7 +47,14 @@ typedef struct
     u8 CurCmd;
     u8 CmdProg;
     u8 DataOut;
+    u8 DayOfWeek;
+    u8 IRQ1[3];
+    u8 IRQ2[3];
+    u8 ClockAdjust;
+    u8 FreeReg;
+    u64 SecondsSince0;
 } RTC;
 
 struct Console;
 void RTC_IOWriteHandler(struct Console* sys, const u16 val, const u16 mask);
+void RTC_Init(RTC* rtc);

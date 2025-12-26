@@ -60,10 +60,8 @@ void StartDMA9(struct Console* sys, timestamp start, u8 mode)
         if (!sys->DMA9.Channels[i].CR.Enable) continue;
         if (sys->DMA9.Channels[i].CurrentMode != mode) continue;
         // checkme: starting dma while already started?
-        if (mode == DMAStart_3DFIFO) printf("YES\n");
         sys->DMA9.ChannelTimestamps[i] = start;
     }
-        if (mode == DMAStart_3DFIFO) printf("EXIST\n");
     DMA_Schedule(sys, true);
 }
 
@@ -112,7 +110,7 @@ void DMA7_Enable(struct Console* sys, struct DMA_Channel* channel, u8 channel_id
         break;
     }
     #endif
-    default: LogPrint(LOG_UNIMP, "UNIMPLEMENTED DMA7 MODE %i\n", channel->CR.StartMode7); break;
+    default: LogPrint(LOG_UNIMP | LOG_DMA, "UNIMPLEMENTED DMA7 MODE %i\n", channel->CR.StartMode7); break;
     }
 
     switch(channel->CR.DestCR)
@@ -174,7 +172,7 @@ void DMA9_Enable(struct Console* sys, struct DMA_Channel* channel)
     case 7: // 3D Command FIFO
     {
         channel->CurrentMode = DMAStart_3DFIFO;
-        printf("DMA\n");
+
         if (sys->GX3D.Status.FIFOHalfEmpty)
             StartDMA9(sys, sys->AHB9.Timestamp+1, DMAStart_3DFIFO);
         break;
@@ -200,7 +198,7 @@ void DMA9_Enable(struct Console* sys, struct DMA_Channel* channel)
         break;
     }
     #endif
-    default: LogPrint(LOG_UNIMP, "UNIMPLEMENTED DMA9 MODE %i\n", channel->CR.StartMode9); break;
+    default: LogPrint(LOG_UNIMP | LOG_DMA, "UNIMPLEMENTED DMA9 MODE %i\n", channel->CR.StartMode9); break;
     }
 
     switch(channel->CR.DestCR)
@@ -334,7 +332,7 @@ void DMA_Run(struct Console* sys, const bool a9)
         if (channel->CR.Repeat)
         {
             // TODO: reschedule
-            LogPrint(LOG_UNIMP, "UNIMP: DMA WANTS RESCHEDULE %i\n", channel->CurrentMode);
+            LogPrint(LOG_UNIMP | LOG_DMA, "UNIMP: DMA WANTS RESCHEDULE %i\n", channel->CurrentMode);
         }
         else
         {
@@ -422,7 +420,7 @@ void DMA9_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 
             }
             else
             {
-                LogPrint(LOG_UNIMP, "UNIMP: Stopping DMA9\n");
+                LogPrint(LOG_UNIMP | LOG_DMA, "UNIMP: Stopping DMA9\n");
                 // stopping dma channel
                 // TODO: allegedly under specific circumstances this can lock up the bus?
             }
@@ -473,7 +471,7 @@ void DMA7_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 
             }
             else
             {
-                LogPrint(LOG_UNIMP, "UNIMP: Stopping DMA7\n");
+                LogPrint(LOG_UNIMP | LOG_DMA, "UNIMP: Stopping DMA7\n");
                 // stopping dma channel
                 // TODO: allegedly under specific circumstances this can lock up the bus?
             }

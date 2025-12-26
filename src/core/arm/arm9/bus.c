@@ -58,7 +58,7 @@ void ARM9_AHBAccess(struct ARM946ES* ARM9, timestamp* ts, const bool atomic, boo
         // it's more correct to do so but im not sure it matters in practice?
 
         // NOTE: this code path should't trigger with sequential accesses
-        if (*seq) LogPrint(LOG_UNIMP, "Sequential in codepath that sequentials should'nt be...?\n");
+        //if (*seq) LogPrint(LOG_UNIMP, "Sequential in codepath that sequentials should'nt be...?\n");
 
         // CHECKME: how exactly does latency and losing bus ownership work with sharing?
         *ts += bufferlatency;

@@ -338,8 +338,8 @@ static_assert(offsetof(struct ARM946ES, ARM) == 0);
 
 extern void (*ARM9_InstructionLUT[0x1000])(struct ARM*, struct ARM_Instr);
 extern s8 (*ARM9_InterlockLUT[0x1000])(struct ARM946ES*, struct ARM_Instr);
-extern void (*THUMB9_InstructionLUT[0x1000])(struct ARM*, struct ARM_Instr);
-extern s8 (*THUMB9_InterlockLUT[0x1000])(struct ARM946ES*, struct ARM_Instr);
+extern void (*THUMB9_InstructionLUT[64])(struct ARM*, struct ARM_Instr);
+extern s8 (*THUMB9_InterlockLUT[64])(struct ARM946ES*, struct ARM_Instr);
 
 // run to initialize the cpu.
 // assumes everything was zero'd out.

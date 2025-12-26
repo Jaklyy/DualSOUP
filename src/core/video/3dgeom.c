@@ -167,13 +167,20 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert)
         // if the dot is 0 then it will render if either front or back are enabled.
         if (!(((dot <= 0) && gx->CurPolyAttr.RenderFront) || ((dot >= 0) && gx->CurPolyAttr.RenderBack)))
         {
+            gx->SharedVtx[0] = nullptr;
+            gx->SharedVtx[1] = nullptr;
             return;
         }
     }
 
     GX_ClipPolygon(gx, &poly, &nvert);
 
-    if ((nvert == 0) || (gx->PolyRAMPtr >= 2048) || ((gx->VtxRAMPtr + nvert) > 6144)) return;
+    if ((nvert == 0) || (gx->PolyRAMPtr >= 2048) || ((gx->VtxRAMPtr + nvert) > 6144))
+    {
+        gx->SharedVtx[0] = nullptr;
+        gx->SharedVtx[1] = nullptr;
+        return;
+    }
 
     Polygon fin;
     {
@@ -332,6 +339,7 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert)
 
     gx->GXPolyRAM[gx->PolyRAMPtr] = fin;
 
+    printf("subm %i %i\n", nvert, gx->GXPolyRAM[gx->PolyRAMPtr].NumVert);
     gx->VtxRAMPtr += nvert;
     gx->PolyRAMPtr++;
 }
@@ -511,6 +519,7 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
 
     if (gx->CmdReady) // checkme
     {
+        if (gx->ExecTS > now) return false;
         gx->CmdReady = false;
         u32 param = gx->CurCmd.Param;
         gx->ExecTS = now;
@@ -985,6 +994,7 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
 
         case GX_SwapBuffers:
         {
+            printf("Swap\n");
             gx->ManualTransSort = param & 1;
             gx->WBuffer = param & 2;
             gx->ExecTS = timestamp_max;
@@ -1037,20 +1047,15 @@ void GX_Swap(struct Console* sys, const timestamp now)
         gx->SwapReq = false;
 
         // sort polygon ram
-        qsort(gx->GXPolyRAM, sizeof(gx->PolyRAMA)/sizeof(gx->PolyRAMA[0]), sizeof(gx->PolyRAMA[0]), GX_Cmp);
+        qsort(gx->GXPolyRAM, gx->PolyRAMPtr, sizeof(gx->PolyRAMA[0]), GX_Cmp);
 
         gx->VtxRAMPtr = 0;
         gx->RenderPolyCount = gx->PolyRAMPtr;
         gx->PolyRAMPtr = 0;
 
-        void* tmp;
-        tmp = gx->GXPolyRAM;
-        gx->GXPolyRAM = gx->RenderPolyRAM;
-        gx->RenderPolyRAM = tmp;
+        DS_SWAP(gx->GXPolyRAM, gx->RenderPolyRAM);
 
-        tmp = gx->GXVtxRAM;
-        gx->GXVtxRAM = gx->RenderVtxRAM;
-        gx->RenderVtxRAM = tmp;
+        DS_SWAP(gx->GXVtxRAM, gx->RenderVtxRAM);
 
         gx->LatRasterCR = gx->RasterCR;
         gx->LatRearAttr = gx->RearAttr;

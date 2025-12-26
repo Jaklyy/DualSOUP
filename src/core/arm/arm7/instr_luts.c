@@ -8,7 +8,7 @@
 
 // TODO: making this compile time generated might enable better compiler optimizations?
 void (*ARM7_InstructionLUT[0x1000])(struct ARM*, struct ARM_Instr);
-void (*THUMB7_InstructionLUT[0x1000])(struct ARM*, struct ARM_Instr);
+void (*THUMB7_InstructionLUT[64])(struct ARM*, struct ARM_Instr);
 
 
 #define CHECK(cmp, mask, ptr) \

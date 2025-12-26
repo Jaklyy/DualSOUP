@@ -62,6 +62,13 @@ u16 VRAM_BGBExtPal(struct Console* sys, const u16 idx)
 
 
 
+void PPU_None(struct Console* sys, const bool b, const u8 bg)
+{
+    CompositeBuffer* buffer = (b ? sys->CompositeBufferB[bg] : sys->CompositeBufferA[bg]);
+    for (int x = 0; x < 256; x++)
+        buffer[x] = (CompositeBuffer){0, 0, true, false, false, false};
+}
+
 void PPU_RenderText(struct Console* sys, const bool b, u16 y, const u8 bg)
 {
     PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
@@ -180,15 +187,18 @@ void PPU_Extended(struct Console* sys, const bool b, const u16 y, const u8 bg)
     {
         PPU_RenderBitmap(sys, b, y, bg, ppu->BGCR[bg].CharBase & 1);
     }
-    else PPU_RenderText(sys, b, y, bg); //LogPrint(LOG_PPU|LOG_UNIMP, "UNIMPLEMENTED: AFFINE/TEXT BG %i %08X\n", bg, ppu->BGCR[bg].Raw);
+    else
+    {
+        PPU_None(sys, b, bg);
+        LogPrint(LOG_PPU|LOG_UNIMP, "UNIMPLEMENTED: AFFINE/TEXT BG %i %08X\n", bg, ppu->BGCR[bg].Raw);
+    }
 }
 
 void PPU_Large(struct Console* sys, const bool b, const u16 y, const u8 bg)
 {
     PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
     CompositeBuffer* buffer = (b ? sys->CompositeBufferB[bg] : sys->CompositeBufferA[bg]);
-    for (int x = 0; x < 256; x++)
-        buffer[x] = (CompositeBuffer){0, 0, true, false, false, false};
+        PPU_None(sys, b, bg);
     LogPrint(LOG_PPU|LOG_UNIMP, "UNIMPLEMENTED: LARGE BG %i %08X\n", bg, ppu->BGCR[bg].Raw);
 }
 
@@ -199,13 +209,6 @@ void PPU_3D(struct Console* sys, const u16 y)
 
     for (int x = 0; x < 256; x++)
         buffer[x] = (CompositeBuffer){sys->GX3D.CBuf[0][y][x] & 0x3FFFF, 0, !(sys->GX3D.CBuf[0][y][x] >> 18) /* TODO */, true, false, true};
-}
-
-void PPU_None(struct Console* sys, const bool b, const u8 bg)
-{
-    CompositeBuffer* buffer = (b ? sys->CompositeBufferB[bg] : sys->CompositeBufferA[bg]);
-    for (int x = 0; x < 256; x++)
-        buffer[x] = (CompositeBuffer){0, 0, true, false, false, false};
 }
 
 void PPU_BG0_Lookup(struct Console* sys, const bool b, const u16 y)

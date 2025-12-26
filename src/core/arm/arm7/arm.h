@@ -27,7 +27,7 @@ struct ARM7TDMI
 static_assert(offsetof(struct ARM7TDMI, ARM) == 0);
 
 extern void (*ARM7_InstructionLUT[0x1000])(struct ARM*, struct ARM_Instr);
-extern void (*THUMB7_InstructionLUT[0x1000])(struct ARM*, struct ARM_Instr);
+extern void (*THUMB7_InstructionLUT[64])(struct ARM*, struct ARM_Instr);
 
 // run to initialize the cpu.
 // assumes everything was zero'd out.
