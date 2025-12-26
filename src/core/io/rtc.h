@@ -26,14 +26,14 @@ typedef struct
         u8 Raw;
         struct
         {
-            bool PowerOn : 1;
-            bool SomethingVoltage : 1;
-            bool Int2 : 1;
-            bool Int1 : 1;
-            bool SRAMControl1 : 1;
-            bool SRAMControl0 : 1;
-            bool Clock24 : 1;
             bool Reset : 1;
+            bool Clock24 : 1;
+            bool SRAMControl0 : 1;
+            bool SRAMControl1 : 1;
+            bool Int1 : 1;
+            bool Int2 : 1;
+            bool SomethingVoltage : 1;
+            bool PowerOn : 1;
         };
     } StatusReg1;
 

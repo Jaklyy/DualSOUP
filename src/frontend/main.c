@@ -70,7 +70,7 @@ int Core_Init(void* pass)
 
 int main()
 {
-    LogMask = LOG_RTC | LOG_UNIMP;//u64_max; // temp
+    LogMask = u64_max; // temp
 
     // TODO investigate: SDL_HINT_TIMER_RESOLUTION
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");

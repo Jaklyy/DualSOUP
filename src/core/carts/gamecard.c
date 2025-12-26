@@ -473,7 +473,7 @@ void* GamecardMisc_ROMCommandHandler(struct Console* sys, const bool a9)
             break;
         }
     }
-    LogPrint(LOG_CARD|LOG_ODD, "invalid gamecard cmd %02X ran\n", (u8)cmd & 0xFF);
+    LogPrint(LOG_CARD|LOG_ODD, "invalid gamecard cmd %02X %i ran\n", (u8)cmd & 0xFF, card->Mode);
     return GamecardMisc_InvalidCmdHandler;
 }
 

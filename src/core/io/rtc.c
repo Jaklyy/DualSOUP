@@ -24,7 +24,7 @@ u8 RTC_FromBCD(u8 bcd)
 
 u8 RTC_ToBCD(u8 num)
 {
-    return (num & 0xF) + ((num/10) << 4);
+    return (num % 10) + ((num/10) << 4);
 }
 
 void RTC_UpdateFull(RTC* rtc)
@@ -95,31 +95,31 @@ u8 RTC_ReadByte(RTC* rtc)
         }
         case 0x69:
         {
-            if (rtc->CmdProg <= 3)
+            if ((rtc->BitsRead/8) <= 2)
             {
-                return rtc->IRQ1[rtc->CmdProg-1];
+                return rtc->IRQ1[(rtc->BitsRead/8)];
             }
-            break;
+            return 0;
         }
         case 0x6B:
         {
-            if (rtc->CmdProg <= 3)
+            if ((rtc->BitsRead/8) <= 2)
             {
-                return rtc->IRQ2[rtc->CmdProg-1];
+                return rtc->IRQ2[(rtc->BitsRead/8)];
             }
-            break;
+            return 0;
         }
         case 0x6D:
         {
-            if (rtc->CmdProg == 1)
+            if ((rtc->BitsRead/8) == 0)
                 return rtc->ClockAdjust;
-            break;
+            return 0;
         }
         case 0x6F:
         {
-            if (rtc->CmdProg == 1)
+            if ((rtc->BitsRead/8) == 0)
                 return rtc->ClockAdjust;
-            break;
+            return 0;
         }
         default:
             LogPrint(LOG_UNIMP | LOG_RTC, "UNIMP RTC READ %02X\n", rtc->CurCmd);
@@ -129,7 +129,6 @@ u8 RTC_ReadByte(RTC* rtc)
 
 void RTC_CommandHandler(RTC* rtc)
 {
-    const u8 val = rtc->Cmd;
 
     if (rtc->CmdProg == 0)
     {
@@ -143,7 +142,11 @@ void RTC_CommandHandler(RTC* rtc)
     {
         return;
     }
-    printf("writes %02X %02X\n", rtc->CurCmd, rtc->Cmd);
+
+    u8 val = rtc->Cmd;
+
+    for (int i = 0; i < 8; i++)
+        val |= ((rtc->Cmd >> i) & 1) << (7-i);
 
     // checkme: does it actually care about the fixed code?
     switch(rtc->CurCmd)
@@ -166,11 +169,13 @@ void RTC_CommandHandler(RTC* rtc)
         {
             if (rtc->CmdProg == 1)
             {
-                MaskedWrite(rtc->StatusReg2, val, 0xFE);
-                rtc->StatusReg2 |= (val & 1); // checkme?
+                MaskedWrite(rtc->StatusReg2, val, 0x7F);
+                rtc->StatusReg2 |= (val & 0x80); // checkme?
+                rtc->StatusReg2 = val;
             }
             break;
         }
+
         case 0x64: // rtc y/m/d/dow/h/m/s
         {
             if (rtc->CmdProg <= 7)
@@ -240,6 +245,7 @@ void RTC_IOWriteHandler(struct Console* sys, const u16 val, const u16 mask)
             rtc->BitsSent = 0;
             rtc->CmdProg = 0;
             rtc->Cmd = 0;
+            rtc->BitsRead = 0;
         }
         else if (!rtc->CR.ClockHi) // clock must be driven low to send bits?
         {
@@ -260,7 +266,9 @@ void RTC_IOWriteHandler(struct Console* sys, const u16 val, const u16 mask)
             else
             {
                 // read
-                rtc->CR.DataIO = (RTC_ReadByte(rtc) >> (rtc->BitsRead % 8)) & 1;
+                u8 ret = RTC_ReadByte(rtc);
+                rtc->CR.DataIO = (ret >> (rtc->BitsRead % 8)) & 1;
+
 
                 if (ckd_add(&rtc->BitsRead, rtc->BitsRead, 1))
                     rtc->BitsRead = 255;
