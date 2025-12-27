@@ -30,7 +30,7 @@ typedef union
 typedef struct
 {
     u32 Index : 24;
-    u32 SprBG : 2;
+    u32 SprPrio : 2;
     bool Empty : 1;
     bool NotPal : 1;
     bool ExtPal : 1;
@@ -70,7 +70,7 @@ typedef union
     struct
     {
         u32 TileNum : 10;
-        u32 BGPriority : 2;
+        u32 Priority : 2;
         u32 PaletteOffset : 4;
     };
 } SprAttrs2;

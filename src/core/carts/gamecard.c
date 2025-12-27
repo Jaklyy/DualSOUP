@@ -405,6 +405,7 @@ void* GamecardMisc_ROMCommandHandler(struct Console* sys, const bool a9)
     {
         case Unenc:
         {
+            printf("%08X %02lX %i\n", sys->DMA7.Channels[3].Latched_DstAddr, cmd & 0xFF, card->NumWords);
             //printf("enenc: %016lX\n", cmd);
             switch(cmd & 0xFF)
             {
@@ -433,6 +434,8 @@ void* GamecardMisc_ROMCommandHandler(struct Console* sys, const bool a9)
             cmd = bleh[0] | (u64)bleh[1] << 32;
             cmd = bswap(cmd);
 
+            printf("%08X %02lX %i\n", sys->DMA7.Channels[3].Latched_DstAddr, (cmd >> 4) & 0xF, card->NumWords);
+
             switch(cmd & 0xF0)
             {
                 case 0x40:
@@ -450,12 +453,14 @@ void* GamecardMisc_ROMCommandHandler(struct Console* sys, const bool a9)
         }
         case Key2:
         {
+            printf("%08X %02lX %i\n", sys->DMA7.Channels[3].Latched_DstAddr, cmd & 0xFF, card->NumWords);
             switch(cmd & 0xFF)
             {
                 case 0xB7:
                 {
                     // data
                     card->Address = (bswap(cmd) >> 24) & (card->RomSize-4); // subtract 4 as a weird way to handle masking out bottom bits as well.
+                    printf("%08X\n", card->Address);
                     if (!(card->Address & ~(KiB(4)-1)))
                     {
                         // secure area is rerouted to the 512 bytes above it
@@ -542,21 +547,26 @@ void Gamecard_HandleSchedulingROM(struct Console* sys, timestamp now)
     bool a9 =!sys->ExtMemCR_Shared.NDSCardAccess;
 
     card->NumWords -= 1;
-    if (sys->GCROMCR[a9].DataReady)
+    u32 data = card->ReadHandler(card);
+    if (card->NumWords >= 0) // was not a 0 length command
     {
-        card->Buffered = true;
-        card->WordBuffer = card->ReadHandler(card);
-        Schedule_Event(sys, Gamecard_HandleSchedulingROM, Evt_CardROM, timestamp_max);
-    }
-    else
-    {
-        sys->GCROMData[a9] = card->ReadHandler(card);
-        sys->GCROMCR[a9].DataReady = true;
-        if (a9) StartDMA9(sys, now+1, DMAStart_NTRCard); // checkme: delay?
-        else StartDMA7(sys, now+1, DMAStart_NTRCard); // checkme: delay?
+        if (sys->GCROMCR[a9].DataReady)
+        {
+            card->WordBuffer = data;
+            card->Buffered = true;
+            Schedule_Event(sys, Gamecard_HandleSchedulingROM, Evt_CardROM, timestamp_max);
+        }
+        else
+        {
+            sys->GCROMData[a9] = data;
+            sys->GCROMCR[a9].DataReady = true;
+            if (a9) StartDMA9(sys, now+1, DMAStart_NTRCard); // checkme: delay?
+            else StartDMA7(sys, now+1, DMAStart_NTRCard); // checkme: delay?
 
-        QueueNextTransfer(sys, now, a9);
+            QueueNextTransfer(sys, now, a9);
+        }
     }
+    else QueueNextTransfer(sys, now, a9);
 }
 
 void Gamecard_ROMCommandSubmit(struct Console* sys, timestamp cur, const bool a9)

@@ -198,7 +198,7 @@ void PPU_Large(struct Console* sys, const bool b, const u16 y, const u8 bg)
 {
     PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
     CompositeBuffer* buffer = (b ? sys->CompositeBufferB[bg] : sys->CompositeBufferA[bg]);
-        PPU_None(sys, b, bg);
+    PPU_None(sys, b, bg);
     LogPrint(LOG_PPU|LOG_UNIMP, "UNIMPLEMENTED: LARGE BG %i %08X\n", bg, ppu->BGCR[bg].Raw);
 }
 
@@ -322,7 +322,7 @@ void PPU_Composite(struct Console* sys, const bool b, const u16 y)
     u32* scanline = sys->Framebuffer[sys->BackBuf][sys->PowerCR9.AOnBottom ? b : !b][y];
     volatile timestamp* time = (b ? (&sys->PPUBTimestamp) : (&sys->PPUATimestamp));
 
-    u8 bgorder[4];
+    /*u8 bgorder[4];
     int i = 0;
     for (int prio = 0; prio < 4; prio++)
     {
@@ -333,42 +333,58 @@ void PPU_Composite(struct Console* sys, const bool b, const u16 y)
                 bgorder[i++] = bg;
             }
         }
-    }
+    }*/
 
     for (int x = 0; x < 256; x++)
     {
-        for (int bg = 0;; bg++)
+        bool spr;
+        int bg;
+        // initialize with bg color
+        CompositeBuffer index = (CompositeBuffer){0, 0, false, false, false /* checkme? */, false};
+        for (int prio = 0; prio < 4; prio++)
         {
-            CompositeBuffer index;
-            if (bg < 4)
+            // check if sprites should be rendered
+            CompositeBuffer tmp = (b ? sys->CompositeBufferB[4][x] : sys->CompositeBufferA[4][x]);
+            if (!tmp.Empty && (tmp.SprPrio == prio))
             {
-                // try to composite sprites
-                index = (b ? sys->CompositeBufferB[4][x] : sys->CompositeBufferA[4][x]);
-                if (index.Empty || (index.SprBG != ppu->BGCR[bgorder[bg]].BGPriority))
-                {
-                    // otherwise try to composite the bg
-                    index = (b ? sys->CompositeBufferB[bgorder[bg]][x] : sys->CompositeBufferA[bgorder[bg]][x]);
-                    if (index.Empty) continue;
-                }
-            } // if all else fails there's always the background color.
-            else index = (CompositeBuffer){0, 0, false, false, false /* checkme? */, false};
+                spr = true;
+                index = tmp;
+                break;
+            }
 
-            u16 color;
-            if (index.NotPal) color = index.Index;
-            else if (index.ExtPal)
+            // check bgs
+            for (bg = 0; bg < 4; bg++)
             {
-                u32 extpalbase = bg*KiB(8);
-                if ((bg <= 1) && ppu->BGCR[bg].ExtPalSlot) extpalbase += KiB(16);
-                color = BGExtPal(sys, index.Index+extpalbase);
+                // check priority
+                if (ppu->BGCR[bg].BGPriority != prio) continue;
+
+                // check if bg exists
+                tmp = (b ? sys->CompositeBufferB[bg][x] : sys->CompositeBufferA[bg][x]);
+                if (!tmp.Empty) break;
             }
-            else
+            if (!tmp.Empty)
             {
-                AddBusContention(sys->AHBBusyTS, *time, Dev_Palette);
-                color = palbase[index.Index];
+                spr = false;
+                index = tmp;
+                break;
             }
-            scanline[x] = (index.GPU3D ? color : RGB565to666(color));
-            break;
         }
+
+        u16 color;
+        if (index.NotPal) color = index.Index;
+        else if (index.ExtPal)
+        {
+            // TODO: handle sprites
+            u32 extpalbase = bg*KiB(8);
+            if ((bg <= 1) && ppu->BGCR[bg].ExtPalSlot) extpalbase += KiB(16);
+            color = BGExtPal(sys, index.Index+extpalbase);
+        }
+        else
+        {
+            AddBusContention(sys->AHBBusyTS, *time, Dev_Palette);
+            color = palbase[index.Index];
+        }
+        scanline[x] = (index.GPU3D ? color : RGB565to666(color));
 
         *time += 6;
         PPU_Wait(sys, *time);
@@ -418,7 +434,7 @@ void PPU_SpriteNormal(struct Console* sys, const bool b, const SprAttrs01 attr1,
             {
                 u32 addr = baseaddr + (attr1.HFlip ? (((width-1-xmod)/8*8*8) + ((width-1-xmod)%8)) : ((xmod/8*8*8) + (xmod%8)));
                 u8 index = OBJ(sys, addr&~3, 0xFFFFFFFF, false, 0, false) >> ((addr&3)*8);
-                if (index && (buffer[x].Empty || (buffer[x].SprBG < attr2.BGPriority))) buffer[x] = (CompositeBuffer){index+0x100, attr2.BGPriority, false, false, ppu->DisplayCR.SprExtPalEn, false};
+                if (index && (buffer[x].Empty || (buffer[x].SprPrio > attr2.Priority))) buffer[x] = (CompositeBuffer){index+0x100, attr2.Priority, false, false, ppu->DisplayCR.SprExtPalEn, false};
             }
         }
         else
@@ -430,7 +446,7 @@ void PPU_SpriteNormal(struct Console* sys, const bool b, const SprAttrs01 attr1,
                 u32 addr = baseaddr + (attr1.HFlip ? (((width-1-xmod)/8*8*4) + ((width-1-xmod)%8/2)) : ((xmod/8*8*4) + (xmod%8/2)));
                 u8 index = OBJ(sys, addr&~3, 0xFFFFFFFF, false, 0, false) >> ((addr&3)*8);
                 index = ((index >> (((xmod&1)^attr1.HFlip)*4)) & 0xF);
-                if (index && (buffer[x].Empty || (buffer[x].SprBG < attr2.BGPriority))) buffer[x] = (CompositeBuffer){index+(attr2.PaletteOffset<<4)+0x100, attr2.BGPriority, false, false, false, false};
+                if (index && (buffer[x].Empty || (buffer[x].SprPrio > attr2.Priority))) buffer[x] = (CompositeBuffer){index+(attr2.PaletteOffset<<4)+0x100, attr2.Priority, false, false, false, false};
             }
         }
     }
