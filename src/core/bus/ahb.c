@@ -387,7 +387,7 @@ u32 VRAM_OBJB(struct Console* sys, const u32 addr, const u32 mask, const bool wr
     {
         u32 base = 0;
         u32 index = 0;
-        VRAMRET(VRAM_C)
+        VRAMRET(VRAM_D)
     }
     if ((sys->VRAMCR[8].Raw & 0x87) == 0x82)
     {
