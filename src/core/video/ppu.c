@@ -383,7 +383,7 @@ void PPU_Composite(struct Console* sys, const bool b, const u16 y)
         }
         exit:
 
-        u16 color;
+        u32 color;
         if (index.NotPal) color = index.Index;
         else if (index.ExtPal)
         {

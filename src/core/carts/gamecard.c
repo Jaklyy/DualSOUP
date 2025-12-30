@@ -405,8 +405,6 @@ void* GamecardMisc_ROMCommandHandler(struct Console* sys, const bool a9)
     {
         case Unenc:
         {
-            printf("%08X %02lX %i\n", sys->DMA7.Channels[3].Latched_DstAddr, cmd & 0xFF, card->NumWords);
-            //printf("enenc: %016lX\n", cmd);
             switch(cmd & 0xFF)
             {
                 case 0x9F:
@@ -434,8 +432,6 @@ void* GamecardMisc_ROMCommandHandler(struct Console* sys, const bool a9)
             cmd = bleh[0] | (u64)bleh[1] << 32;
             cmd = bswap(cmd);
 
-            printf("%08X %02lX %i\n", sys->DMA7.Channels[3].Latched_DstAddr, (cmd >> 4) & 0xF, card->NumWords);
-
             switch(cmd & 0xF0)
             {
                 case 0x40:
@@ -453,14 +449,12 @@ void* GamecardMisc_ROMCommandHandler(struct Console* sys, const bool a9)
         }
         case Key2:
         {
-            printf("%08X %02lX %i\n", sys->DMA7.Channels[3].Latched_DstAddr, cmd & 0xFF, card->NumWords);
             switch(cmd & 0xFF)
             {
                 case 0xB7:
                 {
                     // data
                     card->Address = (bswap(cmd) >> 24) & (card->RomSize-4); // subtract 4 as a weird way to handle masking out bottom bits as well.
-                    printf("%08X\n", card->Address);
                     if (!(card->Address & ~(KiB(4)-1)))
                     {
                         // secure area is rerouted to the 512 bytes above it

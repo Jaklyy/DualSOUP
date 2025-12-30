@@ -179,9 +179,14 @@ bool GXFIFO_Unpack(struct Console* sys)
                 return true;
             }
         }
+        gx->ParamRem = ParamLUT[gx->PackBuffer.CurCmd];
+        gx->FreshBuffer = false;
     }
-    gx->ParamRem = ParamLUT[gx->PackBuffer.CurCmd];
-    gx->FreshBuffer = false;
+    if (gx->FreshBuffer)
+    {
+        gx->ParamRem = ParamLUT[gx->PackBuffer.CurCmd];
+        gx->FreshBuffer = false;
+    }
 
     // if cmd has no params we submit it immediately
     if (gx->ParamRem <= 0)
@@ -242,7 +247,7 @@ void GXFIFO_PackedSubmit(struct Console* sys, const u32 val)
         {
             if (GXFIFO_Fill(sys, gx->PackBuffer.CurCmd, val))
             {
-                gx->ParamRem--;
+                gx->ParamRem -= 1;
                 if (gx->ParamRem <= 0)
                 {
                     gx->PackBuffer.All >>= 8;
@@ -309,12 +314,14 @@ void GX_IOWrite(struct Console* sys, const u32 addr, const u32 mask, const u32 v
         case 0x400 ... 0x43C:
             //printf("subm2 %08X\n", val);
             if (mask != 0xFFFFFFFF) LogPrint(LOG_GX|LOG_UNIMP, "Non 32 bit packed command write?\n");
+            //printf("pack %02X %08X\n", sys->GX3D.PackBuffer.CurCmd, val);
             GXFIFO_PackedSubmit(sys, val);
             break;
 
         case 0x440 ... 0x5FC:
             //printf("subm %08X %08X\n", addr, val);
             if (mask != 0xFFFFFFFF) LogPrint(LOG_GX|LOG_UNIMP, "Non 32 bit command port write?\n");
+            //printf("port %02X %08X\n", (addr/4) & 0xFF, val);
             GXFIFO_PortSubmit(sys, addr, val);
             break;
 
@@ -327,7 +334,7 @@ void GX_IOWrite(struct Console* sys, const u32 addr, const u32 mask, const u32 v
         }
 
         default:
-            LogPrint(LOG_GX|LOG_UNIMP, "UNIMPLEMENTED GX COMMAND WRITE %08X %08X\n", addr, val);
+            LogPrint(LOG_GX|LOG_UNIMP, "UNIMPLEMENTED 3D WRITE %08X %08X\n", addr, val);
             break;
     }
 }
@@ -340,8 +347,12 @@ u32 GX_IORead(struct Console* sys, const u32 addr)
             //printf("stat %08X\n", sys->GX3D.Status.Raw | (sys->GX3D.FIFOFullness << 16));
             return sys->GX3D.Status.Raw | (sys->GX3D.FIFOFullness << 16);
 
+        case 0x640 ... 0x67C:
+            GX_UpdateClip(sys);
+            return sys->GX3D.ClipMatrix.Arr[(addr & 0x3C)/4];
+
         default:
-            LogPrint(LOG_GX|LOG_UNIMP, "UNIMPLEMENTED GX COMMAND READ %08X\n", addr);
+            LogPrint(LOG_GX|LOG_UNIMP, "UNIMPLEMENTED 3D READ %08X\n", addr);
             return 0;
     }
 }

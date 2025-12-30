@@ -434,6 +434,7 @@ typedef struct
 
 struct Console;
 
+void GX_UpdateClip(struct Console* sys);
 bool GX_FetchParams(struct Console* sys);
 bool GX_RunCommand(struct Console* sys, const timestamp now);
 void GX_Swap(struct Console* sys, const timestamp now);

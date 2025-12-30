@@ -20,14 +20,14 @@ Matrix GX_MatrixMultiply(Matrix a, Matrix b)
 
 void GX_MatrixScale(Matrix* a, Vector b)
 {
-    a->Vec[0] = ((a->Vec[0] * b.X ) << 20) >> 32;
-    a->Vec[1] = ((a->Vec[1] * b.Y ) << 20) >> 32;
-    a->Vec[2] = ((a->Vec[2] * b.Z ) << 20) >> 32;
+    a->Row[0] = ((a->Row[0] * b.X ) << 20) >> 32;
+    a->Row[1] = ((a->Row[1] * b.Y ) << 20) >> 32;
+    a->Row[2] = ((a->Row[2] * b.Z ) << 20) >> 32;
 }
 
 void GX_MatrixTranslate(Matrix* a, Vector b)
 {
-    a->Vec[3] = (((a->Vec[0] * b.X) + (a->Vec[1] * b.Y) + (a->Vec[2] * b.Z)) << 20) >> 32;
+    a->Row[3] += (((a->Row[0] * b.X) + (a->Row[1] * b.Y) + (a->Row[2] * b.Z)) << 20) >> 32;
 }
 
 void GX_UpdateClip(struct Console* sys)
@@ -69,7 +69,7 @@ VertexTmp GX_InterpolateVertex(VertexTmp* a, VertexTmp* b, const u8 dir, const b
     if (dir != 1) Interp(Coords.Y);
     if (dir != 2) Interp(Coords.Z);
     Interp(Coords.W);
-    out.Coords.Arr[dir] = ((positive) ? a->Coords.W : 0);
+    out.Coords.Arr[dir] = ((positive) ? out.Coords.W : 0);
 
     Interp(Color.R);
     Interp(Color.G);
@@ -185,12 +185,12 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert)
     Polygon fin;
     {
         unsigned vtx = 0;
-        if ((gx->SharedVtx[0] != nullptr) && (gx->SharedVtx[1] != nullptr))
+        /*if ((gx->SharedVtx[0] != nullptr) && (gx->SharedVtx[1] != nullptr))
         {
             vtx = 2;
             fin.Vertices[0] = gx->SharedVtx[0];
             fin.Vertices[1] = gx->SharedVtx[1];
-        }
+        }*/
 
         // allocate remaining vertices
         for (; vtx < nvert; vtx++)
@@ -253,8 +253,8 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert)
     }
     else if (gx->PolygonType == Poly_QuadStrip)
     {
-        gx->SharedVtx[0] = (poly.Clipped) ? nullptr : fin.Vertices[3];
-        gx->SharedVtx[1] = (poly.Clipped) ? nullptr : fin.Vertices[2];
+        gx->SharedVtx[0] = (poly.Clipped) ? nullptr : fin.Vertices[2];
+        gx->SharedVtx[1] = (poly.Clipped) ? nullptr : fin.Vertices[3];
     }
 
     fin.Frontfacing = frontfacing;
@@ -289,8 +289,6 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert)
             wsize = temp;
         }
     }
-
-    //printf("ytop %i %i\n", ytop, ybot);
 
     fin.WDecompress = wsize;
 
@@ -339,7 +337,6 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert)
 
     gx->GXPolyRAM[gx->PolyRAMPtr] = fin;
 
-    printf("subm %i %i\n", nvert, gx->GXPolyRAM[gx->PolyRAMPtr].NumVert);
     gx->VtxRAMPtr += nvert;
     gx->PolyRAMPtr++;
 }
@@ -392,7 +389,7 @@ void GX_SubmitVertex(struct Console* sys)
     {
         if (gx->TmpPolygonPtr == 3)
         {
-            gx->TmpPolygonPtr = 0;
+            gx->TmpPolygonPtr = 2;
             gx->PartialPolygon = false;
             if (gx->TriStripOdd)
             {
@@ -417,7 +414,10 @@ void GX_SubmitVertex(struct Console* sys)
         {
             gx->TmpPolygonPtr = 2;
             gx->PartialPolygon = false;
+            DS_SWAP(gx->PolygonTmp.Vertices[0], gx->PolygonTmp.Vertices[1])
             GX_FinalizePolygon(sys, 4);
+            gx->PolygonTmp.Vertices[0] = gx->PolygonTmp.Vertices[2];
+            gx->PolygonTmp.Vertices[1] = gx->PolygonTmp.Vertices[3];
         }
         break;
     }
@@ -523,6 +523,8 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
         gx->CmdReady = false;
         u32 param = gx->CurCmd.Param;
         gx->ExecTS = now;
+
+        //printf("run: %02X %08X\n", gx->CurCmd.Cmd, gx->CurCmd.Param);
 
         switch(gx->CurCmd.Cmd)
         {
@@ -871,7 +873,7 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
 
         case GX_Vtx10:
         {
-            gx->TmpVertex.Vec = (Vec){((s64)((s32)(param << 22)) >> 22), ((s64)((s16)(param << 12)) >> 12), ((s64)((s16)(param << 2)) >> 2), (1<<12)};
+            gx->TmpVertex.Vec = (Vec){((s64)((s32)(param << 22)) >> 16), ((s64)((s32)(param << 12)) >> 16), ((s64)((s32)(param << 2)) >> 16), (1<<12)};
             GX_SubmitVertex(sys);
             break;
         }
@@ -902,7 +904,8 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
 
         case GX_VtxDiff:
         {
-            gx->TmpVertex.Vec += (Vec){((s64)((s32)(param << 22)) >> 22), ((s64)((s16)(param << 12)) >> 12), ((s64)((s16)(param << 2)) >> 2), 0};
+            gx->TmpVertex.Vec += (Vec){((s64)((s32)(param << 22)) >> 22), ((s64)((s32)(param << 12)) >> 22), ((s64)((s32)(param << 2)) >> 22), 0};
+            gx->TmpVertex.Vec = (gx->TmpVertex.Vec << 48) >> 48;
             GX_SubmitVertex(sys);
             break;
         }
@@ -988,13 +991,16 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
             gx->SharedVtx[1] = nullptr;
             gx->TriStripOdd = false;
             gx->TmpPolygonPtr = 0;
-            if (gx->PartialPolygon) gx->ExecTS = timestamp_max;
+            if (gx->PartialPolygon)
+            {
+                gx->ExecTS = timestamp_max;
+                LogPrint(LOG_GX|LOG_EXCEP, "GX HANGING, UH OH\n");
+            }
             break;
         }
 
         case GX_SwapBuffers:
         {
-            printf("Swap\n");
             gx->ManualTransSort = param & 1;
             gx->WBuffer = param & 2;
             gx->ExecTS = timestamp_max;
@@ -1002,6 +1008,7 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
             {
                 gx->SwapReq = true;
             }
+            else LogPrint(LOG_GX|LOG_EXCEP, "GX HANGING, UH OH\n");
             break;
         }
 
