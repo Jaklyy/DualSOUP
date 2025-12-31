@@ -414,10 +414,10 @@ void GX_SubmitVertex(struct Console* sys)
         {
             gx->TmpPolygonPtr = 2;
             gx->PartialPolygon = false;
-            DS_SWAP(gx->PolygonTmp.Vertices[0], gx->PolygonTmp.Vertices[1])
+            DS_SWAP(gx->PolygonTmp.Vertices[2], gx->PolygonTmp.Vertices[3])
             GX_FinalizePolygon(sys, 4);
-            gx->PolygonTmp.Vertices[0] = gx->PolygonTmp.Vertices[2];
-            gx->PolygonTmp.Vertices[1] = gx->PolygonTmp.Vertices[3];
+            gx->PolygonTmp.Vertices[0] = gx->PolygonTmp.Vertices[3];
+            gx->PolygonTmp.Vertices[1] = gx->PolygonTmp.Vertices[2];
         }
         break;
     }
