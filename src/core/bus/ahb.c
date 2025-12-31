@@ -1099,8 +1099,9 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
         ret = IO7_Read(sys, addr, mask);
         break;
     case 0x048: // WiFi
-        if (timings) LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented READ%i: WiFi\n", width);
-        ret = MemoryRead(32, sys->WiFiRAM, addr, WiFiRAM_Size);
+        if (addr == 0x04808180) ret = 0;
+        else ret = MemoryRead(32, sys->WiFiRAM, addr, WiFiRAM_Size);
+        if (timings) LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented READ%i: WiFi %08X %08X %08X\n", width, addr, ret, mask);
         break;
 
     case 0x060: // VRAM
@@ -1200,7 +1201,7 @@ void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
         break;
     case 0x048: // WiFi
         if (timings) Timing32(&sys->AHB7); // TODO
-        LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented WRITE%i: WiFi\n", width);
+        LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented WRITE%i: WiFi %08X %08X %08X\n", width, addr, val, mask);
         MemoryWrite(32, sys->WiFiRAM, addr, WiFiRAM_Size, val, mask);
         break;
 

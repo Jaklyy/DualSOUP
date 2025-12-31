@@ -194,6 +194,24 @@ typedef union
     };
 } PolyAttr;
 
+typedef union
+{
+    u32 Raw;
+    struct
+    {
+        u32 Offset : 16;
+        bool RepeatS : 1;
+        bool RepeatT : 1;
+        bool FlipS : 1;
+        bool FlipT : 1;
+        u32 SizeS : 3;
+        u32 SizeT : 3;
+        u32 Format : 3;
+        bool Color0Trans : 1;
+        u32 CoordTransMode : 2;
+    };
+} TexAttr;
+
 
 typedef struct
 {
@@ -201,22 +219,26 @@ typedef struct
     s16 Z; // s16?
     u16 W; // u16?
     u8 Y; // u8
+    s16 S;
+    s16 T;
     Colors Color;
 } Vertex;
 
 typedef struct
 {
     Vertex* Vertices[10];
-    bool Frontfacing;
     PolyAttr Attrs;
+    TexAttr TexAttr;
+    u32 SortKey;
+    int WDecompress;
+    u16 TexPal; // u13
+    bool Frontfacing;
     u8 NumVert;
     bool Trans;
     u8 VTop;
     u8 VBot;
     u8 Top;
     u8 Bot;
-    u32 SortKey;
-    int WDecompress;
     u8 SlopeY[10]; // u8; slope start/end y coordinates; this is stored with the polygon data instead of the vertex data for some reason.
 } Polygon;
 
@@ -319,6 +341,8 @@ typedef struct
     Colors VertexColor;
     Vector LightVec[4];
     s32 LightRecip[4];
+    TexAttr TexAttr;
+    u16 TexPal;
     bool UseSpecTable;
 
     union

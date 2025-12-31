@@ -131,6 +131,7 @@ void ARM9_SetPC(struct ARM946ES* ARM9, u32 addr, const s8 iloffs)
     // TEMP: debugging
     //ARM9_DumpMPU(ARM9);
     //ARM9_Log(ARM9);
+    //if (addr == 0x020C42A8) CrashSpectacularly("OSPANIC\n");
 
     // arm9 enforces pc alignment properly for once.
     addr &= ~(cpu->CPSR.Thumb ? 0x1 : 0x3);

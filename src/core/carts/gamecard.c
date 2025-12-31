@@ -364,7 +364,7 @@ u32 GamecardMisc_ROMReadHandler(Gamecard* card)
 
 u32 GamecardMisc_ROMReadSecureAreaHandler(Gamecard* card)
 {
-    u32 ret = card->ROM[(0x1000+card->Address)/sizeof(u32)];
+    u32 ret = card->ROM[(0x8000+card->Address)/sizeof(u32)];
     card->Address += 4;
     card->Address &= 0x1FF;
 
@@ -455,7 +455,7 @@ void* GamecardMisc_ROMCommandHandler(struct Console* sys, const bool a9)
                 {
                     // data
                     card->Address = (bswap(cmd) >> 24) & (card->RomSize-4); // subtract 4 as a weird way to handle masking out bottom bits as well.
-                    if (!(card->Address & ~(KiB(4)-1)))
+                    if (!(card->Address & ~(KiB(32)-1)))
                     {
                         // secure area is rerouted to the 512 bytes above it
                         card->Address &= 0x1FF;

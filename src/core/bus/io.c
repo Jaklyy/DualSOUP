@@ -280,6 +280,7 @@ void SPI_Finish(struct Console* sys, timestamp cur)
 
 u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask)
 {
+    //printf("ARM7IOREAD: %08X %08X\n", addr, mask);
     switch(addr & 0xFF'FF'FC)
     {
         case 0x00'00'04:
@@ -523,6 +524,7 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
 
 u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask)
 {
+    //printf("ARM9IOREAD: %08X %08X\n", addr, mask);
     switch (addr & 0xFF'FF'FC)
     {
         case 0x00'00'00:
@@ -685,6 +687,7 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask)
 
 void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mask)
 {
+    //printf("ARM9IOWRITE: %08X %08X %08X\n", addr, mask, val);
     switch (addr & 0xFF'FF'FC)
     {
         case 0x00'00'00:

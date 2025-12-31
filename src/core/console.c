@@ -546,6 +546,7 @@ void Console_MainLoop(struct Console* sys)
             //if ((Console_GetARM7Max(sys) > sys->ARM7Target) && (Console_GetARM9Max(sys) > sys->ARM7Target)) printf("zzz, 9: %lu %08X %08X 7: %lu %08X %08X\n", Console_GetARM9Max(sys), sys->IE9, sys->IF9, Console_GetARM7Max(sys), sys->IE7, sys->IF7);
         }
         //printf("9e %lu %lu s:%i\n", Console_GetARM9Max(sys), sys->ARM7Target, sys->ARM9.ARM.DeadAsleep);
+        //printf("%08X %08X\n", sys->ARM9.ARM.LR, sys->ARM9.ARM.PC);
         //printf("7e %lu %lu s:%i\n", Console_GetARM7Max(sys), sys->ARM7Target, sys->ARM7.ARM.DeadAsleep);
 #endif
         Scheduler_Run(sys);

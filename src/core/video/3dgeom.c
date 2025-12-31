@@ -916,6 +916,20 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
             break;
         }
 
+        case GX_TexAttr:
+        {
+            // CHECKME: do these do anything weird like polygon attributes?
+            gx->TexAttr.Raw = param;
+            break;
+        }
+
+        case GX_TexPal:
+        {
+            // CHECKME: do these do anything weird like polygon attributes?
+            gx->TexPal = param;
+            break;
+        }
+
         case GX_LgtDifAmb:
         {
             gx->DiffColor.R = (param >>  0) & 0x1F;
