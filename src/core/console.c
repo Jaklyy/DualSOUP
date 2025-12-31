@@ -280,7 +280,7 @@ void Console_DirectBoot(struct Console* sys)
 
     sys->MainRAM.b16[((0x27FF876) & (MainRAM_Size-1))/2] = (sys->Firmware.RAM[4] | (sys->Firmware.RAM[5] << 8));
 
-    for (int i = 0; i < (0x70*4); i++)
+    for (int i = 0; i < 0x70; i++)
         sys->MainRAM.b8[((0x27FFC80 + i) & (MainRAM_Size-1))] = sys->Firmware.RAM[usersettings+i];
 
 
