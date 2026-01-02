@@ -450,13 +450,15 @@ void* GamecardMisc_ROMCommandHandler(struct Console* sys, const bool a9)
         }
         case Key2:
         {
+            //printf("%016lX %i\n", bswap(cmd), a9);
             switch(cmd & 0xFF)
             {
                 case 0xB7:
                 {
                     // data
+                    //printf("%08lX %08X %08X\n", (bswap(cmd) >> 24) & 0xFFFFFFFF, sys->GCROMCR[a9].Raw, sys->GCSPICR[a9].Raw);
                     card->Address = (bswap(cmd) >> 24) & (card->RomSize-4); // subtract 4 as a weird way to handle masking out bottom bits as well.
-                    if (!(card->Address & ~(KiB(32)-1)))
+                    if (card->Address < 0x8000)
                     {
                         // secure area is rerouted to the 512 bytes above it
                         card->Address &= 0x1FF;
@@ -539,7 +541,7 @@ u32 Gamecard_ROMDataRead(struct Console* sys, timestamp cur, const bool a9)
 void Gamecard_HandleSchedulingROM(struct Console* sys, timestamp now)
 {
     Gamecard* card = &sys->Gamecard;
-    bool a9 =!sys->ExtMemCR_Shared.NDSCardAccess;
+    bool a9 = !sys->ExtMemCR_Shared.NDSCardAccess;
 
     card->NumWords -= 1;
     u32 data = card->ReadHandler(card);

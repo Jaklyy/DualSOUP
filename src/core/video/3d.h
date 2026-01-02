@@ -216,7 +216,7 @@ typedef union
 typedef struct
 {
     u16 X; // u9
-    s16 Z; // s16?
+    u16 Z; // s16?
     u16 W; // u16?
     u8 Y; // u8
     s16 S;
@@ -230,7 +230,7 @@ typedef struct
     PolyAttr Attrs;
     TexAttr TexAttr;
     u32 SortKey;
-    int WDecompress;
+    int ZDecompress;
     u16 TexPal; // u13
     bool Frontfacing;
     u8 NumVert;
@@ -246,6 +246,7 @@ typedef struct
 {
     Vector Coords;
     Vector CoordsInitial;
+    s16 TexCoords[2];
     Colors Color;
 } VertexTmp;
 
@@ -343,6 +344,7 @@ typedef struct
     s32 LightRecip[4];
     TexAttr TexAttr;
     u16 TexPal;
+    s16 TexCoords[2];
     bool UseSpecTable;
 
     union

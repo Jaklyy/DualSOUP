@@ -43,7 +43,7 @@ void GX_UpdateClip(struct Console* sys)
 
 
 #define Interp(var) \
-    out.var = a->var - (((a->var - b->var) * recip) >> 24)
+    out.var = a->var - ((((s64)a->var - b->var) * recip) >> 24)
 
 VertexTmp GX_InterpolateVertex(VertexTmp* a, VertexTmp* b, const u8 dir, const bool positive)
 {
@@ -74,6 +74,8 @@ VertexTmp GX_InterpolateVertex(VertexTmp* a, VertexTmp* b, const u8 dir, const b
     Interp(Color.R);
     Interp(Color.G);
     Interp(Color.B);
+    Interp(TexCoords[0]);
+    Interp(TexCoords[1]);
 
     return out;
 }
@@ -282,7 +284,7 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert)
         }
 
         // get value to normal W with
-        int temp = (((24 - (stdc_leading_zeros(poly.Vertices[i].Coords.W>>1) - 7)) + (0xF)) >> 4) << 4;
+        int temp = ((32 - stdc_leading_zeros(poly.Vertices[i].Coords.W>>1)) / 4) * 4;
 
         if (wsize < temp)
         {
@@ -290,37 +292,50 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert)
         }
     }
 
-    fin.WDecompress = wsize;
-
     for (unsigned i = 0; i < nvert; i++)
     {
         // normalize W to fit into 16 bits
-        s32 wnorm = poly.Vertices[i].Coords.W >> 1;
+        u32 wnorm = poly.Vertices[i].Coords.W >> 1;
         if (wsize < 16)
         {
-            wnorm = wnorm << (16-wsize);
+            wnorm <<= (16-wsize);
+            fin.Vertices[i]->W = wnorm;
+            wnorm >>= (16-wsize);
+            fin.ZDecompress = 0;
         }
         else
         {
-            wnorm = wnorm >> 8;
+            wnorm >>= (wsize - 16);
+            fin.Vertices[i]->W = wnorm;
+            fin.ZDecompress = (wsize - 16);
         }
 
-        fin.Vertices[i]->W = wnorm;
 
-        // compress Z into 16 bits
-        if (poly.Vertices[i].Coords.W != 0)
+        // if we are not using wbuffering we need to calc the Z
+        // otherwise we just use the W
+        if (!gx->WBuffer)
         {
-            fin.Vertices[i]->Z = ((((poly.Vertices[i].Coords.Z * 2) - poly.Vertices[i].Coords.W) * 0x4000) / poly.Vertices[i].Coords.W);
+            // compress Z into 16 bits
+            if (poly.Vertices[i].Coords.W != 0)
+            {
+                fin.Vertices[i]->Z = ((((poly.Vertices[i].Coords.Z * 2) - poly.Vertices[i].Coords.W) * 0x4000) / poly.Vertices[i].Coords.W);
+            }
+            else fin.Vertices[i]->Z = 0;
+
+            fin.Vertices[i]->Z += 0x3FFF;
+
+            if (fin.Vertices[i]->Z < 0) 
+                fin.Vertices[i]->Z = 0;
+            else if (fin.Vertices[i]->Z > 0x7FFF)
+            {
+                fin.Vertices[i]->Z = 0x7FFF;
+            }
+            fin.ZDecompress = 8;
         }
-        else fin.Vertices[i]->Z = 0;
-
-        fin.Vertices[i]->Z += 0x3FFF;
-
-        if (fin.Vertices[i]->Z < 0) 
-            fin.Vertices[i]->Z = 0;
-        else if (fin.Vertices[i]->Z > 0x7FFF)
+        else
         {
-            fin.Vertices[i]->Z = 0x7FFF;
+            // checkme: does the "true" Z get used for rendering in any way with Wbuffering?
+            fin.Vertices[i]->Z = wnorm;
         }
     }
 
@@ -359,7 +374,8 @@ void GX_SubmitVertex(struct Console* sys)
 
     gx->PolygonTmp.Vertices[gx->TmpPolygonPtr].Color = gx->VertexColor;
 
-    // TODO: texcoords
+    gx->PolygonTmp.Vertices[gx->TmpPolygonPtr].TexCoords[0] = gx->TexCoords[0];
+    gx->PolygonTmp.Vertices[gx->TmpPolygonPtr].TexCoords[1] = gx->TexCoords[1];
 
     gx->TmpPolygonPtr++;
     gx->PartialPolygon = true;
@@ -854,6 +870,13 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
             break;
         }
 
+        case GX_TexCoord:
+        {
+            gx->TexCoords[0] = param & 0xFFFF;
+            gx->TexCoords[1] = param >> 16;
+            break;
+        }
+
         case GX_Vtx16:
         {
             if (!gx->TmpVertexPtr)
@@ -1081,6 +1104,7 @@ void GX_Swap(struct Console* sys, const timestamp now)
         gx->LatRasterCR = gx->RasterCR;
         gx->LatRearAttr = gx->RearAttr;
         gx->LatRearDepth = gx->RearDepth;
+        gx->RenderWBuffer = gx->WBuffer;
 
         // make sure to reschedule if needed, since we probably ended up getting this scheduled 5 years into the future, and that might cause problems.
         if (sys->Sched.EventTimes[Evt_GX] > gx->ExecTS)
