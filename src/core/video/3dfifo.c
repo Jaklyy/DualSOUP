@@ -351,6 +351,13 @@ u32 GX_IORead(struct Console* sys, const u32 addr)
             GX_UpdateClip(sys);
             return sys->GX3D.ClipMatrix.Arr[(addr & 0x3C)/4];
 
+        case 0x680 ... 0x688:
+            return sys->GX3D.VectorMatrix.Arr[((addr & 0xC)/4)+0];
+        case 0x68C ... 0x694:
+            return sys->GX3D.VectorMatrix.Arr[(((addr) & 0xC)/4)+4];
+        case 0x698 ... 0x6A0:
+            return sys->GX3D.VectorMatrix.Arr[(((addr) & 0xC)/4)+8];
+
         default:
             LogPrint(LOG_GX|LOG_UNIMP, "UNIMPLEMENTED 3D READ %08X\n", addr);
             return 0;

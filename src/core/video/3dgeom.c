@@ -156,7 +156,10 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert)
         // calculate cross product
         Vector cross; cross.Vec = ((Vec){v0.Y, v0.W, 0, v0.X} * (Vec){v1.W, v1.X, 0, v1.Y}) - ((Vec){v0.W, v0.X, 0, v0.Y} * (Vec){v1.Y, v1.W, 0, v1.X});
 
-        // TODO: somehow precision is lost here and im not quite sure how
+        // TODO: precision is lost here and im not quite sure how they do it exactly
+        // unfortunately if we dont do anything here we encounter integer overflows so we're just gonna do what melonDS does for the time being.
+        while(((cross.X >> 31) ^ (cross.X >> 63)) || ((cross.Y >> 31) ^ (cross.Y >> 63)) || ((cross.W >> 31) ^ (cross.W >> 63)))
+            cross.Vec >>= 4;
 
         // calc dot product
         // supposedly we can use any vertex as a "camera vector" im not sure how that works, but sure.
@@ -297,6 +300,7 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert)
         while((poly.Vertices[i].Coords.W >> wsize))// && (wsize < 32))
             wsize += 4;
     }
+    wsize -= 1;
 
     for (unsigned i = 0; i < nvert; i++)
     {
@@ -453,8 +457,8 @@ void GX_UpdateNormal(struct Console* sys, const u32 param)
 
     // s1.9
     s64 dir[3] = {(s64)((s32)(param >>  0) << 22) >> 22,
-                  (s64)((s32)(param >>  5) << 12) >> 22,
-                  (s64)((s32)(param >> 10) <<  2) >> 22};
+                  (s64)((s32)(param >> 10) << 22) >> 22,
+                  (s64)((s32)(param >> 20) << 22) >> 22};
 
     // TODO: normal texcoord update
 
@@ -993,8 +997,8 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
         {
             // s1.9
             s64 dir[3] = {(s64)((s32)(param >>  0) << 22) >> 22,
-                          (s64)((s32)(param >>  5) << 12) >> 22,
-                          (s64)((s32)(param >> 10) <<  2) >> 22};
+                          (s64)((s32)(param >> 10) << 22) >> 22,
+                          (s64)((s32)(param >> 20) << 22) >> 22};
 
             gx->LightVec[param>>30].Vec = (dir[0] * gx->VectorMatrix.Row[0]) + (dir[1] * gx->VectorMatrix.Row[1]) + (dir[2] * gx->VectorMatrix.Row[2]);
 
