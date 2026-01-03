@@ -263,14 +263,18 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert)
     fin.Attrs = gx->CurPolyAttr;
     fin.Trans = ((fin.Attrs.Alpha > 0) && (fin.Attrs.Alpha < 31)); // TODO: Texture params impact this!!
     fin.NumVert = nvert;
+    fin.TexAttr = gx->TexAttr;
+    fin.TexPal = gx->TexPal;
 
     s32 ytop = 193, ybot = -1, vtop = 0, vbot = 0;
 
-    int wsize;
+    int wsize = 1;
     for (unsigned i = 0; i < nvert; i++)
     {
         fin.Vertices[i]->Color = poly.Vertices[i].Color;
         fin.SlopeY[i] = fin.Vertices[i]->Y;
+        fin.Vertices[i]->S = poly.Vertices[i].TexCoords[0];
+        fin.Vertices[i]->T = poly.Vertices[i].TexCoords[1];
 
         if (fin.Vertices[i]->Y < ytop)
         {
@@ -284,12 +288,14 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert)
         }
 
         // get value to normal W with
-        int temp = ((32 - stdc_leading_zeros(poly.Vertices[i].Coords.W>>1)) / 4) * 4;
+        /*int temp = ((32 - stdc_leading_zeros(poly.Vertices[i].Coords.W>>1)) / 4) * 4;
 
         if (wsize < temp)
         {
             wsize = temp;
-        }
+        }*/
+        while((poly.Vertices[i].Coords.W >> wsize))// && (wsize < 32))
+            wsize += 4;
     }
 
     for (unsigned i = 0; i < nvert; i++)
@@ -1033,6 +1039,12 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
                 gx->ExecTS = timestamp_max;
                 LogPrint(LOG_GX|LOG_EXCEP, "GX HANGING, UH OH\n");
             }
+            break;
+        }
+
+        case GX_PlyEnd:
+        {
+            // shaddup
             break;
         }
 

@@ -184,7 +184,7 @@ typedef union
         bool RenderZDot : 1;
         bool EqualDepthTest : 1;
         bool FogEnable : 1;
-        u32 Alpha : 4;
+        u32 Alpha : 5;
         u32 : 3;
         u32 PolyID : 6;
     };
