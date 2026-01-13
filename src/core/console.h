@@ -185,8 +185,10 @@ struct Console
     } DispStatRW7;
     u16 TargetVCount9;
     u16 TargetVCount7;
-    u16 VCountNew;
-    bool VCountUpdate;
+    u16 VCountNew9;
+    u16 VCountNew7;
+    bool VCountUpdate9;
+    bool VCountUpdate7;
     union
     {
         u8 Raw;

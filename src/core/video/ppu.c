@@ -563,7 +563,7 @@ void PPU_RenderScanline(struct Console* sys, const bool b, const s16 y)
                 return;
             }
             case 3:
-                LogPrint(LOG_PPU|LOG_UNIMP, "INVALID PPU MODE 3\n");
+                LogPrint(LOG_PPU|LOG_UNIMP, "INVALID LCDC MODE 3\n");
                 *time += 1538 + HBlank_Cycles;
                 return;
         }

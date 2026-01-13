@@ -347,7 +347,7 @@ void DMA_Run(struct Console* sys, const bool a9)
     if (cnt->ChannelTimestamps[id] < timecur)
         cnt->ChannelTimestamps[id] = timecur;
 
-    if (channel->CR.IRQ) // TODO
+    if ((channel->Latched_NumWords == 0) && channel->CR.IRQ) // TODO
         Console_ScheduleIRQs(sys, IRQ_DMA0+id, a9, timecur); // checkme: delay
 
     DMA_Schedule(sys, a9);

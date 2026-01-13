@@ -384,8 +384,16 @@ void GX_SubmitVertex(struct Console* sys)
 
     gx->PolygonTmp.Vertices[gx->TmpPolygonPtr].Color = gx->VertexColor;
 
-    gx->PolygonTmp.Vertices[gx->TmpPolygonPtr].TexCoords[0] = gx->TexCoords[0];
-    gx->PolygonTmp.Vertices[gx->TmpPolygonPtr].TexCoords[1] = gx->TexCoords[1];
+    if (gx->TexAttr.CoordTransMode == 3)
+    {
+        gx->PolygonTmp.Vertices[gx->TmpPolygonPtr].TexCoords[0] = (((gx->TmpVertex.X * gx->TextureMatrix.Arr[0]) + (gx->TmpVertex.Y * gx->TextureMatrix.Arr[4]) + (gx->TmpVertex.Z * gx->TextureMatrix.Arr[8])) >> 24) + gx->TexCoords[0];
+        gx->PolygonTmp.Vertices[gx->TmpPolygonPtr].TexCoords[1] = (((gx->TmpVertex.X * gx->TextureMatrix.Arr[1]) + (gx->TmpVertex.Y * gx->TextureMatrix.Arr[5]) + (gx->TmpVertex.Z * gx->TextureMatrix.Arr[9])) >> 24) + gx->TexCoords[1];
+    }
+    else
+    {
+        gx->PolygonTmp.Vertices[gx->TmpPolygonPtr].TexCoords[0] = gx->TransTexCoords[0];
+        gx->PolygonTmp.Vertices[gx->TmpPolygonPtr].TexCoords[1] = gx->TransTexCoords[1];
+    }
 
     gx->TmpPolygonPtr++;
     gx->PartialPolygon = true;
@@ -460,7 +468,11 @@ void GX_UpdateNormal(struct Console* sys, const u32 param)
                   (s64)((s32)(param >> 10) << 22) >> 22,
                   (s64)((s32)(param >> 20) << 22) >> 22};
 
-    // TODO: normal texcoord update
+    if (gx->TexAttr.CoordTransMode == 2)
+    {
+        gx->TransTexCoords[0] = (((dir[0] * gx->TextureMatrix.Arr[0]) + (dir[1] * gx->TextureMatrix.Arr[4]) + (dir[2] * gx->TextureMatrix.Arr[8])) >> 21) + gx->TexCoords[0];
+        gx->TransTexCoords[1] = (((dir[0] * gx->TextureMatrix.Arr[1]) + (dir[1] * gx->TextureMatrix.Arr[5]) + (dir[2] * gx->TextureMatrix.Arr[9])) >> 21) + gx->TexCoords[1];
+    }
 
     // translate normal vector
     Vector normal; normal.Vec = (dir[0] * gx->VectorMatrix.Row[0]) + (dir[1] * gx->VectorMatrix.Row[1]) + (dir[2] * gx->VectorMatrix.Row[2]);
@@ -882,8 +894,13 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
 
         case GX_TexCoord:
         {
-            gx->TexCoords[0] = param & 0xFFFF;
-            gx->TexCoords[1] = param >> 16;
+            gx->TransTexCoords[0] = gx->TexCoords[0] = param & 0xFFFF;
+            gx->TransTexCoords[1] = gx->TexCoords[1] = param >> 16;
+            if (gx->TexAttr.CoordTransMode == 1)
+            {
+                gx->TransTexCoords[0] = ((gx->TexCoords[0] * gx->TextureMatrix.Arr[0]) + (gx->TexCoords[1] * gx->TextureMatrix.Arr[4]) + gx->TextureMatrix.Arr[8] + gx->TextureMatrix.Arr[12]) >> 12;
+                gx->TransTexCoords[1] = ((gx->TexCoords[0] * gx->TextureMatrix.Arr[1]) + (gx->TexCoords[1] * gx->TextureMatrix.Arr[5]) + gx->TextureMatrix.Arr[9] + gx->TextureMatrix.Arr[13]) >> 12;
+            }
             break;
         }
 

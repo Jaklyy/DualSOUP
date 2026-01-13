@@ -87,7 +87,8 @@ void LCD_HBlank(struct Console* sys, timestamp now)
 void LCD_Scanline(struct Console* sys, timestamp now)
 {
     sys->VCount++;
-    sys->VCount %= 263;
+    sys->VCount &= 0x1FF;
+    if (sys->VCount == 263) sys->VCount = 0;
     //ARM9_Log(&sys->ARM9);
     //ARM7_Log(&sys->ARM7);
 
@@ -166,11 +167,18 @@ void LCD_Scanline(struct Console* sys, timestamp now)
         SWRen_RasterizerFrame(sys);
     }
 
-    // todo: vcount write
-    if (sys->VCountUpdate)
+    // i dont 100% trust my testing here but it seems like if both cpus write to vcount on the same scanline the arm9 wins out?
+    if (sys->VCountUpdate9)
     {
-        sys->VCount = sys->VCountNew;
-        sys->VCountUpdate = false;
+        sys->VCount = sys->VCountNew9;
+        sys->VCountUpdate9 = false;
+        sys->VCountUpdate7 = false;
+    }
+    if (sys->VCountUpdate7)
+    {
+        sys->VCount = sys->VCountNew7;
+        sys->VCountUpdate9 = false;
+        sys->VCountUpdate7 = false;
     }
 
     // vcount match

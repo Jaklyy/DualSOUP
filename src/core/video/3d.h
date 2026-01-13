@@ -345,6 +345,7 @@ typedef struct
     TexAttr TexAttr;
     u16 TexPal;
     s16 TexCoords[2];
+    s16 TransTexCoords[2];
     bool UseSpecTable;
 
     union

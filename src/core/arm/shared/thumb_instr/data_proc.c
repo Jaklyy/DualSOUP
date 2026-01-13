@@ -372,6 +372,8 @@ void THUMB_DataProcHiReg(struct ARM* cpu, const struct ARM_Instr instr_data)
         union ARM_FlagsOut flags_out;
         alu_out = ARM_SUB_RSB(rd_val, rm_val, &flags_out);
 
+        // TODO: add stupid ARM7TDMI jank where it restores cpsr here
+
         // just set flags and return
         flags_out.Negative = alu_out >> 31;
         flags_out.Zero = !alu_out;
