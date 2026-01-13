@@ -11,26 +11,27 @@ u16 VRAM_3DTexel(struct Console* sys, u32 addr)
     u16 ret = 0;
     if ((sys->VRAMCR[0].Raw & 0x87) == 0x83)
     {
-        if ((sys->VRAMCR[0].Offset * KiB(128)) == (addr & KiB(128)))
+        if ((sys->VRAMCR[0].Offset * KiB(128)) == (addr & 0x60000))
             ret = sys->VRAM_A.b16[(addr & (VRAM_A_Size-1))/sizeof(u16)];
     }
     if ((sys->VRAMCR[1].Raw & 0x87) == 0x83)
     {
-        if ((sys->VRAMCR[1].Offset * KiB(128)) == (addr & KiB(128)))
+        if ((sys->VRAMCR[1].Offset * KiB(128)) == (addr & 0x60000))
             ret |= sys->VRAM_B.b16[(addr & (VRAM_B_Size-1))/sizeof(u16)];
     }
     if ((sys->VRAMCR[2].Raw & 0x87) == 0x83)
     {
-        if ((sys->VRAMCR[2].Offset * KiB(128)) == (addr & KiB(128)))
+        if ((sys->VRAMCR[2].Offset * KiB(128)) == (addr & 0x60000))
             ret |= sys->VRAM_C.b16[(addr & (VRAM_C_Size-1))/sizeof(u16)];
     }
     if ((sys->VRAMCR[3].Raw & 0x87) == 0x83)
     {
-        if ((sys->VRAMCR[3].Offset * KiB(128)) == (addr & KiB(128)))
-            ret |= sys->VRAM_C.b16[(addr & (VRAM_C_Size-1))/sizeof(u16)];
+        if ((sys->VRAMCR[3].Offset * KiB(128)) == (addr & 0x60000))
+            ret |= sys->VRAM_D.b16[(addr & (VRAM_D_Size-1))/sizeof(u16)];
     }
     return ret;
 }
+
 u16 VRAM_3DPal(struct Console* sys, u32 addr)
 {
     //addr &= (KiB(512)-1); does this have any wrapping?

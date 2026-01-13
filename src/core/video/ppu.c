@@ -32,22 +32,23 @@ u16 VRAM_BGAExtPal(struct Console* sys, const u16 idx)
     u16 val = 0;
     if (sys->VRAMCR[4].Raw == 0x84)
     {
-        val = sys->VRAM_E.b16[idx];
+        val = sys->VRAM_E.b16[idx & ((VRAM_E_Size/2)-1)];
     }
     if ((sys->VRAMCR[5].Raw & 0x87) == 0x84)
     {
-        if ((sys->VRAMCR[5].Offset * KiB(16)) == (idx & KiB(16)))
+        if ((sys->VRAMCR[5].Offset * (KiB(16)/2)) == (idx & (0xC000/2)))
         {
-            val |= sys->VRAM_F.b16[idx & (VRAM_F_Size-1)];
+            val |= sys->VRAM_F.b16[idx & ((VRAM_F_Size/2)-1)];
         }
     }
     if ((sys->VRAMCR[6].Raw & 0x87) == 0x84)
     {
-        if ((sys->VRAMCR[6].Offset * KiB(16)) == (idx & KiB(16)))
+        if ((sys->VRAMCR[6].Offset * (KiB(16)/2)) == (idx & (0xC000/2)))
         {
-            val |= sys->VRAM_G.b16[idx & (VRAM_G_Size-1)];
+            val |= sys->VRAM_G.b16[idx & ((VRAM_G_Size/2)-1)];
         }
     }
+    //if (val != 0) printf("%02X %02X %02X %08X\n", sys->VRAMCR[4].Raw, sys->VRAMCR[5].Raw, sys->VRAMCR[6].Raw, idx);
     return val;
 }
 
@@ -55,7 +56,7 @@ u16 VRAM_BGBExtPal(struct Console* sys, const u16 idx)
 {
     if (sys->VRAMCR[7].Raw == 0x82)
     {
-        return sys->VRAM_H.b16[idx];
+        return sys->VRAM_H.b16[idx & ((VRAM_H_Size/2)-1)];
     }
     else return 0;
 }
@@ -67,16 +68,17 @@ u16 VRAM_OBJAExtPal(struct Console* sys, const u16 idx)
     {
         //if ((sys->VRAMCR[5].Offset * KiB(16)) == (idx & KiB(16))) checkme?
         {
-            val = sys->VRAM_F.b16[idx & (VRAM_F_Size-1)];
+            val = sys->VRAM_F.b16[idx & ((VRAM_F_Size/2)-1)];
         }
     }
     if ((sys->VRAMCR[6].Raw & 0x87) == 0x85)
     {
         //if ((sys->VRAMCR[6].Offset * KiB(16)) == (idx & KiB(16))) checkme?
         {
-            val |= sys->VRAM_G.b16[idx & (VRAM_G_Size-1)];
+            val |= sys->VRAM_G.b16[idx & ((VRAM_G_Size/2)-1)];
         }
     }
+    //if (val != 0) printf("%02X %02X %08X\n", sys->VRAMCR[5].Raw, sys->VRAMCR[6].Raw, idx);
     return val;
 }
 
@@ -84,7 +86,7 @@ u16 VRAM_OBJBExtPal(struct Console* sys, const u16 idx)
 {
     if (sys->VRAMCR[8].Raw == 0x83)
     {
-        return sys->VRAM_I.b16[idx & (VRAM_I_Size-1)];
+        return sys->VRAM_I.b16[idx & ((VRAM_I_Size/2)-1)];
     }
     else return 0;
 }
@@ -397,6 +399,7 @@ void PPU_Composite(struct Console* sys, const bool b, const u16 y)
                 u32 extpalbase = bg*KiB(8);
                 if ((bg <= 1) && ppu->BGCR[bg].ExtPalSlot) extpalbase += KiB(16);
                 color = BGExtPal(sys, index.Index+extpalbase);
+                //if (!b) color = 0x7C1F;
             }
         }
         else
