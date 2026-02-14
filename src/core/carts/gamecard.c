@@ -77,7 +77,7 @@ bool Gamecard_Init(Gamecard* card, const char* romname, u8* bios7)
 
     char soupname[512]; // if you make a longer file path i *will* cry.
 
-    strncpy(soupname, romname, 512-5); 
+    strncpy(soupname, romname, 512-5);
 
     char* end = strrchr(soupname, '.');
 
@@ -99,6 +99,34 @@ bool Gamecard_Init(Gamecard* card, const char* romname, u8* bios7)
     {
         LogPrint(LOG_ALWAYS, "NOTE: Could not locate .soup for this ROM; It probably wont boot properly.\n");
         return true;
+    }
+
+    char savname[512]; // if you make a longer file path i *will* cry.
+
+    strncpy(savname, romname, 512-4);
+
+    end = strrchr(savname, '.');
+    FILE* sav = NULL;
+
+    if (end == NULL)
+    {
+        LogPrint(LOG_ALWAYS, "ERROR: Could not find the part of the file path that's actually a file extension????\n");
+    }
+    else
+    {
+
+        end[1] = 's';
+        end[2] = 'a';
+        end[3] = 'v';
+        end[5] = '\0';
+
+        sav = fopen(savname, "rb");
+
+        if (sav == NULL)
+        {
+            LogPrint(LOG_ALWAYS, "NOTE: Could not locate .sav for this ROM.\n");
+            return true;
+        }
     }
 
     char* soupbowl;
@@ -176,7 +204,7 @@ bool Gamecard_Init(Gamecard* card, const char* romname, u8* bios7)
                 id = strtoul(&spoon[8], &end, 16);
             }
 
-            if (!Flash_Init(card->SPI, NULL /* TODO */, 1<<sramsize, false, id, "SRAM Flash"))
+            if (!Flash_Init(card->SPI, sav, 1<<sramsize, false, id, "SRAM Flash"))
             {
                 Flash_Cleanup(card->SPI);
 
@@ -199,7 +227,7 @@ bool Gamecard_Init(Gamecard* card, const char* romname, u8* bios7)
                 return true;
             }
 
-            if (!EEPROM_Init(card->SPI, NULL /* TODO */, 1<<sramsize, 1, 0 /* TODO */))
+            if (!EEPROM_Init(card->SPI, sav, 1<<sramsize, 1, 0 /* TODO */))
             {
                 EEPROM_Cleanup(card->SPI);
 
@@ -222,7 +250,7 @@ bool Gamecard_Init(Gamecard* card, const char* romname, u8* bios7)
                 return true;
             }
 
-            if (!EEPROM_Init(card->SPI, NULL /* TODO */, 1<<sramsize, 2, 0 /* TODO */))
+            if (!EEPROM_Init(card->SPI, sav, 1<<sramsize, 2, 0 /* TODO */))
             {
                 EEPROM_Cleanup(card->SPI);
 
@@ -245,7 +273,7 @@ bool Gamecard_Init(Gamecard* card, const char* romname, u8* bios7)
                 return true;
             }
 
-            if (!EEPROM_Init(card->SPI, NULL /* TODO */, 1<<sramsize, 3, 0 /* TODO */))
+            if (!EEPROM_Init(card->SPI, sav, 1<<sramsize, 3, 0 /* TODO */))
             {
                 EEPROM_Cleanup(card->SPI);
 

@@ -45,7 +45,7 @@ bool EEPROM_Init(EEPROM* eep, FILE* ram, u64 size, u8 addrbytes, u8 writeprot)
 
     if (ram == NULL)
     {
-        memset(eep->RAM, 0, eep->RAMSize);
+        memset(eep->RAM, 0xFF, eep->RAMSize);
     }
     else if (fread(eep->RAM, eep->RAMSize, 1, ram) != 1)
     {

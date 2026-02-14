@@ -44,7 +44,7 @@ bool Flash_Init(Flash* flash, FILE* ram, u64 size, bool writeprot, const int id,
 
     if (ram == NULL)
     {
-        memset(flash->RAM, 0, flash->RAMSize);
+        memset(flash->RAM, 0xFF, flash->RAMSize);
     }
     else if (fread(flash->RAM, flash->RAMSize, 1, ram) != 1)
     {
