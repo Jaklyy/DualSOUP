@@ -12,7 +12,6 @@
 #include "utils.h"
 #include "video/ppu.h"
 #include "video/video.h"
-#include "bus/io.h"
 #include "sram/flash.h"
 
 

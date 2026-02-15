@@ -3,7 +3,6 @@
 #include <stdatomic.h>
 #include <threads.h>
 #include <stdio.h>
-#include "bus/io.h"
 #include "utils.h"
 #include "arm/arm9/arm.h"
 #include "arm/arm7/arm.h"
@@ -439,6 +438,20 @@ struct Console
 
     Powman Powman;
 
+    u8 WiFiBBWrBuf;
+    u8 WiFiBBRdBuf;
+
+    u8 WiFiBB[256]; // checkme: how many?
+    union
+    {
+        u8 Raw;
+        struct
+        {
+            bool PowerOff : 1;
+            bool UNK : 1;
+        };
+    } WiFiPowerUS;
+
 #ifdef MonitorFPS
     u64 OldTime;
 #endif
@@ -466,6 +479,7 @@ struct Console
     MEMORY(NTRBios9,    NTRBios9_Size);
     MEMORY(NTRBios7,    NTRBios7_Size);
     MEMORY(WiFiRAM,    WiFiRAM_Size);
+    MEMORY(WifiIO, 0x1000);
 
     alignas(HOST_CACHEALIGN) // ppu a sync area
     volatile timestamp PPUATimestamp;

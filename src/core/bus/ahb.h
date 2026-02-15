@@ -146,6 +146,16 @@ struct BusMainRAM
 void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, const u32 mask, const bool atomic, bool* seq, const bool timings);
 [[nodiscard]] u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, const bool atomic, const bool hold, bool* seq, const bool timings, const u32 a7pc);
 void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, const u32 mask, const bool atomic, bool* seq, const bool timings, const u32 a7pc);
+
+u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask);
+void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mask, const u32 a7pc);
+u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask);
+void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mask);
+
+u32 WiFi_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, bool* seq, const bool timings);
+void WiFi_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, const u32 mask, bool* seq, const bool timings);
+
 bool AHB_NegOwnership(struct Console* sys, timestamp* cur, const bool atomic, const bool a9);
 void Bus_MainRAM_ReleaseHold(struct Console* sys, struct AHB* buscur);
 void AddBusContention(timestamp* busyts, const timestamp cur, const u8 device);
+void Timing32(struct AHB* bus);

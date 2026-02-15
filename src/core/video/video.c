@@ -2,7 +2,6 @@
 #include <SDL3/SDL.h>
 #include <threads.h>
 #include "video.h"
-#include "../bus/io.h"
 #include "../scheduler.h"
 #include "../console.h"
 #include "../io/dma.h"

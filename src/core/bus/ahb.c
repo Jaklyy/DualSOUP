@@ -5,7 +5,6 @@
 #include "../io/dma.h"
 #include "../console.h"
 #include "../video/video.h"
-#include "io.h"
 
 
 
@@ -1099,9 +1098,7 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
         ret = IO7_Read(sys, addr, mask);
         break;
     case 0x048: // WiFi
-        if (addr == 0x04808180) ret = 0;
-        else ret = MemoryRead(32, sys->WiFiRAM, addr, WiFiRAM_Size);
-        if (timings) LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented READ%i: WiFi %08X %08X %08X\n", width, addr, ret, mask);
+        ret = WiFi_Read(sys, ts, addr, mask, seq, timings);
         break;
 
     case 0x060: // VRAM
@@ -1200,9 +1197,7 @@ void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
         IO7_Write(sys, addr, val, mask, a7pc);
         break;
     case 0x048: // WiFi
-        if (timings) Timing32(&sys->AHB7); // TODO
-        LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented WRITE%i: WiFi %08X %08X %08X\n", width, addr, val, mask);
-        MemoryWrite(32, sys->WiFiRAM, addr, WiFiRAM_Size, val, mask);
+        WiFi_Write(sys, ts, addr, val, mask, seq, timings);
         break;
 
     case 0x060: // VRAM
