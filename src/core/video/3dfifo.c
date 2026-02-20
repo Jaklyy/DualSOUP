@@ -328,6 +328,13 @@ void GX_IOWrite(struct Console* sys, const u32 addr, const u32 mask, const u32 v
         case 0x600:
         {
             MaskedWrite(sys->GX3D.Status.Raw, val, mask & 0xC0000000);
+            if (mask & val & (1<<15))
+            {
+                sys->GX3D.Status.StackError = false;
+                sys->GX3D.PosVecMtxStackPtr = 0;
+                sys->GX3D.ProjMtxStackPtr = 0;
+                sys->GX3D.TexMtxStackPtr = 0;
+            }
             //printf("write %08X\n", sys->GX3D.Status.Raw);
             GX_UpdateIRQ(sys, sys->AHB9.Timestamp);
             break;
@@ -345,7 +352,7 @@ u32 GX_IORead(struct Console* sys, const u32 addr)
     {
         case 0x600:
             //printf("stat %08X\n", sys->GX3D.Status.Raw | (sys->GX3D.FIFOFullness << 16));
-            return sys->GX3D.Status.Raw | (sys->GX3D.FIFOFullness << 16);
+            return sys->GX3D.Status.Raw | (sys->GX3D.FIFOFullness << 16) | (sys->GX3D.ProjMtxStackPtr << 13) | ((sys->GX3D.PosVecMtxStackPtr & 0x1F) << 8);
 
         case 0x640 ... 0x67C:
             GX_UpdateClip(sys);

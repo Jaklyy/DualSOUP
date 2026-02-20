@@ -666,11 +666,13 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
 
                 gx->PositionMatrix = gx->PosMatrixStack[(param & 0x1F)];
                 gx->VectorMatrix = gx->VecMatrixStack[(param & 0x1F)];
+                gx->ClipDirty = true;
                 gx->ExecTS+=35;
             }
             else if (gx->CurMatrixMode == Mtx_Proj)
             {
                 gx->ProjectionMatrix = gx->ProjMatrixStack;
+                gx->ClipDirty = true;
                 gx->ExecTS+=35;
             }
             else // tex matrix

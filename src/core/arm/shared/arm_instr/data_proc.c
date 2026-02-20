@@ -614,7 +614,7 @@ void ARM_HalfwordMul(struct ARM* cpu, const struct ARM_Instr instr_data)
         }
     }
 
-    // A7/9: registers are written back in the order: RdLo -> RdHi
+    // A9: registers are written back in the order: RdLo -> RdHi
     if (oplong)
     {
         if (instr.Rn != 15) // multiplies fail writeback to pc
