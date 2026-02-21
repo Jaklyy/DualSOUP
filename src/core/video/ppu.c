@@ -32,23 +32,22 @@ u16 VRAM_BGAExtPal(struct Console* sys, const u16 idx)
     u16 val = 0;
     if (sys->VRAMCR[4].Raw == 0x84)
     {
-        val = sys->VRAM_E.b16[idx & ((VRAM_E_Size/2)-1)];
+        val = sys->VRAM_E.b16[idx & ((VRAM_E_Size/sizeof(u16))-1)];
     }
     if ((sys->VRAMCR[5].Raw & 0x87) == 0x84)
     {
-        if ((sys->VRAMCR[5].Offset * (KiB(16)/2)) == (idx & (0xC000/2)))
+        if ((sys->VRAMCR[5].Offset * (KiB(16)/sizeof(u16))) == (idx & (0x4000/sizeof(u16))))
         {
-            val |= sys->VRAM_F.b16[idx & ((VRAM_F_Size/2)-1)];
+            val |= sys->VRAM_F.b16[idx & ((VRAM_F_Size/sizeof(u16))-1)];
         }
     }
     if ((sys->VRAMCR[6].Raw & 0x87) == 0x84)
     {
-        if ((sys->VRAMCR[6].Offset * (KiB(16)/2)) == (idx & (0xC000/2)))
+        if ((sys->VRAMCR[6].Offset * (KiB(16)/sizeof(u16))) == (idx & (0x4000/sizeof(u16))))
         {
-            val |= sys->VRAM_G.b16[idx & ((VRAM_G_Size/2)-1)];
+            val |= sys->VRAM_G.b16[idx & ((VRAM_G_Size/sizeof(u16))-1)];
         }
     }
-    //if (val != 0) printf("%02X %02X %02X %08X\n", sys->VRAMCR[4].Raw, sys->VRAMCR[5].Raw, sys->VRAMCR[6].Raw, idx);
     return val;
 }
 
@@ -56,7 +55,7 @@ u16 VRAM_BGBExtPal(struct Console* sys, const u16 idx)
 {
     if (sys->VRAMCR[7].Raw == 0x82)
     {
-        return sys->VRAM_H.b16[idx & ((VRAM_H_Size/2)-1)];
+        return sys->VRAM_H.b16[idx & ((VRAM_H_Size/sizeof(u16))-1)];
     }
     else return 0;
 }
@@ -68,17 +67,16 @@ u16 VRAM_OBJAExtPal(struct Console* sys, const u16 idx)
     {
         //if ((sys->VRAMCR[5].Offset * KiB(16)) == (idx & KiB(16))) checkme?
         {
-            val = sys->VRAM_F.b16[idx & ((VRAM_F_Size/2)-1)];
+            val = sys->VRAM_F.b16[idx & ((VRAM_F_Size/sizeof(u16))-1)];
         }
     }
     if ((sys->VRAMCR[6].Raw & 0x87) == 0x85)
     {
         //if ((sys->VRAMCR[6].Offset * KiB(16)) == (idx & KiB(16))) checkme?
         {
-            val |= sys->VRAM_G.b16[idx & ((VRAM_G_Size/2)-1)];
+            val |= sys->VRAM_G.b16[idx & ((VRAM_G_Size/sizeof(u16))-1)];
         }
     }
-    //if (val != 0) printf("%02X %02X %08X\n", sys->VRAMCR[5].Raw, sys->VRAMCR[6].Raw, idx);
     return val;
 }
 
@@ -86,7 +84,7 @@ u16 VRAM_OBJBExtPal(struct Console* sys, const u16 idx)
 {
     if (sys->VRAMCR[8].Raw == 0x83)
     {
-        return sys->VRAM_I.b16[idx & ((VRAM_I_Size/2)-1)];
+        return sys->VRAM_I.b16[idx & ((VRAM_I_Size/sizeof(u16))-1)];
     }
     else return 0;
 }
@@ -154,7 +152,7 @@ void PPU_RenderText(struct Console* sys, const bool b, u16 y, const u8 bg)
             u32 pixeladdr = tilebase + (((tile.TileNum * (TileWidth*TileHeight)) + (yfrac*TileWidth)) + xfrac);
             u8 idx = BG(sys, pixeladdr&~3, u32_max, false, 0, false) >> ((pixeladdr&3)*8);
 
-            buffer[xf] = (CompositeBuffer){idx, 0, !idx, false, ppu->DisplayCR.BGExtPalEn, false};
+            buffer[xf] = (CompositeBuffer){idx+(tile.Palette*256), 0, !idx, false, ppu->DisplayCR.BGExtPalEn, false};
         }
         else // pal 16 4bpp
         {
@@ -396,16 +394,15 @@ void PPU_Composite(struct Console* sys, const bool b, const u16 y)
             }
             else
             {
-                u32 extpalbase = bg*KiB(8);
-                if ((bg <= 1) && ppu->BGCR[bg].ExtPalSlot) extpalbase += KiB(16);
+                u32 extpalbase = bg*(KiB(8)/sizeof(u16));
+                if ((bg <= 1) && ppu->BGCR[bg].ExtPalSlot) extpalbase += KiB(16)/sizeof(u16);
                 color = BGExtPal(sys, index.Index+extpalbase);
-                //if (!b) color = 0x7C1F;
             }
         }
         else
         {
             AddBusContention(sys->AHBBusyTS, *time, Dev_Palette);
-            color = palbase[index.Index + ((spr) ? 0x100 : 0)];
+            color = palbase[(index.Index&0xFF) + ((spr) ? 0x100 : 0)];
         }
         scanline[x] = (index.GPU3D ? color : RGB565to666(color));
 
@@ -457,7 +454,7 @@ void PPU_SpriteNormal(struct Console* sys, const bool b, const SprAttrs01 attr1,
             {
                 u32 addr = baseaddr + (attr1.HFlip ? (((width-1-xmod)/8*8*8) + ((width-1-xmod)%8)) : ((xmod/8*8*8) + (xmod%8)));
                 u8 index = OBJ(sys, addr&~3, 0xFFFFFFFF, false, 0, false) >> ((addr&3)*8);
-                if (index && (buffer[x].Empty || (buffer[x].SprPrio > attr2.Priority))) buffer[x] = (CompositeBuffer){index, attr2.Priority, false, false, ppu->DisplayCR.SprExtPalEn, false};
+                if (index && (buffer[x].Empty || (buffer[x].SprPrio > attr2.Priority))) buffer[x] = (CompositeBuffer){index+(attr2.PaletteOffset*256), attr2.Priority, false, false, ppu->DisplayCR.SprExtPalEn, false};
             }
         }
         else
@@ -469,7 +466,7 @@ void PPU_SpriteNormal(struct Console* sys, const bool b, const SprAttrs01 attr1,
                 u32 addr = baseaddr + (attr1.HFlip ? (((width-1-xmod)/8*8*4) + ((width-1-xmod)%8/2)) : ((xmod/8*8*4) + (xmod%8/2)));
                 u8 index = OBJ(sys, addr&~3, 0xFFFFFFFF, false, 0, false) >> ((addr&3)*8);
                 index = ((index >> (((xmod&1)^attr1.HFlip)*4)) & 0xF);
-                if (index && (buffer[x].Empty || (buffer[x].SprPrio > attr2.Priority))) buffer[x] = (CompositeBuffer){index+(attr2.PaletteOffset<<4), attr2.Priority, false, false, false, false};
+                if (index && (buffer[x].Empty || (buffer[x].SprPrio > attr2.Priority))) buffer[x] = (CompositeBuffer){index+(attr2.PaletteOffset*16), attr2.Priority, false, false, false, false};
             }
         }
     }
