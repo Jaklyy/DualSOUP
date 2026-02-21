@@ -337,9 +337,130 @@ Colors SWRen_DecodeTextures(struct Console* sys, Polygon* poly, s16 s, s16 t, u8
     }
     case 5: // 4x4 Compressed
     {
-        // TODO
-        *texalpha = 31;
-        return (Colors){.R=0x3F, .G=0, .B=0x3F};
+        //u32 addr = texbase + (texoffs/4);
+        u32 addr = texbase + ((t & 0x3FC) * (slen / 4)) + (s & 0x3FC) + (t & 3);
+        u8 texel;
+        // slot 1 cannot be accessed for texel data here.
+        if ((addr & 0x60000) == 0x20000) texel = 0;
+        else texel = (VRAM_3DTexel(sys, addr) >> (((s & 0x3) + ((t & 0x1) << 2)) * 2)) & 0x3;
+
+        // access slot one for palette index data
+        u16 paldat = VRAM_3DTexel(sys, 0x20000 + ((addr & 0x1FFFF)/2) + ((addr >= 0x40000) ? 0x10000 : 0));
+        paladdr = (paladdr * 16) + ((paldat & 0x3FFF) * 4);
+        u8 mode = paldat >> 14;
+
+        bool buggy;
+        enum : u8
+        {
+            ColorNormal,
+            ColorEven,
+            Color0Bias,
+            Color1Bias,
+            ColorTrans,
+        };
+
+        switch (mode)
+        {
+            case 0:
+            {
+                mode = ((texel == 3) ? ColorTrans : ColorNormal);
+                buggy = false;
+                break;
+            }
+
+            case 1:
+            {
+                switch(texel)
+                {
+                    case 2: mode = ColorEven; break;
+                    case 3: mode = ColorTrans; break;
+                    default: mode = ColorNormal; break;
+                }
+                buggy = true; // should be disabled for dsi w/ rast rev bit set.
+                break;
+            }
+
+            case 2:
+            {
+                mode = ColorNormal;
+                buggy = false;
+                break;
+            }
+
+            case 3:
+            {
+                switch(texel)
+                {
+                    case 2: mode = Color0Bias; break;
+                    case 3: mode = Color1Bias; break;
+                    default: mode = ColorNormal; break;
+                }
+                buggy = true; // should be disabled for dsi w/ rast rev bit set.
+                break;
+            }
+
+            default: unreachable();
+        }
+
+        switch(mode)
+        {
+            case ColorNormal:
+            {
+                u16 color = VRAM_3DPal(sys, paladdr + (texel*2));
+                *texalpha = 31;
+                Colors colorfin = (Colors){.R = color & 0x1F, .G = (color >> 5) & 0x1F, .B = (color >> 10) & 0x1F};
+                if (buggy)
+                {
+                    colorfin.RGB <<= 1;
+                }
+                else
+                {
+                    colorfin = SWRen_RGB555to666(colorfin); 
+                }
+                return colorfin;
+            }
+
+            case ColorTrans:
+            {
+                *texalpha = 0;
+                return (Colors){.R=0x3F, .G=0, .B=0x3F};
+            }
+
+            case ColorEven:
+            {
+                u16 color0 = VRAM_3DPal(sys, paladdr);
+                u16 color1 = VRAM_3DPal(sys, paladdr+2);
+                *texalpha = 31;
+                Colors colorfin0 = (Colors){.R = color0 & 0x1F, .G = (color0 >> 5) & 0x1F, .B = (color0 >> 10) & 0x1F};
+                Colors colorfin1 = (Colors){.R = color1 & 0x1F, .G = (color1 >> 5) & 0x1F, .B = (color1 >> 10) & 0x1F};
+                colorfin0.RGB += colorfin1.RGB;
+                return colorfin0;
+            }
+
+            case Color0Bias:
+            {
+                u16 color0 = VRAM_3DPal(sys, paladdr);
+                u16 color1 = VRAM_3DPal(sys, paladdr+2);
+                *texalpha = 31;
+                Colors colorfin0 = (Colors){.R = color0 & 0x1F, .G = (color0 >> 5) & 0x1F, .B = (color0 >> 10) & 0x1F};
+                Colors colorfin1 = (Colors){.R = color1 & 0x1F, .G = (color1 >> 5) & 0x1F, .B = (color1 >> 10) & 0x1F};
+                colorfin0.RGB = ((colorfin0.RGB * 5) + (colorfin1.RGB * 3)) / 4;
+                return colorfin0;
+            }
+
+            case Color1Bias:
+            {
+                u16 color0 = VRAM_3DPal(sys, paladdr);
+                u16 color1 = VRAM_3DPal(sys, paladdr+2);
+                *texalpha = 31;
+                Colors colorfin0 = (Colors){.R = color0 & 0x1F, .G = (color0 >> 5) & 0x1F, .B = (color0 >> 10) & 0x1F};
+                Colors colorfin1 = (Colors){.R = color1 & 0x1F, .G = (color1 >> 5) & 0x1F, .B = (color1 >> 10) & 0x1F};
+                colorfin0.RGB = ((colorfin0.RGB * 3) + (colorfin1.RGB * 5)) / 4;
+                return colorfin0;
+            }
+
+            default: unreachable();
+        }
     }
     case 6: // A5I3
     {
