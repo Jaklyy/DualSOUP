@@ -84,7 +84,7 @@ int main()
     SDL_Window* win;
     SDL_Renderer* ren;
 
-    if (!SDL_CreateWindowAndRenderer("DualSOUP", 256*2, 192*2*2, 0, &win, &ren))
+    if (!SDL_CreateWindowAndRenderer("DualSOUP", 256*2, 192*2*2, SDL_WINDOW_RESIZABLE, &win, &ren))
     {
         printf("window/renderer init failure :(\n");
         return EXIT_FAILURE;
@@ -107,7 +107,15 @@ int main()
     mtx_unlock(&init);
 
     SDL_Texture* blit = SDL_CreateTexture(ren, SDL_PIXELFORMAT_XBGR8888, SDL_TEXTUREACCESS_STREAMING, 256, 192*2);
-    SDL_SetTextureScaleMode(blit, SDL_SCALEMODE_NEAREST); // TODO: SDL_SCALEMODE_PIXELART when 3.4.0 is out?
+
+    SDL_SetTextureScaleMode(blit,
+#if SDL_VERSION_ATLEAST(3, 4, 0)
+        SDL_SCALEMODE_PIXELART
+#else
+        SDL_SCALEMODE_NEAREST
+#endif
+        );
+
     SDL_Event evts;
     u8* buffer;
     bool buf = false;
