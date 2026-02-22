@@ -367,6 +367,8 @@ void DMA_Run(struct Console* sys, const bool a9)
 
     // end
 
+    cnt->CurMask &= ~(1<<id);
+
     if (channel->Latched_NumWords == 0)
     {
         if (channel->CR.Repeat && (channel->CurrentMode != DMAStart_Immediate /*checkme?*/))
@@ -379,14 +381,15 @@ void DMA_Run(struct Console* sys, const bool a9)
         {
             channel->CR.Enable = false;
         }
+
+        if ((channel->Latched_NumWords == 0) && channel->CR.IRQ)
+            Console_ScheduleIRQs(sys, IRQ_DMA0+id, a9, cnt->ChannelTimestamps[id]); // checkme: delay
     }
-
-    cnt->CurMask &= ~(1<<id);
-
-    //cnt->ChannelLastEnded[id] = cnt->ChannelTimestamps[id];
-
-    if ((channel->Latched_NumWords == 0) && channel->CR.IRQ)
-        Console_ScheduleIRQs(sys, IRQ_DMA0+id, a9, cnt->ChannelTimestamps[id]); // checkme: delay
+    else if (channel->CurrentMode == DMAStart_3DFIFO)
+    {
+        if (sys->GX3D.Status.FIFOHalfEmpty)
+            channel->DMAQueued = true;
+    }
 
     if (!channel->DMAQueued)
         cnt->ChannelTimestamps[id] = timestamp_max;
