@@ -43,7 +43,6 @@ void RTC_UpdateFull(RTC* rtc)
 
 u8 RTC_ReadByte(RTC* rtc)
 {
-    //printf("read: %02X\n", rtc->CurCmd);
     switch (rtc->CurCmd)
     {
         case 0x61: // status reg 1
@@ -122,7 +121,7 @@ u8 RTC_ReadByte(RTC* rtc)
             return 0;
         }
         default:
-            LogPrint(LOG_UNIMP | LOG_RTC, "UNIMP RTC READ %02X\n", rtc->CurCmd);
+            LogPrint(LOG_UNIMP|LOG_RTC, "UNIMP RTC READ %02X\n", rtc->CurCmd);
             return 0;
     }
 }
@@ -135,7 +134,6 @@ void RTC_CommandHandler(RTC* rtc)
         rtc->CurCmd = rtc->Cmd;
         return;
     }
-    //printf("%08X\n", rtc->CurCmd);
 
     // read command
     if (rtc->CurCmd & 0x01)
@@ -225,7 +223,7 @@ void RTC_CommandHandler(RTC* rtc)
             break;
         }
         default:
-            LogPrint(LOG_UNIMP | LOG_RTC, "I HAVE TO DO THIS??? %02X\n", rtc->CurCmd);
+            LogPrint(LOG_UNIMP|LOG_RTC, "I HAVE TO DO THIS??? %02X\n", rtc->CurCmd);
             break;
     }
 }

@@ -200,8 +200,8 @@ void Timer7_UpdateCRs(struct Console* sys, timestamp now)
 
 void Timer_IOWriteHandler(struct Console* sys, struct Timer* timers, const timestamp curts, const u32 addr, const u32 val, const u32 mask, const bool a9)
 {
-    if (a9) Scheduler_RunEventManual(sys, curts, Evt_Timer9, true);
-    else    Scheduler_RunEventManual(sys, curts, Evt_Timer7, false);
+    if (a9) Scheduler_RunEventManual(sys, curts, Evt_Timer9, true, true);
+    else    Scheduler_RunEventManual(sys, curts, Evt_Timer7, false, true);
 
     Timer_Run(sys, timers, curts, a9);
 
@@ -220,8 +220,8 @@ void Timer_IOWriteHandler(struct Console* sys, struct Timer* timers, const times
 
 u32 Timer_IOReadHandler(struct Console* sys, struct Timer* timers, const timestamp curts, const u32 addr, const bool a9)
 {
-    if (a9) Scheduler_RunEventManual(sys, curts, Evt_Timer9, true);
-    else    Scheduler_RunEventManual(sys, curts, Evt_Timer7, false);
+    if (a9) Scheduler_RunEventManual(sys, curts, Evt_Timer9, true, true);
+    else    Scheduler_RunEventManual(sys, curts, Evt_Timer7, false, true);
 
     Timer_Run(sys, timers, curts, a9);
 

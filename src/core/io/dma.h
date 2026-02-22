@@ -72,4 +72,4 @@ void DMA9_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 
 u32 DMA_IOReadHandler(struct DMA_Channel* channels, u32 addr);
 void StartDMA9(struct Console* sys, timestamp start, u8 mode);
 void StartDMA7(struct Console* sys, timestamp start, u8 mode);
-timestamp DMA_GetNext(struct Console* sys, bool a9);
+timestamp DMA_GetNext(struct Console* sys, bool a9, const bool inclusive);

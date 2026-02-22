@@ -506,6 +506,8 @@ struct Console
     void* Pad;
     mtx_t FrameBufferMutex[2];
 
+    //bool dummy; // for debugging i guess
+
     volatile bool KillThread;
 };
 
@@ -525,11 +527,11 @@ void Console_DirectBoot(struct Console* sys);
 void Console_ScheduleIRQs(struct Console* sys, const u8 irq, const bool a9, timestamp time);
 void Console_ScheduleHeldIRQs(struct Console* sys, const u8 irq, const bool a9, timestamp time);
 void Console_ClearHeldIRQs(struct Console* sys, const u8 irq, const bool a9);
-timestamp Console_GetARM7Max(struct Console* sys);
-timestamp Console_GetARM9Max(struct Console* sys);
-void Console_SyncWith7GTE(struct Console* sys, timestamp now);
-void Console_SyncWith7GT(struct Console* sys, timestamp now);
-void Console_SyncWith9GTE(struct Console* sys, timestamp now);
-void Console_SyncWith9GT(struct Console* sys, timestamp now);
+timestamp Console_GetARM7Max(struct Console* sys, const bool froma9);
+timestamp Console_GetARM9Max(struct Console* sys, const bool froma7);
+void Console_SyncWith7GTE(struct Console* sys, timestamp now, const bool bushogged);
+void Console_SyncWith7GT(struct Console* sys, timestamp now, const bool bushogged);
+void Console_SyncWith9GTE(struct Console* sys, timestamp now, const bool bushogged);
+void Console_SyncWith9GT(struct Console* sys, timestamp now, const bool bushogged);
 bool Console_CheckARM9Wake(struct Console* sys);
 bool Console_CheckARM7Wake(struct Console* sys);

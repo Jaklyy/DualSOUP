@@ -544,7 +544,7 @@ void QueueNextTransfer(struct Console* sys, timestamp cur, const bool a9)
 
 u32 Gamecard_ROMDataRead(struct Console* sys, timestamp cur, const bool a9)
 {
-    Scheduler_RunEventManual(sys, cur, Evt_CardROM, a9);
+    Scheduler_RunEventManual(sys, cur, Evt_CardROM, a9, true);
     Gamecard* card = &sys->Gamecard;
 
     u32 ret = sys->GCROMData[a9];
@@ -640,7 +640,7 @@ void Gamecard_SPIFinish7(struct Console* sys, [[maybe_unused]] timestamp cur)
 
 u32 Gamecard_IOReadHandler(struct Console* sys, u32 addr, timestamp cur, const bool a9)
 {
-    Scheduler_RunEventManual(sys, cur, Evt_CardROM, a9);
+    Scheduler_RunEventManual(sys, cur, Evt_CardROM, a9, true);
     addr -= 0x040001A0;
 
     // a7 is set for exmemcnt bits
@@ -649,10 +649,10 @@ u32 Gamecard_IOReadHandler(struct Console* sys, u32 addr, timestamp cur, const b
     switch(addr & 0x1C)
     {
         case 0x00:
-            Scheduler_RunEventManual(sys, cur, Evt_CardSPI, a9);
+            Scheduler_RunEventManual(sys, cur, Evt_CardSPI, a9, true);
             return sys->GCSPICR[a9].Raw | (sys->GCSPIOut[a9] << 16);
         case 0x04:
-            Scheduler_RunEventManual(sys, cur, Evt_CardROM, a9);
+            Scheduler_RunEventManual(sys, cur, Evt_CardROM, a9, true);
             return sys->GCROMCR[a9].Raw;
         default:
             return 0;
@@ -662,7 +662,7 @@ u32 Gamecard_IOReadHandler(struct Console* sys, u32 addr, timestamp cur, const b
 void Gamecard_IOWriteHandler(struct Console* sys, u32 addr, const u32 val, const u32 mask, timestamp cur, const bool a9)
 {
     addr -= 0x040001A0;
-    Scheduler_RunEventManual(sys, cur, Evt_CardROM, a9);
+    Scheduler_RunEventManual(sys, cur, Evt_CardROM, a9, true);
 
     // a7 is set for exmemcnt bits
     if (sys->ExtMemCR_Shared.NDSCardAccess == a9) return; // checkme: all of them?
@@ -691,7 +691,7 @@ void Gamecard_IOWriteHandler(struct Console* sys, u32 addr, const u32 val, const
         }
         case 0x04:
         {
-            Scheduler_RunEventManual(sys, cur, Evt_CardROM, a9);
+            Scheduler_RunEventManual(sys, cur, Evt_CardROM, a9, true);
             MaskedWrite(sys->GCROMCR[a9].Raw, val, mask & 0x5F7F7FFF);
 
             if (val & mask & (1<<15))

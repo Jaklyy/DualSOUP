@@ -434,7 +434,7 @@ void ARM9_MCR_15(struct ARM946ES* ARM9, const u16 cmd, const u32 val)
 
     case ARM_CoprocReg(0, 7, 0, 4): // wait for interrupt
     case ARM_CoprocReg(0, 15, 8, 2): // wait for interrupt
-        Scheduler_RunEventManual(ARM9->ARM.Sys, ARM9->ARM.Timestamp >> (ARM9->BoostedClock ? 2 : 1), Evt_IF9Update, true);
+        Scheduler_RunEventManual(ARM9->ARM.Sys, ARM9->ARM.Timestamp >> (ARM9->BoostedClock ? 2 : 1), Evt_IF9Update, true, false);
         if (!Console_CheckARM9Wake(ARM9->ARM.Sys)) // checkme: might still halt for a little?
             ARM9->ARM.WaitForInterrupt = true;
         break;

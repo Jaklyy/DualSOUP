@@ -9,19 +9,16 @@ void GX_UpdateIRQ(struct Console* sys, const timestamp time)
 {
     GX3D* gx = &sys->GX3D;
 
-    //printf("gx->Status.Raw %08X\n", gx->Status.Raw);
     switch (gx->Status.FIFOIRQMode)
     {
     case 1:
     {
         if (sys->GX3D.Status.FIFOHalfEmpty)
         {
-            //printf("irq\n");
             Console_ScheduleHeldIRQs(sys, IRQ_3DFIFO, true, time);
         }
         else 
         {
-            //printf("unirq\n");
             Console_ClearHeldIRQs(sys, IRQ_3DFIFO, true);
         }
         break;
@@ -30,18 +27,15 @@ void GX_UpdateIRQ(struct Console* sys, const timestamp time)
     {
         if (sys->GX3D.Status.FIFOEmpty)
         {
-            //printf("irq\n");
             Console_ScheduleHeldIRQs(sys, IRQ_3DFIFO, true, time);
         }
         else
         {
-            //printf("unirq\n");
             Console_ClearHeldIRQs(sys, IRQ_3DFIFO, true);
         }
         break;
     }
     default: // checkme: mode 3?
-            //printf("unirq\n");
         Console_ClearHeldIRQs(sys, IRQ_3DFIFO, true);
         break;
     }
@@ -174,7 +168,6 @@ bool GXFIFO_Unpack(struct Console* sys)
             }
             else
             {
-                //printf("exit?\n");
                 gx->BufferFree = true;
                 return true;
             }
@@ -209,15 +202,10 @@ void GX_RunFIFO(struct Console* sys, const timestamp until)
     bool empty;
     bool test;
     empty =  test = !GX_RunCommand(sys, until);
-    //printf("1:%i\n", test);
     empty &= test = !GXPipe_Fill(sys);
-    //printf("2:%i\n", test);
     empty &= test = GXFIFO_Unpack(sys);
-    //printf("3:%i\n4:%i\n", test, empty);
 
     gx->Status.GXBusy = (gx->FIFOFullness != 0) || (gx->PipeWrPtr != 4) || (until < gx->ExecTS) || gx->CmdReady;
-
-    //printf("%lu\n", until);
 
     if (empty)
     {
@@ -237,11 +225,10 @@ void GXFIFO_PackedSubmit(struct Console* sys, const u32 val)
     // loop until we can submit a new command.
     while (true)
     {
-        Scheduler_RunEventManual(sys, *ts, Evt_GX, true);
-        //printf("%lu %lu\n", *ts, gx->Timestamp);
+        Scheduler_RunEventManual(sys, *ts, Evt_GX, true, true);
+
         //if (*ts < gx->Timestamp)
         //    *ts = gx->Timestamp;
-        //printf("huh %lu %lu\n", sys->Sched.EventTimes[Evt_GX], *ts);
 
         if (gx->ParamRem > 0) // submit a new parameter if needed.
         {
@@ -269,10 +256,10 @@ void GXFIFO_PackedSubmit(struct Console* sys, const u32 val)
             //gx->Timestamp = *ts+1;
             return;
         }
-        //Scheduler_RunEventManual(sys, *ts, Evt_GX, true);
+        //Scheduler_RunEventManual(sys, *ts, Evt_GX, true, true);
         //if (*ts < gx->Timestamp)
         //    *ts = gx->Timestamp;
-        Scheduler_StallToRunEvent(sys, ts, Evt_GX, true);
+        Scheduler_StallToRunEvent(sys, ts, Evt_GX, true, true);
         CR_Switch(sys->HandleMain);
         //++*ts;
     }
@@ -286,7 +273,7 @@ void GXFIFO_PortSubmit(struct Console* sys, const u32 addr, const u32 val)
     // loop until we can submit a new command.
     while (true)
     {
-        Scheduler_RunEventManual(sys, *ts, Evt_GX, true);
+        Scheduler_RunEventManual(sys, *ts, Evt_GX, true, true);
 
         if (GXFIFO_Fill(sys, addr/4, val))
         {
@@ -294,7 +281,7 @@ void GXFIFO_PortSubmit(struct Console* sys, const u32 addr, const u32 val)
             gx->Timestamp = *ts;
             return;
         }
-        Scheduler_StallToRunEvent(sys, ts, Evt_GX, true);
+        Scheduler_StallToRunEvent(sys, ts, Evt_GX, true, true);
         CR_Switch(sys->HandleMain);
     }
 }
@@ -335,7 +322,6 @@ void GX_IOWrite(struct Console* sys, const u32 addr, const u32 mask, const u32 v
                 sys->GX3D.ProjMtxStackPtr = 0;
                 sys->GX3D.TexMtxStackPtr = 0;
             }
-            //printf("write %08X\n", sys->GX3D.Status.Raw);
             GX_UpdateIRQ(sys, sys->AHB9.Timestamp);
             break;
         }

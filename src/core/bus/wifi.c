@@ -65,7 +65,7 @@ u32 WiFi_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, bool
             ret = MemoryRead(32, sys->WifiIO, addr, 0x1000); // TODO
             break;
     }
-    if (timings) LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented READ%i: WiFi IO %08X %08X %08X\n", width, addr, ret, mask);
+    if (timings) LogPrint(LOG_UNIMP|LOG_WIFI, "NTR_AHB7: Unimplemented READ%i: WiFi IO %08X %08X %08X\n", width, addr, ret, mask);
     return ret;
 }
 
@@ -125,14 +125,14 @@ void WiFi_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
                     }
                     else
                     {
-                        printf("INV ");
+                        LogPrint(LOG_WIFI, "INV ");
                     }
-                    printf("BB WR: %02X %02X\n", idx, sys->WiFiBBWrBuf);
+                    LogPrint(LOG_WIFI, "BB WR: %02X %02X\n", idx, sys->WiFiBBWrBuf);
                 }
                 else if ((val >> 12) == 6)
                 {
                     sys->WiFiBBRdBuf = sys->WiFiBB[idx];
-                    printf("BB RD: %02X %02X\n", idx, sys->WiFiBBRdBuf);
+                    LogPrint(LOG_WIFI, "BB RD: %02X %02X\n", idx, sys->WiFiBBRdBuf);
                 }
             }
             if (mask & 0xFFFF0000)
@@ -145,5 +145,5 @@ void WiFi_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
             MemoryWrite(32, sys->WifiIO, addr, 0x1000, val, mask); // TODO
             break;
     }
-    if (timings) LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented WRITE%i: WiFi IO %08X %08X %08X\n", width, addr, val, mask);
+    if (timings) LogPrint(LOG_UNIMP|LOG_WIFI, "NTR_AHB7: Unimplemented WRITE%i: WiFi IO %08X %08X %08X\n", width, addr, val, mask);
 }

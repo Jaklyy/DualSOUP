@@ -33,7 +33,8 @@ void CrashSpectacularly(const char* str, ...)
 
     va_end(args);
 
-    exit(EXIT_FAILURE);
+    __builtin_trap();
+    //exit(EXIT_FAILURE);
 }
 
 // sdl junk

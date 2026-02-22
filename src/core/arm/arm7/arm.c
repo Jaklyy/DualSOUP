@@ -144,7 +144,7 @@ if (instr.Flushed || !ARM7_CheckInterrupts(ARM7)) \
 
 [[nodiscard]] bool ARM7_CheckInterrupts(struct ARM7TDMI* ARM7)
 {
-    Console_SyncWith9GT(cpu->Sys, Console_GetARM7Max(cpu->Sys));
+    Console_SyncWith9GT(cpu->Sys, Console_GetARM7Max(cpu->Sys, false), false);
 
     // TODO: schedule this instead
     if (cpu->Sys->IME7 && !cpu->CPSR.IRQDisable && (cpu->Sys->IE7 & cpu->Sys->IF7))
@@ -213,19 +213,22 @@ void ARM7_MainLoop(struct ARM7TDMI* ARM7)
     while(!CR_Start);
     while(!CR_Kill)
     {
-        if ((Console_GetARM7Max(cpu->Sys) >= cpu->Sys->ARM7Target) || cpu->DeadAsleep)
+        if ((Console_GetARM7Max(cpu->Sys, false) >= cpu->Sys->ARM7Target))// || cpu->DeadAsleep)
         {
             CR_Switch(cpu->Sys->HandleMain);
         }
         else
         {
-            ARM7_Step(ARM7);
-            if (cpu->WaitForInterrupt)
-                cpu->DeadAsleep = true;
-        }
-        if (DMA_GetNext(cpu->Sys, false) <= cpu->Sys->ARM7Target)
-        {
-            DMA_Run(cpu->Sys, false);
+            if ((DMA_GetNext(cpu->Sys, false, false) <= cpu->Timestamp) || (cpu->DeadAsleep && (DMA_GetNext(cpu->Sys, false, false) != timestamp_max)))
+            {
+                DMA_Run(cpu->Sys, false);
+            }
+            else
+            {
+                ARM7_Step(ARM7);
+                if (cpu->WaitForInterrupt)
+                    cpu->DeadAsleep = true;
+            }
         }
     }
 }

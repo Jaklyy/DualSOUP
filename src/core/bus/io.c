@@ -19,8 +19,8 @@ u32 IPC_FIFORead(struct Console* sys, [[maybe_unused]] const u32 mask, const boo
     struct IPCFIFO* recv = ((a9) ? &sys->IPCFIFO9 : &sys->IPCFIFO7);
     timestamp ts = ((a9) ? sys->AHB9.Timestamp : sys->AHB7.Timestamp);
 
-    if (a9) Console_SyncWith7GT(sys, ts);
-    else    Console_SyncWith9GT(sys, ts);
+    if (a9) Console_SyncWith7GT(sys, ts, true);
+    else    Console_SyncWith9GT(sys, ts, true);
 
     u32 ret;
     // CHECKME: do both sides need to be enabled for it to work?
@@ -72,8 +72,8 @@ void IPC_FIFOWrite(struct Console* sys, const u32 val, const u32 mask, const boo
     struct IPCFIFO* send = ((a9) ? &sys->IPCFIFO7 : &sys->IPCFIFO9);
     struct IPCFIFO* recv = ((a9) ? &sys->IPCFIFO9 : &sys->IPCFIFO7);
     timestamp ts = ((a9) ? sys->AHB9.Timestamp : sys->AHB7.Timestamp);
-    if (a9) Console_SyncWith7GT(sys, ts);
-    else    Console_SyncWith9GT(sys, ts);
+    if (a9) Console_SyncWith7GT(sys, ts, true);
+    else    Console_SyncWith9GT(sys, ts, true);
 
     //printf("w%i %08X\n", a9, val);
 
@@ -117,8 +117,8 @@ void IPC_FIFOCRWrite(struct Console* sys, const u32 val, const u32 mask, bool a9
     struct IPCFIFO* recv = ((a9) ? &sys->IPCFIFO9 : &sys->IPCFIFO7);
     timestamp ts = ((a9) ? sys->AHB9.Timestamp : sys->AHB7.Timestamp);
 
-    if (a9) Console_SyncWith7GT(sys, ts);
-    else    Console_SyncWith9GT(sys, ts);
+    if (a9) Console_SyncWith7GT(sys, ts, true);
+    else    Console_SyncWith9GT(sys, ts, true);
 
     u16 old = recv->CR.Raw;
     MaskedWrite(recv->CR.Raw, val, mask & 0x8404);
@@ -284,7 +284,7 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask)
     switch(addr & 0xFF'FF'FC)
     {
         case 0x00'00'04:
-            Scheduler_RunEventManual(sys, sys->AHB7.Timestamp, Evt_Scanline, false);
+            Scheduler_RunEventManual(sys, sys->AHB7.Timestamp, Evt_Scanline, false, true);
             return (sys->VCount << 16) | sys->DispStatRO7.Raw | sys->DispStatRW7.Raw;
 
         case 0x00'00'B0 ... 0x00'00'E0-1:
@@ -304,23 +304,23 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask)
             return sys->RTC.CR.Raw;
 
         case 0x00'01'80: // ipcsync
-            Console_SyncWith9GT(sys, sys->AHB7.Timestamp);
+            Console_SyncWith9GT(sys, sys->AHB7.Timestamp, true);
             return sys->IPCSyncDataTo7
                     | (sys->IPCSyncDataTo9 << 8)
                     | (sys->IPCSyncIRQEnableTo7 << 14);
         case 0x00'01'84:
-            Console_SyncWith9GT(sys, sys->AHB7.Timestamp);
+            Console_SyncWith9GT(sys, sys->AHB7.Timestamp, true);
             return sys->IPCFIFO7.CR.Raw;
 
         case 0x00'01'A0 ... 0x00'01'B8:
             return Gamecard_IOReadHandler(sys, addr, sys->AHB7.Timestamp, false);
 
         case 0x00'01'C0:
-            Scheduler_RunEventManual(sys, sys->AHB7.Timestamp, Evt_SPI, false);
+            Scheduler_RunEventManual(sys, sys->AHB7.Timestamp, Evt_SPI, false, true);
             return sys->SPICR.Raw | (sys->SPIOut << 16);
 
         case 0x00'02'04: // External Memory Control
-            Console_SyncWith9GT(sys, sys->AHB7.Timestamp);
+            Console_SyncWith9GT(sys, sys->AHB7.Timestamp, true);
             return sys->ExtMemCR_Shared.Raw | sys->ExtMemCR_7.Raw;
 
         case 0x00'02'08: // IME
@@ -328,11 +328,11 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask)
         case 0x00'02'10: // IE
             return sys->IE7;
         case 0x00'02'14: // IF
-            Scheduler_RunEventManual(sys, sys->AHB7.Timestamp, Evt_IF7Update, false);
+            Scheduler_RunEventManual(sys, sys->AHB7.Timestamp, Evt_IF7Update, false, true);
             return sys->IF7;
 
         case 0x00'02'40: // VRAM/WRAM Status
-            Console_SyncWith9GT(sys, sys->AHB7.Timestamp);
+            Console_SyncWith9GT(sys, sys->AHB7.Timestamp, true);
             return ((sys->VRAMCR[2].Raw & 0x87) == 0x82) | (((sys->VRAMCR[3].Raw & 0x87) == 0x82) << 1)
                    | sys->WRAMCR << 8;
 
@@ -359,11 +359,11 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask)
 
 void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mask, const u32 a7pc)
 {
-        //printf("io7 %08X %08X %08X %08X\n", addr, val, mask, a7pc);
+    //printf("io7 %08X %08X %08X %08X\n", addr, val, mask, a7pc);
     switch(addr & 0xFF'FF'FC)
     {
         case 0x00'00'04:
-            Scheduler_RunEventManual(sys, sys->AHB7.Timestamp, Evt_Scanline, false);
+            Scheduler_RunEventManual(sys, sys->AHB7.Timestamp, Evt_Scanline, false, true);
             MaskedWrite(sys->DispStatRW7.Raw, val, mask & 0xFFB8);
             sys->TargetVCount7 = (sys->DispStatRW7.VCountMSB << 8) | sys->DispStatRW7.VCountLSB;\
 
@@ -393,7 +393,7 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
 
         case 0x00'01'80: // ipcsync
         {
-            Console_SyncWith9GT(sys, sys->AHB7.Timestamp);
+            Console_SyncWith9GT(sys, sys->AHB7.Timestamp, true);
             if (mask & 0xF00)
             {
                 sys->IPCSyncDataTo9 = (val >> 8) & 0xF;
@@ -459,7 +459,7 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             MaskedWrite(sys->IE7, val, mask & 0x01DF3FFF);
             break;
         case 0x00'02'14: // IF
-            Scheduler_RunEventManual(sys, sys->AHB7.Timestamp, Evt_IF7Update, false);
+            Scheduler_RunEventManual(sys, sys->AHB7.Timestamp, Evt_IF7Update, false, true);
             sys->IF7 &= ~(val & mask);
             sys->IF7 |= sys->IF7Held;
             break;
@@ -469,7 +469,7 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             {
                 if (mask & 0x1) // post flag
                 {
-                    Console_SyncWith9GT(sys, sys->AHB7.Timestamp);
+                    Console_SyncWith9GT(sys, sys->AHB7.Timestamp, true);
                     sys->PostFlag |= val & 0x1;
                 }
                 if (mask & 0xFF00) // wait control
@@ -485,7 +485,7 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
                         sys->ARM7.ARM.DeadAsleep = true;
                         break;
                     case 2: // halt
-                        Scheduler_RunEventManual(sys, sys->AHB7.Timestamp, Evt_IF7Update, false);
+                        Scheduler_RunEventManual(sys, sys->AHB7.Timestamp, Evt_IF7Update, false, true);
                         if (!Console_CheckARM7Wake(sys)) // checkme: might still halt for a little?
                         {
                             sys->ARM7.ARM.WaitForInterrupt = true;
@@ -527,7 +527,7 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask)
             return sys->PPU_A.DisplayCR.Raw;
 
         case 0x00'00'04:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Scanline, true);
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Scanline, true, true);
             return (sys->VCount << 16) | sys->DispStatRO9.Raw |  sys->DispStatRW9.Raw;
 
         case 0x00'00'08:
@@ -561,12 +561,12 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask)
 
         // IPC
         case 0x00'01'80: // ipcsync
-            Console_SyncWith7GT(sys, sys->AHB9.Timestamp);
+            Console_SyncWith7GT(sys, sys->AHB9.Timestamp, true);
             return sys->IPCSyncDataTo9
                     | (sys->IPCSyncDataTo7 << 8)
                     | (sys->IPCSyncIRQEnableTo9 << 14);
         case 0x00'01'84:
-            Console_SyncWith7GT(sys, sys->AHB9.Timestamp);
+            Console_SyncWith7GT(sys, sys->AHB9.Timestamp, true);
             return sys->IPCFIFO9.CR.Raw;
 
         case 0x00'01'A0 ... 0x00'01'B8:
@@ -581,7 +581,7 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask)
             return sys->IE9;
         case 0x00'02'14: // IF
             // TODO: this should run more events?
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_IF9Update, true);
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_IF9Update, true, true);
             return sys->IF9;
 
         // VRAM/WRAM Control
@@ -596,44 +596,44 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask)
 
 
         case 0x00'02'80:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true);
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true, true);
             return sys->DivCR.Raw;
 
         case 0x00'02'90:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true);
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true, true);
             return sys->DivNum.b32[0];
         case 0x00'02'94:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true);
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true, true);
             return sys->DivNum.b32[1];
         case 0x00'02'98:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true);
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true, true);
             return sys->DivDen.b32[0];
         case 0x00'02'9C:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true);
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true, true);
             return sys->DivDen.b32[1];
         case 0x00'02'A0:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true);
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true, true);
             return sys->DivQuo.b32[0];
         case 0x00'02'A4:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true);
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true, true);
             return sys->DivQuo.b32[1];
         case 0x00'02'A8:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true);
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true, true);
             return sys->DivRem.b32[0];
         case 0x00'02'AC:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true);
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true, true);
             return sys->DivRem.b32[1];
         case 0x00'02'B0:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true);
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true, true);
             return sys->SqrtCR.Raw;
         case 0x00'02'B4:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true);
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true, true);
             return sys->SqrtRes;
         case 0x00'02'B8:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true);
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true, true);
             return sys->SqrtParam.b32[0];
         case 0x00'02'BC:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true);
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true, true);
             return sys->SqrtParam.b32[1];
 
 
@@ -666,7 +666,7 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask)
             return sys->PPU_B.Xoff[3] | (sys->PPU_B.Yoff[3] << 16);
 
         case 0x00'03'00:
-            Console_SyncWith7GT(sys, sys->AHB9.Timestamp);
+            Console_SyncWith7GT(sys, sys->AHB9.Timestamp, true);
             return sys->PostFlag | (sys->PostFlagA9Bit << 1);
 
         case 0x10'00'00:
@@ -692,7 +692,7 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             break;
 
         case 0x00'00'04:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Scanline, true);
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Scanline, true, true);
             MaskedWrite(sys->DispStatRW9.Raw, val, mask & 0xFFB8);
             sys->TargetVCount9 = (sys->DispStatRW9.VCountMSB << 8) | sys->DispStatRW9.VCountLSB;
 
@@ -753,7 +753,7 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
 
         case 0x00'01'80: // ipcsync
         {
-            Console_SyncWith7GT(sys, sys->AHB9.Timestamp);
+            Console_SyncWith7GT(sys, sys->AHB9.Timestamp, true);
             if (mask & 0xF00)
             {
                 sys->IPCSyncDataTo7 = (val >> 8) & 0xF;
@@ -783,7 +783,7 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             break;
 
         case 0x00'02'04: // exmemcnt
-            Console_SyncWith7GT(sys, sys->AHB9.Timestamp);
+            Console_SyncWith7GT(sys, sys->AHB9.Timestamp, true);
             MaskedWrite(sys->ExtMemCR_9.Raw, val, mask & 0x7F);
             bool membit1 = sys->ExtMemCR_Shared.MRSomething1;
             bool membit2 = sys->ExtMemCR_Shared.MRSomething2;
@@ -804,7 +804,7 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             break;
         case 0x00'02'14: // IF
             // TODO: this should run more events?
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_IF9Update, true);
+            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_IF9Update, true, true);
             sys->IF9 &= ~(val & mask);
             sys->IF9 |= sys->IF9Held;
             break;
@@ -824,12 +824,12 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             }
             if (mask & 0x00FF0000)
             {
-                Console_SyncWith7GT(sys, sys->AHB9.Timestamp);
+                Console_SyncWith7GT(sys, sys->AHB9.Timestamp, true);
                 sys->VRAMCR[2].Raw = (val >> 16) & 0x9F;
             }
             if (mask & 0xFF000000)
             {
-                Console_SyncWith7GT(sys, sys->AHB9.Timestamp);
+                Console_SyncWith7GT(sys, sys->AHB9.Timestamp, true);
                 sys->VRAMCR[3].Raw = (val >> 24) & 0x9F;
             }
             break;

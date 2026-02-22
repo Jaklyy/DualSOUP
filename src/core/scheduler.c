@@ -46,11 +46,11 @@ void Scheduler_Run(struct Console* sys)
 #endif
 }
 
-void Scheduler_RunEventManual(struct Console* sys, timestamp time, const u8 event, const u8 a9)
+void Scheduler_RunEventManual(struct Console* sys, timestamp time, const u8 event, const u8 a9, const bool bushogged)
 {
     // need to catch up other components to ensure coherency
-    if (a9) Console_SyncWith7GT(sys, time);
-    else Console_SyncWith9GT(sys, time);
+    if (a9) Console_SyncWith7GT(sys, time, bushogged);
+    else Console_SyncWith9GT(sys, time, bushogged);
     while (time >= sys->Sched.EventTimes[event])
 #ifdef UseThreads
         ;
@@ -62,7 +62,7 @@ void Scheduler_RunEventManual(struct Console* sys, timestamp time, const u8 even
 #endif
 }
 
-void Scheduler_StallToRunEvent(struct Console* sys, timestamp* time, const u8 event, const u8 a9)
+void Scheduler_StallToRunEvent(struct Console* sys, timestamp* time, const u8 event, const u8 a9, const bool bushogged)
 {
     // need to catch up other components to ensure coherency
     if (sys->Sched.EventTimes[event] == timestamp_max) return;
@@ -70,8 +70,8 @@ void Scheduler_StallToRunEvent(struct Console* sys, timestamp* time, const u8 ev
     if (*time < sys->Sched.EventTimes[event])
         *time = sys->Sched.EventTimes[event];
 
-    if (a9) Console_SyncWith7GT(sys, *time);
-    else Console_SyncWith9GT(sys, *time);
+    if (a9) Console_SyncWith7GT(sys, *time, bushogged);
+    else Console_SyncWith9GT(sys, *time, bushogged);
 
     while (*time >= sys->Sched.EventTimes[event])
 #ifdef UseThreads

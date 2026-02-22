@@ -97,10 +97,10 @@ bool AHB_NegOwnership(struct Console* sys, timestamp* cur, const bool atomic, co
     if (*cur < bus->Timestamp) *cur = bus->Timestamp;
 
     // check if anything else is able to run
-    if (!atomic && (*cur >= DMA_GetNext(sys, a9)))
+    if (!atomic && (*cur >= DMA_GetNext(sys, a9, false)))
     {
 
-        while (*cur >= DMA_GetNext(sys, a9))
+        while (*cur >= DMA_GetNext(sys, a9, false))
         {
             DMA_Run(sys, a9);
         }
@@ -408,7 +408,7 @@ u32 VRAM_ARM7(struct Console* sys, const u32 addr, const u32 mask, const bool wr
     struct AHB* bus = &sys->AHB7;
     u32 ret = 0;
     bool any = false;
-    if (timings) Console_SyncWith9GT(sys, sys->AHB7.Timestamp);
+    if (timings) Console_SyncWith9GT(sys, sys->AHB7.Timestamp, true);
     if ((sys->VRAMCR[2].Raw & 0x87) == 0x82)
     {
         u32 base = (sys->VRAMCR[2].Offset * 0x20000);
@@ -498,14 +498,14 @@ u32 Bus_MainRAM_Read(struct Console* sys, struct AHB* buscur, const bool bus9, u
             if (sys->ExtMemCR_Shared.MRPriority)
             {
                 // arm7 has priority
-                if (bus9) Console_SyncWith7GTE(sys, buscur->Timestamp);
-                else      Console_SyncWith9GT (sys, buscur->Timestamp);
+                if (bus9) Console_SyncWith7GTE(sys, buscur->Timestamp, true);
+                else      Console_SyncWith9GT (sys, buscur->Timestamp, true);
             }
             else
             {
                 // arm9 has priority
-                if (bus9) Console_SyncWith7GT (sys, buscur->Timestamp);
-                else      Console_SyncWith9GTE(sys, buscur->Timestamp);
+                if (bus9) Console_SyncWith7GT (sys, buscur->Timestamp, true);
+                else      Console_SyncWith9GTE(sys, buscur->Timestamp, true);
             }
 
             // if main ram is still busy the accessing bus needs to wait until it's available to begin a new burst to it
@@ -629,14 +629,14 @@ void Bus_MainRAM_Write(struct Console* sys, struct AHB* buscur, const bool bus9,
             if (sys->ExtMemCR_Shared.MRPriority)
             {
                 // arm7 has priority
-                if (bus9) Console_SyncWith7GTE(sys, buscur->Timestamp);
-                else      Console_SyncWith9GT (sys, buscur->Timestamp);
+                if (bus9) Console_SyncWith7GTE(sys, buscur->Timestamp, true);
+                else      Console_SyncWith9GT (sys, buscur->Timestamp, true);
             }
             else
             {
                 // arm9 has priority
-                if (bus9) Console_SyncWith7GT (sys, buscur->Timestamp);
-                else      Console_SyncWith9GTE(sys, buscur->Timestamp);
+                if (bus9) Console_SyncWith7GT (sys, buscur->Timestamp, true);
+                else      Console_SyncWith9GTE(sys, buscur->Timestamp, true);
             }
 
             // if main ram is still busy the accessing bus needs to wait until it's available to begin a new burst to it
@@ -1064,7 +1064,7 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
         {
             BusContention(sys->AHBBusyTS, &sys->AHB7.Timestamp, Dev_WRAM7);
             Timing32(&sys->AHB7);
-            Console_SyncWith9GT(sys, sys->AHB7.Timestamp);
+            Console_SyncWith9GT(sys, sys->AHB7.Timestamp, true);
         }
         switch(sys->WRAMCR)
         {
@@ -1162,7 +1162,7 @@ void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
         {
             Timing32(&sys->AHB7);
             AddBusContention(sys->AHBBusyTS, sys->AHB7.Timestamp, Dev_WRAM7);
-            Console_SyncWith9GT(sys, sys->AHB7.Timestamp);
+            Console_SyncWith9GT(sys, sys->AHB7.Timestamp, true);
         }
         switch(sys->WRAMCR)
         {
@@ -1184,7 +1184,6 @@ void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
             Timing32(&sys->AHB7);
             AddBusContention(sys->AHBBusyTS, sys->AHB7.Timestamp, Dev_WRAM7);
         }
-        //if (addr == 0x38096E8) { printf("HIIIIIIIII %08X %08X\n", val, mask); ARM7_Log(&sys->ARM7); }
         MemoryWrite(32, sys->ARM7WRAM, addr, ARM7WRAM_Size, val, mask);
         break;
 

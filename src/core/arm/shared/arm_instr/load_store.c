@@ -103,8 +103,6 @@ void ARM_LoadStore(struct ARM* cpu, const struct ARM_Instr instr_data)
         addr = wbaddr;
     }
 
-    if (instr_data.Raw == 0xE59FD080) printf("confirmed\n");
-
     // actually writeback
     if (instr.Writeback || (!instr.PreIndex))
     {

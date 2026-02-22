@@ -27,7 +27,6 @@ void PPU_Sync(struct Console* sys, timestamp now)
 #ifndef PPUST
     if (!sys->PPUStart) return;
     PPU_SetTarget(sys, now);
-    //printf("%li %li %li\n", sys->PPUATimestamp, sys->PPUBTimestamp, now);
     while ((sys->PPUATimestamp < now) || (sys->PPUBTimestamp < now)) thrd_yield();
 #endif
 }
@@ -60,9 +59,6 @@ void LCD_HBlank(struct Console* sys, timestamp now)
     if (sys->VCount < 192)
     {
         StartDMA9(sys, now+2+1, DMAStart_HBlank); // checkme: delay?
-        //PPU_RenderScanline(sys, false, sys->VCount);
-        //PPU_RenderScanline(sys, true, sys->VCount);
-        //printf("%i\n", sys->VCount);
         PPU_SetTarget(sys, now);
     }
     if (sys->VCount == 192)

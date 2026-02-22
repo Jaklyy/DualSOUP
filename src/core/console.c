@@ -234,8 +234,6 @@ void Console_DirectBoot(struct Console* sys)
         AHB9_Write(sys, &nop, arm9_ramaddr+i, sys->Gamecard.ROM[(arm9_romoffs+i)/4], u32_max, false, &nopy, false);
     }
 
-    //printf("%08X\n", sys->Gamecard.ROM[(arm7_romoffs)/4]);
-
     // load arm7 rom
     for (unsigned i = 0; i < arm7_romsize; i+=4)
     {
@@ -295,24 +293,24 @@ void Console_Reset(struct Console* sys)
     // TODO: reset dma?
 }
 
-timestamp Console_GetARM7Max(struct Console* sys)
+timestamp Console_GetARM7Max(struct Console* sys, const bool froma9)
 {
     timestamp ts = 0;
 
     if (sys->ARM7.ARM.DeadAsleep)
     {
-        ts = DMA_GetNext(sys, false);
+        ts = DMA_GetNext(sys, false, froma9);
 
         if (ts < sys->AHB7.Timestamp)
             ts = sys->AHB7.Timestamp;
     }
     else
     {
-        if (ts < sys->ARM7.ARM.Timestamp)
+        //if (ts < sys->ARM7.ARM.Timestamp)
             ts = sys->ARM7.ARM.Timestamp;
 
-        if (ts > DMA_GetNext(sys, false))
-            ts = DMA_GetNext(sys, false);
+        if (ts > DMA_GetNext(sys, false, froma9))
+            ts = DMA_GetNext(sys, false, froma9);
 
         if (ts < sys->AHB7.Timestamp)
             ts = sys->AHB7.Timestamp;
@@ -321,24 +319,24 @@ timestamp Console_GetARM7Max(struct Console* sys)
     return ts;
 }
 
-timestamp Console_GetARM9Max(struct Console* sys)
+timestamp Console_GetARM9Max(struct Console* sys, const bool froma7)
 {
     timestamp ts = 0;
 
     if (sys->ARM9.ARM.DeadAsleep)
     {
-        ts = DMA_GetNext(sys, true);
+        ts = DMA_GetNext(sys, true, froma7);
 
         if (ts < sys->AHB9.Timestamp)
             ts = sys->AHB9.Timestamp;
     }
     else
     {
-        if (ts < (sys->ARM9.ARM.Timestamp >> ((sys->ARM9.BoostedClock) ? 2 : 1)))
+        //if (ts < (sys->ARM9.ARM.Timestamp >> ((sys->ARM9.BoostedClock) ? 2 : 1)))
             ts = sys->ARM9.ARM.Timestamp >> ((sys->ARM9.BoostedClock) ? 2 : 1);
 
-        if (ts > DMA_GetNext(sys, true))
-            ts = DMA_GetNext(sys, true);
+        if (ts > DMA_GetNext(sys, true, froma7))
+            ts = DMA_GetNext(sys, true, froma7);
 
         if (ts < sys->AHB9.Timestamp)
             ts = sys->AHB9.Timestamp;
@@ -347,11 +345,11 @@ timestamp Console_GetARM9Max(struct Console* sys)
     return ts;
 }
 
-void Console_SyncWith7GTE(struct Console* sys, timestamp now)
+void Console_SyncWith7GTE(struct Console* sys, timestamp now, const bool bushogged)
 {
-    while(now >= Console_GetARM7Max(sys))
+    while(now >= Console_GetARM7Max(sys, true))
     {
-        if (DMA_GetNext(sys, true) <= sys->ARM7Target)
+        if (!bushogged && DMA_GetNext(sys, true, false) < Console_GetARM7Max(sys, true) && DMA_GetNext(sys, true, false) != timestamp_max)
         {
             DMA_Run(sys, true);
         }
@@ -359,11 +357,11 @@ void Console_SyncWith7GTE(struct Console* sys, timestamp now)
     }
 }
 
-void Console_SyncWith7GT(struct Console* sys, timestamp now)
+void Console_SyncWith7GT(struct Console* sys, timestamp now, const bool bushogged)
 {
-    while(now > Console_GetARM7Max(sys))
+    while(now > Console_GetARM7Max(sys, true))
     {
-        if (DMA_GetNext(sys, true) <= sys->ARM7Target)
+        if (!bushogged && DMA_GetNext(sys, true, false) <= Console_GetARM7Max(sys, true) && DMA_GetNext(sys, true, false) != timestamp_max)
         {
             DMA_Run(sys, true);
         }
@@ -371,11 +369,11 @@ void Console_SyncWith7GT(struct Console* sys, timestamp now)
     }
 }
 
-void Console_SyncWith9GTE(struct Console* sys, timestamp now)
+void Console_SyncWith9GTE(struct Console* sys, timestamp now, const bool bushogged)
 {
-    while(now >= Console_GetARM9Max(sys))
+    while(now >= Console_GetARM9Max(sys, true))
     {
-        if (DMA_GetNext(sys, false) <= sys->ARM7Target)
+        if (!bushogged && DMA_GetNext(sys, false, false) < Console_GetARM9Max(sys, true) && DMA_GetNext(sys, false, false) != timestamp_max)
         {
             DMA_Run(sys, false);
         }
@@ -383,11 +381,11 @@ void Console_SyncWith9GTE(struct Console* sys, timestamp now)
     }
 }
 
-void Console_SyncWith9GT(struct Console* sys, timestamp now)
+void Console_SyncWith9GT(struct Console* sys, timestamp now, const bool bushogged)
 {
-    while(now > Console_GetARM9Max(sys))
+    while(now > Console_GetARM9Max(sys, true))
     {
-        if (DMA_GetNext(sys, false) <= sys->ARM7Target)
+        if (!bushogged && DMA_GetNext(sys, false, false) <= Console_GetARM9Max(sys, true) && DMA_GetNext(sys, false, false) != timestamp_max)
         {
             DMA_Run(sys, false);
         }
@@ -532,21 +530,21 @@ void Console_MainLoop(struct Console* sys)
 #ifdef UseThreads
         while ((Console_GetARM9Max(sys) < sys->ARM7Target) || (Console_GetARM7Max(sys) < sys->ARM7Target)); //printf("9 %li %li 7 %li %li\n", sys->ARM9.ARM.Timestamp, sys->ARM9Target, sys->ARM7.ARM.Timestamp, sys->ARM7Target);
 #else
-        while((Console_GetARM7Max(sys) < sys->ARM7Target) || (Console_GetARM9Max(sys) < sys->ARM7Target))
+        while((Console_GetARM7Max(sys, true) < sys->ARM7Target) || (Console_GetARM9Max(sys, true) < sys->ARM7Target))
         {
-            //printf("9i %lu %lu s:%i\n", Console_GetARM9Max(sys), sys->ARM7Target, sys->ARM9.ARM.DeadAsleep);
+            //printf("9i %lu %lu s:%i\n", Console_GetARM9Max(sys, true), sys->ARM7Target, sys->ARM9.ARM.DeadAsleep);
+            //printf("7i %lu %lu s:%i\n", Console_GetARM7Max(sys, true), sys->ARM7Target, sys->ARM7.ARM.DeadAsleep);
             //printf("%lX %lX %lX %lX\n", sys->ARM9.ARM.Timestamp, sys->ARM9.MemTimestamp, sys->AHB9.Timestamp, sys->DMA9.NextTime);
             if (sys->ARM9.ARM.Timestamp > 0x3FFFFFFFFFFFFFFF || sys->ARM9.MemTimestamp > 0x3FFFFFFFFFFFFFFF || sys->AHB9.Timestamp > 0x3FFFFFFFFFFFFFFF || sys->ARM7.ARM.Timestamp > 0x3FFFFFFFFFFFFFFF || sys->AHB7.Timestamp > 0x3FFFFFFFFFFFFFFF) CrashSpectacularly("TIMESTAMP BORK\n");
-            //printf("7i %lu %lu s:%i\n", Console_GetARM7Max(sys), sys->ARM7Target, sys->ARM7.ARM.DeadAsleep);
-            if (Console_GetARM9Max(sys) < sys->ARM7Target)
+            if (Console_GetARM9Max(sys, true) < sys->ARM7Target)
                 CR_Switch(sys->HandleARM9);
-            if (Console_GetARM7Max(sys) < sys->ARM7Target)
+            if (Console_GetARM7Max(sys, true) < sys->ARM7Target)
                 CR_Switch(sys->HandleARM7);
-            //if ((Console_GetARM7Max(sys) > sys->ARM7Target) && (Console_GetARM9Max(sys) > sys->ARM7Target)) printf("zzz, 9: %lu %08X %08X 7: %lu %08X %08X\n", Console_GetARM9Max(sys), sys->IE9, sys->IF9, Console_GetARM7Max(sys), sys->IE7, sys->IF7);
+            //if ((Console_GetARM7Max(sys) > sys->ARM7Target) && (Console_GetARM9Max(sys, true) > sys->ARM7Target)) printf("zzz, 9: %lu %08X %08X 7: %lu %08X %08X\n", Console_GetARM9Max(sys), sys->IE9, sys->IF9, Console_GetARM7Max(sys), sys->IE7, sys->IF7);
         }
-        //printf("9e %lu %lu s:%i\n", Console_GetARM9Max(sys), sys->ARM7Target, sys->ARM9.ARM.DeadAsleep);
+        //printf("9e %lu %lu s:%i\n", Console_GetARM9Max(sys, true), sys->ARM7Target, sys->ARM9.ARM.DeadAsleep);
         //printf("%08X %08X\n", sys->ARM9.ARM.LR, sys->ARM9.ARM.PC);
-        //printf("7e %lu %lu s:%i\n", Console_GetARM7Max(sys), sys->ARM7Target, sys->ARM7.ARM.DeadAsleep);
+        //printf("7e %lu %lu s:%i\n", Console_GetARM7Max(sys, true), sys->ARM7Target, sys->ARM7.ARM.DeadAsleep);
 #endif
         Scheduler_Run(sys);
     }

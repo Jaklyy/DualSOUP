@@ -67,7 +67,6 @@ u16 VRAM_3DPal(struct Console* sys, u32 addr)
             any = true;
         }
     }
-    //if (!any) printf("PALETTE MISS %02X %02X %02X %08X\n", sys->VRAMCR[4].Raw, sys->VRAMCR[5].Raw, sys->VRAMCR[6].Raw, addr);
     return ret;
 }
 
@@ -195,7 +194,6 @@ s32 SWRen_Interpolate(Polygon* poly, s16 x, const s16 x0, const s16 x1, const u3
 {
     x -= x0;
     s16 xdiff = x1-x0;
-    //if (!yaxis && (xdiff == 0)) printf("huh? %i %i\n", x0, x1);
     if ((x == 0) || (xdiff == 0)) return a0;
 
     if (persp)

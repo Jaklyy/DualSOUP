@@ -138,6 +138,7 @@ enum LoggingLevels : u64
     LOG_GX      = (1<<12), // 3d geometry engine
     LOG_RTC     = (1<<13), // real time clock hardware
     LOG_DMA     = (1<<14), // direct memory access
+    LOG_WIFI    = (1<<15), // DS WiFi hardware
 };
 
 #define LOG_CPUID (1 << cpu->CPUID)

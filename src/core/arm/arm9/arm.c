@@ -229,7 +229,7 @@ void ARM9_DeferredITCMWrite(struct ARM946ES* ARM9);
 [[nodiscard]] bool ARM9_CheckInterrupts(struct ARM946ES* ARM9)
 {
     // TODO: fix for dsi mode
-    Console_SyncWith7GT(cpu->Sys, Console_GetARM9Max(cpu->Sys));
+    Console_SyncWith7GT(cpu->Sys, Console_GetARM9Max(cpu->Sys, false), false);
 
     // todo: schedule this instead
     if (cpu->Sys->IME9 && !cpu->CPSR.IRQDisable && (cpu->Sys->IE9 & cpu->Sys->IF9))
@@ -261,7 +261,6 @@ void ARM9_Step(struct ARM946ES* ARM9)
 {
     if (cpu->CpuSleeping)
     {
-        //printf("9zzzz\n");
         // probably slow; but ensures write buffer drains properly.
         if (ARM9->WBuffer.FIFOFillPtr != 16)
         {
@@ -336,17 +335,20 @@ void ARM9_MainLoop(struct ARM946ES* ARM9)
     while (!CR_Start);
     while(!CR_Kill)
     {
-        if ((Console_GetARM9Max(cpu->Sys) >= cpu->Sys->ARM7Target) || cpu->DeadAsleep)
+        if ((Console_GetARM9Max(cpu->Sys, false) >= cpu->Sys->ARM7Target))// || cpu->DeadAsleep)
         {
             CR_Switch(cpu->Sys->HandleMain);
         }
         else
         {
-            ARM9_Step(ARM9);
-        }
-        if (DMA_GetNext(cpu->Sys, true) <= cpu->Sys->ARM7Target)
-        {
-            DMA_Run(cpu->Sys, true);
+            if ((DMA_GetNext(cpu->Sys, true, false) <= (cpu->Timestamp >> (ARM9->BoostedClock ? 2 : 1))) || (cpu->DeadAsleep && (DMA_GetNext(cpu->Sys, true, false) != timestamp_max)))
+            {
+                DMA_Run(cpu->Sys, true);
+            }
+            else
+            {
+                ARM9_Step(ARM9);
+            }
         }
     }
 }

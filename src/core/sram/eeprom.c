@@ -126,7 +126,6 @@ u8 EEPROM_ReadData(EEPROM* eep, const u8 val)
         eep->CurAddr &= (eep->RAMSize-1);
         // checkme: how does it actually do masking?
         u32 ret = eep->RAM[eep->CurAddr];
-        //printf("r %06X %02X\n", eep->CurAddr, ret);
         eep->CurAddr++;
         return ret;
     }
@@ -147,7 +146,6 @@ u8 EEPROM_WriteData(EEPROM* eep, const u8 val, const bool chipsel)
     else
     {
         eep->CurAddr &= (eep->RAMSize-1);
-        //printf("w %06X %02X\n", eep->CurAddr, val);
         eep->RAM[eep->CurAddr] = val;
         eep->CurAddr++;
         // TODO: handle pages?
@@ -159,7 +157,6 @@ u8 EEPROM_WriteData(EEPROM* eep, const u8 val, const bool chipsel)
 
 u8 EEPROM_CMDSend(EEPROM* eep, const u8 val, const bool chipsel)
 {
-    //printf("EEP %02X %i\n", val, chipsel);
     if (!eep->PrevChipSelect)
     {
         eep->CurCmd = val;
