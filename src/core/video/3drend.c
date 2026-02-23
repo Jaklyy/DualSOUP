@@ -560,15 +560,16 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
     u32 wn = poly->Vertices[ln]->W;
     u32 zc = poly->Vertices[lc]->Z << poly->ZDecompress;
     u32 zn = poly->Vertices[ln]->Z << poly->ZDecompress;
+    u8 interpy = y + (lslope <= -0x40000); // TODO: this is probably wrong for swapped slopes?
     bool persp = SWRen_CheckPerspectiveLerp(wc, wn, true);
-    u32 wl = SWRen_Interpolate(poly, y, yc, yn, wc, wn, wc, wn, true, persp, false);
-    u32 zl = SWRen_Interpolate(poly, y, yc, yn, wc, wn, zc, zn, true, gx->RenderWBuffer, false);
+    u32 wl = SWRen_Interpolate(poly, interpy, yc, yn, wc, wn, wc, wn, true, persp, false);
+    u32 zl = SWRen_Interpolate(poly, interpy, yc, yn, wc, wn, zc, zn, true, gx->RenderWBuffer, false);
     Colors cl;
-    cl.R = SWRen_Interpolate(poly, y, yc, yn, wc, wn, poly->Vertices[lc]->Color.R, poly->Vertices[ln]->Color.R, true, persp, false);
-    cl.G = SWRen_Interpolate(poly, y, yc, yn, wc, wn, poly->Vertices[lc]->Color.G, poly->Vertices[ln]->Color.G, true, persp, false);
-    cl.B = SWRen_Interpolate(poly, y, yc, yn, wc, wn, poly->Vertices[lc]->Color.B, poly->Vertices[ln]->Color.B, true, persp, false);
-    s16 sl = SWRen_Interpolate(poly, y, yc, yn, wc, wn, poly->Vertices[lc]->S, poly->Vertices[ln]->S, true, persp, false);
-    s16 tl = SWRen_Interpolate(poly, y, yc, yn, wc, wn, poly->Vertices[lc]->T, poly->Vertices[ln]->T, true, persp, false);
+    cl.R = SWRen_Interpolate(poly, interpy, yc, yn, wc, wn, poly->Vertices[lc]->Color.R, poly->Vertices[ln]->Color.R, true, persp, false);
+    cl.G = SWRen_Interpolate(poly, interpy, yc, yn, wc, wn, poly->Vertices[lc]->Color.G, poly->Vertices[ln]->Color.G, true, persp, false);
+    cl.B = SWRen_Interpolate(poly, interpy, yc, yn, wc, wn, poly->Vertices[lc]->Color.B, poly->Vertices[ln]->Color.B, true, persp, false);
+    s16 sl = SWRen_Interpolate(poly, interpy, yc, yn, wc, wn, poly->Vertices[lc]->S, poly->Vertices[ln]->S, true, persp, false);
+    s16 tl = SWRen_Interpolate(poly, interpy, yc, yn, wc, wn, poly->Vertices[lc]->T, poly->Vertices[ln]->T, true, persp, false);
 
     yc = poly->Vertices[rc]->Y;
     yn = poly->Vertices[rn]->Y;
@@ -576,15 +577,16 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
     wn = poly->Vertices[rn]->W;
     zc = poly->Vertices[rc]->Z << poly->ZDecompress;
     zn = poly->Vertices[rn]->Z << poly->ZDecompress;
+    interpy = y + (rslope >= 0x40000); // TODO: this is probably wrong for swapped slopes?
     persp = SWRen_CheckPerspectiveLerp(wc, wn, true);
-    u32 wr = SWRen_Interpolate(poly, y, yc, yn, wc, wn, wc, wn, true, persp, false);
-    u32 zr = SWRen_Interpolate(poly, y, yc, yn, wc, wn, zc, zn, true, gx->RenderWBuffer, false);
+    u32 wr = SWRen_Interpolate(poly, interpy, yc, yn, wc, wn, wc, wn, true, persp, false);
+    u32 zr = SWRen_Interpolate(poly, interpy, yc, yn, wc, wn, zc, zn, true, gx->RenderWBuffer, false);
     Colors cr;
-    cr.R = SWRen_Interpolate(poly, y, yc, yn, wc, wn, poly->Vertices[rc]->Color.R, poly->Vertices[rn]->Color.R, true, persp, false);
-    cr.G = SWRen_Interpolate(poly, y, yc, yn, wc, wn, poly->Vertices[rc]->Color.G, poly->Vertices[rn]->Color.G, true, persp, false);
-    cr.B = SWRen_Interpolate(poly, y, yc, yn, wc, wn, poly->Vertices[rc]->Color.B, poly->Vertices[rn]->Color.B, true, persp, false);
-    s16 sr = SWRen_Interpolate(poly, y, yc, yn, wc, wn, poly->Vertices[rc]->S, poly->Vertices[rn]->S, true, persp, false);
-    s16 tr = SWRen_Interpolate(poly, y, yc, yn, wc, wn, poly->Vertices[rc]->T, poly->Vertices[rn]->T, true, persp, false);
+    cr.R = SWRen_Interpolate(poly, interpy, yc, yn, wc, wn, poly->Vertices[rc]->Color.R, poly->Vertices[rn]->Color.R, true, persp, false);
+    cr.G = SWRen_Interpolate(poly, interpy, yc, yn, wc, wn, poly->Vertices[rc]->Color.G, poly->Vertices[rn]->Color.G, true, persp, false);
+    cr.B = SWRen_Interpolate(poly, interpy, yc, yn, wc, wn, poly->Vertices[rc]->Color.B, poly->Vertices[rn]->Color.B, true, persp, false);
+    s16 sr = SWRen_Interpolate(poly, interpy, yc, yn, wc, wn, poly->Vertices[rc]->S, poly->Vertices[rn]->S, true, persp, false);
+    s16 tr = SWRen_Interpolate(poly, interpy, yc, yn, wc, wn, poly->Vertices[rc]->T, poly->Vertices[rn]->T, true, persp, false);
 
     if (le > re) le = re;
     if (ls < 0) ls = 0;
