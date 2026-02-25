@@ -396,6 +396,9 @@ typedef struct
     s16 BoxTestParams[6];
     u8 BoxTestPtr;
 
+    s32 PosTestRes[4];
+    s16 VecTestRes[3];
+
     Vertex VtxRAMA[6144];
     Polygon PolyRAMA[2048];
     Vertex VtxRAMB[6144];

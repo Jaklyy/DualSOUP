@@ -288,20 +288,22 @@ void GXFIFO_PortSubmit(struct Console* sys, const u32 addr, const u32 val)
 
 void GX_IOWrite(struct Console* sys, const u32 addr, const u32 mask, const u32 val)
 {
+    GX3D* gx = &sys->GX3D;
+
     switch(addr & 0x7FF)
     {
         case 0x350:
-            MaskedWrite(sys->GX3D.RearAttr.Raw, val, mask & 0x3F1FFFFF);
+            MaskedWrite(gx->RearAttr.Raw, val, mask & 0x3F1FFFFF);
             break;
 
         case 0x354:
-            MaskedWrite(sys->GX3D.RearDepth, val, mask & 0x7FFF);
+            MaskedWrite(gx->RearDepth, val, mask & 0x7FFF);
             break;
 
         case 0x400 ... 0x43C:
             //printf("subm2 %08X\n", val);
             if (mask != 0xFFFFFFFF) LogPrint(LOG_GX|LOG_UNIMP, "Non 32 bit packed command write?\n");
-            //printf("pack %02X %08X\n", sys->GX3D.PackBuffer.CurCmd, val);
+            //printf("pack %02X %08X\n", gx->PackBuffer.CurCmd, val);
             GXFIFO_PackedSubmit(sys, val);
             break;
 
@@ -314,13 +316,13 @@ void GX_IOWrite(struct Console* sys, const u32 addr, const u32 mask, const u32 v
 
         case 0x600:
         {
-            MaskedWrite(sys->GX3D.Status.Raw, val, mask & 0xC0000000);
+            MaskedWrite(gx->Status.Raw, val, mask & 0xC0000000);
             if (mask & val & (1<<15))
             {
-                sys->GX3D.Status.StackError = false;
-                sys->GX3D.PosVecMtxStackPtr = 0;
-                sys->GX3D.ProjMtxStackPtr = 0;
-                sys->GX3D.TexMtxStackPtr = 0;
+                gx->Status.StackError = false;
+                gx->PosVecMtxStackPtr = 0;
+                gx->ProjMtxStackPtr = 0;
+                gx->TexMtxStackPtr = 0;
             }
             GX_UpdateIRQ(sys, sys->AHB9.Timestamp);
             break;
@@ -334,22 +336,32 @@ void GX_IOWrite(struct Console* sys, const u32 addr, const u32 mask, const u32 v
 
 u32 GX_IORead(struct Console* sys, const u32 addr)
 {
+    GX3D* gx = &sys->GX3D;
+
     switch(addr & 0x7FF)
     {
         case 0x600:
-            //printf("stat %08X\n", sys->GX3D.Status.Raw | (sys->GX3D.FIFOFullness << 16));
-            return sys->GX3D.Status.Raw | (sys->GX3D.FIFOFullness << 16) | (sys->GX3D.ProjMtxStackPtr << 13) | ((sys->GX3D.PosVecMtxStackPtr & 0x1F) << 8);
+            //printf("stat %08X\n", gx->Status.Raw | (gx->FIFOFullness << 16));
+            return gx->Status.Raw | (gx->FIFOFullness << 16) | (gx->ProjMtxStackPtr << 13) | ((gx->PosVecMtxStackPtr & 0x1F) << 8);
+
+        case 0x620 ... 0x62F:
+            return gx->PosTestRes[(addr / 4) % 4];
+
+        case 0x630:
+            return gx->VecTestRes[0] | (u32)gx->VecTestRes[1] << 16;
+        case 0x634:
+            return gx->VecTestRes[2];
 
         case 0x640 ... 0x67C:
             GX_UpdateClip(sys);
-            return sys->GX3D.ClipMatrix.Arr[(addr & 0x3C)/4];
+            return gx->ClipMatrix.Arr[(addr & 0x3C)/4];
 
         case 0x680 ... 0x688:
-            return sys->GX3D.VectorMatrix.Arr[((addr & 0xC)/4)+0];
+            return gx->VectorMatrix.Arr[((addr & 0xC)/4)+0];
         case 0x68C ... 0x694:
-            return sys->GX3D.VectorMatrix.Arr[(((addr) & 0xC)/4)+4];
+            return gx->VectorMatrix.Arr[(((addr) & 0xC)/4)+4];
         case 0x698 ... 0x6A0:
-            return sys->GX3D.VectorMatrix.Arr[(((addr) & 0xC)/4)+8];
+            return gx->VectorMatrix.Arr[(((addr) & 0xC)/4)+8];
 
         default:
             LogPrint(LOG_GX|LOG_UNIMP, "UNIMPLEMENTED 3D READ %08X\n", addr);

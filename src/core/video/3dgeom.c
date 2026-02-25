@@ -378,12 +378,21 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert, bool* boxtestres)
     gx->PolyRAMPtr++;
 }
 
-void GX_SubmitVertex(struct Console* sys, bool* boxtestres)
+void GX_SubmitVertex(struct Console* sys, bool* boxtestres, const bool postest)
 {
     GX3D* gx = &sys->GX3D;
     GX_UpdateClip(sys);
 
     gx->PolygonTmp.Vertices[gx->TmpPolygonPtr].Coords.Vec = ((gx->TmpVertex.X * gx->ClipMatrix.Row[0]) + (gx->TmpVertex.Y * gx->ClipMatrix.Row[1]) + (gx->TmpVertex.Z * gx->ClipMatrix.Row[2]) + (gx->TmpVertex.W * gx->ClipMatrix.Row[3])) >> 12;
+
+    if (postest)
+    {
+        gx->PosTestRes[0] = gx->PolygonTmp.Vertices[gx->TmpPolygonPtr].Coords.X;
+        gx->PosTestRes[1] = gx->PolygonTmp.Vertices[gx->TmpPolygonPtr].Coords.Y;
+        gx->PosTestRes[2] = gx->PolygonTmp.Vertices[gx->TmpPolygonPtr].Coords.Z;
+        gx->PosTestRes[3] = gx->PolygonTmp.Vertices[gx->TmpPolygonPtr].Coords.W;
+        return;
+    }
 
     // CHECKME: save a copy of the coordinates for polygon orientation calcs
     //gx->PolygonTmp.Vertices[gx->TmpPolygonPtr].CoordsInitial.Vec = gx->PolygonTmp.Vertices[gx->TmpPolygonPtr].Coords.Vec;
@@ -471,7 +480,7 @@ void GX_SubmitVertex(struct Console* sys, bool* boxtestres)
 
 }
 
-void GX_UpdateNormal(struct Console* sys, const u32 param)
+void GX_UpdateNormal(struct Console* sys, const u32 param, const bool vectest)
 {
     GX3D* gx = &sys->GX3D;
 
@@ -480,7 +489,7 @@ void GX_UpdateNormal(struct Console* sys, const u32 param)
                   (s64)((s32)(param >> 10) << 22) >> 22,
                   (s64)((s32)(param >> 20) << 22) >> 22};
 
-    if (gx->TexAttr.CoordTransMode == 2)
+    if (!vectest && (gx->TexAttr.CoordTransMode == 2))
     {
         gx->TransTexCoords[0] = (((dir[0] * gx->TextureMatrix.Arr[0]) + (dir[1] * gx->TextureMatrix.Arr[4]) + (dir[2] * gx->TextureMatrix.Arr[8])) >> 21) + gx->TexCoords[0];
         gx->TransTexCoords[1] = (((dir[0] * gx->TextureMatrix.Arr[1]) + (dir[1] * gx->TextureMatrix.Arr[5]) + (dir[2] * gx->TextureMatrix.Arr[9])) >> 21) + gx->TexCoords[1];
@@ -488,6 +497,17 @@ void GX_UpdateNormal(struct Console* sys, const u32 param)
 
     // translate normal vector
     Vector normal; normal.Vec = (dir[0] * gx->VectorMatrix.Row[0]) + (dir[1] * gx->VectorMatrix.Row[1]) + (dir[2] * gx->VectorMatrix.Row[2]);
+
+    if (vectest)
+    {
+        // s12
+        normal.Vec = normal.Vec << 40 >> 52;
+        gx->VecTestRes[0] = normal.X;
+        gx->VecTestRes[1] = normal.Y;
+        gx->VecTestRes[2] = normal.Z;
+        return;
+    }
+
     // s11
     normal.Vec = normal.Vec << 41 >> 53;
 
@@ -583,8 +603,6 @@ void GX_BoxTest(struct Console* sys)
 {
     GX3D* gx = &sys->GX3D;
 
-    GX_UpdateClip(sys);
-
     // todo: set busy flag, implement timings
     gx->Status.BoxTestRes = false; // checkme: is this cleared if it hangs?
 
@@ -593,23 +611,25 @@ void GX_BoxTest(struct Console* sys)
 
     bool res = false;
 
+    // checkme: box tests might return results as soon as they're found (although busy flag doesn't seem to get cleared early??), so the order of faces being tested probably matters?
+
     // x0 y0 z0; x1 y1 z0
     gx->TmpVertex.X = gx->BoxTestParams[0];
     gx->TmpVertex.Y = gx->BoxTestParams[1];
     gx->TmpVertex.Z = gx->BoxTestParams[2];
-    GX_SubmitVertex(sys, &res);
-    gx->TmpVertex.X = gx->BoxTestParams[0] + gx->BoxTestParams[3];
+    GX_SubmitVertex(sys, &res, false);
+    gx->TmpVertex.X = (s16)(gx->BoxTestParams[0] + gx->BoxTestParams[3]);
     gx->TmpVertex.Y = gx->BoxTestParams[1];
     gx->TmpVertex.Z = gx->BoxTestParams[2];
-    GX_SubmitVertex(sys, &res);
-    gx->TmpVertex.X = gx->BoxTestParams[0] + gx->BoxTestParams[3];
-    gx->TmpVertex.Y = gx->BoxTestParams[1] + gx->BoxTestParams[4];
+    GX_SubmitVertex(sys, &res, false);
+    gx->TmpVertex.X = (s16)(gx->BoxTestParams[0] + gx->BoxTestParams[3]);
+    gx->TmpVertex.Y = (s16)(gx->BoxTestParams[1] + gx->BoxTestParams[4]);
     gx->TmpVertex.Z = gx->BoxTestParams[2];
-    GX_SubmitVertex(sys, &res);
+    GX_SubmitVertex(sys, &res, false);
     gx->TmpVertex.X = gx->BoxTestParams[0];
-    gx->TmpVertex.Y = gx->BoxTestParams[1] + gx->BoxTestParams[4];
+    gx->TmpVertex.Y = (s16)(gx->BoxTestParams[1] + gx->BoxTestParams[4]);
     gx->TmpVertex.Z = gx->BoxTestParams[2];
-    GX_SubmitVertex(sys, &res);
+    GX_SubmitVertex(sys, &res, false);
     if (res)
     {
         gx->Status.BoxTestRes = true;
@@ -620,19 +640,19 @@ void GX_BoxTest(struct Console* sys)
     gx->TmpVertex.X = gx->BoxTestParams[0];
     gx->TmpVertex.Y = gx->BoxTestParams[1];
     gx->TmpVertex.Z = gx->BoxTestParams[2];
-    GX_SubmitVertex(sys, &res);
-    gx->TmpVertex.X = gx->BoxTestParams[0] + gx->BoxTestParams[3];
+    GX_SubmitVertex(sys, &res, false);
+    gx->TmpVertex.X = (s16)(gx->BoxTestParams[0] + gx->BoxTestParams[3]);
     gx->TmpVertex.Y = gx->BoxTestParams[1];
     gx->TmpVertex.Z = gx->BoxTestParams[2];
-    GX_SubmitVertex(sys, &res);
-    gx->TmpVertex.X = gx->BoxTestParams[0] + gx->BoxTestParams[3];
+    GX_SubmitVertex(sys, &res, false);
+    gx->TmpVertex.X = (s16)(gx->BoxTestParams[0] + gx->BoxTestParams[3]);
     gx->TmpVertex.Y = gx->BoxTestParams[1];
-    gx->TmpVertex.Z = gx->BoxTestParams[2] + gx->BoxTestParams[5];
-    GX_SubmitVertex(sys, &res);
+    gx->TmpVertex.Z = (s16)(gx->BoxTestParams[2] + gx->BoxTestParams[5]);
+    GX_SubmitVertex(sys, &res, false);
     gx->TmpVertex.X = gx->BoxTestParams[0];
     gx->TmpVertex.Y = gx->BoxTestParams[1];
-    gx->TmpVertex.Z = gx->BoxTestParams[2] + gx->BoxTestParams[5];
-    GX_SubmitVertex(sys, &res);
+    gx->TmpVertex.Z = (s16)(gx->BoxTestParams[2] + gx->BoxTestParams[5]);
+    GX_SubmitVertex(sys, &res, false);
     if (res)
     {
         gx->Status.BoxTestRes = true;
@@ -643,19 +663,19 @@ void GX_BoxTest(struct Console* sys)
     gx->TmpVertex.X = gx->BoxTestParams[0];
     gx->TmpVertex.Y = gx->BoxTestParams[1];
     gx->TmpVertex.Z = gx->BoxTestParams[2];
-    GX_SubmitVertex(sys, &res);
+    GX_SubmitVertex(sys, &res, false);
     gx->TmpVertex.X = gx->BoxTestParams[0];
-    gx->TmpVertex.Y = gx->BoxTestParams[1] + gx->BoxTestParams[4];
+    gx->TmpVertex.Y = (s16)(gx->BoxTestParams[1] + gx->BoxTestParams[4]);
     gx->TmpVertex.Z = gx->BoxTestParams[2];
-    GX_SubmitVertex(sys, &res);
+    GX_SubmitVertex(sys, &res, false);
     gx->TmpVertex.X = gx->BoxTestParams[0];
-    gx->TmpVertex.Y = gx->BoxTestParams[1] + gx->BoxTestParams[4];
-    gx->TmpVertex.Z = gx->BoxTestParams[2] + gx->BoxTestParams[5];
-    GX_SubmitVertex(sys, &res);
+    gx->TmpVertex.Y = (s16)(gx->BoxTestParams[1] + gx->BoxTestParams[4]);
+    gx->TmpVertex.Z = (s16)(gx->BoxTestParams[2] + gx->BoxTestParams[5]);
+    GX_SubmitVertex(sys, &res, false);
     gx->TmpVertex.X = gx->BoxTestParams[0];
     gx->TmpVertex.Y = gx->BoxTestParams[1];
-    gx->TmpVertex.Z = gx->BoxTestParams[2] + gx->BoxTestParams[5];
-    GX_SubmitVertex(sys, &res);
+    gx->TmpVertex.Z = (s16)(gx->BoxTestParams[2] + gx->BoxTestParams[5]);
+    GX_SubmitVertex(sys, &res, false);
     if (res)
     {
         gx->Status.BoxTestRes = true;
@@ -665,20 +685,20 @@ void GX_BoxTest(struct Console* sys)
     // x0, y0, z1, x1, y1, z1
     gx->TmpVertex.X = gx->BoxTestParams[0];
     gx->TmpVertex.Y = gx->BoxTestParams[1];
-    gx->TmpVertex.Z = gx->BoxTestParams[2] + gx->BoxTestParams[5];
-    GX_SubmitVertex(sys, &res);
+    gx->TmpVertex.Z = (s16)(gx->BoxTestParams[2] + gx->BoxTestParams[5]);
+    GX_SubmitVertex(sys, &res, false);
     gx->TmpVertex.X = gx->BoxTestParams[0];
-    gx->TmpVertex.Y = gx->BoxTestParams[1] + gx->BoxTestParams[4];
-    gx->TmpVertex.Z = gx->BoxTestParams[2] + gx->BoxTestParams[5];
-    GX_SubmitVertex(sys, &res);
-    gx->TmpVertex.X = gx->BoxTestParams[0] + gx->BoxTestParams[3];
-    gx->TmpVertex.Y = gx->BoxTestParams[1] + gx->BoxTestParams[4];
-    gx->TmpVertex.Z = gx->BoxTestParams[2] + gx->BoxTestParams[5];
-    GX_SubmitVertex(sys, &res);
-    gx->TmpVertex.X = gx->BoxTestParams[0] + gx->BoxTestParams[3];
+    gx->TmpVertex.Y = (s16)(gx->BoxTestParams[1] + gx->BoxTestParams[4]);
+    gx->TmpVertex.Z = (s16)(gx->BoxTestParams[2] + gx->BoxTestParams[5]);
+    GX_SubmitVertex(sys, &res, false);
+    gx->TmpVertex.X = (s16)(gx->BoxTestParams[0] + gx->BoxTestParams[3]);
+    gx->TmpVertex.Y = (s16)(gx->BoxTestParams[1] + gx->BoxTestParams[4]);
+    gx->TmpVertex.Z = (s16)(gx->BoxTestParams[2] + gx->BoxTestParams[5]);
+    GX_SubmitVertex(sys, &res, false);
+    gx->TmpVertex.X = (s16)(gx->BoxTestParams[0] + gx->BoxTestParams[3]);
     gx->TmpVertex.Y = gx->BoxTestParams[1];
-    gx->TmpVertex.Z = gx->BoxTestParams[2] + gx->BoxTestParams[5];
-    GX_SubmitVertex(sys, &res);
+    gx->TmpVertex.Z = (s16)(gx->BoxTestParams[2] + gx->BoxTestParams[5]);
+    GX_SubmitVertex(sys, &res, false);
     if (res)
     {
         gx->Status.BoxTestRes = true;
@@ -687,21 +707,21 @@ void GX_BoxTest(struct Console* sys)
 
     // x0, y1, z0, x1, y1, z1
     gx->TmpVertex.X = gx->BoxTestParams[0];
-    gx->TmpVertex.Y = gx->BoxTestParams[1] + gx->BoxTestParams[4];
+    gx->TmpVertex.Y = (s16)(gx->BoxTestParams[1] + gx->BoxTestParams[4]);
     gx->TmpVertex.Z = gx->BoxTestParams[2];
-    GX_SubmitVertex(sys, &res);
+    GX_SubmitVertex(sys, &res, false);
     gx->TmpVertex.X = gx->BoxTestParams[0];
-    gx->TmpVertex.Y = gx->BoxTestParams[1] + gx->BoxTestParams[4];
-    gx->TmpVertex.Z = gx->BoxTestParams[2] + gx->BoxTestParams[5];
-    GX_SubmitVertex(sys, &res);
-    gx->TmpVertex.X = gx->BoxTestParams[0] + gx->BoxTestParams[3];
-    gx->TmpVertex.Y = gx->BoxTestParams[1] + gx->BoxTestParams[4];
-    gx->TmpVertex.Z = gx->BoxTestParams[2] + gx->BoxTestParams[5];
-    GX_SubmitVertex(sys, &res);
-    gx->TmpVertex.X = gx->BoxTestParams[0] + gx->BoxTestParams[3];
-    gx->TmpVertex.Y = gx->BoxTestParams[1] + gx->BoxTestParams[4];
+    gx->TmpVertex.Y = (s16)(gx->BoxTestParams[1] + gx->BoxTestParams[4]);
+    gx->TmpVertex.Z = (s16)(gx->BoxTestParams[2] + gx->BoxTestParams[5]);
+    GX_SubmitVertex(sys, &res, false);
+    gx->TmpVertex.X = (s16)(gx->BoxTestParams[0] + gx->BoxTestParams[3]);
+    gx->TmpVertex.Y = (s16)(gx->BoxTestParams[1] + gx->BoxTestParams[4]);
+    gx->TmpVertex.Z = (s16)(gx->BoxTestParams[2] + gx->BoxTestParams[5]);
+    GX_SubmitVertex(sys, &res, false);
+    gx->TmpVertex.X = (s16)(gx->BoxTestParams[0] + gx->BoxTestParams[3]);
+    gx->TmpVertex.Y = (s16)(gx->BoxTestParams[1] + gx->BoxTestParams[4]);
     gx->TmpVertex.Z = gx->BoxTestParams[2];
-    GX_SubmitVertex(sys, &res);
+    GX_SubmitVertex(sys, &res, false);
     if (res)
     {
         gx->Status.BoxTestRes = true;
@@ -709,22 +729,22 @@ void GX_BoxTest(struct Console* sys)
     }
 
     // x1, y0, z0, x1, y1, z1
-    gx->TmpVertex.X = gx->BoxTestParams[0] + gx->BoxTestParams[3];
+    gx->TmpVertex.X = (s16)(gx->BoxTestParams[0] + gx->BoxTestParams[3]);
     gx->TmpVertex.Y = gx->BoxTestParams[1];
     gx->TmpVertex.Z = gx->BoxTestParams[2];
-    GX_SubmitVertex(sys, &res);
-    gx->TmpVertex.X = gx->BoxTestParams[0] + gx->BoxTestParams[3];
-    gx->TmpVertex.Y = gx->BoxTestParams[1] + gx->BoxTestParams[4];
+    GX_SubmitVertex(sys, &res, false);
+    gx->TmpVertex.X = (s16)(gx->BoxTestParams[0] + gx->BoxTestParams[3]);
+    gx->TmpVertex.Y = (s16)(gx->BoxTestParams[1] + gx->BoxTestParams[4]);
     gx->TmpVertex.Z = gx->BoxTestParams[2];
-    GX_SubmitVertex(sys, &res);
-    gx->TmpVertex.X = gx->BoxTestParams[0] + gx->BoxTestParams[3];
-    gx->TmpVertex.Y = gx->BoxTestParams[1] + gx->BoxTestParams[4];
-    gx->TmpVertex.Z = gx->BoxTestParams[2] + gx->BoxTestParams[5];
-    GX_SubmitVertex(sys, &res);
-    gx->TmpVertex.X = gx->BoxTestParams[0] + gx->BoxTestParams[3];
+    GX_SubmitVertex(sys, &res, false);
+    gx->TmpVertex.X = (s16)(gx->BoxTestParams[0] + gx->BoxTestParams[3]);
+    gx->TmpVertex.Y = (s16)(gx->BoxTestParams[1] + gx->BoxTestParams[4]);
+    gx->TmpVertex.Z = (s16)(gx->BoxTestParams[2] + gx->BoxTestParams[5]);
+    GX_SubmitVertex(sys, &res, false);
+    gx->TmpVertex.X = (s16)(gx->BoxTestParams[0] + gx->BoxTestParams[3]);
     gx->TmpVertex.Y = gx->BoxTestParams[1];
-    gx->TmpVertex.Z = gx->BoxTestParams[2] + gx->BoxTestParams[5];
-    GX_SubmitVertex(sys, &res);
+    gx->TmpVertex.Z = (s16)(gx->BoxTestParams[2] + gx->BoxTestParams[5]);
+    GX_SubmitVertex(sys, &res, false);
     if (res)
     {
         gx->Status.BoxTestRes = true;
@@ -1070,8 +1090,9 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
         }
 
         case GX_LgtNormal:
+        case GX_TstVec:
         {
-            GX_UpdateNormal(sys, param);
+            GX_UpdateNormal(sys, param, gx->CurCmd.Cmd == GX_TstVec);
             break;
         }
 
@@ -1088,6 +1109,7 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
         }
 
         case GX_Vtx16:
+        case GX_TstPos:
         {
             if (!gx->TmpVertexPtr)
             {
@@ -1097,7 +1119,7 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
             else
             {
                 gx->TmpVertex.Z = (s64)(s32)(param << 16) >> 16;
-                GX_SubmitVertex(sys, nullptr);
+                GX_SubmitVertex(sys, nullptr, gx->CurCmd.Cmd == GX_TstPos);
             }
 
             gx->TmpVertexPtr = !gx->TmpVertexPtr;
@@ -1107,7 +1129,7 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
         case GX_Vtx10:
         {
             gx->TmpVertex.Vec = (Vec){((s64)((s32)(param << 22)) >> 16), ((s64)((s32)(param << 12)) >> 16), ((s64)((s32)(param << 2)) >> 16), (1<<12)};
-            GX_SubmitVertex(sys, nullptr);
+            GX_SubmitVertex(sys, nullptr, false);
             break;
         }
 
@@ -1115,7 +1137,7 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
         {
             gx->TmpVertex.X = (s64)(s32)(param << 16) >> 16;
             gx->TmpVertex.Y = (s64)(s32)param >> 16;
-            GX_SubmitVertex(sys, nullptr);
+            GX_SubmitVertex(sys, nullptr, false);
             break;
         }
 
@@ -1123,7 +1145,7 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
         {
             gx->TmpVertex.X = (s64)(s32)(param << 16) >> 16;
             gx->TmpVertex.Z = (s64)(s32)param >> 16;
-            GX_SubmitVertex(sys, nullptr);
+            GX_SubmitVertex(sys, nullptr, false);
             break;
         }
 
@@ -1131,7 +1153,7 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
         {
             gx->TmpVertex.Y = (s64)(s32)(param << 16) >> 16;
             gx->TmpVertex.Z = (s64)(s32)param >> 16;
-            GX_SubmitVertex(sys, nullptr);
+            GX_SubmitVertex(sys, nullptr, false);
             break;
         }
 
@@ -1139,7 +1161,7 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
         {
             gx->TmpVertex.Vec += (Vec){((s64)((s32)(param << 22)) >> 22), ((s64)((s32)(param << 12)) >> 22), ((s64)((s32)(param << 2)) >> 22), 0};
             gx->TmpVertex.Vec = (gx->TmpVertex.Vec << 48) >> 48;
-            GX_SubmitVertex(sys, nullptr);
+            GX_SubmitVertex(sys, nullptr, false);
             break;
         }
 
