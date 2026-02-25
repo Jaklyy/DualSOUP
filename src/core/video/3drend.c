@@ -596,6 +596,9 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
     if (ls < 0) ls = 0;
     if (le <= ls) le = ls+1;
 
+    rs+=1;
+    re+=1;
+
     persp = SWRen_CheckPerspectiveLerp(wl, wr, false);
 
     s16 x = ls;
@@ -621,7 +624,7 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
         SWRen_RasterizePixel(gx, poly, x, y, z, color, tcolor, talpha);
     }
 
-    for (; (x <= rs) && (x < 256); x++)
+    for (; (x < rs) && (x < 256); x++)
     {
         z = SWRen_Interpolate(poly, x, ls, re, wl, wr, zl, zr, false, gx->RenderWBuffer, true);
         z = (z << 1) | poly->Frontfacing;
@@ -638,7 +641,7 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
         SWRen_RasterizePixel(gx, poly, x, y, z, color, tcolor, talpha);
     }
 
-    for (; (x <= re) && (x < 256); x++)
+    for (; (x < re) && (x < 256); x++)
     {
         z = SWRen_Interpolate(poly, x, ls, re, wl, wr, zl, zr, false, gx->RenderWBuffer, true);
         z = (z << 1) | poly->Frontfacing;
