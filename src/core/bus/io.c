@@ -736,7 +736,7 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             break;
 
         case 0x00'00'60:
-            MaskedWrite(sys->GX3D.RasterCR.Raw, val, mask & 0x7FFF);
+            MaskedWrite(sys->GX3D.RasterCR.Raw, val, mask & 0x4FFF);
             break;
 
         // DMA

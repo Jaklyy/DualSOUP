@@ -188,8 +188,6 @@ bool SWRen_CheckPerspectiveLerp(const s32 w0, const s32 w1, const bool yaxis)
     return !((w0 == w1) && !(w0 & mask) && !(w1 & mask));
 }
 
-u64 counter;
-
 s32 SWRen_Interpolate(Polygon* poly, s16 x, const s16 x0, const s16 x1, const u32 w0, const u32 w1, const s32 a0, const s32 a1, const bool yaxis, const bool persp, const bool borkedlerp)
 {
     x -= x0;
@@ -486,18 +484,24 @@ Colors SWRen_DecodeTextures(struct Console* sys, Polygon* poly, s16 s, s16 t, u8
 
 Colors SWRen_BlendColors(GX3D* gx, Polygon* poly, Colors color, Colors tcolor, u8 talpha, u8* outalpha)
 {
-    color = SWRen_RGB555to666(color);
+    color.RGB >>= 3;
     Colors outcol;
     if (poly->Attrs.Mode & 1) // decal and shadow
     {
+        // CHECKME: this division is weird, does hardware really do that?
+        // (melonds has special case logic for talpha == 0 / 31, so i guess that's how hardware gets around the incorrect math?)
         outcol.RGB = ((tcolor.RGB * talpha) + (color.RGB * (31-talpha))) / 32;
         *outalpha = poly->Attrs.Alpha;
     }
     else // modulate / toon/highlight
     {
         outcol.RGB = (((tcolor.RGB+1) * (color.RGB+1)) - 1) / 64;
-        *outalpha = ((talpha+1) * (poly->Attrs.Alpha+1)) / 32;
+        *outalpha = ((talpha+1) * (poly->Attrs.Alpha+1) - 1) / 32;
     }
+
+    // clamp to max
+    //outcol.RGB = (outcol.RGB & ~((s32x4)outcol.RGB > 63)) | ((u32x4){63, 63, 63, 0} & ((s32x4)outcol.RGB > 63));
+    //if (*outalpha > 31) *outalpha = 31;
 
     // wireframes ignore all alpha
     if (poly->Attrs.Alpha == 0) *outalpha = 31;

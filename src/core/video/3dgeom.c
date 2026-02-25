@@ -169,6 +169,8 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert)
         s64 dot = cross.X + cross.Y + cross.W;
 
         frontfacing = (dot <= 0);
+
+        //printf("front: %i\n", frontfacing);
         // if the dot is 0 then it will render if either front or back are enabled.
         if (!(((dot <= 0) && gx->CurPolyAttr.RenderFront) || ((dot >= 0) && gx->CurPolyAttr.RenderBack)))
         {
@@ -274,7 +276,8 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert)
     int wsize = 1;
     for (unsigned i = 0; i < nvert; i++)
     {
-        fin.Vertices[i]->Color = poly.Vertices[i].Color;
+        fin.Vertices[i]->Color.RGB = (poly.Vertices[i].Color.RGB << 4) + (((s32x4)poly.Vertices[i].Color.RGB > 0) & (u32x4){0xF, 0xF, 0xF, 0xF});
+
         fin.SlopeY[i] = fin.Vertices[i]->Y;
         fin.Vertices[i]->S = poly.Vertices[i].TexCoords[0];
         fin.Vertices[i]->T = poly.Vertices[i].TexCoords[1];
