@@ -132,7 +132,7 @@ void GX_ClipPolygon(GX3D* gx, PolygonTmp* poly, unsigned* nvert)
     *poly = GX_ClipVertex(gx, poly, nvert, 0, false);
 }
 
-void GX_FinalizePolygon(struct Console* sys, unsigned nvert)
+void GX_FinalizePolygon(struct Console* sys, unsigned nvert, bool* boxtestres)
 {
     GX3D* gx = &sys->GX3D;
     PolygonTmp poly = gx->PolygonTmp;
@@ -140,47 +140,56 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert)
 
     // calculate dot product to determine polygon facing direction for culling and rasterization
 
-    Vector v0, v1;
-    v0.Vec = poly.Vertices[0].Coords.Vec - poly.Vertices[2].Coords.Vec;
-    v1.Vec = poly.Vertices[1].Coords.Vec - poly.Vertices[2].Coords.Vec;
-
-    // for some reason if one of the vectors is entirely 0 its automatically accepted, even if neither face is allowed to render, and is treated as frontfacing for rasterization.
-    // im not entirely sure why though... possibly to do with the normalization step?
-    // or maybe they do some weird-ass algorithm instead of doing things normally?
-    if (((v0.X|v0.Y|v0.W) == 0) || ((v1.X|v1.Y|v1.W) == 0))
+    if (boxtestres == nullptr)
     {
-        frontfacing = true;
-    }
-    else
-    {
-        // calculate cross product
-        Vector cross; cross.Vec = ((Vec){v0.Y, v0.W, 0, v0.X} * (Vec){v1.W, v1.X, 0, v1.Y}) - ((Vec){v0.W, v0.X, 0, v0.Y} * (Vec){v1.Y, v1.W, 0, v1.X});
+        Vector v0, v1;
+        v0.Vec = poly.Vertices[0].Coords.Vec - poly.Vertices[2].Coords.Vec;
+        v1.Vec = poly.Vertices[1].Coords.Vec - poly.Vertices[2].Coords.Vec;
 
-        // TODO: precision is lost here and im not quite sure how they do it exactly
-        // unfortunately if we dont do anything here we encounter integer overflows so we're just gonna do what melonDS does for the time being.
-        while(((cross.X >> 31) ^ (cross.X >> 63)) || ((cross.Y >> 31) ^ (cross.Y >> 63)) || ((cross.W >> 31) ^ (cross.W >> 63)))
-            cross.Vec >>= 4;
-
-        // calc dot product
-        // supposedly we can use any vertex as a "camera vector" im not sure how that works, but sure.
-        // going with vertex 2 based on my gut, since hw was using that as the center vertex.
-        cross.Vec *= poly.Vertices[2].Coords.Vec ; // checkme: do i actually need to removed the added W here?
-
-        s64 dot = cross.X + cross.Y + cross.W;
-
-        frontfacing = (dot <= 0);
-
-        //printf("front: %i\n", frontfacing);
-        // if the dot is 0 then it will render if either front or back are enabled.
-        if (!(((dot <= 0) && gx->CurPolyAttr.RenderFront) || ((dot >= 0) && gx->CurPolyAttr.RenderBack)))
+        // for some reason if one of the vectors is entirely 0 its automatically accepted, even if neither face is allowed to render, and is treated as frontfacing for rasterization.
+        // im not entirely sure why though... possibly to do with the normalization step?
+        // or maybe they do some weird-ass algorithm instead of doing things normally?
+        if (((v0.X|v0.Y|v0.W) == 0) || ((v1.X|v1.Y|v1.W) == 0))
         {
-            gx->SharedVtx[0] = nullptr;
-            gx->SharedVtx[1] = nullptr;
-            return;
+            frontfacing = true;
+        }
+        else
+        {
+            // calculate cross product
+            Vector cross; cross.Vec = ((Vec){v0.Y, v0.W, 0, v0.X} * (Vec){v1.W, v1.X, 0, v1.Y}) - ((Vec){v0.W, v0.X, 0, v0.Y} * (Vec){v1.Y, v1.W, 0, v1.X});
+
+            // TODO: precision is lost here and im not quite sure how they do it exactly
+            // unfortunately if we dont do anything here we encounter integer overflows so we're just gonna do what melonDS does for the time being.
+            while(((cross.X >> 31) ^ (cross.X >> 63)) || ((cross.Y >> 31) ^ (cross.Y >> 63)) || ((cross.W >> 31) ^ (cross.W >> 63)))
+                cross.Vec >>= 4;
+
+            // calc dot product
+            // supposedly we can use any vertex as a "camera vector" im not sure how that works, but sure.
+            // going with vertex 2 based on my gut, since hw was using that as the center vertex.
+            cross.Vec *= poly.Vertices[2].Coords.Vec ; // checkme: do i actually need to removed the added W here?
+
+            s64 dot = cross.X + cross.Y + cross.W;
+
+            frontfacing = (dot <= 0);
+
+            //printf("front: %i\n", frontfacing);
+            // if the dot is 0 then it will render if either front or back are enabled.
+            if (!(((dot <= 0) && gx->CurPolyAttr.RenderFront) || ((dot >= 0) && gx->CurPolyAttr.RenderBack)))
+            {
+                gx->SharedVtx[0] = nullptr;
+                gx->SharedVtx[1] = nullptr;
+                return;
+            }
         }
     }
 
     GX_ClipPolygon(gx, &poly, &nvert);
+
+    if (boxtestres != nullptr)
+    {
+        *boxtestres = nvert;
+        return;
+    }
 
     if ((nvert == 0) || (gx->PolyRAMPtr >= 2048) || ((gx->VtxRAMPtr + nvert) > 6144))
     {
@@ -369,7 +378,7 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert)
     gx->PolyRAMPtr++;
 }
 
-void GX_SubmitVertex(struct Console* sys)
+void GX_SubmitVertex(struct Console* sys, bool* boxtestres)
 {
     GX3D* gx = &sys->GX3D;
     GX_UpdateClip(sys);
@@ -408,7 +417,7 @@ void GX_SubmitVertex(struct Console* sys)
         {
             gx->TmpPolygonPtr = 0;
             gx->PartialPolygon = false;
-            GX_FinalizePolygon(sys, 3);
+            GX_FinalizePolygon(sys, 3, boxtestres);
         }
         break;
     }
@@ -418,7 +427,7 @@ void GX_SubmitVertex(struct Console* sys)
         {
             gx->TmpPolygonPtr = 0;
             gx->PartialPolygon = false;
-            GX_FinalizePolygon(sys, 4);
+            GX_FinalizePolygon(sys, 4, boxtestres);
         }
         break;
     }
@@ -433,11 +442,11 @@ void GX_SubmitVertex(struct Console* sys)
                 VertexTmp tmp = gx->PolygonTmp.Vertices[1];
                 gx->PolygonTmp.Vertices[1] = gx->PolygonTmp.Vertices[0];
                 gx->PolygonTmp.Vertices[0] = tmp;
-                GX_FinalizePolygon(sys, 3);
+                GX_FinalizePolygon(sys, 3, boxtestres);
             }
             else
             {
-                GX_FinalizePolygon(sys, 3);
+                GX_FinalizePolygon(sys, 3, boxtestres);
                 gx->PolygonTmp.Vertices[0] = gx->PolygonTmp.Vertices[1];
             }
             gx->PolygonTmp.Vertices[1] = gx->PolygonTmp.Vertices[2];
@@ -452,7 +461,7 @@ void GX_SubmitVertex(struct Console* sys)
             gx->TmpPolygonPtr = 2;
             gx->PartialPolygon = false;
             DS_SWAP(gx->PolygonTmp.Vertices[2], gx->PolygonTmp.Vertices[3])
-            GX_FinalizePolygon(sys, 4);
+            GX_FinalizePolygon(sys, 4, boxtestres);
             gx->PolygonTmp.Vertices[0] = gx->PolygonTmp.Vertices[3];
             gx->PolygonTmp.Vertices[1] = gx->PolygonTmp.Vertices[2];
         }
@@ -553,6 +562,175 @@ void GX_UpdateNormal(struct Console* sys, const u32 param)
     gx->VertexColor.B = (color.B > 31) ? 31 : color.B;
 }
 
+bool GX_PolygonBegin(GX3D* gx, const u8 type)
+{
+    // basically just run polygon begin
+    gx->PolygonType = type;
+    gx->CurPolyAttr = gx->NextPolyAttr;
+    gx->SharedVtx[0] = nullptr;
+    gx->SharedVtx[1] = nullptr;
+    gx->TriStripOdd = false;
+    gx->TmpPolygonPtr = 0;
+    if (gx->PartialPolygon)
+    {
+        gx->ExecTS = timestamp_max;
+        LogPrint(LOG_GX|LOG_EXCEP, "GX HANGING, UH OH\n");
+    }
+    return !gx->PartialPolygon;
+}
+
+void GX_BoxTest(struct Console* sys)
+{
+    GX3D* gx = &sys->GX3D;
+
+    GX_UpdateClip(sys);
+
+    // todo: set busy flag, implement timings
+    gx->Status.BoxTestRes = false; // checkme: is this cleared if it hangs?
+
+    if (!GX_PolygonBegin(gx, Poly_Quad)) // hw might do a strip but idk if that matters really?
+        return; // dont bother finishing the calc if it hangs
+
+    bool res = false;
+
+    // x0 y0 z0; x1 y1 z0
+    gx->TmpVertex.X = gx->BoxTestParams[0];
+    gx->TmpVertex.Y = gx->BoxTestParams[1];
+    gx->TmpVertex.Z = gx->BoxTestParams[2];
+    GX_SubmitVertex(sys, &res);
+    gx->TmpVertex.X = gx->BoxTestParams[0] + gx->BoxTestParams[3];
+    gx->TmpVertex.Y = gx->BoxTestParams[1];
+    gx->TmpVertex.Z = gx->BoxTestParams[2];
+    GX_SubmitVertex(sys, &res);
+    gx->TmpVertex.X = gx->BoxTestParams[0] + gx->BoxTestParams[3];
+    gx->TmpVertex.Y = gx->BoxTestParams[1] + gx->BoxTestParams[4];
+    gx->TmpVertex.Z = gx->BoxTestParams[2];
+    GX_SubmitVertex(sys, &res);
+    gx->TmpVertex.X = gx->BoxTestParams[0];
+    gx->TmpVertex.Y = gx->BoxTestParams[1] + gx->BoxTestParams[4];
+    gx->TmpVertex.Z = gx->BoxTestParams[2];
+    GX_SubmitVertex(sys, &res);
+    if (res)
+    {
+        gx->Status.BoxTestRes = true;
+        return;
+    }
+
+    // x0, y0, z0, x1, y0, z1
+    gx->TmpVertex.X = gx->BoxTestParams[0];
+    gx->TmpVertex.Y = gx->BoxTestParams[1];
+    gx->TmpVertex.Z = gx->BoxTestParams[2];
+    GX_SubmitVertex(sys, &res);
+    gx->TmpVertex.X = gx->BoxTestParams[0] + gx->BoxTestParams[3];
+    gx->TmpVertex.Y = gx->BoxTestParams[1];
+    gx->TmpVertex.Z = gx->BoxTestParams[2];
+    GX_SubmitVertex(sys, &res);
+    gx->TmpVertex.X = gx->BoxTestParams[0] + gx->BoxTestParams[3];
+    gx->TmpVertex.Y = gx->BoxTestParams[1];
+    gx->TmpVertex.Z = gx->BoxTestParams[2] + gx->BoxTestParams[5];
+    GX_SubmitVertex(sys, &res);
+    gx->TmpVertex.X = gx->BoxTestParams[0];
+    gx->TmpVertex.Y = gx->BoxTestParams[1];
+    gx->TmpVertex.Z = gx->BoxTestParams[2] + gx->BoxTestParams[5];
+    GX_SubmitVertex(sys, &res);
+    if (res)
+    {
+        gx->Status.BoxTestRes = true;
+        return;
+    }
+
+    // x0, y0, z0, x0, y1, z1
+    gx->TmpVertex.X = gx->BoxTestParams[0];
+    gx->TmpVertex.Y = gx->BoxTestParams[1];
+    gx->TmpVertex.Z = gx->BoxTestParams[2];
+    GX_SubmitVertex(sys, &res);
+    gx->TmpVertex.X = gx->BoxTestParams[0];
+    gx->TmpVertex.Y = gx->BoxTestParams[1] + gx->BoxTestParams[4];
+    gx->TmpVertex.Z = gx->BoxTestParams[2];
+    GX_SubmitVertex(sys, &res);
+    gx->TmpVertex.X = gx->BoxTestParams[0];
+    gx->TmpVertex.Y = gx->BoxTestParams[1] + gx->BoxTestParams[4];
+    gx->TmpVertex.Z = gx->BoxTestParams[2] + gx->BoxTestParams[5];
+    GX_SubmitVertex(sys, &res);
+    gx->TmpVertex.X = gx->BoxTestParams[0];
+    gx->TmpVertex.Y = gx->BoxTestParams[1];
+    gx->TmpVertex.Z = gx->BoxTestParams[2] + gx->BoxTestParams[5];
+    GX_SubmitVertex(sys, &res);
+    if (res)
+    {
+        gx->Status.BoxTestRes = true;
+        return;
+    }
+
+    // x0, y0, z1, x1, y1, z1
+    gx->TmpVertex.X = gx->BoxTestParams[0];
+    gx->TmpVertex.Y = gx->BoxTestParams[1];
+    gx->TmpVertex.Z = gx->BoxTestParams[2] + gx->BoxTestParams[5];
+    GX_SubmitVertex(sys, &res);
+    gx->TmpVertex.X = gx->BoxTestParams[0];
+    gx->TmpVertex.Y = gx->BoxTestParams[1] + gx->BoxTestParams[4];
+    gx->TmpVertex.Z = gx->BoxTestParams[2] + gx->BoxTestParams[5];
+    GX_SubmitVertex(sys, &res);
+    gx->TmpVertex.X = gx->BoxTestParams[0] + gx->BoxTestParams[3];
+    gx->TmpVertex.Y = gx->BoxTestParams[1] + gx->BoxTestParams[4];
+    gx->TmpVertex.Z = gx->BoxTestParams[2] + gx->BoxTestParams[5];
+    GX_SubmitVertex(sys, &res);
+    gx->TmpVertex.X = gx->BoxTestParams[0] + gx->BoxTestParams[3];
+    gx->TmpVertex.Y = gx->BoxTestParams[1];
+    gx->TmpVertex.Z = gx->BoxTestParams[2] + gx->BoxTestParams[5];
+    GX_SubmitVertex(sys, &res);
+    if (res)
+    {
+        gx->Status.BoxTestRes = true;
+        return;
+    }
+
+    // x0, y1, z0, x1, y1, z1
+    gx->TmpVertex.X = gx->BoxTestParams[0];
+    gx->TmpVertex.Y = gx->BoxTestParams[1] + gx->BoxTestParams[4];
+    gx->TmpVertex.Z = gx->BoxTestParams[2];
+    GX_SubmitVertex(sys, &res);
+    gx->TmpVertex.X = gx->BoxTestParams[0];
+    gx->TmpVertex.Y = gx->BoxTestParams[1] + gx->BoxTestParams[4];
+    gx->TmpVertex.Z = gx->BoxTestParams[2] + gx->BoxTestParams[5];
+    GX_SubmitVertex(sys, &res);
+    gx->TmpVertex.X = gx->BoxTestParams[0] + gx->BoxTestParams[3];
+    gx->TmpVertex.Y = gx->BoxTestParams[1] + gx->BoxTestParams[4];
+    gx->TmpVertex.Z = gx->BoxTestParams[2] + gx->BoxTestParams[5];
+    GX_SubmitVertex(sys, &res);
+    gx->TmpVertex.X = gx->BoxTestParams[0] + gx->BoxTestParams[3];
+    gx->TmpVertex.Y = gx->BoxTestParams[1] + gx->BoxTestParams[4];
+    gx->TmpVertex.Z = gx->BoxTestParams[2];
+    GX_SubmitVertex(sys, &res);
+    if (res)
+    {
+        gx->Status.BoxTestRes = true;
+        return;
+    }
+
+    // x1, y0, z0, x1, y1, z1
+    gx->TmpVertex.X = gx->BoxTestParams[0] + gx->BoxTestParams[3];
+    gx->TmpVertex.Y = gx->BoxTestParams[1];
+    gx->TmpVertex.Z = gx->BoxTestParams[2];
+    GX_SubmitVertex(sys, &res);
+    gx->TmpVertex.X = gx->BoxTestParams[0] + gx->BoxTestParams[3];
+    gx->TmpVertex.Y = gx->BoxTestParams[1] + gx->BoxTestParams[4];
+    gx->TmpVertex.Z = gx->BoxTestParams[2];
+    GX_SubmitVertex(sys, &res);
+    gx->TmpVertex.X = gx->BoxTestParams[0] + gx->BoxTestParams[3];
+    gx->TmpVertex.Y = gx->BoxTestParams[1] + gx->BoxTestParams[4];
+    gx->TmpVertex.Z = gx->BoxTestParams[2] + gx->BoxTestParams[5];
+    GX_SubmitVertex(sys, &res);
+    gx->TmpVertex.X = gx->BoxTestParams[0] + gx->BoxTestParams[3];
+    gx->TmpVertex.Y = gx->BoxTestParams[1];
+    gx->TmpVertex.Z = gx->BoxTestParams[2] + gx->BoxTestParams[5];
+    GX_SubmitVertex(sys, &res);
+    if (res)
+    {
+        gx->Status.BoxTestRes = true;
+        return;
+    }
+}
 
 bool GX_RunCommand(struct Console* sys, const timestamp now)
 {
@@ -919,7 +1097,7 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
             else
             {
                 gx->TmpVertex.Z = (s64)(s32)(param << 16) >> 16;
-                GX_SubmitVertex(sys);
+                GX_SubmitVertex(sys, nullptr);
             }
 
             gx->TmpVertexPtr = !gx->TmpVertexPtr;
@@ -929,7 +1107,7 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
         case GX_Vtx10:
         {
             gx->TmpVertex.Vec = (Vec){((s64)((s32)(param << 22)) >> 16), ((s64)((s32)(param << 12)) >> 16), ((s64)((s32)(param << 2)) >> 16), (1<<12)};
-            GX_SubmitVertex(sys);
+            GX_SubmitVertex(sys, nullptr);
             break;
         }
 
@@ -937,7 +1115,7 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
         {
             gx->TmpVertex.X = (s64)(s32)(param << 16) >> 16;
             gx->TmpVertex.Y = (s64)(s32)param >> 16;
-            GX_SubmitVertex(sys);
+            GX_SubmitVertex(sys, nullptr);
             break;
         }
 
@@ -945,7 +1123,7 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
         {
             gx->TmpVertex.X = (s64)(s32)(param << 16) >> 16;
             gx->TmpVertex.Z = (s64)(s32)param >> 16;
-            GX_SubmitVertex(sys);
+            GX_SubmitVertex(sys, nullptr);
             break;
         }
 
@@ -953,7 +1131,7 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
         {
             gx->TmpVertex.Y = (s64)(s32)(param << 16) >> 16;
             gx->TmpVertex.Z = (s64)(s32)param >> 16;
-            GX_SubmitVertex(sys);
+            GX_SubmitVertex(sys, nullptr);
             break;
         }
 
@@ -961,7 +1139,7 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
         {
             gx->TmpVertex.Vec += (Vec){((s64)((s32)(param << 22)) >> 22), ((s64)((s32)(param << 12)) >> 22), ((s64)((s32)(param << 2)) >> 22), 0};
             gx->TmpVertex.Vec = (gx->TmpVertex.Vec << 48) >> 48;
-            GX_SubmitVertex(sys);
+            GX_SubmitVertex(sys, nullptr);
             break;
         }
 
@@ -1054,17 +1232,7 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
 
         case GX_PlyBegin:
         {
-            gx->PolygonType = param & 3;
-            gx->CurPolyAttr = gx->NextPolyAttr;
-            gx->SharedVtx[0] = nullptr;
-            gx->SharedVtx[1] = nullptr;
-            gx->TriStripOdd = false;
-            gx->TmpPolygonPtr = 0;
-            if (gx->PartialPolygon)
-            {
-                gx->ExecTS = timestamp_max;
-                LogPrint(LOG_GX|LOG_EXCEP, "GX HANGING, UH OH\n");
-            }
+            GX_PolygonBegin(gx, param & 0x3);
             break;
         }
 
@@ -1093,6 +1261,19 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
             gx->ViewportTop = 191-((param>>24) & 0xFF);
             gx->ViewportWidth = (((param>>16) & 0xFF) - gx->ViewportLeft + 1) & 0x1FF; // x coord is u9
             gx->ViewportHeight = (((191 - (param >> 8)) & 0xFF) - gx->ViewportTop + 1) & 0xFF; // y coord is u8
+            break;
+        }
+
+        case GX_TstBox:
+        {
+            gx->BoxTestParams[(gx->BoxTestPtr*2)+0] = param & 0xFFFF;
+            gx->BoxTestParams[(gx->BoxTestPtr*2)+1] = (param >> 16) & 0xFFFF;
+            gx->BoxTestPtr = (gx->BoxTestPtr + 1) % 3;
+            if (gx->BoxTestPtr == 0)
+            {
+                GX_BoxTest(sys);
+            }
+            // TODO: timings, busy flag
             break;
         }
 

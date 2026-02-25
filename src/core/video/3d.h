@@ -393,6 +393,9 @@ typedef struct
     bool TriStripOdd;
     PolygonTmp PolygonTmp;
 
+    s16 BoxTestParams[6];
+    u8 BoxTestPtr;
+
     Vertex VtxRAMA[6144];
     Polygon PolyRAMA[2048];
     Vertex VtxRAMB[6144];
