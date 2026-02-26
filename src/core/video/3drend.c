@@ -1,6 +1,6 @@
+#include <stdlib.h>
 #include "../console.h"
 #include "3d.h"
-#include <__stddef_unreachable.h>
 
 
 
@@ -217,11 +217,6 @@ s32 SWRen_Interpolate(Polygon* poly, s16 x, const s16 x0, const s16 x1, const u3
                 return a1 + ((s64)(a0-a1) * (xdiff-x) / xdiff);
         }
     }
-}
-
-bool SWRen_DepthTest_LessThan(const GX3D* gx, const u16 x, const u8 y, const u32 z, const u8 flag, const bool bot)
-{
-    return ((z < gx->ZBuf[bot][y][x]) || ((flag & gx->ABuf[bot][y][x].Raw) && (z <= gx->ZBuf[bot][y][x])));
 }
 
 Colors SWRen_RGB555to666(Colors color)
@@ -509,13 +504,36 @@ Colors SWRen_BlendColors(GX3D* gx, Polygon* poly, Colors color, Colors tcolor, u
     return outcol;
 }
 
-void SWRen_RasterizePixel(GX3D* gx, Polygon* poly, u16 x, u8 y, u32 z, Colors color, Colors tcolor, u8 talpha)
+bool SWRen_DepthTest(const GX3D* gx, const bool equaldt, const u16 x, const u8 y, u32 z, const AttrBuf attr, const bool bot)
+{
+    AttrBuf attrbuf = gx->ABuf[bot][y][x];
+    u32 zbuf = gx->ZBuf[bot][y][x];
+
+    if (equaldt)
+    {
+        // checkme: this is probably slightly wrong.
+        u32 diff = abs((s32)(zbuf - z));
+        return (diff <= 256);
+    }
+    else
+    {
+        // in certain cases the depth test is actually less than or equals
+        if ((attr.Frontfacing && !attrbuf.Frontfacing) // frontfacing > backfacing
+            || ((attr.TopXMajor && gx->ABuf[bot][y][x].BotXMajor) // top xmajor > bot. xmajor
+            || (attr.LeftYMajor && gx->ABuf[bot][y][x].RightYMajor))) // left y major > right y major
+            return (z <= zbuf);
+        else
+            return (z < zbuf);
+    }
+}
+
+void SWRen_RasterizePixel(GX3D* gx, Polygon* poly, u16 x, u8 y, u32 z, Colors color, Colors tcolor, u8 talpha, AttrBuf attr)
 {
     bool bot = false;
-    if (!SWRen_DepthTest_LessThan(gx, x, y, z, 0, bot))
+    if (!SWRen_DepthTest(gx, poly->Attrs.EqualDepthTest, x, y, z, attr, bot))
     {
         bot = true;
-        if (!SWRen_DepthTest_LessThan(gx, x, y, z, 0, bot))
+        if (!SWRen_DepthTest(gx, poly->Attrs.EqualDepthTest, x, y, z, attr, bot))
         {
             return;
         }
@@ -524,13 +542,15 @@ void SWRen_RasterizePixel(GX3D* gx, Polygon* poly, u16 x, u8 y, u32 z, Colors co
     u8 finalpha;
     Colors fincolor = SWRen_BlendColors(gx, poly, color, tcolor, talpha, &finalpha);
 
-    if (finalpha < 31) return;
+    if (finalpha < 1) return;
 
     gx->ZBuf[true][y][x] = gx->ZBuf[false][y][x];
     gx->CBuf[true][y][x] = gx->CBuf[false][y][x];
+    gx->ABuf[true][y][x] = gx->ABuf[false][y][x];
 
     gx->ZBuf[bot][y][x] = z;
     gx->CBuf[bot][y][x] = fincolor.R | (fincolor.G << 6) | (fincolor.B << 12) | 0x1F << 18;
+    gx->ABuf[bot][y][x] = attr;
 }
 
 void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
@@ -551,6 +571,7 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
     if (ls > re)
     {
         DS_SWAP(ls, re)
+        DS_SWAP(lslope, rslope) // checkme?
 
         rs = re - 1;
         le = ls + 1;
@@ -564,7 +585,7 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
     u32 wn = poly->Vertices[ln]->W;
     u32 zc = poly->Vertices[lc]->Z << poly->ZDecompress;
     u32 zn = poly->Vertices[ln]->Z << poly->ZDecompress;
-    u8 interpy = y + (lslope <= -0x40000); // TODO: this is probably wrong for swapped slopes?
+    u8 interpy = y + (lslope <= -(1<<18));
     bool persp = SWRen_CheckPerspectiveLerp(wc, wn, true);
     u32 wl = SWRen_Interpolate(poly, interpy, yc, yn, wc, wn, wc, wn, true, persp, false);
     u32 zl = SWRen_Interpolate(poly, interpy, yc, yn, wc, wn, zc, zn, true, gx->RenderWBuffer, false);
@@ -581,7 +602,7 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
     wn = poly->Vertices[rn]->W;
     zc = poly->Vertices[rc]->Z << poly->ZDecompress;
     zn = poly->Vertices[rn]->Z << poly->ZDecompress;
-    interpy = y + (rslope >= 0x40000); // TODO: this is probably wrong for swapped slopes?
+    interpy = y + (rslope >= (1<<18));
     persp = SWRen_CheckPerspectiveLerp(wc, wn, true);
     u32 wr = SWRen_Interpolate(poly, interpy, yc, yn, wc, wn, wc, wn, true, persp, false);
     u32 zr = SWRen_Interpolate(poly, interpy, yc, yn, wc, wn, zc, zn, true, gx->RenderWBuffer, false);
@@ -607,10 +628,16 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
     s16 s, t;
     u8 talpha;
     Colors tcolor;
+    AttrBuf attr;
+    attr.Frontfacing = poly->Frontfacing;
+
+    attr.EdgeFlags = 0;
+    if      (lslope >  (1<<18)) attr.BotXMajor  = true;
+    else if (lslope < -(1<<18)) attr.TopXMajor  = true;
+    else                        attr.LeftYMajor = true;
     for (; (x < le) && (x < 256); x++)
     {
         z = SWRen_Interpolate(poly, x, ls, re, wl, wr, zl, zr, false, gx->RenderWBuffer, true);
-        z = (z << 1) | poly->Frontfacing;
         color.R = SWRen_Interpolate(poly, x, ls, re, wl, wr, cl.R, cr.R, false, persp, false);
         color.G = SWRen_Interpolate(poly, x, ls, re, wl, wr, cl.G, cr.G, false, persp, false);
         color.B = SWRen_Interpolate(poly, x, ls, re, wl, wr, cl.B, cr.B, false, persp, false);
@@ -621,13 +648,15 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
             tcolor = SWRen_DecodeTextures(sys, poly, s, t, &talpha);
         else { tcolor = color; talpha = poly->Attrs.Alpha; }
 
-        SWRen_RasterizePixel(gx, poly, x, y, z, color, tcolor, talpha);
+        SWRen_RasterizePixel(gx, poly, x, y, z, color, tcolor, talpha, attr);
     }
 
+    attr.EdgeFlags = 0;
+    if      (y == poly->Bot) attr.BotXMajor  = true;
+    else if (y == poly->Top) attr.TopXMajor  = true;
     for (; (x < rs) && (x < 256); x++)
     {
         z = SWRen_Interpolate(poly, x, ls, re, wl, wr, zl, zr, false, gx->RenderWBuffer, true);
-        z = (z << 1) | poly->Frontfacing;
         color.R = SWRen_Interpolate(poly, x, ls, re, wl, wr, cl.R, cr.R, false, persp, false);
         color.G = SWRen_Interpolate(poly, x, ls, re, wl, wr, cl.G, cr.G, false, persp, false);
         color.B = SWRen_Interpolate(poly, x, ls, re, wl, wr, cl.B, cr.B, false, persp, false);
@@ -638,13 +667,16 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
             tcolor = SWRen_DecodeTextures(sys, poly, s, t, &talpha);
         else { tcolor = color; talpha = poly->Attrs.Alpha; }
 
-        SWRen_RasterizePixel(gx, poly, x, y, z, color, tcolor, talpha);
+        SWRen_RasterizePixel(gx, poly, x, y, z, color, tcolor, talpha, attr);
     }
 
+    attr.EdgeFlags = 0;
+    if      (rslope < -(1<<18)) attr.BotXMajor   = true;
+    else if (rslope >  (1<<18)) attr.TopXMajor   = true;
+    else                        attr.RightYMajor = true;
     for (; (x < re) && (x < 256); x++)
     {
         z = SWRen_Interpolate(poly, x, ls, re, wl, wr, zl, zr, false, gx->RenderWBuffer, true);
-        z = (z << 1) | poly->Frontfacing;
         color.R = SWRen_Interpolate(poly, x, ls, re, wl, wr, cl.R, cr.R, false, persp, false);
         color.G = SWRen_Interpolate(poly, x, ls, re, wl, wr, cl.G, cr.G, false, persp, false);
         color.B = SWRen_Interpolate(poly, x, ls, re, wl, wr, cl.B, cr.B, false, persp, false);
@@ -655,7 +687,7 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
             tcolor = SWRen_DecodeTextures(sys, poly, s, t, &talpha);
         else { tcolor = color; talpha = poly->Attrs.Alpha; }
 
-        SWRen_RasterizePixel(gx, poly, x, y, z, color, tcolor, talpha);
+        SWRen_RasterizePixel(gx, poly, x, y, z, color, tcolor, talpha, attr);
     }
 }
 
@@ -675,7 +707,7 @@ void SWRen_ClearScanline(GX3D* gx, u8 y)
 {
     for (int x = 0; x < 256; x++)
     {
-        u32 z = ((gx->RenderWBuffer) ? ((gx->LatRearDepth << 10) + 0x3FE) : ((gx->LatRearDepth << 9) + 0x1FE));
+        u32 z = ((gx->RenderWBuffer) ? ((gx->LatRearDepth << 9) + 0x1FF) : ((gx->LatRearDepth << 8) + 0xFF));
         gx->ZBuf[false][y][x] = z;
         gx->ZBuf[true][y][x] = z;
 

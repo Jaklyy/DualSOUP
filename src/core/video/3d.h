@@ -261,8 +261,15 @@ typedef union
     u32 Raw;
     struct
     {
-        bool TXMajor : 1;
-        bool RYMajor : 1;
+        bool BotXMajor : 1;
+        bool TopXMajor : 1;
+        bool LeftYMajor : 1;
+        bool RightYMajor : 1;
+        bool Frontfacing : 1;
+    };
+    struct
+    {
+        u32 EdgeFlags : 4;
     };
 } AttrBuf;
 

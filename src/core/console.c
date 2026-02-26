@@ -10,6 +10,7 @@
 #include "io/dma.h"
 #include "scheduler.h"
 #include "utils.h"
+#include "video/3d.h"
 #include "video/ppu.h"
 #include "video/video.h"
 #include "sram/flash.h"
@@ -166,6 +167,11 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
     sys->GX3D.GXVtxRAM = sys->GX3D.VtxRAMA;
     sys->GX3D.RenderVtxRAM = sys->GX3D.VtxRAMB;
     sys->GX3D.TmpVertex.W = 1<<12;
+    // checkme?
+    sys->GX3D.PositionMatrix = IdentityMatrix;
+    sys->GX3D.VectorMatrix = IdentityMatrix;
+    sys->GX3D.ProjectionMatrix = IdentityMatrix;
+    sys->GX3D.TextureMatrix = IdentityMatrix;
 
     RTC_Init(&sys->RTC);
 

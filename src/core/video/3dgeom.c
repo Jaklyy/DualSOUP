@@ -340,7 +340,7 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert, bool* boxtestres)
             // compress Z into 16 bits
             if (poly.Vertices[i].Coords.W != 0)
             {
-                fin.Vertices[i]->Z = ((((poly.Vertices[i].Coords.Z * 2) - poly.Vertices[i].Coords.W) * 0x4000) / poly.Vertices[i].Coords.W);
+                fin.Vertices[i]->Z = ((poly.Vertices[i].Coords.Z * 0x4000) / poly.Vertices[i].Coords.W);
             }
             else fin.Vertices[i]->Z = 0;
 
@@ -903,7 +903,7 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
         {
             gx->TempMatrix.Arr[gx->TempMtxPtr] = (s64)(s32)param;
             // CHECKME: how does this ptr actually work?
-            (gx->TempMtxPtr)++;
+            gx->TempMtxPtr++;
             if (gx->TempMtxPtr == 16)
             {
                 gx->TempMtxPtr = 0;
@@ -927,7 +927,7 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
         {
             gx->TempMatrix.Arr[gx->TempMtxPtr] = (s64)(s32)param;
             // CHECKME: how does this ptr actually work?
-            (gx->TempMtxPtr)++;
+            gx->TempMtxPtr++;
             if ((gx->TempMtxPtr % 4) == 3) gx->TempMtxPtr++;
             if (gx->TempMtxPtr == 16)
             {
@@ -956,7 +956,7 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
         {
             gx->TempMatrix.Arr[gx->TempMtxPtr] = (s64)(s32)param;
             // CHECKME: how does this ptr actually work?
-            (gx->TempMtxPtr)++;
+            gx->TempMtxPtr++;
             if (gx->TempMtxPtr == 16)
             {
                 gx->TempMtxPtr = 0;
@@ -981,7 +981,7 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
         {
             gx->TempMatrix.Arr[gx->TempMtxPtr] = (s64)(s32)param;
             // CHECKME: how does this ptr actually work?
-            (gx->TempMtxPtr)++;
+            gx->TempMtxPtr++;
             if ((gx->TempMtxPtr % 4) == 3) gx->TempMtxPtr++;
             if (gx->TempMtxPtr == 16)
             {
@@ -1113,12 +1113,12 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
         {
             if (!gx->TmpVertexPtr)
             {
-                gx->TmpVertex.X = (s64)(s32)(param << 16) >> 16;
-                gx->TmpVertex.Y = (s64)(s32)param >> 16;
+                gx->TmpVertex.X = (s64)(s16)param;
+                gx->TmpVertex.Y = (s64)(s16)(param >> 16);
             }
             else
             {
-                gx->TmpVertex.Z = (s64)(s32)(param << 16) >> 16;
+                gx->TmpVertex.Z = (s64)(s16)param;
                 GX_SubmitVertex(sys, nullptr, gx->CurCmd.Cmd == GX_TstPos);
             }
 
@@ -1128,38 +1128,38 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
 
         case GX_Vtx10:
         {
-            gx->TmpVertex.Vec = (Vec){((s64)((s32)(param << 22)) >> 16), ((s64)((s32)(param << 12)) >> 16), ((s64)((s32)(param << 2)) >> 16), (1<<12)};
+            gx->TmpVertex.Vec = (Vec){(s64)(s16)(param << 6), (s64)(s16)((param >> 10) << 6), (s64)(s16)((param >> 20) << 6), (1<<12)};
             GX_SubmitVertex(sys, nullptr, false);
             break;
         }
 
         case GX_VtxXY:
         {
-            gx->TmpVertex.X = (s64)(s32)(param << 16) >> 16;
-            gx->TmpVertex.Y = (s64)(s32)param >> 16;
+            gx->TmpVertex.X = (s64)(s16)param;
+            gx->TmpVertex.Y = (s64)(s16)(param >> 16);
             GX_SubmitVertex(sys, nullptr, false);
             break;
         }
 
         case GX_VtxXZ:
         {
-            gx->TmpVertex.X = (s64)(s32)(param << 16) >> 16;
-            gx->TmpVertex.Z = (s64)(s32)param >> 16;
+            gx->TmpVertex.X = (s64)(s16)param;
+            gx->TmpVertex.Z = (s64)(s16)(param >> 16);
             GX_SubmitVertex(sys, nullptr, false);
             break;
         }
 
         case GX_VtxYZ:
         {
-            gx->TmpVertex.Y = (s64)(s32)(param << 16) >> 16;
-            gx->TmpVertex.Z = (s64)(s32)param >> 16;
+            gx->TmpVertex.Y = (s64)(s16)param;
+            gx->TmpVertex.Z = (s64)(s16)(param >> 16);
             GX_SubmitVertex(sys, nullptr, false);
             break;
         }
 
         case GX_VtxDiff:
         {
-            gx->TmpVertex.Vec += (Vec){((s64)((s32)(param << 22)) >> 22), ((s64)((s32)(param << 12)) >> 22), ((s64)((s32)(param << 2)) >> 22), 0};
+            gx->TmpVertex.Vec += (Vec){(s64)((s16)(param << 6) >> 6), (s64)((s16)((param >> 10) << 6) >> 6), (s64)((s16)((param >> 20) << 6) >> 6), 0};
             gx->TmpVertex.Vec = (gx->TmpVertex.Vec << 48) >> 48;
             GX_SubmitVertex(sys, nullptr, false);
             break;
