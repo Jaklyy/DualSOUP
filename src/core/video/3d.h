@@ -217,7 +217,6 @@ typedef struct
 {
     u16 X; // u9
     u16 Z; // s16?
-    u16 W; // u16?
     u8 Y; // u8
     s16 S;
     s16 T;
@@ -227,6 +226,7 @@ typedef struct
 typedef struct
 {
     Vertex* Vertices[10];
+    u16 W[10]; // u16? -- these need to be in the polygon since otherwise the w compression doesn't really work?
     PolyAttr Attrs;
     TexAttr TexAttr;
     u32 SortKey;

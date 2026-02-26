@@ -85,6 +85,7 @@ VertexTmp GX_InterpolateVertex(VertexTmp* a, VertexTmp* b, const u8 dir, const b
 PolygonTmp GX_ClipVertex(GX3D* gx, PolygonTmp* poly, unsigned* nvert, const int dir, const bool positive)
 {
     PolygonTmp tmp;
+    tmp.Clipped = poly->Clipped;
     unsigned cur = 0;
     for (unsigned i = 0; i < *nvert; i++)
     {
@@ -98,21 +99,22 @@ PolygonTmp GX_ClipVertex(GX3D* gx, PolygonTmp* poly, unsigned* nvert, const int 
                 return tmp;
             }
 
-            unsigned prev = (i-1);
-            if (prev >= *nvert) prev = *nvert - 1;
+            int prev = (i-1);
+            if (prev < 0) prev = *nvert - 1;
             if ((positive) ? (poly->Vertices[prev].Coords.Arr[dir] <= poly->Vertices[prev].Coords.W)
                            : (poly->Vertices[prev].Coords.Arr[dir] >= 0))
             {
                 tmp.Vertices[cur++] = GX_InterpolateVertex(&poly->Vertices[i], &poly->Vertices[prev], dir, positive);
-                poly->Clipped = true;
+                tmp.Clipped = true;
             }
 
-            unsigned next = (i+1) % *nvert;
+            unsigned next = (i+1);
+            if (next >= *nvert) next = 0;
             if ((positive) ? (poly->Vertices[next].Coords.Arr[dir] <= poly->Vertices[next].Coords.W)
                            : (poly->Vertices[next].Coords.Arr[dir] >= 0))
             {
                 tmp.Vertices[cur++] = GX_InterpolateVertex(&poly->Vertices[next], &poly->Vertices[i], dir, positive);
-                poly->Clipped = true;
+                tmp.Clipped = true;
             }
         }
         else tmp.Vertices[cur++] = poly->Vertices[i];
@@ -177,7 +179,6 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert, bool* boxtestres)
             if (!(((dot <= 0) && gx->CurPolyAttr.RenderFront) || ((dot >= 0) && gx->CurPolyAttr.RenderBack)))
             {
                 gx->SharedVtx[0] = nullptr;
-                gx->SharedVtx[1] = nullptr;
                 return;
             }
         }
@@ -191,27 +192,38 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert, bool* boxtestres)
         return;
     }
 
-    if ((nvert == 0) || (gx->PolyRAMPtr >= 2048) || ((gx->VtxRAMPtr + nvert) > 6144))
+    if ((nvert == 0) || (gx->PolyRAMPtr >= 2048))
     {
         gx->SharedVtx[0] = nullptr;
-        gx->SharedVtx[1] = nullptr;
         return;
     }
 
+    if (poly.Clipped)
+    {
+        gx->SharedVtx[0] = nullptr;
+    }
+
     Polygon fin;
+
+    unsigned vtxadded = 0;
     {
         unsigned vtx = 0;
-        /*if ((gx->SharedVtx[0] != nullptr) && (gx->SharedVtx[1] != nullptr))
+        if (gx->SharedVtx[0] != nullptr)
         {
             vtx = 2;
             fin.Vertices[0] = gx->SharedVtx[0];
             fin.Vertices[1] = gx->SharedVtx[1];
-        }*/
+        }
 
         // allocate remaining vertices
-        for (; vtx < nvert; vtx++)
+        for (; vtx < nvert; vtx++, vtxadded++)
         {
-            fin.Vertices[vtx] = &gx->GXVtxRAM[gx->VtxRAMPtr+vtx];
+            if ((gx->VtxRAMPtr + vtxadded) >= 6144) // checkme...?
+            {
+                gx->SharedVtx[0] = nullptr;
+                return;
+            }
+            fin.Vertices[vtx] = &gx->GXVtxRAM[gx->VtxRAMPtr+vtxadded];
         }
     }
 
@@ -254,23 +266,27 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert, bool* boxtestres)
     // melonds does timings here ig?
 
     // set up for next polygon in a strip
-    if (gx->PolygonType == Poly_TriStrip)
+    if (poly.Clipped)
+    {
+        gx->SharedVtx[0] = nullptr;
+    }
+    else if (gx->PolygonType == Poly_TriStrip)
     {
         if (gx->TriStripOdd)
         {
-            gx->SharedVtx[0] = (poly.Clipped) ? nullptr : fin.Vertices[2];
-            gx->SharedVtx[1] = (poly.Clipped) ? nullptr : fin.Vertices[1];
+            gx->SharedVtx[0] = fin.Vertices[0];
+            gx->SharedVtx[1] = fin.Vertices[2];
         }
         else
         {
-            gx->SharedVtx[0] = (poly.Clipped) ? nullptr : fin.Vertices[0];
-            gx->SharedVtx[1] = (poly.Clipped) ? nullptr : fin.Vertices[2];
+            gx->SharedVtx[0] = fin.Vertices[2];
+            gx->SharedVtx[1] = fin.Vertices[1];
         }
     }
     else if (gx->PolygonType == Poly_QuadStrip)
     {
-        gx->SharedVtx[0] = (poly.Clipped) ? nullptr : fin.Vertices[2];
-        gx->SharedVtx[1] = (poly.Clipped) ? nullptr : fin.Vertices[3];
+        gx->SharedVtx[0] = fin.Vertices[3];
+        gx->SharedVtx[1] = fin.Vertices[2];
     }
 
     fin.Frontfacing = frontfacing;
@@ -321,14 +337,14 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert, bool* boxtestres)
         if (wsize < 16)
         {
             wnorm <<= (16-wsize);
-            fin.Vertices[i]->W = wnorm;
+            fin.W[i] = wnorm;
             wnorm >>= (16-wsize);
             fin.ZDecompress = 0;
         }
         else
         {
             wnorm >>= (wsize - 16);
-            fin.Vertices[i]->W = wnorm;
+            fin.W[i] = wnorm;
             fin.ZDecompress = (wsize - 16);
         }
 
@@ -374,7 +390,7 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert, bool* boxtestres)
 
     gx->GXPolyRAM[gx->PolyRAMPtr] = fin;
 
-    gx->VtxRAMPtr += nvert;
+    gx->VtxRAMPtr += vtxadded;
     gx->PolyRAMPtr++;
 }
 
@@ -426,7 +442,7 @@ void GX_SubmitVertex(struct Console* sys, bool* boxtestres, const bool postest)
         {
             gx->TmpPolygonPtr = 0;
             gx->PartialPolygon = false;
-            GX_FinalizePolygon(sys, 3, boxtestres);
+            GX_FinalizePolygon(sys, 3, nullptr);
         }
         break;
     }
@@ -448,10 +464,8 @@ void GX_SubmitVertex(struct Console* sys, bool* boxtestres, const bool postest)
             gx->PartialPolygon = false;
             if (gx->TriStripOdd)
             {
-                VertexTmp tmp = gx->PolygonTmp.Vertices[1];
-                gx->PolygonTmp.Vertices[1] = gx->PolygonTmp.Vertices[0];
-                gx->PolygonTmp.Vertices[0] = tmp;
-                GX_FinalizePolygon(sys, 3, boxtestres);
+                DS_SWAP(gx->PolygonTmp.Vertices[1], gx->PolygonTmp.Vertices[0]);
+                GX_FinalizePolygon(sys, 3, nullptr);
             }
             else
             {
@@ -470,7 +484,7 @@ void GX_SubmitVertex(struct Console* sys, bool* boxtestres, const bool postest)
             gx->TmpPolygonPtr = 2;
             gx->PartialPolygon = false;
             DS_SWAP(gx->PolygonTmp.Vertices[2], gx->PolygonTmp.Vertices[3])
-            GX_FinalizePolygon(sys, 4, boxtestres);
+            GX_FinalizePolygon(sys, 4, nullptr);
             gx->PolygonTmp.Vertices[0] = gx->PolygonTmp.Vertices[3];
             gx->PolygonTmp.Vertices[1] = gx->PolygonTmp.Vertices[2];
         }
@@ -588,7 +602,6 @@ bool GX_PolygonBegin(GX3D* gx, const u8 type)
     gx->PolygonType = type;
     gx->CurPolyAttr = gx->NextPolyAttr;
     gx->SharedVtx[0] = nullptr;
-    gx->SharedVtx[1] = nullptr;
     gx->TriStripOdd = false;
     gx->TmpPolygonPtr = 0;
     if (gx->PartialPolygon)
@@ -606,7 +619,7 @@ void GX_BoxTest(struct Console* sys)
     // todo: set busy flag, implement timings
     gx->Status.BoxTestRes = false; // checkme: is this cleared if it hangs?
 
-    if (!GX_PolygonBegin(gx, Poly_Quad)) // hw might do a strip but idk if that matters really?
+    if (!GX_PolygonBegin(gx, Poly_Quad)) // hw might do a strip? CHECKME: do box tests actually update the polygon type?
         return; // dont bother finishing the calc if it hangs
 
     bool res = false;

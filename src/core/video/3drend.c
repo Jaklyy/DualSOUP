@@ -581,10 +581,10 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
 
     u8 yc = poly->Vertices[lc]->Y;
     u8 yn = poly->Vertices[ln]->Y;
-    u32 wc = poly->Vertices[lc]->W;
-    u32 wn = poly->Vertices[ln]->W;
-    u32 zc = poly->Vertices[lc]->Z << poly->ZDecompress;
-    u32 zn = poly->Vertices[ln]->Z << poly->ZDecompress;
+    u32 wc = poly->W[lc];
+    u32 wn = poly->W[ln];
+    u32 zc = (gx->RenderWBuffer) ? poly->W[lc] << poly->ZDecompress : poly->Vertices[lc]->Z << poly->ZDecompress;
+    u32 zn = (gx->RenderWBuffer) ? poly->W[ln] << poly->ZDecompress : poly->Vertices[ln]->Z << poly->ZDecompress;
     u8 interpy = y + (lslope <= -(1<<18));
     bool persp = SWRen_CheckPerspectiveLerp(wc, wn, true);
     u32 wl = SWRen_Interpolate(poly, interpy, yc, yn, wc, wn, wc, wn, true, persp, false);
@@ -598,10 +598,10 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
 
     yc = poly->Vertices[rc]->Y;
     yn = poly->Vertices[rn]->Y;
-    wc = poly->Vertices[rc]->W;
-    wn = poly->Vertices[rn]->W;
-    zc = poly->Vertices[rc]->Z << poly->ZDecompress;
-    zn = poly->Vertices[rn]->Z << poly->ZDecompress;
+    wc = poly->W[rc];
+    wn = poly->W[rn];
+    zc = (gx->RenderWBuffer) ? poly->W[rc] << poly->ZDecompress : poly->Vertices[rc]->Z << poly->ZDecompress;
+    zn = (gx->RenderWBuffer) ? poly->W[rn] << poly->ZDecompress : poly->Vertices[rn]->Z << poly->ZDecompress;
     interpy = y + (rslope >= (1<<18));
     persp = SWRen_CheckPerspectiveLerp(wc, wn, true);
     u32 wr = SWRen_Interpolate(poly, interpy, yc, yn, wc, wn, wc, wn, true, persp, false);
@@ -646,7 +646,7 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
 
         if (gx->LatRasterCR.Texture && poly->TexAttr.Format)
             tcolor = SWRen_DecodeTextures(sys, poly, s, t, &talpha);
-        else { tcolor = color; talpha = poly->Attrs.Alpha; }
+        else { tcolor.RGB = color.RGB >> 3; talpha = poly->Attrs.Alpha; }
 
         SWRen_RasterizePixel(gx, poly, x, y, z, color, tcolor, talpha, attr);
     }
@@ -665,7 +665,7 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
 
         if (gx->LatRasterCR.Texture && poly->TexAttr.Format)
             tcolor = SWRen_DecodeTextures(sys, poly, s, t, &talpha);
-        else { tcolor = color; talpha = poly->Attrs.Alpha; }
+        else { tcolor.RGB = color.RGB >> 3; talpha = poly->Attrs.Alpha; }
 
         SWRen_RasterizePixel(gx, poly, x, y, z, color, tcolor, talpha, attr);
     }
@@ -685,7 +685,7 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
 
         if (gx->LatRasterCR.Texture && poly->TexAttr.Format)
             tcolor = SWRen_DecodeTextures(sys, poly, s, t, &talpha);
-        else { tcolor = color; talpha = poly->Attrs.Alpha; }
+        else { tcolor.RGB = color.RGB >> 3; talpha = poly->Attrs.Alpha; }
 
         SWRen_RasterizePixel(gx, poly, x, y, z, color, tcolor, talpha, attr);
     }

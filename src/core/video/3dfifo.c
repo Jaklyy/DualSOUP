@@ -344,6 +344,9 @@ u32 GX_IORead(struct Console* sys, const u32 addr)
             //printf("stat %08X\n", gx->Status.Raw | (gx->FIFOFullness << 16));
             return gx->Status.Raw | (gx->FIFOFullness << 16) | (gx->ProjMtxStackPtr << 13) | ((gx->PosVecMtxStackPtr & 0x1F) << 8);
 
+        case 0x604:
+            return gx->PolyRAMPtr | (gx->VtxRAMPtr << 16);
+
         case 0x620 ... 0x62F:
             return gx->PosTestRes[(addr / 4) % 4];
 
