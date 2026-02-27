@@ -73,7 +73,7 @@ u16 VRAM_3DPal(struct Console* sys, u32 addr)
 s32 SWRen_CalcSlope(u16 x0, u16 x1, u8 y0, u8 y1, u8 y, s16* xstart, s16* xend, const bool dir)
 {
     s16 xlen = x1 - x0;
-    u8 ylen = y1 - y0;
+    u8 ylen = (y1 - y0) & 0xFF; // this can overflow under very specific circumstances.
 
     s32 slope;
     if (ylen == 0)
@@ -85,34 +85,41 @@ s32 SWRen_CalcSlope(u16 x0, u16 x1, u8 y0, u8 y1, u8 y, s16* xstart, s16* xend, 
         slope = ((1<<18) / ylen) * xlen;
     }
 
-    // get start coordinate
-    s32 xreal = (x0-dir) << 18;
-
     bool xmajor = (slope > (1<<18)) || (slope < -(1<<18));
+
+    u8 ydiff = (y - y0) & 0xFF; // this can also overflow.
+
+    // multiply slope by distance down the slope.
+    s32 xreal = ydiff * slope;
 
     // xmajor slopes are shifted half a pixel to the right
     if (xmajor) xreal += ((1<<18)/2);
 
     // right facing slopes are stupid.
-    if (dir) xreal += (1<<18);
-    if (dir && !xmajor && (slope != 0)) xreal += (1<<18);
+    if (dir && xmajor) xreal -= (1<<18);
 
     // specific ymajor slopes must be incremented one time less for w/e reason.
     if (((dir && (slope > 0)) || (!dir && (slope < 0))) && !xmajor) xreal -= slope;
 
-    // calc y coordinate
-    xreal += (y - y0) * slope;
+    // truncate value
+    xreal = (xreal << 3) >> (3 + 9);
 
-    // calculate slope ranges
-    if (slope < 0)
+    // calculate span bounds
+    *xstart = x0 + (xreal >> 9);
+    *xend = x0 + ((xreal + (slope >> 9)) >> 9);
+
+    if (slope < 0) DS_SWAP(*xstart, *xend);
+
     {
-        *xend = xreal >> 18;
-        *xstart = ((xreal & 0xFFFFE00) + slope) >> 18;
-    }
-    else
-    {
-        *xstart = xreal >> 18;
-        *xend = ((xreal & 0xFFFFE00) + slope) >> 18;
+        // i think this block is a hack?
+        // i dont think this should be necessary...
+        if (x0 > x1) DS_SWAP(x0, x1);
+        if (slope != 0) x1--;
+
+        if ((!dir) && *xstart < x0) *xstart = x0;
+        if ((!dir) && *xstart > x1) *xstart = x1;
+        if ((dir) && *xend < x0) *xend = x0;
+        if ((dir) && *xend > x1) *xend = x1;
     }
 
     return slope;
@@ -193,6 +200,7 @@ s32 SWRen_Interpolate(Polygon* poly, s16 x, const s16 x0, const s16 x1, const u3
     x -= x0;
     s16 xdiff = x1-x0;
     if ((x == 0) || (xdiff == 0)) return a0;
+    if (x0 <= 0 && x1 > 511) return a1; // yes these values *can* occur. there is probably a better explanation for why this happens, but until we get a better answer we shall hardcode it in.
 
     if (persp)
     {
@@ -564,9 +572,11 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
     lslope = SWRen_FindSlope(poly, y, &ls, &le, &lc, &ln, false);
     rslope = SWRen_FindSlope(poly, y, &rs, &re, &rc, &rn, true);
 
-    re--;
-    rs--;
-    if (rs >= re) rs = re-1;
+    if ((rslope == 0) && ((lslope != 0) || (ls != re)))
+    {
+        re--;
+        rs--;
+    }
 
     if (ls > re)
     {
@@ -613,12 +623,13 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
     s16 sr = SWRen_Interpolate(poly, interpy, yc, yn, wc, wn, poly->Vertices[rc]->S, poly->Vertices[rn]->S, true, persp, false);
     s16 tr = SWRen_Interpolate(poly, interpy, yc, yn, wc, wn, poly->Vertices[rc]->T, poly->Vertices[rn]->T, true, persp, false);
 
+    rs+=1;
+    re+=1;
+
     if (le > re) le = re;
     if (ls < 0) ls = 0;
     if (le <= ls) le = ls+1;
-
-    rs+=1;
-    re+=1;
+    if (rs >= re) rs = re-1;
 
     persp = SWRen_CheckPerspectiveLerp(wl, wr, false);
 

@@ -370,11 +370,11 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert, bool* boxtestres)
             }
             fin.ZDecompress = 8;
         }
-        else
+        /*else
         {
             // checkme: does the "true" Z get used for rendering in any way with Wbuffering?
             fin.Vertices[i]->Z = wnorm;
-        }
+        }*/
     }
 
     fin.VTop = vtop;
