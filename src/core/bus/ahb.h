@@ -147,9 +147,9 @@ void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
 [[nodiscard]] u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, const bool atomic, const bool hold, bool* seq, const bool timings, const u32 a7pc);
 void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, const u32 mask, const bool atomic, bool* seq, const bool timings, const u32 a7pc);
 
-u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask);
+u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask, const bool timings);
 void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mask, const u32 a7pc);
-u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask);
+u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask, const bool timings);
 void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mask);
 
 u32 WiFi_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, bool* seq, const bool timings);

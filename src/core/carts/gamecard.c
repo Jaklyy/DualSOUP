@@ -485,7 +485,9 @@ void* GamecardMisc_ROMCommandHandler(struct Console* sys, const bool a9)
                 {
                     // data
                     //printf("%08lX %08X %08X\n", (bswap(cmd) >> 24) & 0xFFFFFFFF, sys->GCROMCR[a9].Raw, sys->GCSPICR[a9].Raw);
-                    card->Address = (bswap(cmd) >> 24) & (card->RomSize-4); // subtract 4 as a weird way to handle masking out bottom bits as well.
+                    card->Address = (bswap(cmd) >> 24);
+                    if (card->Address >= card->RomSize) LogPrint(LOG_CARD, "Gamecard address space wrapping: %08X %08X\n", card->Address, card->RomSize);
+                    card->Address &= (card->RomSize-4); // subtract 4 as a weird way to handle masking out bottom bits as well.
                     if (card->Address < 0x8000)
                     {
                         // secure area is rerouted to the 512 bytes above it
@@ -506,7 +508,7 @@ void* GamecardMisc_ROMCommandHandler(struct Console* sys, const bool a9)
             break;
         }
     }
-    LogPrint(LOG_CARD|LOG_ODD, "invalid gamecard cmd %02X %i ran\n", (u8)cmd & 0xFF, card->Mode);
+    LogPrint(LOG_CARD|LOG_ODD, "Invalid Gamecard cmd %02X %i ran\n", (u8)cmd & 0xFF, card->Mode);
     return GamecardMisc_InvalidCmdHandler;
 }
 
@@ -536,8 +538,12 @@ void QueueNextTransfer(struct Console* sys, timestamp cur, const bool a9)
     }
     else
     {
-        sys->GCROMCR[a9].Start = false;
-        if (sys->GCSPICR[a9].ROMDataReadyIRQ) Console_ScheduleIRQs(sys, IRQ_GamecardTransferComplete, a9, cur); // todo: delay?
+        if (!sys->GCROMCR[a9].DataReady)
+        {
+            sys->GCROMCR[a9].Start = false;
+            if (sys->GCSPICR[a9].ROMDataReadyIRQ)
+                Console_ScheduleIRQs(sys, IRQ_GamecardTransferComplete, a9, cur); // todo: delay?
+        }
         Schedule_Event(sys, Gamecard_HandleSchedulingROM, Evt_CardROM, timestamp_max);
     }
 }
@@ -560,7 +566,7 @@ u32 Gamecard_ROMDataRead(struct Console* sys, timestamp cur, const bool a9)
     else
     {
         sys->GCROMCR[a9].DataReady = false;
-        //QueueNextTransfer(sys, cur, a9);
+        QueueNextTransfer(sys, cur, a9);
     }
 
     return ret;
@@ -674,9 +680,17 @@ void Gamecard_IOWriteHandler(struct Console* sys, u32 addr, const u32 val, const
             MaskedWrite(sys->GCSPICR[a9].Raw, val, mask & 0xE043);
             if (mask & 0xFF0000)
             {
-                if (sys->GCSPICR[a9].Busy && !sys->GCSPICR[a9].SlotEnable && !sys->GCSPICR[a9].CardSPIMode)
+                if (!sys->GCSPICR[a9].SlotEnable)
                 {
-                    LogPrint(LOG_CARD|LOG_ODD, "Gamecard SPI writes while busy?\n");
+                    LogPrint(LOG_CARD|LOG_ODD, "Gamecard SPI writes while slot disabled? Val: %08X Mask: %08X\n", val, mask);
+                }
+                else if (!sys->GCSPICR[a9].CardSPIMode)
+                {
+                    LogPrint(LOG_CARD|LOG_ODD, "Gamecard SPI writes while in ROM mode? Val: %08X Mask: %08X\n", val, mask);
+                }
+                else if (sys->GCSPICR[a9].Busy)
+                {
+                    LogPrint(LOG_CARD|LOG_ODD, "Gamecard SPI writes while busy? Val: %08X Mask: %08X\n", val, mask);
                 }
                 else
                 {

@@ -741,7 +741,7 @@ u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
             BusContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_IO9); // checkme: does all of IO have write contention at the same time?
             Timing32(&sys->AHB9); // checkme: does all of IO have the exact same timings?
         }
-        ret = IO9_Read(sys, addr, mask);
+        ret = IO9_Read(sys, addr, mask, timings);
         break;
 
     case 0x05: // 2D GPU Palette
@@ -1095,7 +1095,7 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
             BusContention(sys->AHBBusyTS, &sys->AHB7.Timestamp, Dev_IO7); // checkme: does all of IO have write contention at the same time?
             Timing32(&sys->AHB7); // checkme: does all of IO have the exact same timings?
         }
-        ret = IO7_Read(sys, addr, mask);
+        ret = IO7_Read(sys, addr, mask, timings);
         break;
     case 0x048: // WiFi
         ret = WiFi_Read(sys, ts, addr, mask, seq, timings);

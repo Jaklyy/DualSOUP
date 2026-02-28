@@ -278,7 +278,7 @@ void SPI_Finish(struct Console* sys, timestamp cur)
 }
 
 
-u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask)
+u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask, const bool timings)
 {
     //printf("ARM7IOREAD: %08X %08X\n", addr, mask);
     switch(addr & 0xFF'FF'FC)
@@ -352,7 +352,7 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask)
             return Gamecard_ROMDataRead(sys, sys->AHB7.Timestamp, false);
 
         default:
-            //LogPrint(LOG_ARM7 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO7 READ: %08X %08X @ %08X\n", addr, mask, sys->ARM7.ARM.PC);
+            if (timings) LogPrint(LOG_ARM7 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO7 READ: %08X %08X @ %08X\n", addr, mask, sys->ARM7.ARM.PC);
             return 0;
     }
 }
@@ -518,7 +518,7 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
     }
 }
 
-u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask)
+u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask, const bool timings)
 {
     //printf("ARM9IOREAD: %08X %08X\n", addr, mask);
     switch (addr & 0xFF'FF'FC)
@@ -676,7 +676,7 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask)
             return Gamecard_ROMDataRead(sys, sys->AHB9.Timestamp, true);
 
         default:
-            LogPrint(LOG_ARM9 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO9 READ: %08X %08X @ %08X\n", addr, mask, sys->ARM9.ARM.PC);
+            if (timings) LogPrint(LOG_ARM9 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO9 READ: %08X %08X @ %08X\n", addr, mask, sys->ARM9.ARM.PC);
             return 0;
     }
 }

@@ -130,6 +130,9 @@ void DMA7_Enable(struct Console* sys, struct DMA_Channel* channel, u8 channel_id
     case 2: // NTR Gamecard
     {
         channel->CurrentMode = DMAStart_NTRCard;
+        // checkme: this probably works.
+        if (sys->GCROMCR[false].DataReady)
+            StartDMA7(sys, sys->AHB7.Timestamp+1, DMAStart_NTRCard); // checkme: delay?
         break;
     }
     #if 0
@@ -198,6 +201,9 @@ void DMA9_Enable(struct Console* sys, struct DMA_Channel* channel)
     case 5: // NTR Gamecard
     {
         channel->CurrentMode = DMAStart_NTRCard;
+        // checkme: this probably works.
+        if (sys->GCROMCR[true].DataReady)
+            StartDMA9(sys, sys->AHB9.Timestamp+1, DMAStart_NTRCard); // checkme: delay?
         break;
     }
     case 7: // 3D Command FIFO
