@@ -229,7 +229,7 @@ void ARM9_DeferredITCMWrite(struct ARM946ES* ARM9);
 [[nodiscard]] bool ARM9_CheckInterrupts(struct ARM946ES* ARM9)
 {
     // TODO: fix for dsi mode
-    Console_SyncWith7GT(cpu->Sys, Console_GetARM9Max(cpu->Sys, false), false);
+    Console_SyncWith7GT(cpu->Sys, Console_GetARM9MaxNoSleep(cpu->Sys, false), false);
 
     // todo: schedule this instead
     if (cpu->Sys->IME9 && !cpu->CPSR.IRQDisable && (cpu->Sys->IE9 & cpu->Sys->IF9))

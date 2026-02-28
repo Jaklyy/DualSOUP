@@ -144,7 +144,7 @@ if (instr.Flushed || !ARM7_CheckInterrupts(ARM7)) \
 
 [[nodiscard]] bool ARM7_CheckInterrupts(struct ARM7TDMI* ARM7)
 {
-    Console_SyncWith9GT(cpu->Sys, Console_GetARM7Max(cpu->Sys, false), false);
+    Console_SyncWith9GT(cpu->Sys, Console_GetARM7MaxNoSleep(cpu->Sys, false), false);
 
     // TODO: schedule this instead
     if (cpu->Sys->IME7 && !cpu->CPSR.IRQDisable && (cpu->Sys->IE7 & cpu->Sys->IF7))

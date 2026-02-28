@@ -57,11 +57,10 @@ struct DMA_Channel
 struct DMA_Controller
 {
     alignas(sizeof(timestamp[4])) timestamp ChannelTimestamps[4];
-    alignas(sizeof(timestamp[4])) timestamp ChannelLastEnded[4];
     timestamp NextTime;
     struct DMA_Channel Channels[4];
     u8 CurMask;
-    s8 NextID;
+    u8 NextID;
 };
 
 struct Console;

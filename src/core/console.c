@@ -149,6 +149,11 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
     sys->DMA9.NextTime = timestamp_max;
     sys->DMA7.NextTime = timestamp_max;
 
+    sys->DMA9.CurMask = 0xF0;
+    sys->DMA7.CurMask = 0xF0;
+    sys->DMA9.NextID = 4;
+    sys->DMA7.NextID = 4;
+
     sys->IPCFIFO7.CR.RecvFIFOEmpty = true;
     sys->IPCFIFO7.CR.SendFIFOEmpty = true;
     sys->IPCFIFO9.CR.RecvFIFOEmpty = true;
@@ -301,22 +306,40 @@ void Console_Reset(struct Console* sys)
 
 timestamp Console_GetARM7Max(struct Console* sys, const bool froma9)
 {
-    timestamp ts = 0;
+    timestamp ts;
 
+    timestamp dmatime = DMA_GetNext(sys, false, froma9);
     if (sys->ARM7.ARM.DeadAsleep)
     {
-        ts = DMA_GetNext(sys, false, froma9);
+        ts = dmatime;
 
         if (ts < sys->AHB7.Timestamp)
             ts = sys->AHB7.Timestamp;
     }
     else
     {
-        //if (ts < sys->ARM7.ARM.Timestamp)
-            ts = sys->ARM7.ARM.Timestamp;
+        ts = sys->ARM7.ARM.Timestamp;
 
-        if (ts > DMA_GetNext(sys, false, froma9))
-            ts = DMA_GetNext(sys, false, froma9);
+        if (ts > dmatime)
+            ts = dmatime;
+
+        if (ts < sys->AHB7.Timestamp)
+            ts = sys->AHB7.Timestamp;
+    }
+
+    return ts;
+}
+
+timestamp Console_GetARM7MaxNoSleep(struct Console* sys, const bool froma9)
+{
+    timestamp ts;
+
+    timestamp dmatime = DMA_GetNext(sys, false, froma9);
+    {
+        ts = sys->ARM7.ARM.Timestamp;
+
+        if (ts > dmatime)
+            ts = dmatime;
 
         if (ts < sys->AHB7.Timestamp)
             ts = sys->AHB7.Timestamp;
@@ -327,22 +350,40 @@ timestamp Console_GetARM7Max(struct Console* sys, const bool froma9)
 
 timestamp Console_GetARM9Max(struct Console* sys, const bool froma7)
 {
-    timestamp ts = 0;
+    timestamp ts;
 
+    timestamp dmatime = DMA_GetNext(sys, true, froma7);
     if (sys->ARM9.ARM.DeadAsleep)
     {
-        ts = DMA_GetNext(sys, true, froma7);
+        ts = dmatime;
 
         if (ts < sys->AHB9.Timestamp)
             ts = sys->AHB9.Timestamp;
     }
     else
     {
-        //if (ts < (sys->ARM9.ARM.Timestamp >> ((sys->ARM9.BoostedClock) ? 2 : 1)))
-            ts = sys->ARM9.ARM.Timestamp >> ((sys->ARM9.BoostedClock) ? 2 : 1);
+        ts = sys->ARM9.ARM.Timestamp >> ((sys->ARM9.BoostedClock) ? 2 : 1);
 
-        if (ts > DMA_GetNext(sys, true, froma7))
-            ts = DMA_GetNext(sys, true, froma7);
+        if (ts > dmatime)
+            ts = dmatime;
+
+        if (ts < sys->AHB9.Timestamp)
+            ts = sys->AHB9.Timestamp;
+    }
+
+    return ts;
+}
+
+timestamp Console_GetARM9MaxNoSleep(struct Console* sys, const bool froma7)
+{
+    timestamp ts;
+
+    timestamp dmatime = DMA_GetNext(sys, true, froma7);
+    {
+        ts = sys->ARM9.ARM.Timestamp >> ((sys->ARM9.BoostedClock) ? 2 : 1);
+
+        if (ts > dmatime)
+            ts = dmatime;
 
         if (ts < sys->AHB9.Timestamp)
             ts = sys->AHB9.Timestamp;

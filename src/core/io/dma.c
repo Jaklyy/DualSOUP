@@ -5,28 +5,16 @@
 
 
 
-timestamp DMA_CheckNext(struct DMA_Controller* cnt, u8* id, const bool inclusive)
+timestamp DMA_GetNext(struct Console* sys, bool a9, const bool inclusive) 
 {
-    timestamp time = timestamp_max;
-    *id = -1;
+    struct DMA_Controller* cnt = ((a9) ? &sys->DMA9 : &sys->DMA7);
 
-    int max = stdc_trailing_zeros(cnt->CurMask) - !inclusive;
-    if (max > 3) max = 3;
-    for (int i = max; i >= 0; i--)
-    {
-        if (time >= cnt->ChannelTimestamps[i])
-        {
-            time = cnt->ChannelTimestamps[i];
-            *id = i;
-        }
-    }
+    timestamp time = cnt->NextTime;
+    int cur = stdc_trailing_zeros(cnt->CurMask);
+    if (cur == 4) return time;
+    if (inclusive && (cur != 4) && (time > cnt->ChannelTimestamps[cur])) 
+                                    time = cnt->ChannelTimestamps[cur];
     return time;
-}
-
-timestamp DMA_GetNext(struct Console* sys, bool a9, const bool inclusive)
-{
-    u8 dummy;
-    return DMA_CheckNext((a9) ? &sys->DMA9 : &sys->DMA7, &dummy, inclusive);
 }
 
 void DMA9_ScheduledRun(struct Console* sys, [[maybe_unused]] timestamp now)
@@ -41,21 +29,22 @@ void DMA7_ScheduledRun(struct Console* sys, [[maybe_unused]] timestamp now)
 
 void DMA_Schedule(struct Console* sys, const bool a9)
 {
-    // TODO: rework?
+    struct DMA_Controller* cnt = ((a9) ? &sys->DMA9 : &sys->DMA7);
 
-    /*struct DMA_Controller* cnt;
-    if (a9) cnt = &sys->DMA9;
-    else cnt = &sys->DMA7;
+    timestamp time = timestamp_max;
+    u8 id = 4; // returning an id of 4 makes it check the cur mask somewhere it should always be 0
 
-    u8 id = -1;
-    timestamp time = DMA_CheckNext(cnt, &id, false);
-    cnt->NextID = id;*/
-
-    //cnt->NextTime = time;
-    //if (a9)
-    //    Schedule_Event(sys, DMA9_ScheduledRun, Evt_DMA9, time);
-    //else
-    //    Schedule_Event(sys, DMA7_ScheduledRun, Evt_DMA7, time);
+    int max = stdc_trailing_zeros(cnt->CurMask);
+    for (int i = 0; i < max; i++)
+    {
+        if (time > cnt->ChannelTimestamps[i])
+        {
+            time = cnt->ChannelTimestamps[i];
+            id = i;
+        }
+    }
+    cnt->NextTime = time;
+    cnt->NextID = id;
 }
 
 void StartDMA9(struct Console* sys, timestamp start, u8 mode)
@@ -269,11 +258,10 @@ void DMA9_Enable(struct Console* sys, struct DMA_Channel* channel)
 void DMA_Run(struct Console* sys, const bool a9)
 {
     struct DMA_Controller* cnt = ((a9) ? &sys->DMA9 : &sys->DMA7);
-    u8 id;
-    timestamp time = DMA_CheckNext(cnt, &id, false);
+    u8 id = cnt->NextID;
 
     //if (cnt->Channels[id].CurrentMode != DMAStart_NTRCard) printf("dma?? %i %X\n", id, cnt->CurMask);
-    if ((id < 0) || (cnt->CurMask & (1<<id))) return;
+    if (cnt->CurMask & (1<<id)) return;
     u32 rmask;
     u32 wmask;
     struct DMA_Channel* channel = &cnt->Channels[id];
@@ -373,7 +361,7 @@ void DMA_Run(struct Console* sys, const bool a9)
 
     // end
 
-    cnt->CurMask &= ~(1<<id);
+    cnt->CurMask &= ~1<<id;
 
     if (channel->Latched_NumWords == 0)
     {
