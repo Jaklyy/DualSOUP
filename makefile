@@ -34,6 +34,10 @@ ifeq ($(USEPGO), 1) # use converted pgo data
 	CFLAGS += -fprofile-use=prof
 endif
 
+ifeq ($(NOLOG), 1) # disable misc logging prints, purposeful crash prints and FPS prints still occur
+	CFLAGS += -DNOLOGGING
+endif
+
 ifeq ($(DEB), 1) # debug build
 	BUILDDIR := $(DEBDIR)
 	CFLAGS += -g -Og

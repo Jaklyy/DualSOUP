@@ -468,7 +468,6 @@ void* GamecardMisc_ROMCommandHandler(struct Console* sys, const bool a9)
                     return GamecardMisc_UnencIDReadHandler;
                 case 0x20:
                     card->Address = ((bswap(cmd) >> 44) & 0x7) << 12; // checkme: decoding on this seems weird; are the nibbles swapped?
-                    printf("%08X\n", card->Address);
                     return GamecardMisc_ReadSecureAreaHandler;
                 case 0xA0:
                     card->Mode = Key2;
