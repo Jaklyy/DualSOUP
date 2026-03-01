@@ -1,6 +1,9 @@
+#ifdef __AVX2__
+    #include <immintrin.h>
+#endif
+#include <stdbit.h>
 #include "arm.h"
 #include "../../bus/ahb.h"
-#include <stdbit.h>
 
 
 
@@ -27,11 +30,22 @@ bool ARM9_DTCMTryWrite(const struct ARM946ES* ARM9, const u32 addr)
 
 struct ARM9_MPUPerms ARM9_RegionLookup(const struct ARM946ES* ARM9, const u32 addr, const bool priv)
 {
+#ifdef __AVX2__
+    __m256i addrs = _mm256_set1_epi32(addr);
+    __m256i masks; memcpy(&masks, ARM9->CP15.MPURegionMask, sizeof(masks));
+    __m256i bases; memcpy(&bases, ARM9->CP15.MPURegionBase, sizeof(bases));
+    addrs = _mm256_and_si256(masks, addrs);
+    __m256i res = _mm256_cmpeq_epi32(addrs, bases);
+    u8 rgn = stdc_leading_zeros(_mm256_movemask_ps(_mm256_castsi256_ps(res)));
+    if (rgn < 32)
+        return (priv ? ARM9->CP15.MPURegionPermsPriv[31-rgn] : ARM9->CP15.MPURegionPermsUser[31-rgn]);
+#else
     for (int i = 7; i >= 0; i--)
     {
         if ((addr & ARM9->CP15.MPURegionMask[i]) == ARM9->CP15.MPURegionBase[i])
             return (priv ? ARM9->CP15.MPURegionPermsPriv[i] : ARM9->CP15.MPURegionPermsUser[i]);
     }
+#endif 
     return (struct ARM9_MPUPerms) {.Read = false, .Write = false, .Exec = false, .ICache = false, .DCache = false, .Buffer = false};
 }
 

@@ -2,9 +2,9 @@
 
 #ifdef __SSE2__
     #include <emmintrin.h>
+    #include <string.h>
 #endif
 #include <stddef.h>
-#include <string.h>
 #include "../../utils.h"
 #include "../shared/arm.h"
 
@@ -205,74 +205,74 @@ struct ARM9_MPUPerms
 };
 
 #ifdef __SSE2__
-#define ARM9_ICacheSetLookup \
-    /* TODO: consider unhardcoding this shit */ \
-    /* isolate index */ \
-    u32 index = (addr & 0x000007E0) >> 3; \
-    /* isolate tag and set valid bit */ \
-    /* this will be used for lookup */ \
-    u32 tagcmp = (addr >> 10) | 1; \
-     \
-    /* lookup valid set */ \
-    __m128i tags; memcpy(&tags, &ARM9->ITagRAM[index].Raw, sizeof(__m128i)); \
-    __m128i cmp = _mm_set1_epi32(tagcmp); \
-    cmp = _mm_cmpeq_epi32(tags, cmp); \
-    u8 set = stdc_trailing_zeros(_mm_movemask_ps(_mm_castsi128_ps(cmp)));
+    #define ARM9_ICacheSetLookup \
+        /* TODO: consider unhardcoding this shit */ \
+        /* isolate index */ \
+        u32 index = (addr & 0x000007E0) >> 3; \
+        /* isolate tag and set valid bit */ \
+        /* this will be used for lookup */ \
+        u32 tagcmp = (addr >> 10) | 1; \
+        \
+        /* lookup valid set */ \
+        __m128i tags; memcpy(&tags, &ARM9->ITagRAM[index].Raw, sizeof(tags)); \
+        __m128i cmp = _mm_set1_epi32(tagcmp); \
+        cmp = _mm_cmpeq_epi32(tags, cmp); \
+        u8 set = stdc_trailing_zeros(_mm_movemask_ps(_mm_castsi128_ps(cmp)));
 
-#define ARM9_DCacheSetLookup \
-    /* TODO: consider unhardcoding this shit */ \
-    /* isolate index */ \
-    u32 index = (addr & 0x000003E0) >> 3; \
-    /* isolate tag and set valid bit */ \
-    /* this will be used for lookup */ \
-    u32 tagcmp = (addr >> 9) | 1; \
-     \
-    /* lookup valid set */ \
-    __m128i tags; memcpy(&tags, &ARM9->DTagRAM[index].Raw, sizeof(__m128i)); \
-    __m128i cmp = _mm_set1_epi32(tagcmp); \
-    /* note: we need to shift out the dirty flags before comparing */ \
-    tags = _mm_srli_epi32(tags, 2); \
-    cmp = _mm_cmpeq_epi32(tags, cmp); \
-    u8 set = stdc_trailing_zeros(_mm_movemask_ps(_mm_castsi128_ps(cmp)));
-#else
-#define ARM9_ICacheSetLookup \
-    /* TODO: consider unhardcoding this shit */ \
-    /* isolate index */ \
-    u32 index = (addr & 0x000007E0) >> 3; \
-    /* isolate tag and set valid bit */ \
-    /* this will be used for lookup */ \
-    u32 tagcmp = (addr >> 10) | 1; \
-     \
-    /* lookup valid set */ \
-    u8 set = ARM9_ICacheAssoc; \
-    for (unsigned i = 0; i < ARM9_ICacheAssoc; i++) \
-    { \
-        if (ARM9->ITagRAM[index+i].Raw == tagcmp) \
-        { \
-            set = i; \
-            break; \
-        } \
-    }
-
-#define ARM9_DCacheSetLookup \
-    /* TODO: consider unhardcoding this shit */ \
-    /* isolate index */ \
-    u32 index = (addr & 0x000003E0) >> 3; \
-    /* isolate tag and set valid bit */ \
-    /* this will be used for lookup */ \
-    u32 tagcmp = (addr >> 9) | 1; \
-     \
-    /* lookup valid set */ \
-    u8 set = ARM9_DCacheAssoc; \
-    for (unsigned i = 0; i < ARM9_DCacheAssoc; i++) \
-    { \
+    #define ARM9_DCacheSetLookup \
+        /* TODO: consider unhardcoding this shit */ \
+        /* isolate index */ \
+        u32 index = (addr & 0x000003E0) >> 3; \
+        /* isolate tag and set valid bit */ \
+        /* this will be used for lookup */ \
+        u32 tagcmp = (addr >> 9) | 1; \
+        \
+        /* lookup valid set */ \
+        __m128i tags; memcpy(&tags, &ARM9->DTagRAM[index].Raw, sizeof(tags)); \
+        __m128i cmp = _mm_set1_epi32(tagcmp); \
         /* note: we need to shift out the dirty flags before comparing */ \
-        if ((ARM9->DTagRAM[index+i].Raw >> 2) == tagcmp) \
+        tags = _mm_srli_epi32(tags, 2); \
+        cmp = _mm_cmpeq_epi32(tags, cmp); \
+        u8 set = stdc_trailing_zeros(_mm_movemask_ps(_mm_castsi128_ps(cmp)));
+#else
+    #define ARM9_ICacheSetLookup \
+        /* TODO: consider unhardcoding this shit */ \
+        /* isolate index */ \
+        u32 index = (addr & 0x000007E0) >> 3; \
+        /* isolate tag and set valid bit */ \
+        /* this will be used for lookup */ \
+        u32 tagcmp = (addr >> 10) | 1; \
+        \
+        /* lookup valid set */ \
+        u8 set = ARM9_ICacheAssoc; \
+        for (unsigned i = 0; i < ARM9_ICacheAssoc; i++) \
         { \
-            set = i; \
-            break; \
-        } \
-    }
+            if (ARM9->ITagRAM[index+i].Raw == tagcmp) \
+            { \
+                set = i; \
+                break; \
+            } \
+        }
+
+    #define ARM9_DCacheSetLookup \
+        /* TODO: consider unhardcoding this shit */ \
+        /* isolate index */ \
+        u32 index = (addr & 0x000003E0) >> 3; \
+        /* isolate tag and set valid bit */ \
+        /* this will be used for lookup */ \
+        u32 tagcmp = (addr >> 9) | 1; \
+        \
+        /* lookup valid set */ \
+        u8 set = ARM9_DCacheAssoc; \
+        for (unsigned i = 0; i < ARM9_DCacheAssoc; i++) \
+        { \
+            /* note: we need to shift out the dirty flags before comparing */ \
+            if ((ARM9->DTagRAM[index+i].Raw >> 2) == tagcmp) \
+            { \
+                set = i; \
+                break; \
+            } \
+        }
 #endif
 
 /*
