@@ -528,9 +528,7 @@ void Console_ScheduleIRQs(struct Console* sys, const u8 irq, const bool a9, time
 void Console_ScheduleHeldIRQs(struct Console* sys, const u8 irq, const bool a9, timestamp time);
 void Console_ClearHeldIRQs(struct Console* sys, const u8 irq, const bool a9);
 timestamp Console_GetARM7Max(struct Console* sys, const bool froma9);
-timestamp Console_GetARM7MaxNoSleep(struct Console* sys, const bool froma9);
 timestamp Console_GetARM9Max(struct Console* sys, const bool froma7);
-timestamp Console_GetARM9MaxNoSleep(struct Console* sys, const bool froma7);
 void Console_SyncWith7GTE(struct Console* sys, timestamp now, const bool bushogged);
 void Console_SyncWith7GT(struct Console* sys, timestamp now, const bool bushogged);
 void Console_SyncWith9GTE(struct Console* sys, timestamp now, const bool bushogged);

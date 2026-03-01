@@ -148,7 +148,7 @@ struct ARM
         {
             bool WaitForInterrupt;
             bool WaitForEvent; // ARMv6K
-            bool DeadAsleep; // when absolutely nothing needs to be ticked for a given cpu
+            //bool DeadAsleep; // when absolutely nothing needs to be ticked for a given cpu
         };
     };
     union ARM_PSR CPSR;

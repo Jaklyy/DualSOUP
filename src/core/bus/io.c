@@ -482,7 +482,6 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
                     case 1: // GBA
                         LogPrint(LOG_ARM7|LOG_UNIMP, "But nobody came...\n\n\n...GBA mode unsupported, sorry!\n");
                         sys->ARM7.ARM.WaitForInterrupt = true;
-                        sys->ARM7.ARM.DeadAsleep = true;
                         break;
                     case 2: // halt
                         Scheduler_RunEventManual(sys, sys->AHB7.Timestamp, Evt_IF7Update, false, true);

@@ -229,7 +229,7 @@ void ARM9_DeferredITCMWrite(struct ARM946ES* ARM9);
 [[nodiscard]] bool ARM9_CheckInterrupts(struct ARM946ES* ARM9)
 {
     // TODO: fix for dsi mode
-    Console_SyncWith7GT(cpu->Sys, Console_GetARM9MaxNoSleep(cpu->Sys, false), false);
+    Console_SyncWith7GT(cpu->Sys, Console_GetARM9Max(cpu->Sys, false), false);
 
     // todo: schedule this instead
     if (cpu->Sys->IME9 && !cpu->CPSR.IRQDisable && (cpu->Sys->IE9 & cpu->Sys->IF9))
@@ -270,7 +270,8 @@ void ARM9_Step(struct ARM946ES* ARM9)
         }
         else
         {
-            cpu->DeadAsleep = true;
+            //cpu->DeadAsleep = true;
+            cpu->Timestamp = timestamp_max;
             return;
         }
     }
@@ -341,7 +342,7 @@ void ARM9_MainLoop(struct ARM946ES* ARM9)
         }
         else
         {
-            if ((DMA_GetNext(cpu->Sys, true, false) <= (cpu->Timestamp >> (ARM9->BoostedClock ? 2 : 1))) || (cpu->DeadAsleep && (DMA_GetNext(cpu->Sys, true, false) != timestamp_max)))
+            if (DMA_GetNext(cpu->Sys, true, false) <= (cpu->Timestamp >> (ARM9->BoostedClock ? 2 : 1)))
             {
                 DMA_Run(cpu->Sys, true);
             }

@@ -144,7 +144,7 @@ if (instr.Flushed || !ARM7_CheckInterrupts(ARM7)) \
 
 [[nodiscard]] bool ARM7_CheckInterrupts(struct ARM7TDMI* ARM7)
 {
-    Console_SyncWith9GT(cpu->Sys, Console_GetARM7MaxNoSleep(cpu->Sys, false), false);
+    Console_SyncWith9GT(cpu->Sys, Console_GetARM7Max(cpu->Sys, false), false);
 
     // TODO: schedule this instead
     if (cpu->Sys->IME7 && !cpu->CPSR.IRQDisable && (cpu->Sys->IE7 & cpu->Sys->IF7))
@@ -219,7 +219,7 @@ void ARM7_MainLoop(struct ARM7TDMI* ARM7)
         }
         else
         {
-            if ((DMA_GetNext(cpu->Sys, false, false) <= cpu->Timestamp) || (cpu->DeadAsleep && (DMA_GetNext(cpu->Sys, false, false) != timestamp_max)))
+            if (DMA_GetNext(cpu->Sys, false, false) <= (cpu->Timestamp & (timestamp_max >> 1))) // this looks really stupid and that's because it is, but trust me bro
             {
                 DMA_Run(cpu->Sys, false);
             }
@@ -227,7 +227,10 @@ void ARM7_MainLoop(struct ARM7TDMI* ARM7)
             {
                 ARM7_Step(ARM7);
                 if (cpu->WaitForInterrupt)
-                    cpu->DeadAsleep = true;
+                {
+                    //cpu->DeadAsleep = true;
+                    cpu->Timestamp = timestamp_max;
+                }
             }
         }
     }
