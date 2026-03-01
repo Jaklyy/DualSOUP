@@ -138,7 +138,7 @@ void ARM9_Reset(struct ARM946ES* ARM9, const bool itcm, const bool hivec)
 
     cpu->CpuSleeping = 0;
 
-    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVector_RST, 0);
+    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVector_RST, false, 0);
 }
 
 void ARM9_RaiseUDF(struct ARM* ARM, const struct ARM_Instr instr_data, const int execycles, const int memcycles)
@@ -165,7 +165,7 @@ void ARM9_RaiseUDF(struct ARM* ARM, const struct ARM_Instr instr_data, const int
 
     cpu->CPSR.Thumb = false;
     cpu->CPSR.IRQDisable = true;
-    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVector_UND, 0);
+    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVector_UND, false, 0);
 }
 
 void ARM9_UndefinedInstruction(struct ARM* ARM, const struct ARM_Instr instr_data)
@@ -196,7 +196,7 @@ void ARM9_SoftwareInterrupt(struct ARM* ARM, [[maybe_unused]] const struct ARM_I
 
     cpu->CPSR.Thumb = false;
     cpu->CPSR.IRQDisable = true;
-    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVector_SWI, 0);
+    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVector_SWI, false, 0);
 }
 
 void THUMB9_SoftwareInterrupt(struct ARM* ARM, const struct ARM_Instr instr_data)
@@ -234,7 +234,7 @@ void ARM9_PrefetchAbort(struct ARM* ARM, const struct ARM_Instr instr_data)
 
     cpu->CPSR.Thumb = false;
     cpu->CPSR.IRQDisable = true;
-    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVector_PAB, 0);
+    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVector_PAB, false, 0);
 }
 
 void THUMB9_PrefetchAbort(struct ARM* ARM, const struct ARM_Instr instr_data)
@@ -261,7 +261,7 @@ void ARM9_DataAbort(struct ARM946ES* ARM9)
 
     cpu->CPSR.Thumb = false;
     cpu->CPSR.IRQDisable = true;
-    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVector_DAB, 0);
+    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVector_DAB, false, 0);
 }
 
 void ARM9_InterruptRequest(struct ARM946ES* ARM9)
@@ -282,7 +282,7 @@ void ARM9_InterruptRequest(struct ARM946ES* ARM9)
 
     cpu->CpuSleeping = 0;
 
-    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVector_IRQ, 0);
+    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVector_IRQ, false, 0);
 }
 
 void ARM9_FastInterruptRequest(struct ARM946ES* ARM9)
@@ -304,7 +304,7 @@ void ARM9_FastInterruptRequest(struct ARM946ES* ARM9)
 
     cpu->CpuSleeping = 0;
 
-    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVector_FIQ, 0);
+    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVector_FIQ, false, 0);
 }
 
 #undef cpu

@@ -18,14 +18,7 @@ void ARM7_Log(struct ARM7TDMI* ARM7)
     }
     //LogPrint(LOG_ARM9, "R2:%08X\n", cpu->R[2]);
     LogPrint(LOG_ARM7, "CPSR:%08X\n", cpu->CPSR.Raw);
-    if (cpu->Instr[0].Flushed)
-    {
-        LogPrint(LOG_ARM7, "INSTR: Flushed. ");
-    }
-    else
-    {
-        LogPrint(LOG_ARM7, "INSTR: %08X ", cpu->Instr[0].Raw);
-    }
+    LogPrint(LOG_ARM7, "INSTR: %08X ", cpu->Instr[0].Raw);
     LogPrint(LOG_ARM7, "EXE:%li\n\n", cpu->Timestamp);
     LogPrint(LOG_ARM7, "%08X %08X %i\n", cpu->Sys->IF7, cpu->Sys->IE7, cpu->Sys->IME7);
     LogPrint(LOG_ARM7, "%08X\n", cpu->Sys->Timers7[3].CR.Raw);
@@ -94,7 +87,20 @@ u32 ARM7_GetReg(struct ARM7TDMI* ARM7, const int reg)
     return cpu->R[reg];
 }
 
-void ARM7_SetPC(struct ARM7TDMI* ARM7, u32 val)
+#define REFILLPIPE \
+    (cpu->CPSR.Thumb) ? ARM7_InstrRead16(ARM7, cpu->PC) : ARM7_InstrRead32(ARM7, cpu->PC); \
+    ARM7_ExecuteCycles(ARM7, 1); \
+    ARM_StepPC(cpu, (cpu->CPSR.Thumb));
+
+void ARM7_FlushPipeline(struct ARM7TDMI* ARM7)
+{
+    cpu->CodeSeq = false;
+    REFILLPIPE
+    cpu->Instr[1] = cpu->Instr[2];
+    REFILLPIPE
+}
+
+void ARM7_SetPC(struct ARM7TDMI* ARM7, u32 val, const bool delayflush)
 {
     // TEMP: debugging
     //ARM7_Log(ARM7);
@@ -105,16 +111,16 @@ void ARM7_SetPC(struct ARM7TDMI* ARM7, u32 val)
     val &= ~0x1;
     cpu->PC = val;
 
-    ARM_PipelineFlush(cpu);
+    if (!delayflush) ARM7_FlushPipeline(ARM7);
 }
 
-void ARM7_SetReg(struct ARM7TDMI* ARM7, const int reg, u32 val)
+void ARM7_SetReg(struct ARM7TDMI* ARM7, const int reg, u32 val, const bool delayflush)
 {
     // todo: ldm user mode bus contention?
 
     if (reg == 15) // PC must be handled specially
     {
-        ARM7_SetPC(ARM7, val);
+        ARM7_SetPC(ARM7, val, delayflush);
     }
     else
     {
@@ -136,7 +142,7 @@ void ARM7_ExecuteCycles(struct ARM7TDMI* ARM7, const u32 execute)
 /* Step 2: Fetch upcoming instruction. */ \
 ARM7_InstrRead##size (ARM7, cpu->PC); \
 /* Step 3: Check if an IRQ should be raised. */ \
-if (instr.Flushed || !ARM7_CheckInterrupts(ARM7)) \
+if (!ARM7_CheckInterrupts(ARM7)) \
 { \
     /* Step 4: Execute the next instruction. */ \
     x ; \
@@ -192,8 +198,7 @@ void ARM7_Step(struct ARM7TDMI* ARM7)
         {
             ARM7_InstrRead32(ARM7, cpu->PC);
 
-            // this needs a special check because im stupid and reusing this path for pipeline refills
-            if (instr.Flushed || !ARM7_CheckInterrupts(ARM7))
+            if (!ARM7_CheckInterrupts(ARM7))
             {
                 ARM7_ExecuteCycles(ARM7, 1);
                 ARM_StepPC(cpu, false);
@@ -227,10 +232,7 @@ void ARM7_MainLoop(struct ARM7TDMI* ARM7)
             {
                 ARM7_Step(ARM7);
                 if (cpu->WaitForInterrupt)
-                {
-                    //cpu->DeadAsleep = true;
                     cpu->Timestamp = timestamp_max;
-                }
             }
         }
     }

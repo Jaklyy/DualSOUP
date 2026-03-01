@@ -209,7 +209,7 @@ void ARM_DataProc(struct ARM* cpu, const struct ARM_Instr instr_data)
                 // this actually results in r15 being written back (though no masking occurs unlike the actual legacy instructions).
                 // flags are NOT set.
                 // SPSR is NOT restored.
-                ARM_SetReg(instr.Rd, alu_out, 0, 0);
+                ARM_SetReg(instr.Rd, alu_out, false, 0, 0);
             }
             else // ARM7ID && ARM9 normal instrs
             {
@@ -229,7 +229,7 @@ void ARM_DataProc(struct ARM* cpu, const struct ARM_Instr instr_data)
     // tst/teq/cmp/cmn do not writeback to registers
     if ((instr.Opcode & 0b1100) != 0b1000)
     {
-        ARM_SetReg(instr.Rd, alu_out, 0, 0);
+        ARM_SetReg(instr.Rd, alu_out, false, 0, 0);
     }
 }
 
@@ -366,7 +366,7 @@ void ARM_Mul(struct ARM* cpu, const struct ARM_Instr instr_data)
     {
         if (instr.Rn != 15) // multiplies fail writeback to pc
         {
-            ARM_SetReg(instr.Rn, mul_out, 0, 0);
+            ARM_SetReg(instr.Rn, mul_out, false, 0, 0);
         }
         // sort of silly way to keep this compatible w/ MUL
         mul_out >>= 32;
@@ -374,7 +374,7 @@ void ARM_Mul(struct ARM* cpu, const struct ARM_Instr instr_data)
 
     if (instr.Rd != 15) // multiplies fail writeback to pc
     {
-        ARM_SetReg(instr.Rd, mul_out, !instr.SetFlags, !instr.SetFlags);
+        ARM_SetReg(instr.Rd, mul_out, false, !instr.SetFlags, !instr.SetFlags);
     }
 }
 
@@ -419,7 +419,7 @@ void ARM_CLZ(struct ARM* cpu, const struct ARM_Instr instr_data)
 
     ARM_ExeCycles(0, 1, 1);
 
-    ARM_SetReg(instr.Rd, alu_out, 0, 0);
+    ARM_SetReg(instr.Rd, alu_out, false, 0, 0);
 }
 
 s8 ARM9_CLZ_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
@@ -499,7 +499,7 @@ void ARM_SatMath(struct ARM* cpu, const struct ARM_Instr instr_data)
 
     if (instr.Rd != 15) // saturating maths dont support pc writeback
     {
-        ARM_SetReg(instr.Rd, alu_out, 1, 1);
+        ARM_SetReg(instr.Rd, alu_out, false, 1, 1);
     }
 }
 
@@ -620,7 +620,7 @@ void ARM_HalfwordMul(struct ARM* cpu, const struct ARM_Instr instr_data)
         if (instr.Rn != 15) // multiplies fail writeback to pc
         {
             // checkme: interlocks?
-            ARM_SetReg(instr.Rn, mul_out, 0, 0);
+            ARM_SetReg(instr.Rn, mul_out, false, 0, 0);
         }
         // sort of silly way to keep this compatible w/ short muls
         mul_out >>= 32;
@@ -628,7 +628,7 @@ void ARM_HalfwordMul(struct ARM* cpu, const struct ARM_Instr instr_data)
 
     if (instr.Rd != 15) // multiplies fail writeback to pc
     {
-        ARM_SetReg(instr.Rd, mul_out, 1, 1);
+        ARM_SetReg(instr.Rd, mul_out, false, 1, 1);
     }
 }
 

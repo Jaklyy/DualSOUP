@@ -15,10 +15,10 @@
     : ARM9_GetReg(ARM9Cast, (reg)) \
 )
 
-#define ARM_SetReg(reg, val, interlock, interlock_c) \
+#define ARM_SetReg(reg, val, delayflush, interlock, interlock_c) \
 ((cpu->CPUID == ARM7ID) \
-    ? ARM7_SetReg(ARM7Cast, (reg), (val)) \
-    : ARM9_SetReg(ARM9Cast, (reg), (val), (interlock), (interlock_c)) \
+    ? ARM7_SetReg(ARM7Cast, (reg), (val), (delayflush)) \
+    : ARM9_SetReg(ARM9Cast, (reg), (val), (delayflush), (interlock), (interlock_c)) \
 )
 
 #define ARM_GetSPSR \
@@ -64,6 +64,12 @@ ARM_SetCPSR(cpu, ARM_GetSPSR.Raw)
 ((cpu->CPUID == ARM7ID) \
     ? false \
     : !((ARM9Cast)->CP15.CR.NoLoadTBit) \
+)
+
+#define ARM_FlushPipeline \
+((cpu->CPUID == ARM7ID) \
+    ? ARM7_FlushPipeline(ARM7Cast) \
+    : ARM9_FlushPipeline(ARM9Cast) \
 )
 
 [[nodiscard]] u32 ARM_ADD(const u32 rn_val, const u32 shifter_out, union ARM_FlagsOut* flags_out);

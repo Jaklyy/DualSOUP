@@ -33,7 +33,7 @@ void ARM7_Reset(struct ARM7TDMI* ARM7)
     cpu->CPSR.IRQDisable = true;
     cpu->CPSR.FIQDisable = true;
 
-    ARM7_SetPC(ARM7, ARMVector_RST);
+    ARM7_SetPC(ARM7, ARMVector_RST, false);
 }
 
 void ARM7_RaiseUDF(struct ARM* ARM, const struct ARM_Instr instr_data, const int cycles)
@@ -59,7 +59,7 @@ void ARM7_RaiseUDF(struct ARM* ARM, const struct ARM_Instr instr_data, const int
 
     cpu->CPSR.Thumb = false;
     cpu->CPSR.IRQDisable = true;
-    ARM7_SetPC(ARM7, ARMVector_UND);
+    ARM7_SetPC(ARM7, ARMVector_UND, false);
 }
 
 void ARM7_UndefinedInstruction(struct ARM* ARM, const struct ARM_Instr instr_data)
@@ -90,7 +90,7 @@ void ARM7_SoftwareInterrupt(struct ARM* ARM, [[maybe_unused]] const struct ARM_I
 
     cpu->CPSR.Thumb = false;
     cpu->CPSR.IRQDisable = true;
-    ARM7_SetPC(ARM7, ARMVector_SWI);
+    ARM7_SetPC(ARM7, ARMVector_SWI, false);
 }
 
 void THUMB7_SoftwareInterrupt(struct ARM* ARM, const struct ARM_Instr instr_data)
@@ -116,7 +116,7 @@ void ARM7_InterruptRequest(struct ARM7TDMI* ARM7)
     cpu->CPSR.Thumb = false;
     cpu->CPSR.IRQDisable = true;
 
-    ARM7_SetPC(ARM7, ARMVector_IRQ);
+    ARM7_SetPC(ARM7, ARMVector_IRQ, false);
 }
 
 void ARM7_FastInterruptRequest(struct ARM7TDMI* ARM7)
@@ -136,7 +136,7 @@ void ARM7_FastInterruptRequest(struct ARM7TDMI* ARM7)
     cpu->CPSR.IRQDisable = true;
     cpu->CPSR.FIQDisable = true;
 
-    ARM7_SetPC(ARM7, ARMVector_FIQ);
+    ARM7_SetPC(ARM7, ARMVector_FIQ, false);
 }
 
 #undef cpu

@@ -344,7 +344,7 @@ void DMA_Run(struct Console* sys, const bool a9)
         {
             // TODO: figure out why exactly this happens?
             if (diff == 1)
-                cnt->ChannelTimestamps[id] +=1;
+                cnt->ChannelTimestamps[id] += 1;
         }
         tseq = true;
 

@@ -59,7 +59,7 @@ void THUMB_ShiftImm(struct ARM* cpu, const struct ARM_Instr instr_data)
     cpu->CPSR.Zero = !rm_val;
     cpu->CPSR.Carry = carry_out;
 
-    ARM_SetReg(instr.Rd, rm_val, 0, 0);
+    ARM_SetReg(instr.Rd, rm_val, false, 0, 0);
 }
 
 s8 THUMB9_ShiftImm_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
@@ -112,7 +112,7 @@ void THUMB_AddSub(struct ARM* cpu, const struct ARM_Instr instr_data)
     ARM_StepPC(cpu, true);
     ARM_ExeCycles(1, 1, 1);
 
-    ARM_SetReg(instr.Rd, alu_out, 0, 0);
+    ARM_SetReg(instr.Rd, alu_out, false, 0, 0);
 }
 
 s8 THUMB9_AddSub_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
@@ -151,7 +151,7 @@ void THUMB_MovsImm8(struct ARM* cpu, const struct ARM_Instr instr_data)
     ARM_StepPC(cpu, true);
     ARM_ExeCycles(1, 1, 1);
 
-    ARM_SetReg(instr.Rd, instr.Imm8, 0, 0);
+    ARM_SetReg(instr.Rd, instr.Imm8, false, 0, 0);
 }
 
 void THUMB_DataProcImm8(struct ARM* cpu, const struct ARM_Instr instr_data)
@@ -183,7 +183,7 @@ void THUMB_DataProcImm8(struct ARM* cpu, const struct ARM_Instr instr_data)
 
     if (instr.Opcode != 1) // not CMP
     {
-        ARM_SetReg(instr.Rd, rd_val, 0, 0);
+        ARM_SetReg(instr.Rd, rd_val, false, 0, 0);
     }
 }
 
@@ -307,7 +307,7 @@ void THUMB_DataProcReg(struct ARM* cpu, const struct ARM_Instr instr_data)
     // not TST, CMP, or CMN
     if (instr.Opcode != 8 && instr.Opcode != 10 && instr.Opcode != 11)
     {
-        ARM_SetReg(instr.Rd, alu_out, 0, 0);
+        ARM_SetReg(instr.Rd, alu_out, false, 0, 0);
     }
 }
 
@@ -390,16 +390,16 @@ void THUMB_DataProcHiReg(struct ARM* cpu, const struct ARM_Instr instr_data)
         {
             // pc was stepped earlier so now i need to compensate with minus 4 oops.
             // (actually minus 3 since that gets the same result while also setting the lsb at the same time)
-            ARM_SetReg(14, (ARM_GetReg(15) - 3), 0, 0);
+            ARM_SetReg(14, (ARM_GetReg(15) - 3), false, 0, 0);
         }
-        ARM_SetReg(15, rm_val, 0, 0);
+        ARM_SetReg(15, rm_val, false, 0, 0);
         // we handled all the logic here
         return;
     }
     }
 
     // only reached by ADD and MOV/CPY
-    ARM_SetReg(rd, alu_out, 0, 0);
+    ARM_SetReg(rd, alu_out, false, 0, 0);
 }
 
 s8 THUMB9_DataProcHiReg_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
@@ -448,7 +448,7 @@ void THUMB_AddPCSPRel(struct ARM* cpu, const struct ARM_Instr instr_data)
     ARM_StepPC(cpu, true);
     ARM_ExeCycles(1, 1, 1);
 
-    ARM_SetReg(instr.Rd, alu_out, 0, 0);
+    ARM_SetReg(instr.Rd, alu_out, false, 0, 0);
 }
 
 s8 THUMB9_AddPCSPRel_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
@@ -487,7 +487,7 @@ void THUMB_AdjustSP(struct ARM* cpu, const struct ARM_Instr instr_data)
     ARM_StepPC(cpu, true);
     ARM_ExeCycles(1, 1, 1);
 
-    ARM_SetReg(13, alu_out, 0, 0);
+    ARM_SetReg(13, alu_out, false, 0, 0);
 }
 
 s8 THUMB9_AdjustSP_Interlocks(struct ARM946ES* ARM9, [[maybe_unused]] const struct ARM_Instr instr_data)

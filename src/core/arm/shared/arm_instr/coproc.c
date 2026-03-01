@@ -201,7 +201,7 @@ void ARM_MRC(struct ARM* cpu, const struct ARM_Instr instr_data)
     else
     {
         // should be based off of ldr but it's not using port C...?
-        ARM_SetReg(instr.Rd, val, 1, 1);
+        ARM_SetReg(instr.Rd, val, false, 1, 1);
     }
 }
 

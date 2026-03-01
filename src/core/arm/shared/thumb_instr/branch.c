@@ -37,7 +37,7 @@ void THUMB_BranchCond(struct ARM* cpu, const struct ARM_Instr instr_data)
         addr += (s32)instr.ImmS8 * 2;
 
         // dont bother stepping pc since we update it anyway.
-        ARM_SetReg(15, addr, 0, 0);
+        ARM_SetReg(15, addr, false, 0, 0);
     }
     else
     {
@@ -139,7 +139,7 @@ void THUMB_Branch(struct ARM* cpu, const struct ARM_Instr instr_data)
             // this gets the same effect as subtracting 4 and setting the interworking bit
             link -= 1;
         }
-        ARM_SetReg(14, link, 0, 0);
+        ARM_SetReg(14, link, false, 0, 0);
     }
 
     // branch (write to pc)
@@ -154,7 +154,7 @@ void THUMB_Branch(struct ARM* cpu, const struct ARM_Instr instr_data)
             addr &= ~3;
         }
 
-        ARM_SetReg(15, addr, 0, 0);
+        ARM_SetReg(15, addr, false, 0, 0);
     }
 }
 

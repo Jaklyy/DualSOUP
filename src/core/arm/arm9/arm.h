@@ -409,9 +409,10 @@ void THUMB9_PrefetchAbort(struct ARM* ARM, const struct ARM_Instr instr_data);
 [[nodiscard]] u32 ARM9_GetReg(struct ARM946ES* ARM9, const int reg);
 // write register.
 // also sets up interlocks.
-void ARM9_SetReg(struct ARM946ES* ARM9, const int reg, u32 val, const s8 iloffs, const s8 iloffs_c);
+void ARM9_SetReg(struct ARM946ES* ARM9, const int reg, u32 val, const bool delayflush, const s8 iloffs, const s8 iloffs_c);
 // write program counter (r15).
-void ARM9_SetPC(struct ARM946ES* ARM9, u32 addr, const s8 iloffs);
+void ARM9_SetPC(struct ARM946ES* ARM9, u32 addr, const bool delayflush, const s8 iloffs);
+void ARM9_FlushPipeline(struct ARM946ES* ARM9);
 
 [[nodiscard]] union ARM_PSR ARM9_GetSPSR(struct ARM946ES* ARM9);
 // NOTE: this has 0 sanity checking for the inputs.

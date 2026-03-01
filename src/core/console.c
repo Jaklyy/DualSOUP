@@ -292,8 +292,8 @@ void Console_DirectBoot(struct Console* sys)
         sys->MainRAM.b8[((0x27FFC80 + i) & (MainRAM_Size-1))] = sys->Firmware.RAM[usersettings+i];
 
 
-    ARM9_SetPC(&sys->ARM9, arm9_entryaddr, 0);
-    ARM7_SetPC(&sys->ARM7, arm7_entryaddr);
+    ARM9_SetPC(&sys->ARM9, arm9_entryaddr, false, 0);
+    ARM7_SetPC(&sys->ARM7, arm7_entryaddr, false);
 }
 
 void Console_Reset(struct Console* sys)

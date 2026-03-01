@@ -19,14 +19,7 @@ void ARM9_Log(struct ARM946ES* ARM9)
     }
     //LogPrint(LOG_ARM9, "R2:%08X\n", cpu->R[2]);
     LogPrint(LOG_ARM9, "CPSR:%08X\n", cpu->CPSR.Raw);
-    if (cpu->Instr[0].Flushed)
-    {
-        LogPrint(LOG_ARM9, "INSTR: Flushed. ");
-    }
-    else
-    {
-        LogPrint(LOG_ARM9, "INSTR: %08X ", cpu->Instr[0].Raw);
-    }
+    LogPrint(LOG_ARM9, "INSTR: %08X ", cpu->Instr[0].Raw);
     LogPrint(LOG_ARM9, "DTCM: %08lX %08lX %i ITCM: %i %i %i\n", ARM9->CP15.DTCMReadBase, ARM9->CP15.DTCMWriteBase, ARM9->CP15.DTCMShift, ARM9->CP15.ITCMShift, ARM9->CP15.CR.ITCMEnable, ARM9->CP15.CR.ITCMLoadMode);
     LogPrint(LOG_ARM9, "EXE:%li MEM:%li\n\n", cpu->Timestamp, ARM9->MemTimestamp);
 }
@@ -126,7 +119,20 @@ void ARM9_InterlockStall(struct ARM946ES* ARM9, const s8 stall)
     }
 }
 
-void ARM9_SetPC(struct ARM946ES* ARM9, u32 addr, const s8 iloffs)
+#define REFILLPIPE \
+    (cpu->CPSR.Thumb) ? ARM9_InstrRead16(ARM9, cpu->PC) : ARM9_InstrRead32(ARM9, cpu->PC); \
+    ARM9_ExecuteCycles(ARM9, 1, 1); \
+    ARM_StepPC(cpu, cpu->CPSR.Thumb);
+
+void ARM9_FlushPipeline(struct ARM946ES* ARM9)
+{
+    cpu->CodeSeq = false;
+    REFILLPIPE
+    cpu->Instr[1] = cpu->Instr[2];
+    REFILLPIPE
+}
+
+void ARM9_SetPC(struct ARM946ES* ARM9, u32 addr, const bool delayflush, const s8 iloffs)
 {
     // TEMP: debugging
     //ARM9_DumpMPU(ARM9);
@@ -136,18 +142,19 @@ void ARM9_SetPC(struct ARM946ES* ARM9, u32 addr, const s8 iloffs)
     // arm9 enforces pc alignment properly for once.
     addr &= ~(cpu->CPSR.Thumb ? 0x1 : 0x3);
     // r15 interlocks must be resolved immediately.
+    // checkme: this should probably be done during pipeline flush logic?
     ARM9_InterlockStall(ARM9, iloffs);
 
     cpu->PC = addr;
 
-    ARM_PipelineFlush(cpu);
+    if (!delayflush) ARM9_FlushPipeline(ARM9);
 }
 
-void ARM9_SetReg(struct ARM946ES* ARM9, const int reg, u32 val, const s8 iloffs, const s8 iloffs_c)
+void ARM9_SetReg(struct ARM946ES* ARM9, const int reg, u32 val, const bool delayflush, const s8 iloffs, const s8 iloffs_c)
 {
     if (reg == 15) // PC must be handled specially
     {
-        ARM9_SetPC(ARM9, val, iloffs); // CHECKME: should this be the port C time?
+        ARM9_SetPC(ARM9, val, delayflush, iloffs); // CHECKME: should this be the port C time?
     }
     else
     {
@@ -220,7 +227,7 @@ void ARM9_DeferredITCMWrite(struct ARM946ES* ARM9);
     ARM9_InstrRead##size (ARM9, cpu->PC); \
     ARM9_DeferredITCMWrite(ARM9); \
     /* Step 3: Check if an IRQ should be raised. */ \
-    if (instr.Flushed || !ARM9_CheckInterrupts(ARM9)) \
+    if (!ARM9_CheckInterrupts(ARM9)) \
     { \
         /* Step 4: Execute the next instruction. */ \
         x ; \
@@ -318,7 +325,7 @@ void ARM9_Step(struct ARM946ES* ARM9)
             ARM9_InstrRead32(ARM9, cpu->PC);
 
             // this needs a special check because im stupid and reusing this path for pipeline refills
-            if (instr.Flushed || !ARM9_CheckInterrupts(ARM9))
+            if (!ARM9_CheckInterrupts(ARM9))
             {
                 ARM9_ExecuteCycles(ARM9, 1, 1);
                 ARM_StepPC(cpu, false);

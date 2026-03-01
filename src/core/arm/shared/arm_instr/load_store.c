@@ -36,6 +36,7 @@ void ARM_LoadStore(struct ARM* cpu, const struct ARM_Instr instr_data)
     u32 addr = ARM_GetReg(instr.Rn);
     u32 baserestore = addr;
     u32 offset;
+    bool flush = false;
 
     // calculate offset
     if (!instr.Register)
@@ -111,6 +112,7 @@ void ARM_LoadStore(struct ARM* cpu, const struct ARM_Instr instr_data)
             // base writeback to PC
             if (cpu->CPUID == ARM7ID)
             {
+                flush = true;
                 // it's always fun when an "unpredictable" instruction encoding does something that leaves you genuinely flabbergasted.
                 // the actual load is +8
                 // writeback value is +12
@@ -128,7 +130,7 @@ void ARM_LoadStore(struct ARM* cpu, const struct ARM_Instr instr_data)
             }
         }
 
-        ARM_SetReg(instr.Rn, wbaddr, 0, 0);
+        ARM_SetReg(instr.Rn, wbaddr, true, 0, 0);
     }
     skipwriteback:
 
@@ -163,10 +165,10 @@ void ARM_LoadStore(struct ARM* cpu, const struct ARM_Instr instr_data)
 
             // no idea why, but base writeback to r15 makes writing back the loaded value fail on arm7.
             // CHECKME: does this still incur the idle cycle?
-            if (instr.Rn == 15 && (instr.Writeback || (!instr.PreIndex)))
+            if ((instr.Writeback || (!instr.PreIndex)) && (instr.Rn == 15))
             {
                 cpu->Privileged = oldpriv;
-                return;
+                return ARM_FlushPipeline;
             }
         }
         else
@@ -196,7 +198,8 @@ void ARM_LoadStore(struct ARM* cpu, const struct ARM_Instr instr_data)
                 ARM_SetThumb(cpu, val & 1);
             }
 
-            ARM_SetReg(instr.Rd, val, interlock, interlock+1);
+            if (instr.Rd == 15) flush = true;
+            ARM_SetReg(instr.Rd, val, true, interlock, interlock+1);
         }
     }
     else
@@ -221,12 +224,16 @@ void ARM_LoadStore(struct ARM* cpu, const struct ARM_Instr instr_data)
 
     if (dabt)
     {
-        ARM_SetReg(instr.Rn, baserestore, 0, 0);
+        // dont bother restoring the privileged flag, it gets updated when the exception being raised.
+        ARM_SetReg(instr.Rn, baserestore, true, 0, 0);
         ARM9_DataAbort(ARM9Cast);
     }
-
-    // oh yeah restore this too.
-    cpu->Privileged = oldpriv;
+    else
+    {
+        // oh yeah restore this too.
+        cpu->Privileged = oldpriv;
+        if (flush) ARM_FlushPipeline;
+    }
 }
 
 s8 ARM9_LoadStore_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
@@ -291,6 +298,8 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
     u32 addr = ARM_GetReg(instr.Rn);
     u32 baserestore = addr;
     u32 offset;
+    bool flush = false;
+
     if (instr.Immediate)
     {
         offset = instr.ImmLo | instr.ImmHi << 4;
@@ -324,6 +333,7 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
             // base writeback to PC
             if (cpu->CPUID == ARM7ID)
             {
+                flush = true;
                 // it's always fun when an "unpredictable" instruction encoding does something that leaves you genuinely flabbergasted.
                 // the actual load is +8
                 // writeback value is +12
@@ -341,7 +351,7 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
             }
         }
 
-        ARM_SetReg(instr.Rn, wbaddr, 0, 0);
+        ARM_SetReg(instr.Rn, wbaddr, true, 0, 0);
     }
     skipwriteback:
 
@@ -385,7 +395,7 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
             ARM9_FixupLoadStore(ARM9Cast, 2, ARM9Cast->MemTimestamp - oldts);
             if (!dabt)
             {
-                ARM_SetReg(instr.Rd, val, 1, 2);
+                ARM_SetReg(instr.Rd, val, false, 1, 2);
             }
         }
         else
@@ -402,8 +412,8 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
             ARM9_FixupLoadStore(ARM9Cast, 2, ARM9Cast->MemTimestamp - oldts);
 
             // actually writeback now
-            if (instr.Writeback || (!instr.PreIndex))
-                ARM_SetReg(instr.Rn, wbaddr, 0, 0);
+            if ((instr.Writeback || (!instr.PreIndex)) && (instr.Rn != 15 /* checkme */))
+                ARM_SetReg(instr.Rn, wbaddr, false, 0, 0);
 
             if (!dabt)
             {
@@ -412,13 +422,15 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
                     ARM_SetThumb(cpu, val & 1);
                 }
 
-                // bit 22... still does this for some reason.
+                // bit 22 still inherits this behavior from ldm decoding for some reason.
                 if (instr.Immediate && ((instr.Rd+1) == 15))
                 {
                     ARM_RestoreSPSR;
                 }
 
-                ARM_SetReg(instr.Rd+1, val, 1, 2);
+                ARM_SetReg(instr.Rd+1, val, true, 1, 2);
+                if ((instr.Rd+1) == 15)
+                    flush = true;
             }
         }
         else
@@ -426,8 +438,8 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
             u32 val = ARM_GetReg(instr.Rd+1);
 
             // actually writeback now
-            if (instr.Writeback || (!instr.PreIndex))
-                ARM_SetReg(instr.Rn, wbaddr, 0, 0);
+            if ((instr.Writeback || (!instr.PreIndex)) && (instr.Rn != 15 /* checkme */))
+                ARM_SetReg(instr.Rn, wbaddr, false, 0, 0);
 
             ARM9_DataWrite(ARM9Cast, addr+4, val, u32_max, false, false, &seq, &dabt);
             ARM9_FixupLoadStore(ARM9Cast, 2, ARM9Cast->MemTimestamp - oldts);
@@ -442,8 +454,8 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
         {
             // no idea why, but base writeback to r15 makes writing back the loaded value fail on arm7.
             // CHECKME: does this still incur the idle cycle?
-            if (instr.Rn == 15 && (instr.Writeback || (!instr.PreIndex)))
-                return;
+            if ((instr.Writeback || (!instr.PreIndex)) && (instr.Rn == 15))
+                return ARM_FlushPipeline;
 
             val = ARM7_DataRead16(ARM7Cast, addr, &seq);
 
@@ -480,7 +492,8 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
                 ARM_SetThumb(cpu, val & 1);
             }
 
-            ARM_SetReg(instr.Rd, val, 2, 3);
+            ARM_SetReg(instr.Rd, val, true, 2, 3);
+            if (instr.Rd == 15) flush = true;
         }
         break;
     }
@@ -491,8 +504,8 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
         {
             // no idea why, but base writeback to r15 makes writing back the loaded value fail on arm7.
             // CHECKME: does this still incur the idle cycle?
-            if (instr.Rn == 15 && (instr.Writeback || (!instr.PreIndex)))
-                return;
+            if ((instr.Writeback || (!instr.PreIndex)) && (instr.Rn == 15))
+                return ARM_FlushPipeline;
 
             val = ARM7_DataRead8(ARM7Cast, addr, &seq);
 
@@ -528,7 +541,8 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
                 ARM_SetThumb(cpu, val & 1);
             }
 
-            ARM_SetReg(instr.Rd, val, 2, 3);
+            ARM_SetReg(instr.Rd, val, true, 2, 3);
+            if (instr.Rd == 15) flush = true;
         }
         break;
     }
@@ -537,9 +551,10 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
 
     if (dabt)
     {
-        ARM_SetReg(instr.Rn, baserestore, 0, 0);
+        ARM_SetReg(instr.Rn, baserestore, true, 0, 0);
         ARM9_DataAbort(ARM9Cast);
     }
+    else if (flush) ARM_FlushPipeline;
 }
 
 s8 ARM9_LoadStoreMisc_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
@@ -595,6 +610,7 @@ void ARM_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
 
     unsigned truenregs = nregs;
     timestamp oldts = 0;
+    bool flush = false;
     if (cpu->CPUID == ARM9ID) oldts = ARM9Cast->MemTimestamp;
 
     // TODO: empty RList timings
@@ -643,7 +659,10 @@ void ARM_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
 
                 // base writeback after first access
                 if (instr.Writeback && (reg == stdc_trailing_zeros((u16)instr.RList)))
-                    ARM_SetReg(instr.Rn, wbaddr, 0, 0);
+                {
+                    ARM_SetReg(instr.Rn, wbaddr, true, 0, 0);
+                    if (instr.Rn == 15) flush = true;
+                }
             }
             else
             {
@@ -651,7 +670,10 @@ void ARM_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
 
                 // base writeback before last access
                 if (instr.Writeback && (reg == (15-stdc_leading_zeros((u16)instr.RList))))
-                    ARM_SetReg(instr.Rn, wbaddr, 0, 0);
+                {
+                    ARM_SetReg(instr.Rn, wbaddr, true, 0, 0);
+                    if (instr.Rn == 15) flush = true;
+                }
             }
 
             if (!dabt)
@@ -676,7 +698,8 @@ void ARM_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
                     earlyfix = true;
                 }
 
-                ARM_SetReg(reg, val, 1, 2);
+                ARM_SetReg(reg, val, true, 1, 2);
+                if (reg == 15) flush = true;
 
                 if (instr.S && !(instr.RList >> 15)) // dumb way to do this
                     ARM_SetMode(cpu, oldmode);
@@ -710,7 +733,10 @@ void ARM_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
 
                 // base writeback after first access
                 if (instr.Writeback && (reg == stdc_trailing_zeros((u16)instr.RList)))
-                    ARM_SetReg(instr.Rn, wbaddr, 0, 0);
+                {
+                    ARM_SetReg(instr.Rn, wbaddr, true, 0, 0);
+                    if (instr.Rn == 15) flush = true;
+                }
             }
             else
             {
@@ -718,7 +744,10 @@ void ARM_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
 
                 // base writeback before last access
                 if (instr.Writeback && (reg == (15-stdc_leading_zeros((u16)instr.RList))))
-                    ARM_SetReg(instr.Rn, wbaddr, 0, 0);
+                {
+                    ARM_SetReg(instr.Rn, wbaddr, true, 0, 0);
+                    if (instr.Rn == 15) flush = true;
+                }
             }
             // increment address
             addr += 4;
@@ -739,7 +768,10 @@ void ARM_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
             ARM9_InterlockStall(ARM9Cast, 1);
             // writeback seems to always occur after the first fetch
             if (instr.Writeback)
-                ARM_SetReg(instr.Rn, wbaddr, 0, 0);
+            {
+                ARM_SetReg(instr.Rn, wbaddr, true, 0, 0);
+                if (instr.Rn == 15) flush = true;
+            }
         }
     }
 
@@ -752,9 +784,10 @@ void ARM_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
 
     if (dabt)
     {
-        ARM_SetReg(instr.Rn, baserestore, 0, 0);
+        ARM_SetReg(instr.Rn, baserestore, true, 0, 0);
         ARM9_DataAbort(ARM9Cast);
     }
+    else if (flush) ARM_FlushPipeline;
 }
 
 s8 ARM9_LoadStoreMultiple_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
@@ -854,7 +887,11 @@ void ARM_Swap(struct ARM* cpu, const struct ARM_Instr instr_data)
         {
             ARM_SetThumb(cpu, load & 1);
         }
-        ARM_SetReg(instr.Rd, load, interlock, interlock+1);
+        ARM_SetReg(instr.Rd, load, false, interlock, interlock+1);
+    }
+    else
+    {
+        ARM9_DataAbort(ARM9Cast);
     }
 }
 

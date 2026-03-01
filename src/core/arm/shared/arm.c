@@ -122,25 +122,13 @@ void ARM_SetThumb(struct ARM* cpu, const bool thumb)
     cpu->CPSR.Thumb = thumb;
 }
 
+//#include <immintrin.h>
 void ARM_PipelineStep(struct ARM* cpu)
 {
     // step pipeline forward.
     cpu->Instr[0] = cpu->Instr[1];
     cpu->Instr[1] = cpu->Instr[2];
-}
-
-// sort of hacky way to handle flushing the pipeline by encoding a condition code failing instruction.
-// doing it this way means we no longer need to have dedicated code paths for handling refilling the pipeline.
-void ARM_PipelineFlush(struct ARM* cpu)
-{
-    // if zero flag is set encode not equal, if zero flag is clear encode equal
-    constexpr u32 instrs[2][2] = {
-        {0xD000, 0xD100}, // thumb: branch cond
-        {0x0320F000, 0x1320F000}}; // arm: msr cpsr_(empty field), immediate (v6k: nop) (in theory this one is already a nop but i think encoding a missed instruction would be faster)
-
-    u32 instr = instrs[!cpu->CPSR.Thumb][cpu->CPSR.Zero];
-    cpu->Instr[1] = (struct ARM_Instr){.Raw = instr, .Aborted = false, .CoprocPriv = false, .Flushed = true};
-    cpu->Instr[2] = (struct ARM_Instr){.Raw = instr, .Aborted = false, .CoprocPriv = false, .Flushed = true};
-
-    cpu->CodeSeq = false;
+    //__m256i instrs; memcpy(&instrs, cpu->Instr, sizeof(instrs));
+    //instrs = _mm256_permute4x64_epi64(instrs, 0xF9);
+    //memcpy(cpu->Instr, &instrs, sizeof(instrs));
 }

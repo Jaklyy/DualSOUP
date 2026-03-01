@@ -111,7 +111,6 @@ struct ARM_Instr
     };
     bool Aborted; // whether the instruction fetch raised a prefetch abort; used for fixing prefetch aborts during flushless switches to thumb, and distinguishing real aborts w/ bkpt
     bool CoprocPriv; // whether the coprocessor pipeline thinks we have privilege or not.
-    bool Flushed; // whether the current instruction has been invalidated and should not be executed. (used for debugging purposes mostly...)
 };
 
 #define ARM_CoprocReg(Op1, CRn, CRm, Op2) (((Op1) << 11) | ((CRn) << 7) | ((CRm) << 3) | (Op2))
@@ -180,7 +179,7 @@ struct ARM
     u8 CPUID;
     bool Privileged; // permissions
     bool CodeSeq; // should the next code fetch be sequential
-    struct ARM_Instr Instr[3]; // prefetch pipeline
+    alignas(alignof(struct ARM_Instr)*4) struct ARM_Instr Instr[3]; // prefetch pipeline
     timestamp Timestamp;
     timestamp MinWakeup;
     struct Console* Sys;

@@ -61,9 +61,8 @@ void ARM7_InstrRead32(struct ARM7TDMI* ARM7, const u32 addr)
 {
     u32 instr = ARM7_BusRead(ARM7, addr, u32_max, &ARM7->ARM.CodeSeq);
     ARM7->ARM.Instr[2] = (struct ARM_Instr){.Raw = instr,
-                                            .Aborted = false, // not used
-                                            .CoprocPriv = false, // not used
-                                            .Flushed = false};
+                                            .Aborted = false, // only used in theory
+                                            .CoprocPriv = false}; // this is for an arm9 specific bug
 }
 
 void ARM7_InstrRead16(struct ARM7TDMI* ARM7, const u32 addr)
@@ -71,7 +70,6 @@ void ARM7_InstrRead16(struct ARM7TDMI* ARM7, const u32 addr)
     u32 instr = ARM7_BusRead(ARM7, addr, u16_max << ((addr & 2)*8), &ARM7->ARM.CodeSeq);
     instr = (instr >> ((addr & 2)*8)) & 0xFFFF;
     ARM7->ARM.Instr[2] = (struct ARM_Instr){.Raw = instr,
-                                            .Aborted = false, // not used
-                                            .CoprocPriv = false, // not used
-                                            .Flushed = false};
+                                            .Aborted = false, // only used in theory
+                                            .CoprocPriv = false}; // this is for an arm9 specific bug
 }

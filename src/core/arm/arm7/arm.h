@@ -57,9 +57,10 @@ void ARM7_SetSPSR(struct ARM7TDMI* ARM7, union ARM_PSR psr);
 // read register.
 [[nodiscard]] u32 ARM7_GetReg(struct ARM7TDMI* ARM7, const int reg);
 // write register.
-void ARM7_SetReg(struct ARM7TDMI* ARM7, const int reg, u32 val);
+void ARM7_SetReg(struct ARM7TDMI* ARM7, const int reg, u32 val, const bool delayflush);
 // write program counter (r15).
-void ARM7_SetPC(struct ARM7TDMI* ARM7, u32 val);
+void ARM7_SetPC(struct ARM7TDMI* ARM7, u32 val, const bool delayflush);
+void ARM7_FlushPipeline(struct ARM7TDMI* ARM7);
 
 // add execute stage cycles, handle nonsequential code execution.
 void ARM7_ExecuteCycles(struct ARM7TDMI* ARM7, const u32 Execute);

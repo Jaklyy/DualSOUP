@@ -109,7 +109,7 @@ void LDR(struct ARM* cpu, const u32 addr, const u8 rd, const int width, const bo
             ARM_SetThumb(cpu, val & 1);
         }
 
-        ARM_SetReg(rd, val, interlock, interlock+1);
+        ARM_SetReg(rd, val, false, interlock, interlock+1);
     }
     else
     {
@@ -359,7 +359,7 @@ void THUMB_Push(struct ARM* cpu, const struct ARM_Instr instr_data)
     if (!dabt)
     {
         // note: should technically be done after first iteration for arm7, but sp can't be in rlist so we can cheat
-        ARM_SetReg(13, wbaddr, 0, 0);
+        ARM_SetReg(13, wbaddr, false, 0, 0);
     }
     else
     {
@@ -397,6 +397,7 @@ void THUMB_Pop(struct ARM* cpu, const struct ARM_Instr instr_data)
     unsigned nregs = stdc_count_ones(instr.FullRList);
 
     u16 rlist = instr.RList;
+    bool flush = false;
 
     unsigned truenregs = nregs;
     timestamp oldts = 0;
@@ -406,12 +407,17 @@ void THUMB_Pop(struct ARM* cpu, const struct ARM_Instr instr_data)
     if (!instr.FullRList)
     {
         nregs = 16;
-        if (cpu->CPUID == ARM7ID) rlist = 0x8000; // idk why, it just is.
+        if (cpu->CPUID == ARM7ID)
+        {
+            rlist = 0x8000; // idk why, it just is.
+            flush = true;
+        }
     }
 
     if (instr.Link)
     {
         rlist |= 0x8000;
+        flush = true;
     }
 
     // arm9 timings are input as 0 since they will be added during the actual fetch
@@ -454,7 +460,7 @@ void THUMB_Pop(struct ARM* cpu, const struct ARM_Instr instr_data)
                 earlyfix = true;
             }
 
-            ARM_SetReg(reg, val, 1, 2);
+            ARM_SetReg(reg, val, true, 1, 2);
         }
         // increment address
         addr += 4;
@@ -482,7 +488,8 @@ void THUMB_Pop(struct ARM* cpu, const struct ARM_Instr instr_data)
     if (!dabt)
     {
         // note: should technically be done after first iteration for arm7, but sp can't be in rlist so we can cheat
-        ARM_SetReg(13, wbaddr, 0, 0);
+        ARM_SetReg(13, wbaddr, false, 0, 0);
+        if (flush) ARM_FlushPipeline;
     }
     else
     {
@@ -517,6 +524,7 @@ void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
 
     u32 addr = ARM_GetReg(instr.Rn);
     u32 baserestore = addr;
+    bool flush = false;
 
     u16 rlist = instr.RList;
     unsigned nregs = stdc_count_ones((u8)instr.RList);
@@ -529,7 +537,11 @@ void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
     if (!instr.RList)
     {
         nregs = 16;
-        if (cpu->CPUID == ARM7ID) rlist = 0x8000; // idk why, it just is.
+        if (cpu->CPUID == ARM7ID)
+        {
+            rlist = 0x8000; // idk why, it just is.
+            flush = instr.Load;
+        }
     }
     const u16 rlistinit = rlist;
 
@@ -557,7 +569,7 @@ void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
 
                 // base writeback after first access
                 if (reg == stdc_trailing_zeros(rlistinit))
-                    ARM_SetReg(instr.Rn, wbaddr, 0, 0);
+                    ARM_SetReg(instr.Rn, wbaddr, false, 0, 0);
             }
             else
             {
@@ -565,7 +577,7 @@ void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
 
                 // base writeback before last access
                 if (reg == 15-stdc_leading_zeros(rlistinit))
-                    ARM_SetReg(instr.Rn, wbaddr, 0, 0);
+                    ARM_SetReg(instr.Rn, wbaddr, false, 0, 0);
             }
 
 
@@ -583,7 +595,7 @@ void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
                     earlyfix = true;
                 }
 
-                ARM_SetReg(reg, val, 1, 2);
+                ARM_SetReg(reg, val, true, 1, 2);
             }
 
             // increment address
@@ -606,7 +618,7 @@ void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
 
                 // base writeback after first access
                 if (reg == stdc_trailing_zeros(rlistinit))
-                    ARM_SetReg(instr.Rn, wbaddr, 0, 0);
+                    ARM_SetReg(instr.Rn, wbaddr, false, 0, 0);
             }
             else
             {
@@ -614,7 +626,7 @@ void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
 
                 // base writeback before last access
                 if (reg == (15-stdc_leading_zeros(rlistinit)))
-                    ARM_SetReg(instr.Rn, wbaddr, 0, 0);
+                    ARM_SetReg(instr.Rn, wbaddr, false, 0, 0);
             }
             // increment address
             addr += 4;
@@ -633,7 +645,7 @@ void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
         {
             ARM9_InterlockStall(ARM9Cast, 1);
             // writeback seems to always occur after the first fetch
-            ARM_SetReg(instr.Rn, wbaddr, 0, 0);
+            ARM_SetReg(instr.Rn, wbaddr, false, 0, 0);
         }
     }
 
@@ -646,9 +658,10 @@ void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
 
     if (dabt)
     {
-        ARM_SetReg(instr.Rn, baserestore, 0, 0);
+        ARM_SetReg(instr.Rn, baserestore, false, 0, 0);
         ARM9_DataAbort(ARM9Cast);
     }
+    else if (flush) ARM_FlushPipeline;
 }
 
 s8 THUMB9_LoadStoreMultiple_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)

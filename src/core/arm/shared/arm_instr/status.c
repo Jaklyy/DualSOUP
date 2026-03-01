@@ -44,7 +44,7 @@ void ARM_MRS(struct ARM* cpu, const struct ARM_Instr instr_data)
     // r15 writeback doesn't work on arm9
     if ((instr.Rd != 15) || (cpu->CPUID != ARM9ID))
     {
-        ARM_SetReg(instr.Rd, psr, 0, 0);
+        ARM_SetReg(instr.Rd, psr, false, 0, 0);
     }
 }
 

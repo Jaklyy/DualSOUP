@@ -29,9 +29,9 @@ void ARM_Branch(struct ARM* cpu, const struct ARM_Instr instr_data)
     ARM_ExeCycles(1, 1, 1);
 
     if (instr.Link)
-        ARM_SetReg(14, pc-4, 0, 0);
+        ARM_SetReg(14, pc-4, false, 0, 0);
 
-    ARM_SetReg(15, addr, 0, 0);
+    ARM_SetReg(15, addr, false, 0, 0);
 }
 
 // ARMv5
@@ -48,9 +48,9 @@ void ARM_BLXImm(struct ARM* cpu, const struct ARM_Instr instr_data)
     ARM_SetThumb(cpu, true);
 
     // always saves return address
-    ARM_SetReg(14, pc-4, 0, 0);
+    ARM_SetReg(14, pc-4, false, 0, 0);
 
-    ARM_SetReg(15, addr, 0, 0);
+    ARM_SetReg(15, addr, false, 0, 0);
 }
 
 // ARMv4T (BX)
@@ -80,9 +80,9 @@ void ARM_BranchExchange(struct ARM* cpu, const struct ARM_Instr instr_data)
 
     // does not link on arm7
     if (instr.Link && (cpu->CPUID != ARM7ID))
-        ARM_SetReg(14, ARM_GetReg(15)-4, 0, 0);
+        ARM_SetReg(14, ARM_GetReg(15)-4, false, 0, 0);
 
-    ARM_SetReg(15, addr, 0, 0);
+    ARM_SetReg(15, addr, false, 0, 0);
 }
 
 s8 ARM9_BranchExchange_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)

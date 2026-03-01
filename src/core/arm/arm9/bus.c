@@ -534,15 +534,13 @@ void ARM9_InstrRead32(struct ARM946ES* ARM9, const u32 addr)
 
         ARM9->ARM.Instr[2] = (struct ARM_Instr){.Raw = 0xE1200070, // encode bkpt as a minor hack to avoid needing dedicated prefetch abort handling.
                                                 .Aborted = true,
-                                                .CoprocPriv = false, // privilege bug shouldn't matter here; aborted instrs aren't coprocessor instructions.
-                                                .Flushed = false};
+                                                .CoprocPriv = false}; // privilege bug shouldn't matter here; aborted instrs aren't coprocessor instructions.
     }
     else
     {
         ARM9->ARM.Instr[2] = (struct ARM_Instr){.Raw = ARM9_InstrRead(ARM9, addr, perms, timings),
                                                 .Aborted = false,
-                                                .CoprocPriv = ARM9->ARM.Privileged,
-                                                .Flushed = false};
+                                                .CoprocPriv = ARM9->ARM.Privileged};
     }
 }
 
@@ -573,8 +571,7 @@ void ARM9_InstrRead16(struct ARM946ES* ARM9, const u32 addr)
             ARM9_FetchCycles(ARM9, 1);
             ARM9->ARM.Instr[2] = (struct ARM_Instr){.Raw = 0xBE00, // encode bkpt as a minor hack to avoid needing dedicated prefetch abort handling.
                                                     .Aborted = true,
-                                                    .CoprocPriv = false, // privilege bug shouldn't matter here; aborted instrs aren't coprocessor instructions.
-                                                    .Flushed = false};
+                                                    .CoprocPriv = false}; // privilege bug shouldn't matter here; aborted instrs aren't coprocessor instructions.
             return;
         }
         else
@@ -604,8 +601,7 @@ void ARM9_InstrRead16(struct ARM946ES* ARM9, const u32 addr)
 
     ARM9->ARM.Instr[2] = (struct ARM_Instr){.Raw = instr,
                                             .Aborted = false,
-                                            .CoprocPriv = false, // privilege bug shouldn't matter here; thumb does not have coprocessor instructions.
-                                            .Flushed = false};
+                                            .CoprocPriv = false}; // privilege bug shouldn't matter here; thumb does not have coprocessor instructions.
 }
 
 u32 ARM9_DataRead(struct ARM946ES* ARM9, const u32 addr, const u32 mask, bool* seq, bool* dabt)
