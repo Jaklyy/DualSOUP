@@ -67,8 +67,13 @@ constexpr unsigned Palette_Size     = KiB(2);
 constexpr unsigned OAM_Size         = KiB(2);
 constexpr unsigned WiFiRAM_Size     = KiB(8);
 
-
-
+enum Console_Model : u8
+{
+    MODEL_NTR,
+    MODEL_USG,
+    MODEL_TWL,
+    MODEL_CTR,
+};
 
 union VRAMCR
 {
@@ -146,6 +151,7 @@ struct Console
     u8 WRAMCR;
     bool PostFlag;
     bool PostFlagA9Bit;
+    u8 ConsoleModel;
     u32 IE9;
     u32 IF9;
     u32 IF9HoldQueue;

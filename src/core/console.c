@@ -58,6 +58,7 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
     memset(sys, 0, sizeof(*sys));
     CR_Start = false;
 
+    sys->ConsoleModel = MODEL_USG; // TODO: make configurable.
 
     int num9 = 0;
     if (ntr9 != NULL) num9 = fread(sys->NTRBios9.b8, NTRBios9_Size, 1, ntr9);

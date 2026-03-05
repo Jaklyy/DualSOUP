@@ -32,7 +32,7 @@ typedef struct
             bool MaxBrightWhenCharging : 1;
             bool Charging : 1;
             u8 : 2;
-            bool AlwaysSet;
+            bool AlwaysSet : 1;
         };
     } BacklightLevels;
     bool PrevChipSelect;
