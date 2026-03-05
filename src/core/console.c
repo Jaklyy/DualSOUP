@@ -21,6 +21,7 @@
 // TODO: this function probably shouldn't manage memory on its own?
 struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* firmware, const char* rom, void* pad)
 {
+    u8* nvram = nullptr;
     if (sys == nullptr)
     {
         // allocate and initialize 
@@ -41,7 +42,8 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
         mtx_destroy(&sys->FrameBufferMutex[0]);
         mtx_destroy(&sys->FrameBufferMutex[1]);
         mtx_destroy(&sys->Sched.SchedulerMtx);
-        Flash_Cleanup(&sys->Firmware);
+        //Flash_Cleanup(&sys->Firmware);
+        nvram = sys->Firmware.RAM;
         Gamecard_Cleanup(&sys->Gamecard);
 #ifndef PPUST
         sys->KillPPUs = true;
@@ -66,10 +68,18 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
     fseek(firmware, 0, SEEK_END);
     u64 nvramsize = ftell(firmware);
     fseek(firmware, 0, SEEK_SET);
-    u8* nvram = malloc(nvramsize);
-    if (nvram != NULL)
+    if (nvram == nullptr)
     {
-        firminit = fread(nvram, nvramsize, 1, firmware) != 0;
+        nvram = malloc(nvramsize);
+        if (nvram != NULL)
+        {
+            firminit = fread(nvram, nvramsize, 1, firmware) != 0;
+            Flash_Init(&sys->Firmware, nvram, nvramsize, true, 0x010101);
+        }
+    }
+    else
+    {
+        firminit = true;
         Flash_Init(&sys->Firmware, nvram, nvramsize, true, 0x010101);
     }
 

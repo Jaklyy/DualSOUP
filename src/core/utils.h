@@ -139,6 +139,7 @@ enum LoggingLevels : u64
     LOG_RTC     = (1<<13), // real time clock hardware
     LOG_DMA     = (1<<14), // direct memory access
     LOG_WIFI    = (1<<15), // DS WiFi hardware
+    LOG_TSC     = (1<<16), // DS Touch Screen Controller.
 };
 
 #define LOG_CPUID (1 << cpu->CPUID)

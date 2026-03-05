@@ -6,6 +6,7 @@
 #include "../carts/gamecard.h"
 #include "../io/powman.h"
 #include "../video/video.h"
+#include "../io/tsc.h"
 
 
 
@@ -436,8 +437,7 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
                     sys->SPIBuf = Flash_CMDSend(&sys->Firmware, val>>16, sys->SPICR.ChipSelect);
                     break;
                 case 2:
-                    LogPrint(LOG_ARM7|LOG_UNIMP, "TSC UNIMPLEMENTED!\n");
-                    sys->SPIBuf = 0;
+                    sys->SPIBuf = TSC_SendCommand(&sys->TSC, val >> 16);
                     break;
                 case 3:
                     LogPrint(LOG_ARM7|LOG_UNIMP, "spi RESERVED????????????\n");

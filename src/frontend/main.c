@@ -85,7 +85,7 @@ int main()
     SDL_Window* win;
     SDL_Renderer* ren;
 
-    if (!SDL_CreateWindowAndRenderer("DualSOUP", 256*2, 192*2*2, SDL_WINDOW_RESIZABLE, &win, &ren))
+    if (!SDL_CreateWindowAndRenderer("DualSOUP", 256*2, 192*2*2, /*SDL_WINDOW_RESIZABLE*/ /* TODO */ 0, &win, &ren))
     {
         printf("window/renderer init failure :(\n");
         return EXIT_FAILURE;

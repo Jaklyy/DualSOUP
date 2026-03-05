@@ -15,6 +15,7 @@
 #include "sram/flash.h"
 #include "carts/gamecard.h"
 #include "io/rtc.h"
+#include "io/tsc.h"
 #include "io/powman.h"
 #include "video/3d.h"
 
@@ -437,6 +438,7 @@ struct Console
     u16 Bios7Prot;
 
     Powman Powman;
+    TSC TSC;
 
     u8 WiFiBBWrBuf;
     u8 WiFiBBRdBuf;

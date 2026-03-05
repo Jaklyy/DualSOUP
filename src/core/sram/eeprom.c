@@ -1,7 +1,5 @@
 #include <stdckdint.h>
-#include <string.h>
 #include <stdlib.h>
-#include <stdio.h>
 #include "eeprom.h"
 
 

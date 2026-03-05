@@ -1,13 +1,11 @@
 #include <stdckdint.h>
 #include "powman.h"
-#include "../console.h"
 
 
 
 
 u8 PowMan_CMDSend(Powman* pow, const u8 val, const bool chipsel)
 {
-
     u8 ret;
     if (!pow->PrevChipSelect)
     {
