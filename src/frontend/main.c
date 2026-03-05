@@ -160,7 +160,7 @@ int main()
                 break;
         }
 
-        if (sys)
+        if (sys && !sys->Powman.PowerCR.SystemShutDown)
         {
                 int ret = mtx_trylock(&sys->FrameBufferMutex[buf]);
                 if (ret == thrd_success)
@@ -190,6 +190,7 @@ int main()
         }
         else
         {
+            threadexists = false;
             SDL_RenderClear(ren);
             SDL_RenderPresent(ren);
         }

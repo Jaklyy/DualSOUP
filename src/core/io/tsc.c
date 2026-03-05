@@ -7,6 +7,7 @@
 
 u8 TSC_SendCommand(TSC* tsc, const u8 val)
 {
+    // todo: what does the tsc do if you dont use chipselect properly?
     if (val & 0x80)
     {
         tsc->ControlByte.Raw = val;
@@ -16,6 +17,7 @@ u8 TSC_SendCommand(TSC* tsc, const u8 val)
         switch(tsc->ControlByte.ChannelSel)
         {
         case 0: // temp 0
+            // i was going to put a print on this but they *love* reading this reg for no apparent reason.
             //LogPrint(LOG_UNIMP|LOG_TSC, "UNIMPLEMENTED: TSC TEMP REG 0. %02X\n", tsc->ControlByte.Raw);
             tsc->Ret = 0; break;
 

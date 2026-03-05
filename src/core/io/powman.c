@@ -1,11 +1,12 @@
 #include <stdckdint.h>
 #include "powman.h"
+#include "../console.h"
 
 
 
-
-u8 PowMan_CMDSend(Powman* pow, const u8 val, const bool chipsel)
+u8 PowMan_CMDSend(struct Console* sys, const u8 val, const bool chipsel)
 {
+    Powman* pow = &sys->Powman;
     u8 ret;
     if (!pow->PrevChipSelect)
     {
@@ -22,6 +23,11 @@ u8 PowMan_CMDSend(Powman* pow, const u8 val, const bool chipsel)
             {
                 case 0x00:
                     pow->PowerCR.Raw = val & 0x7F;
+                    if (pow->PowerCR.SystemShutDown) // TODO: this is going to need a lot of work to make accurate isn't it
+                    {
+                        sys->ARM7Target = 0; // the time is now old man.
+                        sys->KillThread = true;
+                    }
                     ret = 0;
                     break;
                 case 0x80:

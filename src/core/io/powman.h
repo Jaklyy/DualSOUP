@@ -40,4 +40,5 @@ typedef struct
     u8 CmdLen;
 } Powman;
 
-u8 PowMan_CMDSend(Powman* pow, const u8 val, const bool chipsel);
+struct Console;
+u8 PowMan_CMDSend(struct Console* sys, const u8 val, const bool chipsel);

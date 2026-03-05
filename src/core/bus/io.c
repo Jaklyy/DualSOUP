@@ -431,7 +431,7 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
                 switch(sys->SPICR.DeviceSelect)
                 {
                 case 0:
-                    sys->SPIBuf = PowMan_CMDSend(&sys->Powman, val>>16, sys->SPICR.ChipSelect);
+                    sys->SPIBuf = PowMan_CMDSend(sys, val>>16, sys->SPICR.ChipSelect);
                     break;
                 case 1:
                     sys->SPIBuf = Flash_CMDSend(&sys->Firmware, val>>16, sys->SPICR.ChipSelect);
