@@ -158,15 +158,11 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
     // TODO: is this always running?
     Schedule_Event(sys, LCD_Scanline, Evt_Scanline, 0);
 
-    sys->DMA9.ChannelTimestamps[0] = timestamp_max;
-    sys->DMA9.ChannelTimestamps[1] = timestamp_max;
-    sys->DMA9.ChannelTimestamps[2] = timestamp_max;
-    sys->DMA9.ChannelTimestamps[3] = timestamp_max;
-
-    sys->DMA7.ChannelTimestamps[0] = timestamp_max;
-    sys->DMA7.ChannelTimestamps[1] = timestamp_max;
-    sys->DMA7.ChannelTimestamps[2] = timestamp_max;
-    sys->DMA7.ChannelTimestamps[3] = timestamp_max;
+    for (unsigned i = 0; i < (sizeof(sys->DMA9.ChannelTimestamps) / sizeof(sys->DMA9.ChannelTimestamps[0])); i++)
+    {
+        sys->DMA9.ChannelTimestamps[i] = timestamp_max;
+        sys->DMA7.ChannelTimestamps[i] = timestamp_max;
+    }
 
     sys->DMA9.NextTime = timestamp_max;
     sys->DMA7.NextTime = timestamp_max;

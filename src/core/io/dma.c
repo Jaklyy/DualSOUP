@@ -10,10 +10,9 @@ timestamp DMA_GetNext(struct Console* sys, bool a9, const bool inclusive)
     struct DMA_Controller* cnt = ((a9) ? &sys->DMA9 : &sys->DMA7);
 
     timestamp time = cnt->NextTime;
-    int cur = stdc_trailing_zeros(cnt->CurMask);
-    if (cur == 4) return time;
-    if (inclusive && (cur != 4) && (time > cnt->ChannelTimestamps[cur])) 
-                                    time = cnt->ChannelTimestamps[cur];
+    int cur = stdc_trailing_zeros((u32)cnt->CurMask);
+    if (inclusive && (time > cnt->ChannelTimestamps[cur])) 
+                      time = cnt->ChannelTimestamps[cur];
     return time;
 }
 
@@ -34,7 +33,8 @@ void DMA_Schedule(struct Console* sys, const bool a9)
     timestamp time = timestamp_max;
     u8 id = 4; // returning an id of 4 makes it check the cur mask somewhere it should always be 0
 
-    int max = stdc_trailing_zeros(cnt->CurMask);
+    int max = stdc_trailing_zeros((u32)cnt->CurMask);
+    #pragma unroll 4
     for (int i = 0; i < max; i++)
     {
         if (time > cnt->ChannelTimestamps[i])
@@ -49,6 +49,7 @@ void DMA_Schedule(struct Console* sys, const bool a9)
 
 void StartDMA9(struct Console* sys, timestamp start, u8 mode)
 {
+    bool update = false;
     for (int i = 0; i < 4; i++)
     {
         if (!sys->DMA9.Channels[i].CR.Enable) continue;
@@ -68,12 +69,14 @@ void StartDMA9(struct Console* sys, timestamp start, u8 mode)
             continue;
         }
         sys->DMA9.ChannelTimestamps[i] = start;
+        update = true;
     }
-    DMA_Schedule(sys, true);
+    if (update) DMA_Schedule(sys, true);
 }
 
 void StartDMA7(struct Console* sys, timestamp start, u8 mode)
 {
+    bool update = false;
     for (int i = 0; i < 4; i++)
     {
         if (!sys->DMA7.Channels[i].CR.Enable) continue;
@@ -93,8 +96,9 @@ void StartDMA7(struct Console* sys, timestamp start, u8 mode)
             continue;
         }
         sys->DMA7.ChannelTimestamps[i] = start;
+        update = true;
     }
-    DMA_Schedule(sys, false);
+    if (update) DMA_Schedule(sys, false);
 }
 
 

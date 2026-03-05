@@ -321,7 +321,7 @@ void THUMB_Push(struct ARM* cpu, const struct ARM_Instr instr_data)
     bool dabt = false;
     while(rlist)
     {
-        unsigned reg = stdc_trailing_zeros(rlist);
+        unsigned reg = stdc_trailing_zeros((u32)rlist);
 
         // write
         u32 val = ARM_GetReg(reg);
@@ -377,7 +377,7 @@ s8 THUMB9_Push_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_da
 
     if (instr.RList)
     {
-        int reg = stdc_trailing_zeros((u8)instr.RList);
+        int reg = stdc_trailing_zeros((u32)instr.RList);
         ARM9_CheckInterlocks(ARM9, &stall, reg, 1, true);
     }
     else if (instr.Link)
@@ -433,7 +433,7 @@ void THUMB_Pop(struct ARM* cpu, const struct ARM_Instr instr_data)
     bool earlyfix = false;
     while(rlist)
     {
-        unsigned reg = stdc_trailing_zeros(rlist);
+        unsigned reg = stdc_trailing_zeros((u32)rlist);
 
         // read
         u32 val;
@@ -559,7 +559,7 @@ void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
     {
         while(rlist)
         {
-            unsigned reg = stdc_trailing_zeros(rlist);
+            unsigned reg = stdc_trailing_zeros((u32)rlist);
 
             // read
             u32 val;
@@ -568,7 +568,7 @@ void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
                 val = ARM7_DataRead32(ARM7Cast, addr, &seq);
 
                 // base writeback after first access
-                if (reg == stdc_trailing_zeros(rlistinit))
+                if (reg == stdc_trailing_zeros((u32)rlistinit))
                     ARM_SetReg(instr.Rn, wbaddr, false, 0, 0);
             }
             else
@@ -576,7 +576,7 @@ void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
                 val = ARM9_DataRead32(ARM9Cast, addr, &seq, &dabt);
 
                 // base writeback before last access
-                if (reg == 15-stdc_leading_zeros(rlistinit))
+                if (reg == (31-stdc_leading_zeros((u32)rlistinit)))
                     ARM_SetReg(instr.Rn, wbaddr, false, 0, 0);
             }
 
@@ -608,7 +608,7 @@ void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
     {
         while(rlist)
         {
-            unsigned reg = stdc_trailing_zeros(rlist);
+            unsigned reg = stdc_trailing_zeros((u32)rlist);
 
             // write
             u32 val = ARM_GetReg(reg);
@@ -617,7 +617,7 @@ void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
                 ARM7_DataWrite32(ARM7Cast, addr, val, false, &seq);
 
                 // base writeback after first access
-                if (reg == stdc_trailing_zeros(rlistinit))
+                if (reg == stdc_trailing_zeros((u32)rlistinit))
                     ARM_SetReg(instr.Rn, wbaddr, false, 0, 0);
             }
             else
@@ -625,7 +625,7 @@ void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
                 ARM9_DataWrite32(ARM9Cast, addr, val, false, false, &seq, &dabt);
 
                 // base writeback before last access
-                if (reg == (15-stdc_leading_zeros(rlistinit)))
+                if (reg == (31-stdc_leading_zeros((u32)rlistinit)))
                     ARM_SetReg(instr.Rn, wbaddr, false, 0, 0);
             }
             // increment address
@@ -674,7 +674,7 @@ s8 THUMB9_LoadStoreMultiple_Interlocks(struct ARM946ES* ARM9, const struct ARM_I
 
     if (!instr.Load && instr.RList)
     {
-        int reg = stdc_trailing_zeros((u8)instr.RList);
+        int reg = stdc_trailing_zeros((u32)instr.RList);
         ARM9_CheckInterlocks(ARM9, &stall, reg, 1, true);
     }
 

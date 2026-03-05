@@ -649,7 +649,7 @@ void ARM_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
     {
         while(rlist)
         {
-            unsigned reg = stdc_trailing_zeros(rlist);
+            unsigned reg = stdc_trailing_zeros((u32)rlist);
 
             // read
             u32 val;
@@ -658,7 +658,7 @@ void ARM_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
                 val = ARM7_DataRead32(ARM7Cast, addr, &seq);
 
                 // base writeback after first access
-                if (instr.Writeback && (reg == stdc_trailing_zeros((u16)instr.RList)))
+                if (instr.Writeback && (reg == stdc_trailing_zeros((u32)instr.RList)))
                 {
                     ARM_SetReg(instr.Rn, wbaddr, true, 0, 0);
                     if (instr.Rn == 15) flush = true;
@@ -669,7 +669,7 @@ void ARM_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
                 val = ARM9_DataRead32(ARM9Cast, addr, &seq, &dabt);
 
                 // base writeback before last access
-                if (instr.Writeback && (reg == (15-stdc_leading_zeros((u16)instr.RList))))
+                if (instr.Writeback && (reg == (31-stdc_leading_zeros((u32)instr.RList))))
                 {
                     ARM_SetReg(instr.Rn, wbaddr, true, 0, 0);
                     if (instr.Rn == 15) flush = true;
@@ -715,7 +715,7 @@ void ARM_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
     {
         while(rlist)
         {
-            unsigned reg = stdc_trailing_zeros(rlist);
+            unsigned reg = stdc_trailing_zeros((u32)rlist);
 
             // write
 
@@ -732,7 +732,7 @@ void ARM_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
                 ARM7_DataWrite32(ARM7Cast, addr, val, false, &seq);
 
                 // base writeback after first access
-                if (instr.Writeback && (reg == stdc_trailing_zeros((u16)instr.RList)))
+                if (instr.Writeback && (reg == stdc_trailing_zeros((u32)instr.RList)))
                 {
                     ARM_SetReg(instr.Rn, wbaddr, true, 0, 0);
                     if (instr.Rn == 15) flush = true;
@@ -743,7 +743,7 @@ void ARM_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
                 ARM9_DataWrite32(ARM9Cast, addr, val, false, false, &seq, &dabt);
 
                 // base writeback before last access
-                if (instr.Writeback && (reg == (15-stdc_leading_zeros((u16)instr.RList))))
+                if (instr.Writeback && (reg == (31-stdc_leading_zeros((u32)instr.RList))))
                 {
                     ARM_SetReg(instr.Rn, wbaddr, true, 0, 0);
                     if (instr.Rn == 15) flush = true;
@@ -800,7 +800,7 @@ s8 ARM9_LoadStoreMultiple_Interlocks(struct ARM946ES* ARM9, const struct ARM_Ins
 
     if (!instr.Load && instr.RList)
     {
-        int reg = stdc_trailing_zeros((u8)instr.RList);
+        int reg = stdc_trailing_zeros((u32)instr.RList);
         ARM9_CheckInterlocks(ARM9, &stall, reg, 1, true);
     }
 

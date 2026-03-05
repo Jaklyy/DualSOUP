@@ -8,46 +8,6 @@
 
 
 
-// distinct nds regions:
-// 
-
-
-/*  io regs that need access size testing: (unaligned accesses too?)
-    (all of them kinda do but these ones especially might have weird effects)
-
-    display fifo
-    all 3d gpu command ports (fifo included)
-*/
-
-
-// Implementation Notes:
-
-// check each bus in order?
-
-// dbus -> ibus (only for itcm (this is weird on hw?))
-// dbus -> ext bus
-// ibus -> ext bus
-// wbus -> ext bus
-// ext bus -> mr bus
-
-// each bus owner has a sort of queue
-// 
-
-// bus itself only handles timings and returning/writing data
-
-// bitfield for each bus owner?
-
-
-/*
-    pain and suffering notes:
-        itcm data reads seem to cause contention with:
-            1. latched instrs (uncached thumb pc & 2)
-            2. fully cached instruction reads
-            3. itcm instr reads
-            note: seems to have no observable impact on active cache streaming and uncached reads?
-            all one cycle instr fetches seem to behave identically?
-            TODO: test aborted accesses; data aborts shouldn't matter, but prefetch aborts might.
-*/
 
 void Timing16(struct AHB* bus, const u32 mask)
 {
