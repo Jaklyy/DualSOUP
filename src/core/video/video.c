@@ -165,13 +165,13 @@ void LCD_Scanline(struct Console* sys, timestamp now)
     // i dont 100% trust my testing here but it seems like if both cpus write to vcount on the same scanline the arm9 wins out?
     if (sys->VCountUpdate9)
     {
-        sys->VCount = sys->VCountNew9;
+        //sys->VCount = sys->VCountNew9; TODO: REFACTOR PPU/LCD LOGIC TO ADD SUPPORT FOR THIS
         sys->VCountUpdate9 = false;
         sys->VCountUpdate7 = false;
     }
     if (sys->VCountUpdate7)
     {
-        sys->VCount = sys->VCountNew7;
+        //sys->VCount = sys->VCountNew7; TODO: REFACTOR PPU/LCD LOGIC TO ADD SUPPORT FOR THIS
         sys->VCountUpdate9 = false;
         sys->VCountUpdate7 = false;
     }
