@@ -26,7 +26,7 @@ bool Gamecard_Init(Gamecard* card, const char* romname, u8* bios7)
     }
 
     u64 filesize = ftell(rom);
-    u64 chipsize = (u64)0x8000'0000'0000'0000 >> stdc_leading_zeros(filesize);
+    u64 chipsize = (u64)0x8000'0000'0000'0000 >> (stdc_leading_zeros(filesize) - (stdc_count_ones(filesize) != 1));
 
     if (chipsize > GiB(2))
     {
@@ -58,7 +58,7 @@ bool Gamecard_Init(Gamecard* card, const char* romname, u8* bios7)
     if (filesize != chipsize)
     {
         LogPrint(LOG_ALWAYS, "NOTE: filesize not power of 2, trimmed ROM? Padding with FF. file: %lu chip: %lu\n", filesize, chipsize);
-        memset((&card->ROM)+filesize, 0xFF, chipsize-filesize);
+        memset((void*)((intptr_t)(&card->ROM)+filesize), 0xFF, chipsize-filesize);
     }
 
     if (fread(card->ROM, filesize, 1, rom) == 0)

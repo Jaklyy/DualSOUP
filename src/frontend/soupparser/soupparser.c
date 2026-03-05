@@ -19,7 +19,7 @@ FILE* FindFileWithSameName(const char* path, const char* ext, const char* mode)
     }
 
     // add extension.
-    strcpy(end+1, ext);
+    strcpy((char*)(((intptr_t)end)+1), ext);
 
     FILE* file = fopen(newpath, mode);
     if (file != NULL) LogPrint(LOG_ALWAYS, ".%s located: %s\n", ext, newpath);
