@@ -23,6 +23,6 @@ typedef struct
 } Flash;
 
 u8 Flash_CMDSend(Flash* flash, const u8 val, const bool chipsel);
-bool Flash_Init(Flash* flash, FILE* ram, u64 size, bool writeprot, const int id, const char* str);
+void Flash_Init(Flash* flash, u8* ram, u64 size, bool writeprot, const int id);
 void Flash_Cleanup(Flash* flash);
 void Flash_Reset(Flash* flash);

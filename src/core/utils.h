@@ -56,9 +56,9 @@ typedef uint64_t timestamp;
 #endif
 #define timestamp_max (UINT64_MAX)
 
-#define KiB(x) ((x) * 1024)
-#define MiB(x) ((x) * 1024 * 1024)
-#define GiB(x) ((x) * 1024 * 1024 * 1024)
+#define KiB(x) ((u64)(x) * 1024)
+#define MiB(x) ((u64)(x) * 1024 * 1024)
+#define GiB(x) ((u64)(x) * 1024 * 1024 * 1024)
 
 
 // todo: actually add fallback paths if these dont exist for w/e reason

@@ -7,55 +7,12 @@
 
 
 
-bool EEPROM_Init(EEPROM* eep, FILE* ram, u64 size, u8 addrbytes, u8 writeprot)
+void EEPROM_Init(EEPROM* eep, u8* ram, u64 size, u8 addrbytes, u8 writeprot)
 {
-    if (ram != NULL)
-    {
-        // get size from submitted file
-        fseek(ram, 0, SEEK_END);
-        size = ftell(ram);
-        fseek(ram, 0, SEEK_SET);
-    }
-    if (stdc_count_ones(size) != 1)
-    {
-        LogPrint(LOG_ALWAYS, "FATAL: SRAM size %li is not a power of 2!\n", size);
-        return false;
-    }
-    if (size-1 > 0xFFFFFF)
-    {
-        LogPrint(LOG_ALWAYS, "FATAL: SRAM too big! must be <= 16 MiB; currently %li\n", size);
-        return false;
-    }
-    if (size < 256)
-    {
-        LogPrint(LOG_ALWAYS, "FATAL: SRAM too small! must be >= 256 bytes; currently %li\n", size);
-        return false;
-    }
-
     eep->RAMSize = size;
     eep->AddrBytes = addrbytes;
     //flash->WriteProt = writeprot ? ~((size/4)-1) : 0;
-    eep->RAM = malloc(size);
-    if (eep->RAM == NULL)
-    {
-        LogPrint(LOG_ALWAYS, "FATAL: SRAM allocation failed\n");
-        eep->RAM = nullptr;
-        return false;
-    }
-
-    if (ram == NULL)
-    {
-        memset(eep->RAM, 0xFF, eep->RAMSize);
-    }
-    else if (fread(eep->RAM, eep->RAMSize, 1, ram) != 1)
-    {
-        LogPrint(LOG_ALWAYS, "FATAL: SRAM read failed\n");
-        free(eep->RAM);
-        eep->RAM = nullptr;
-        return false;
-    }
-
-    return true;
+    eep->RAM = ram;
 }
 
 void EEPROM_Cleanup(EEPROM* eep)

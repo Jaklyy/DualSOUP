@@ -12,6 +12,7 @@ enum EncryptMode : u8
     Key2,
 };
 
+constexpr u32 DefaultChipID = 0x04030201;
 
 typedef struct
 {

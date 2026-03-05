@@ -14,6 +14,9 @@ void LogPrint(const u64 logtype, const char* str, ...)
 {
 #ifndef NOLOGGING
     if ((LogMask & logtype) != logtype) return;
+#else
+    if (logtype != LOG_ALWAYS) return;
+#endif
 
     va_list args;
     va_start(args);
@@ -21,7 +24,6 @@ void LogPrint(const u64 logtype, const char* str, ...)
     vprintf(str, args);
 
     va_end(args);
-#endif
 }
 
 void CrashSpectacularly(const char* str, ...)

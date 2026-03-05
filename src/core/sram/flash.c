@@ -1,63 +1,20 @@
 #include <stdckdint.h>
 #include <stdbit.h>
 #include <stdlib.h>
-#include <string.h>
-#include <stdio.h>
 #include "flash.h"
 
 
 
 
-bool Flash_Init(Flash* flash, FILE* ram, u64 size, bool writeprot, const int id, const char* str)
+void Flash_Init(Flash* flash, u8* ram, u64 size, bool writeprot, const int id)
 {
-    if (ram != NULL)
-    {
-        // get size from submitted file
-        fseek(ram, 0, SEEK_END);
-        size = ftell(ram);
-        fseek(ram, 0, SEEK_SET);
-    }
-    if (stdc_count_ones(size) != 1)
-    {
-        LogPrint(LOG_ALWAYS, "FATAL: %s size %li is not a power of 2!\n", str, size);
-        return false;
-    }
-    if (size-1 > 0xFFFFFF)
-    {
-        LogPrint(LOG_ALWAYS, "FATAL: %s too big! must be <= 16 MiB; currently %li\n", str, size);
-        return false;
-    }
-    if (size < 256)
-    {
-        LogPrint(LOG_ALWAYS, "FATAL: %s too small! must be >= 256 bytes; currently %li\n", str, size);
-        return false;
-    }
-
     flash->RAMSize = size;
     flash->WriteProt = writeprot ? ~((size/4)-1) : ~0;
-    flash->RAM = malloc(size);
-    if (flash->RAM == NULL)
-    {
-        LogPrint(LOG_ALWAYS, "FATAL: %s allocation failed\n", str);
-        return false;
-    }
-
-    if (ram == NULL)
-    {
-        memset(flash->RAM, 0xFF, flash->RAMSize);
-    }
-    else if (fread(flash->RAM, flash->RAMSize, 1, ram) != 1)
-    {
-        LogPrint(LOG_ALWAYS, "FATAL: %s read failed\n", str);
-        free(flash->RAM);
-        flash->RAM = nullptr;
-        return false;
-    }
+    flash->RAM = ram;
 
     flash->ID[0] = (id>> 0) & 0xFF;
     flash->ID[1] = (id>> 8) & 0xFF;
     flash->ID[2] = (id>>16) & 0xFF;
-    return true;
 }
 
 void Flash_Cleanup(Flash* flash)

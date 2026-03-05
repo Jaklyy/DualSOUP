@@ -40,13 +40,11 @@ endif
 
 ifeq ($(DEB), 1) # debug build
 	BUILDDIR := $(DEBDIR)
-	CFLAGS += -g -Og
-	CFLAGS += -march=x86-64-v3
+	CFLAGS += -march=x86-64-v3 -g -Og
 else
 ifeq ($(SAN), 1) # debug w/ sanitizers
 	BUILDDIR := $(SANDIR)
-	CFLAGS += -g -Og -fsanitize=undefined -fsanitize=address
-	CFLAGS += -march=x86-64-v3
+	CFLAGS += -march=x86-64-v3 -g -Og -fsanitize=undefined -fsanitize=address
 else
 ifeq ($(REL), 1) # release build
 	BUILDDIR := $(RELDIR)

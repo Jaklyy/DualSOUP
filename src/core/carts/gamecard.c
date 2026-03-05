@@ -5,66 +5,68 @@
 #include "../console.h"
 #include "../sram/flash.h"
 #include "../sram/eeprom.h"
+#include "../../frontend/soupparser/soupparser.h"
 
 
 
 bool Gamecard_Init(Gamecard* card, const char* romname, u8* bios7)
 {
-    FILE* rom = fopen(romname, "rb");
-
-    if (rom == NULL)
+    FILE* rom;
+    if ((rom = fopen(romname, "rb")) == NULL)
     {
-        LogPrint(LOG_ALWAYS, "ERROR: Could not open provided ROM\n");
+        perror("ERROR: Could not open provided ROM");
         return false;
     }
 
-    fseek(rom, 0, SEEK_END);
-    u64 size = ftell(rom);
-    fseek(rom, 0, SEEK_SET);
-    u64 fauxsize = size;
-    if (stdc_count_ones(fauxsize) != 1)
+    if (fseek(rom, 0, SEEK_END))
     {
-        int shift = 0;
-        while (stdc_count_ones(fauxsize) != 1)
-        {
-            fauxsize >>= 1;
-            shift++;
-        }
-        fauxsize <<= shift;
-        fauxsize *= 2;
-    }
-
-    if (size > MiB(512))
-    {
-        LogPrint(LOG_ALWAYS, "ERROR: Gamecard ROM too big! must be <= 512MiB; currently %lu\n", size);
-        return false;
-    }
-    if (size < KiB(4))
-    {
-        LogPrint(LOG_ALWAYS, "ERROR: Gamecard ROM too small! idk if this is actually an issue but it feels like one; currently %lu\n", size);
-        return false;
-    }
-
-    card->RomSize = fauxsize;
-    card->ROM = malloc(fauxsize);
-    if (card->ROM == NULL)
-    {
-        LogPrint(LOG_ALWAYS, "ERROR: Gamecard ROM allocation failed\n");
-        return false;
-    }
-
-    for (u64 i = size/sizeof(card->ROM[0]); i < fauxsize/sizeof(card->ROM[0]); i++)
-    {
-        card->ROM[i] = 0;
-    }
-
-    if (fread(card->ROM, size, 1, rom) == 0)
-    {
-        LogPrint(LOG_ALWAYS, "ERROR: Could not read gamecard ROM\n");
+        perror("Seek Error");
         fclose(rom);
         return false;
     }
 
+    u64 filesize = ftell(rom);
+    u64 chipsize = (u64)0x8000'0000'0000'0000 >> stdc_leading_zeros(filesize);
+
+    if (chipsize > GiB(2))
+    {
+        LogPrint(LOG_ALWAYS, "ERROR: Gamecard ROM too big! Must be <= 2GiB! size: %lu\n", chipsize);
+        fclose(rom);
+        return false;
+    }
+    if (chipsize < KiB(4))
+    {
+        LogPrint(LOG_ALWAYS, "NOTE: Gamecard ROM too small! padding to 4KiB size: %lu\n", chipsize);
+        chipsize = KiB(4);
+    }
+
+    if (fseek(rom, 0, SEEK_SET))
+    {
+        perror("Seek Error");
+        fclose(rom);
+        return false;
+    }
+
+    card->RomSize = chipsize;
+    if ((card->ROM = malloc(chipsize)) == NULL)
+    {
+        LogPrint(LOG_ALWAYS, "ERROR: Could not allocate memory for Gamecard ROM.\n");
+        fclose(rom);
+        return false;
+    }
+
+    if (filesize != chipsize)
+    {
+        LogPrint(LOG_ALWAYS, "NOTE: filesize not power of 2, trimmed ROM? Padding with FF. file: %lu chip: %lu\n", filesize, chipsize);
+        memset((&card->ROM)+filesize, 0xFF, chipsize-filesize);
+    }
+
+    if (fread(card->ROM, filesize, 1, rom) == 0)
+    {
+        perror("ERROR: Could not read gamecard ROM");
+        fclose(rom);
+        return false;
+    }
     fclose(rom);
 
     memcpy(card->Key1, &bios7[0x30], sizeof(card->Key1));
@@ -72,78 +74,30 @@ bool Gamecard_Init(Gamecard* card, const char* romname, u8* bios7)
 
     // BEGIN SOUP PARSING
 
+    // load defaults
     card->SPI = nullptr;
-    card->ChipID = 0x010101C2;
+    card->ChipID = DefaultChipID;
 
-    char soupname[512]; // if you make a longer file path i *will* cry.
-
-    strncpy(soupname, romname, 512-5);
-
-    char* end = strrchr(soupname, '.');
-
-    if (end == NULL)
+    FILE* soup;
+    if ((soup = FindFileWithSameName(romname, "soup", "r")) == NULL)
     {
-        LogPrint(LOG_ALWAYS, "ERROR: Could not find the part of the file path that's actually a file extension????\n");
+        LogPrint(LOG_ALWAYS, "NOTE: Could not locate .soup for this ROM; SPI/SRAM will not be configured. Things may break.\n");
+
         return true;
-    }
-
-    end[1] = 's';
-    end[2] = 'o';
-    end[3] = 'u';
-    end[4] = 'p';
-    end[5] = '\0';
-
-    FILE* soup = fopen(soupname, "r");
-
-    if (soup == NULL)
-    {
-        LogPrint(LOG_ALWAYS, "NOTE: Could not locate .soup for this ROM; It probably wont boot properly.\n");
-        return true;
-    }
-
-    char savname[512]; // if you make a longer file path i *will* cry.
-
-    strncpy(savname, romname, 512-4);
-
-    end = strrchr(savname, '.');
-    FILE* sav = NULL;
-
-    if (end == NULL)
-    {
-        LogPrint(LOG_ALWAYS, "ERROR: Could not find the part of the file path that's actually a file extension????\n");
-    }
-    else
-    {
-
-        end[1] = 's';
-        end[2] = 'a';
-        end[3] = 'v';
-        end[5] = '\0';
-
-        sav = fopen(savname, "rb");
-
-        if (sav == NULL)
-        {
-            LogPrint(LOG_ALWAYS, "NOTE: Could not locate .sav for this ROM.\n");
-            return true;
-        }
     }
 
     char* soupbowl;
 
-    fseek(soup, 0, SEEK_END);
-    u64 soupsize = ftell(soup);
-    fseek(soup, 0, SEEK_SET);
-
-    if (soupsize > KiB(1))
+    if (fseek(soup, 0, SEEK_END))
     {
-        LogPrint(LOG_ALWAYS, "ERROR: Why is this .soup so big?? Max size: 1 KiB. Actual size: %lu\n", soupsize);
+        perror(".soup Seek Error");
         fclose(soup);
         return true;
     }
-    if (soupsize == 0)
+    u64 soupsize = ftell(soup);
+    if (fseek(soup, 0, SEEK_SET))
     {
-        LogPrint(LOG_ALWAYS, "ERROR: This .soup is empty???\n");
+        perror(".soup Seek Error");
         fclose(soup);
         return true;
     }
@@ -154,138 +108,122 @@ bool Gamecard_Init(Gamecard* card, const char* romname, u8* bios7)
 
     if (fread(soupbowl, soupsize, 1, soup) == 0)
     {
-        LogPrint(LOG_ALWAYS, "ERROR: Could not read .soup\n");
+        perror("ERROR: Could not read .soup\n");
         fclose(soup);
         return true;
     }
+    fclose(soup);
 
     soupbowl[soupsize+31] = '\0'; // im kinda just assuming i have to do this
 
-    char* spoon = strstr(soupbowl, "chipid:");
-
-    if (spoon != NULL)
+    if (SOUPParser(soupbowl, "chipid:", NULL, SEARCH_U32HEX, &card->ChipID))
     {
-        char* end;
-        card->ChipID = strtoul(&spoon[8], &end, 16);
+        LogPrint(LOG_ALWAYS, "ChipID found: %08X\n", card->ChipID);
+    }
+    else
+    {
+        LogPrint(LOG_ALWAYS, "No chipid specified in .soup, loading default: %08X\n", DefaultChipID);
     }
 
-    int sramsize = 0;
-    spoon = strstr(soupbowl, "sramsize:");
-
-    if (spoon != NULL)
+    u64 sramsize;
+    if (SOUPParser(soupbowl, "sramsize:", NULL, SEARCH_U64DEC, &sramsize))
     {
-        sramsize = atoi(&spoon[9]);
+        if ((sramsize > 24) || (sramsize < 9))
+        {
+            LogPrint(LOG_ALWAYS, "SRAMSize found, but invalid size: max 24, min 9: val:%li size:%liB; SPI/SRAM will not be configured. Things may break.\n", sramsize, (u64)1<<sramsize);
+            return true;
+        }
+
+        LogPrint(LOG_ALWAYS, "SRAMSize found: val:%li size:%liB\n", sramsize, (u64)1<<sramsize);
+    }
+    else
+    {
+        LogPrint(LOG_ALWAYS, "ERROR: sramsize unspecified in .soup; SPI/SRAM will not be configured. Things may break.\n");
+        return true;
+    }
+    sramsize = 1<<sramsize;
+
+    u8* sram = malloc(sramsize);
+    FILE* sav;
+    if ((sav = FindFileWithSameName(romname, "sav", "rb")) == NULL)
+    {
+        LogPrint(LOG_ALWAYS, "NOTE: Could not locate .sav for this ROM. Creating uninitialized save ram.\n");
+        memset(sram, 0xFF, sramsize); // CHECKME
+    }
+    else
+    {
+        if (fseek(sav, 0, SEEK_END))
+        {
+            perror("Seek Error");
+            return false;
+        }
+        u64 savsize = ftell(sav);
+        if (fseek(sav, 0, SEEK_SET))
+        {
+            perror("Seek Error");
+            return false;
+        }
+        if (fread(sram, savsize, 1, sav) == 0)
+        {
+            perror("ERROR: Could not read .soup\n");
+            fclose(soup);
+            return false;
+        }
+        fclose(soup);
+        memset(&sram[savsize], 0xFF, sramsize - savsize);
     }
 
-    if (sramsize > 0 && sramsize <= 24)
+    u8 addrbytes;
+    if (SOUPParser(soupbowl, "spi:", "flash", SEARCH_STRING, NULL))
     {
-        spoon = strstr(soupbowl, "spi:");
-
-        u64 search = (spoon[4] == ' ') ? 5 : 4; // make spaces optional ig
-
-        if (memcmp(&spoon[search], "flash", 5) == 0)
+        card->SPI = malloc(sizeof(Flash));
+        if (card->SPI == NULL)
         {
-            card->SPI = malloc(sizeof(Flash));
-            if (card->SPI == NULL)
-            {
-                LogPrint(LOG_ALWAYS, "Could not allocate RAM for gamecard SPI\n");
-                card->SPI = nullptr;
-                fclose(soup);
-                return true;
-            }
-
-            spoon = strstr(soupbowl, "flashid:");
-
-            u32 id = 0x010101;
-
-            if (spoon != NULL)
-            {
-                char* end;
-                id = strtoul(&spoon[8], &end, 16);
-            }
-
-            if (!Flash_Init(card->SPI, sav, 1<<sramsize, false, id, "SRAM Flash"))
-            {
-                Flash_Cleanup(card->SPI);
-
-                card->SPI = nullptr;
-            }
-            else
-            {
-                card->SPI_CMDSend = (void*)Flash_CMDSend;
-                card->SPI_Cleanup = (void*)Flash_Cleanup;
-            }
+            LogPrint(LOG_ALWAYS, "Could not allocate RAM for gamecard flash\n");
+            return false;
         }
-        else if (memcmp(&spoon[search], "eep9", 4) == 0)
+        memset(card->SPI, 0, sizeof(Flash));
+
+        u32 flashid;
+        if (!SOUPParser(soupbowl, "flashid:", NULL, SEARCH_U32HEX, &flashid))
         {
-            card->SPI = malloc(sizeof(EEPROM));
-            if (card->SPI == NULL)
-            {
-                LogPrint(LOG_ALWAYS, "Could not allocate RAM for gamecard SPI\n");
-                card->SPI = nullptr;
-                fclose(soup);
-                return true;
-            }
-
-            if (!EEPROM_Init(card->SPI, sav, 1<<sramsize, 1, 0 /* TODO */))
-            {
-                EEPROM_Cleanup(card->SPI);
-
-                card->SPI = nullptr;
-            }
-            else
-            {
-                card->SPI_CMDSend = (void*)EEPROM_CMDSend;
-                card->SPI_Cleanup = (void*)EEPROM_Cleanup;
-            }
+            flashid = 0x00010203;
         }
-        else if (memcmp(&spoon[search], "eep16", 5) == 0)
-        {
-            card->SPI = malloc(sizeof(EEPROM));
-            if (card->SPI == NULL)
-            {
-                LogPrint(LOG_ALWAYS, "Could not allocate RAM for gamecard SPI\n");
-                card->SPI = nullptr;
-                fclose(soup);
-                return true;
-            }
 
-            if (!EEPROM_Init(card->SPI, sav, 1<<sramsize, 2, 0 /* TODO */))
-            {
-                EEPROM_Cleanup(card->SPI);
-
-                card->SPI = nullptr;
-            }
-            else
-            {
-                card->SPI_CMDSend = (void*)EEPROM_CMDSend;
-                card->SPI_Cleanup = (void*)EEPROM_Cleanup;
-            }
-        }
-        else if (memcmp(&spoon[search], "eep24", 5) == 0)
-        {
-            card->SPI = malloc(sizeof(EEPROM));
-            if (card->SPI == NULL)
-            {
-                LogPrint(LOG_ALWAYS, "Could not allocate RAM for gamecard SPI\n");
-                card->SPI = nullptr;
-                fclose(soup);
-                return true;
-            }
-
-            if (!EEPROM_Init(card->SPI, sav, 1<<sramsize, 3, 0 /* TODO */))
-            {
-                EEPROM_Cleanup(card->SPI);
-
-                card->SPI = nullptr;
-            }
-            else
-            {
-                card->SPI_CMDSend = (void*)EEPROM_CMDSend;
-                card->SPI_Cleanup = (void*)EEPROM_Cleanup;
-            }
-        }
+        Flash_Init(card->SPI, sram, sramsize, false, flashid);
+        card->SPI_CMDSend = (void*)Flash_CMDSend;
+        card->SPI_Cleanup = (void*)Flash_Cleanup;
+        return true;
     }
+    else if (SOUPParser(soupbowl, "spi:", "eep9", SEARCH_STRING, NULL))
+    {
+        addrbytes = 1;
+    }
+    else if (SOUPParser(soupbowl, "spi:", "eep16", SEARCH_STRING, NULL))
+    {
+        addrbytes = 2;
+    }
+    else if (SOUPParser(soupbowl, "spi:", "eep24", SEARCH_STRING, NULL))
+    {
+        addrbytes = 3;
+    }
+    else
+    {
+        LogPrint(LOG_ALWAYS, "ERROR: UNK SRAM TYPE SPECIFIED?\n");
+        return false;
+    }
+
+    card->SPI = malloc(sizeof(EEPROM));
+    if (card->SPI == NULL)
+    {
+        LogPrint(LOG_ALWAYS, "Could not allocate RAM for gamecard eeprom\n");
+        return false;
+    }
+
+    memset(card->SPI, 0, sizeof(EEPROM));
+    EEPROM_Init(card->SPI, sram, sramsize, addrbytes, 0);
+    card->SPI_CMDSend = (void*)EEPROM_CMDSend;
+    card->SPI_Cleanup = (void*)EEPROM_Cleanup;
     return true;
 }
 

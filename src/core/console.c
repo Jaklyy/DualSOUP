@@ -62,10 +62,21 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
     int num7 = 0;
     if (ntr7 != NULL) num7 = fread(sys->NTRBios7.b8, NTRBios7_Size, 1, ntr7);
 
+    bool firminit = false;
+    fseek(firmware, 0, SEEK_END);
+    u64 nvramsize = ftell(firmware);
+    fseek(firmware, 0, SEEK_SET);
+    u8* nvram = malloc(nvramsize);
+    if (nvram != NULL)
+    {
+        firminit = fread(nvram, nvramsize, 1, firmware) != 0;
+        Flash_Init(&sys->Firmware, nvram, nvramsize, true, 0x010101);
+    }
+
     // allocate shit
     bool cr7init = CR_Create(&sys->HandleARM9, (void*)ARM9_MainLoop, &sys->ARM9);
     bool cr9init = CR_Create(&sys->HandleARM7, (void*)ARM7_MainLoop, &sys->ARM7);
-    bool firminit = Flash_Init(&sys->Firmware, firmware, 0, true, 0x010101, "Firmware Flash");
+
     bool gcinit = Gamecard_Init(&sys->Gamecard, rom, sys->NTRBios7.b8);
     sys->HandleMain = CR_Active();
 
