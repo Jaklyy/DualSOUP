@@ -520,7 +520,7 @@ void PPU_BuildSprites(struct Console* sys, const bool b, const u8 y)
                 height = 8;
             }
 
-            u8 sy = y - attr.Y & 0xFF;
+            u8 sy = (y - attr.Y) & 0xFF;
             if (sy >= height) continue;
 
             // checkme: does it skip sprites based on x coordinate?

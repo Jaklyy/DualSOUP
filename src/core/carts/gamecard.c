@@ -165,11 +165,11 @@ bool Gamecard_Init(Gamecard* card, const char* romname, u8* bios7)
         }
         if (fread(sram, savsize, 1, sav) == 0)
         {
-            perror("ERROR: Could not read .soup\n");
-            fclose(soup);
+            perror("ERROR: Could not read .sav\n");
+            fclose(sav);
             return false;
         }
-        fclose(soup);
+        fclose(sav);
         memset(&sram[savsize], 0xFF, sramsize - savsize);
     }
 

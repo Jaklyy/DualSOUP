@@ -1,4 +1,3 @@
-#include <__stddef_unreachable.h>
 #include <stdbit.h>
 #include "../utils.h"
 #include "../console.h"

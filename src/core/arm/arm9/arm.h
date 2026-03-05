@@ -217,7 +217,7 @@ struct ARM9_MPUPerms
         __m128i tags; memcpy(&tags, &ARM9->ITagRAM[index].Raw, sizeof(tags)); \
         __m128i cmp = _mm_set1_epi32(tagcmp); \
         cmp = _mm_cmpeq_epi32(tags, cmp); \
-        u8 set = stdc_trailing_zeros(_mm_movemask_ps(_mm_castsi128_ps(cmp)));
+        u8 set = stdc_trailing_zeros((u32)_mm_movemask_ps(_mm_castsi128_ps(cmp)));
 
     #define ARM9_DCacheSetLookup \
         /* TODO: consider unhardcoding this shit */ \
@@ -233,7 +233,7 @@ struct ARM9_MPUPerms
         /* note: we need to shift out the dirty flags before comparing */ \
         tags = _mm_srli_epi32(tags, 2); \
         cmp = _mm_cmpeq_epi32(tags, cmp); \
-        u8 set = stdc_trailing_zeros(_mm_movemask_ps(_mm_castsi128_ps(cmp)));
+        u8 set = stdc_trailing_zeros((u32)_mm_movemask_ps(_mm_castsi128_ps(cmp)));
 #else
     #define ARM9_ICacheSetLookup \
         /* TODO: consider unhardcoding this shit */ \

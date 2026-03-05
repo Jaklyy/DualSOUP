@@ -19,7 +19,7 @@ FILE* FindFileWithSameName(const char* path, const char* ext, const char* mode)
     }
 
     // add extension.
-    strcpy((char*)(((intptr_t)end)+1), ext);
+    strcpy(&end[1], ext);
 
     FILE* file = fopen(newpath, mode);
     if (file != NULL) LogPrint(LOG_ALWAYS, ".%s located: %s\n", ext, newpath);
@@ -28,34 +28,34 @@ FILE* FindFileWithSameName(const char* path, const char* ext, const char* mode)
 
 bool SOUPParser(const char* haystack, const char* needle, const char* cmpstr, const u8 type, void* ret)
 {
-    const char* spoon = strstr(haystack, needle) + strlen(needle);
+    const char* spoon = strstr(haystack, needle);
 
+    u64 offs = strlen(needle);
     if (spoon != NULL)
     {
         switch (type)
         {
         case SEARCH_S32DEC:
-            *(u32*)ret = strtol(spoon, NULL, 10);
+            *(u32*)ret = (u32)strtol(&spoon[offs], NULL, 10);
             return true;
         case SEARCH_U32DEC:
-            *(u32*)ret = strtoul(spoon, NULL, 10);
+            *(u32*)ret = (u32)strtoul(&spoon[offs], NULL, 10);
             return true;
         case SEARCH_U32HEX:
-            *(u32*)ret = strtoul(spoon, NULL, 16);
+            *(u32*)ret = (u32)strtoul(&spoon[offs], NULL, 16);
             return true;
         case SEARCH_S64DEC:
-            *(u64*)ret = strtol(spoon, NULL, 10);
+            *(u64*)ret = strtol(&spoon[offs], NULL, 10);
             return true;
         case SEARCH_U64DEC:
-            *(u64*)ret = strtoul(spoon, NULL, 10);
+            *(u64*)ret = strtoul(&spoon[offs], NULL, 10);
             return true;
         case SEARCH_U64HEX:
-            *(u64*)ret = strtoul(spoon, NULL, 16);
+            *(u64*)ret = strtoul(&spoon[offs], NULL, 16);
             return true;
         case SEARCH_STRING:
-            int i = 0;
-            while(spoon[i] == ' ') i++;
-            return memcmp(&spoon[i], cmpstr, strlen(cmpstr)) == 0;
+            while(spoon[offs] == ' ') offs++;
+            return memcmp(&spoon[offs], cmpstr, strlen(cmpstr)) == 0;
         case SEARCH_EXISTS:
             return true;
         default:

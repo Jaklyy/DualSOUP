@@ -9,7 +9,7 @@
 void Flash_Init(Flash* flash, u8* ram, u64 size, bool writeprot, const int id)
 {
     flash->RAMSize = size;
-    flash->WriteProt = writeprot ? ~((size/4)-1) : ~0;
+    flash->WriteProt = writeprot ? ~((size/4)-1) : (u32)~0;
     flash->RAM = ram;
 
     flash->ID[0] = (id>> 0) & 0xFF;

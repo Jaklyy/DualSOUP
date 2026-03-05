@@ -6,7 +6,7 @@
 
 
 
-Matrix GX_MatrixMultiply(Matrix a, Matrix b)
+Matrix GX_MatrixMultiply(const Matrix a, const Matrix b)
 {
     Matrix Out;
     Out.Row[0] = ((b.Arr[0] * a.Row[0]) + (b.Arr[1] * a.Row[1]) + (b.Arr[2] * a.Row[2]) + (b.Arr[3] * a.Row[3]));
@@ -138,7 +138,7 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert, bool* boxtestres)
 {
     GX3D* gx = &sys->GX3D;
     PolygonTmp poly = gx->PolygonTmp;
-    bool frontfacing;
+    bool frontfacing = false;
 
     // calculate dot product to determine polygon facing direction for culling and rasterization
 
@@ -353,21 +353,23 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert, bool* boxtestres)
         // otherwise we just use the W
         if (!gx->WBuffer)
         {
+            s64 ztmp;
             // compress Z into 16 bits
             if (poly.Vertices[i].Coords.W != 0)
             {
-                fin.Vertices[i]->Z = ((poly.Vertices[i].Coords.Z * 0x4000) / poly.Vertices[i].Coords.W);
+                ztmp = ((poly.Vertices[i].Coords.Z * 0x4000) / poly.Vertices[i].Coords.W);
             }
-            else fin.Vertices[i]->Z = 0;
+            else ztmp = 0;
 
-            fin.Vertices[i]->Z += 0x3FFF;
+            ztmp += 0x3FFF;
 
-            if (fin.Vertices[i]->Z < 0) 
-                fin.Vertices[i]->Z = 0;
-            else if (fin.Vertices[i]->Z > 0x7FFF)
+            if (ztmp < 0) 
+                ztmp = 0;
+            else if (ztmp > 0x7FFF)
             {
-                fin.Vertices[i]->Z = 0x7FFF;
+                ztmp = 0x7FFF;
             }
+            fin.Vertices[i]->Z = ztmp;
             fin.ZDecompress = 8;
         }
         /*else
