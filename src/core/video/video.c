@@ -15,7 +15,8 @@
 void PPU_SetTarget(struct Console* sys, const timestamp now)
 {
 #ifndef PPUST
-    sys->PPUTarget = now;
+    if (sys->PPUTarget < now)
+        sys->PPUTarget = now;
 #else
     PPU_RenderScanline(sys, false, sys->VCount);
     PPU_RenderScanline(sys, true, sys->VCount);
@@ -64,6 +65,7 @@ void LCD_HBlank(struct Console* sys, timestamp now)
     if (sys->VCount == 192)
     {
         PPU_Sync(sys, now);
+        sys->RenderedLines = 0;
         sys->BackBuf = !sys->BackBuf;
         mtx_lock(&sys->FrameBufferMutex[sys->BackBuf]);
         mtx_unlock(&sys->FrameBufferMutex[!sys->BackBuf]);
@@ -143,6 +145,7 @@ void LCD_Scanline(struct Console* sys, timestamp now)
         StartDMA9(sys, now+2+1, DMAStart_VBlank); // checkme: delay?
         StartDMA9(sys, now+2+1, DMAStart_VBlank); // checkme: delay?
 
+        SWRen_Sync(sys, now);
         GX_Swap(sys, now);
     }
     else if (sys->VCount == 262)
@@ -159,7 +162,9 @@ void LCD_Scanline(struct Console* sys, timestamp now)
 
     if (sys->VCount == 214)
     {
-        SWRen_RasterizerFrame(sys);
+        SWRen_Init(sys, now);
+        SWRen_SetTarget(sys, now+Scanline_Cycles*263);
+        //SWRen_RasterizerFrame(sys);
     }
 
     // i dont 100% trust my testing here but it seems like if both cpus write to vcount on the same scanline the arm9 wins out?

@@ -815,21 +815,29 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             PPU_Sync(sys, sys->AHB9.Timestamp);
             if (mask & 0x000000FF)
             {
-                sys->VRAMCR[0].Raw = val & 0x9B;
+                union VRAMCR new = {.Raw = val & 0x9B};
+                if ((sys->VRAMCR[0].Mode == 3) || (new.Mode == 3)) SWRen_Sync(sys, sys->AHB9.Timestamp);
+                sys->VRAMCR[0] = new;
             }
             if (mask & 0x0000FF00)
             {
-                sys->VRAMCR[1].Raw = (val >> 8) & 0x9B;
+                union VRAMCR new = {.Raw = (val>>8) & 0x9B};
+                if ((sys->VRAMCR[1].Mode == 3) || (new.Mode == 3)) SWRen_Sync(sys, sys->AHB9.Timestamp);
+                sys->VRAMCR[1] = new;
             }
             if (mask & 0x00FF0000)
             {
-                Console_SyncWith7GT(sys, sys->AHB9.Timestamp, true);
-                sys->VRAMCR[2].Raw = (val >> 16) & 0x9F;
+                union VRAMCR new = {.Raw = (val>>16) & 0x9F};
+                if ((sys->VRAMCR[2].Mode == 3) || (new.Mode == 3)) SWRen_Sync(sys, sys->AHB9.Timestamp);
+                if ((sys->VRAMCR[2].Mode == 2) || (new.Mode == 2)) Console_SyncWith7GT(sys, sys->AHB9.Timestamp, true);
+                sys->VRAMCR[2] = new;
             }
             if (mask & 0xFF000000)
             {
-                Console_SyncWith7GT(sys, sys->AHB9.Timestamp, true);
-                sys->VRAMCR[3].Raw = (val >> 24) & 0x9F;
+                union VRAMCR new = {.Raw = (val>>24) & 0x9F};
+                if ((sys->VRAMCR[3].Mode == 3) || (new.Mode == 3)) SWRen_Sync(sys, sys->AHB9.Timestamp);
+                if ((sys->VRAMCR[3].Mode == 2) || (new.Mode == 2)) Console_SyncWith7GT(sys, sys->AHB9.Timestamp, true);
+                sys->VRAMCR[3] = new;
             }
             break;
         }
@@ -838,15 +846,21 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             PPU_Sync(sys, sys->AHB9.Timestamp);
             if (mask & 0x000000FF)
             {
-                sys->VRAMCR[4].Raw = val & 0x87;
+                union VRAMCR new = {.Raw = val & 0x87};
+                if ((sys->VRAMCR[4].Mode == 3) || (new.Mode == 3)) SWRen_Sync(sys, sys->AHB9.Timestamp);
+                sys->VRAMCR[4] = new;
             }
             if (mask & 0x0000FF00)
             {
-                sys->VRAMCR[5].Raw = (val >> 8) & 0x9F;
+                union VRAMCR new = {.Raw = (val>>8) & 0x9F};
+                if ((sys->VRAMCR[5].Mode == 3) || (new.Mode == 3)) SWRen_Sync(sys, sys->AHB9.Timestamp);
+                sys->VRAMCR[5] = new;
             }
             if (mask & 0x00FF0000)
             {
-                sys->VRAMCR[6].Raw = (val >> 16) & 0x9F;
+                union VRAMCR new = {.Raw = (val>>16) & 0x9F};
+                if ((sys->VRAMCR[6].Mode == 3) || (new.Mode == 3)) SWRen_Sync(sys, sys->AHB9.Timestamp);
+                sys->VRAMCR[6] = new;
             }
             if (mask & 0xFF000000)
             {
@@ -912,6 +926,7 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
 
         case 0x00'03'04:
             PPU_Sync(sys, sys->AHB9.Timestamp);
+            SWRen_Sync(sys, sys->AHB9.Timestamp);
             MaskedWrite(sys->PowerCR9.Raw, val, mask & 0x820F);
             break;
 

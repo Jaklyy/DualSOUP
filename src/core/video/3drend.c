@@ -730,10 +730,60 @@ void SWRen_ClearScanline(GX3D* gx, u8 y)
 
 void SWRen_RasterizerFrame(struct Console* sys)
 {
-    if (!sys->PowerCR9.GPURasterizerPower) return;
+    if (!sys->PowerCR9.GPURasterizerPower)
+    {
+        sys->RenderedLines+=192;
+        return;
+    }
     for (int y = 0; y < 192; y++)
     {
         SWRen_ClearScanline(&sys->GX3D, y);
         SWRen_RasterizeScanline(sys, y);
+        sys->RenderedLines = y+1;
     }
+}
+
+void SWRen_SetTarget(struct Console* sys, const timestamp now)
+{
+    if (sys->SWRenTarget < now)
+        sys->SWRenTarget = now;
+}
+
+void SWRen_Sync(struct Console* sys, timestamp now)
+{
+    if (!sys->SWRenStart) return;
+    SWRen_SetTarget(sys, now);
+    while (sys->SWRenTimestamp < now) thrd_yield();
+}
+
+void SWRen_SyncRenderedLines(struct Console* sys, u8 y)
+{
+    while (sys->RenderedLines < y);
+}
+
+void SWRen_Wait(struct Console* sys, const timestamp now)
+{
+    while (now >= sys->SWRenTarget) thrd_yield();
+}
+
+void SWRen_Init(struct Console* sys, const timestamp now)
+{
+    if (sys->SWRenStart) return;
+    sys->SWRenTarget = now;
+    sys->SWRenTimestamp = now;
+    sys->SWRenStart = true;
+}
+
+int SWRen_MainLoop(void* ptr)
+{
+    struct Console* sys = ptr;
+    while (!sys->SWRenStart) thrd_yield();
+
+    while (!sys->KillSWRen)
+    {
+        SWRen_Wait(sys, sys->SWRenTimestamp);
+        SWRen_RasterizerFrame(sys);
+        sys->SWRenTimestamp += Scanline_Cycles*263;
+    }
+    return 0;
 }

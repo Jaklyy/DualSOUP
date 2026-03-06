@@ -508,6 +508,14 @@ struct Console
     volatile bool KillPPUs; 
     volatile bool PPUStart;
 
+    alignas(HOST_CACHEALIGN) // 3d renderer sync area
+    thrd_t SWRenThread;
+    volatile timestamp SWRenTimestamp;
+    volatile timestamp SWRenTarget;
+    volatile bool KillSWRen;
+    volatile bool SWRenStart;
+    volatile u8 RenderedLines;
+
     alignas(HOST_CACHEALIGN) u32 Framebuffer[2][2][192][256];
 
     bool BackBuf;

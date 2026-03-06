@@ -45,13 +45,18 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
         //Flash_Cleanup(&sys->Firmware);
         nvram = sys->Firmware.RAM;
         Gamecard_Cleanup(&sys->Gamecard);
+        int dummy;
 #ifndef PPUST
         sys->KillPPUs = true;
+        sys->PPUStart = true;
         sys->PPUTarget = timestamp_max;
-        int dummy;
         thrd_join(sys->PPUAThread, &dummy);
         thrd_join(sys->PPUBThread, &dummy);
 #endif
+        sys->KillSWRen = true;
+        sys->SWRenStart = true;
+        sys->SWRenTarget = timestamp_max;
+        thrd_join(sys->SWRenThread, &dummy);
     }
 
     // wipe entire emulator state
@@ -100,6 +105,7 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
 #else
     bool thrdinit1 = true, thrdinit2 = true;
 #endif
+    bool thrdinit3 = (thrd_create(&sys->SWRenThread, SWRen_MainLoop, sys) == thrd_success);
 
     if ((!cr7init) || (!cr9init)|| (num9 != 1) || (num7 != 1) || !firminit || !gcinit || !mtxinit || !mtxinit2|| !mtxinit3 || !thrdinit1 || !thrdinit2)
     {
@@ -114,6 +120,8 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
             LogPrint(LOG_ALWAYS, "FATAL: ARM7 BIOS did not load properly.\n");
         if (!thrdinit1 || !thrdinit2)
             LogPrint(LOG_ALWAYS, "FATAL: PPU Thread creation failed.\n");
+        if (!thrdinit3)
+            LogPrint(LOG_ALWAYS, "FATAL: 3D Rasterizer Thread creation failed.\n");
 
         if (!gcinit)
         {
@@ -128,13 +136,19 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
         if (mtxinit) mtx_destroy(&sys->FrameBufferMutex[0]);
         if (mtxinit3) mtx_destroy(&sys->FrameBufferMutex[1]);
         if (mtxinit2) mtx_destroy(&sys->Sched.SchedulerMtx);
+        int dummy;
 #ifndef PPUST
         sys->KillPPUs = true;
+        sys->PPUStart = true;
         sys->PPUTarget = timestamp_max;
-        int dummy;
         thrd_join(sys->PPUAThread, &dummy);
         thrd_join(sys->PPUBThread, &dummy);
 #endif
+        sys->KillSWRen = true;
+        sys->SWRenStart = true;
+        sys->SWRenTarget = timestamp_max;
+        thrd_join(sys->SWRenThread, &dummy);
+
         free(sys);
         sys = nullptr;
 

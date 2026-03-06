@@ -234,7 +234,7 @@ void PPU_3D(struct Console* sys, const u16 y)
 {
     //PPU* ppu = &sys->PPU_A;
     CompositeBuffer* buffer = sys->CompositeBufferA[0];
-
+    SWRen_SyncRenderedLines(sys, y+1);
     for (int x = 0; x < 256; x++)
         buffer[x] = (CompositeBuffer){sys->GX3D.CBuf[0][y][x] & 0x3FFFF, 0, !(sys->GX3D.CBuf[0][y][x] >> 18) /* TODO */, true, false, true};
 }
