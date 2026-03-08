@@ -479,9 +479,13 @@ struct Console
 
     u16 SoundBias;
 
-#ifdef MonitorFPS
+    u64 CountPerFrame;
+    u64 FracPerFrame;
     u64 OldTime;
-#endif
+    u64 TimeFrac;
+    volatile double FrameTime;
+    volatile double FrameTimeActual;
+
 
     alignas(HOST_CACHEALIGN)
     // FCRAM

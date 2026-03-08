@@ -163,37 +163,41 @@ int main()
 
         if (sys && !sys->Powman.PowerCR.SystemShutDown)
         {
-                int ret = mtx_trylock(&sys->FrameBufferMutex[buf]);
-                if (ret == thrd_success)
-                {
-                    int pitch; 
-                    SDL_LockTexture(blit, NULL, (void**)&buffer, &pitch);
-                    for (int s = 0; s < 2; s++)
-                        for (int y = 0; y < 192; y++)
-                            for (int x = 0; x < pitch/4; x++)
-                                for (int b = 0; b < 4; b++)
-                                {
-                                    if (b == 4) continue;
-                                    buffer[(s*192*pitch)+(y*pitch)+(x*pitch/256)+b] = (((((sys->Framebuffer[buf][s][y][x] >> (b*6)) & 0x3F) * 0xFF) / 0x3F));
-                                }
-                    SDL_UnlockTexture(blit);
-                    mtx_unlock(&sys->FrameBufferMutex[buf]);
-                    buf = !buf;
-                    SDL_RenderTexture(ren, blit, NULL, NULL);
-                    SDL_RenderPresent(ren);
-                }
-                // todo: handle thrd_error??? what am i even supposed to do with that information
-                /*char newtitle[30];
+            int ret = mtx_trylock(&sys->FrameBufferMutex[buf]);
+            if (ret == thrd_success)
+            {
+                int pitch; 
+                SDL_LockTexture(blit, NULL, (void**)&buffer, &pitch);
+                for (int s = 0; s < 2; s++)
+                    for (int y = 0; y < 192; y++)
+                        for (int x = 0; x < pitch/4; x++)
+                            for (int b = 0; b < 4; b++)
+                            {
+                                if (b == 4) continue;
+                                buffer[(s*192*pitch)+(y*pitch)+(x*pitch/256)+b] = (((((sys->Framebuffer[buf][s][y][x] >> (b*6)) & 0x3F) * 0xFF) / 0x3F));
+                            }
+                SDL_UnlockTexture(blit);
+                mtx_unlock(&sys->FrameBufferMutex[buf]);
+                buf = !buf;
+                SDL_RenderTexture(ren, blit, NULL, NULL);
+                SDL_RenderPresent(ren);
+                char str[256] = "";
+                snprintf(str, 256, "DualSOUP - %f ms - %f ms", sys->FrameTime, sys->FrameTimeActual);
+                SDL_SetWindowTitle(win, str);
+            }
+            // todo: handle thrd_error??? what am i even supposed to do with that information
+            /*char newtitle[30];
 
-                snprintf(newtitle, 30, "DualSOUP: %f ms", ((double)(newtime-oldtime) * (1.0 / countpersec)) * 1000);
-                SDL_SetWindowTitle(win, newtitle);
-                oldtime = newtime;*/
+            snprintf(newtitle, 30, "DualSOUP: %f ms", ((double)(newtime-oldtime) * (1.0 / countpersec)) * 1000);
+            SDL_SetWindowTitle(win, newtitle);
+            oldtime = newtime;*/
         }
         else
         {
             threadexists = false;
             SDL_RenderClear(ren);
             SDL_RenderPresent(ren);
+            SDL_SetWindowTitle(win, "DualSOUP");
         }
 
     }

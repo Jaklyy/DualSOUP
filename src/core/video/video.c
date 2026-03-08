@@ -70,8 +70,21 @@ void LCD_HBlank(struct Console* sys, timestamp now)
         mtx_lock(&sys->FrameBufferMutex[sys->BackBuf]);
         mtx_unlock(&sys->FrameBufferMutex[!sys->BackBuf]);
 
-        //while ((SDL_GetPerformanceCounter() - sys->OldTime) < sys->CyclesPerFrame);
-        //sys->OldTime = SDL_GetPerformanceCounter();
+        // frame limiter
+        {
+            u64 target = sys->OldTime + ((sys->CountPerFrame + sys->TimeFrac) / Base_Clock);
+            sys->TimeFrac = (sys->CountPerFrame + sys->TimeFrac) % Base_Clock;
+            double frametimeactual = (double)(SDL_GetPerformanceCounter() - sys->OldTime) * 1000.0 / SDL_GetPerformanceFrequency();
+            while(SDL_GetPerformanceCounter() < target) thrd_yield();
+            double frametime = (double)(SDL_GetPerformanceCounter() - sys->OldTime) * 1000.0 / SDL_GetPerformanceFrequency();
+            sys->OldTime = target;
+            sys->FrameTime = frametime;
+            sys->FrameTimeActual = frametimeactual;
+
+#ifdef MonitorFPS
+            LogPrint(LOG_ALWAYS, "%lu\n", sys->FrameTime);
+#endif
+        }
     }
     // schedule irq
     if (sys->DispStatRW9.HBlankIRQ) Console_ScheduleIRQs(sys, IRQ_HBlank, true, now+2); // CHECKME: delay?
@@ -94,7 +107,7 @@ void LCD_Scanline(struct Console* sys, timestamp now)
     if (sys->VCount == 262) PPU_Init(sys, now);
     if (sys->VCount == 192)
     {
-        if (SDL_GetGamepadButton(sys->Pad, SDL_GAMEPAD_BUTTON_LEFT_STICK))
+        if (SDL_GetGamepadButton(sys->Pad, SDL_GAMEPAD_BUTTON_LEFT_STICK)) // debugging junk
         {
             for (int i = 0; i < 16; i++)
             {
@@ -138,13 +151,7 @@ void LCD_Scanline(struct Console* sys, timestamp now)
             printf("done\n");
             while (SDL_GetGamepadButton(sys->Pad, SDL_GAMEPAD_BUTTON_LEFT_STICK));*/
         }
-#ifdef MonitorFPS
-        u64 newtime = SDL_GetPerformanceCounter();
-        double time = ((double)(newtime-sys->OldTime) / SDL_GetPerformanceFrequency()) * 1000.0;
-        //if (time > 0.3)
-            printf("%f\n", time);
-        sys->OldTime = newtime;
-#endif
+
         sys->DispStatRO9.Raw = 0b001;
         sys->DispStatRO7.Raw = 0b001;
 

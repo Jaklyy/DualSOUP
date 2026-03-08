@@ -155,6 +155,12 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
         return nullptr;
     }
 
+    sys->Pad = pad;
+
+    sys->CountPerFrame = (Frame_Cycles/2) * SDL_GetPerformanceFrequency();// / Base_Clock;
+    //sys->FracPerFrame = (Frame_Cycles/2) * SDL_GetPerformanceFrequency() % Base_Clock;
+    //printf("%lX %lX %lX\n", SDL_GetPerformanceFrequency(), sys->CountPerFrame, sys->FracPerFrame);
+
     // init variables
 
     ARM9_Init(&sys->ARM9, sys);
@@ -224,8 +230,6 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
     sys->GX3D.Status.FIFOHalfEmpty = true;
     sys->GX3D.Status.FIFOEmpty = true;
     sys->GX3D.BufferFree = true;
-
-    sys->Pad = pad;
 
     sys->GX3D.GXPolyRAM = sys->GX3D.PolyRAMA;
     sys->GX3D.RenderPolyRAM = sys->GX3D.PolyRAMB;
@@ -571,13 +575,10 @@ void Console_MainLoop(struct Console* sys)
     CR_Start = true;
     mtx_lock(&sys->FrameBufferMutex[sys->BackBuf]);
     Scheduler_UpdateTargets(sys);
-    while(true)
+    sys->TimeFrac = 0;
+    sys->OldTime = SDL_GetPerformanceCounter();
+    while(!sys->KillThread)
     {
-        if (sys->KillThread)
-        {
-            return;
-        }
-
 #ifdef UseThreads
         while ((Console_GetARM9Max(sys) < sys->ARM7Target) || (Console_GetARM7Max(sys) < sys->ARM7Target)); //printf("9 %li %li 7 %li %li\n", sys->ARM9.ARM.Timestamp, sys->ARM9Target, sys->ARM7.ARM.Timestamp, sys->ARM7Target);
 #else
