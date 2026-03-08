@@ -19,7 +19,7 @@ struct Timer
                 struct
                 {
                     u8 Divider : 2;
-                    bool OverflowTick : 1; // todo: name this something better
+                    bool OverflowTick : 1;
                     u8 : 3;
                     bool IRQ : 1;
                     bool Enable : 1;

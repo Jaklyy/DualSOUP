@@ -62,7 +62,7 @@ void Timer_CalcNextIRQ(struct Console* sys, timestamp now, bool a9)
 
             if (ckd_mul(&timerper[i], timerper[i], timerper[i-1]))
             {
-                timerrem[i] = timestamp_max;
+                timerper[i] = timestamp_max;
             }
         }
         if (timers[i].CR.IRQ)
@@ -187,8 +187,8 @@ void Timer_UpdateCRs(struct Console* sys, timestamp now, bool a9)
 
             timer->Regs = timer->BufferedRegs;
 
-            if (i >= 4) timer->DividerShift = 2;
-            else timer->DividerShift = ((timer->CR.Divider == 0) ? 0 : ((timer->CR.Divider * 2) + 4));
+            if (i >= 4) timer->DividerShift = 1;
+            else timer->DividerShift = (((timer->CR.Divider == 0) || timer->CR.OverflowTick) ? 0 : ((timer->CR.Divider * 2) + 4));
 
             if (!oldenable && timer->CR.Enable)
             {
