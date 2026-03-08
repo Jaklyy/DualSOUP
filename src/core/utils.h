@@ -130,16 +130,17 @@ enum LoggingLevels : u64
     LOG_ODD     = (1<<4 ), // Program doing something weird that isn't inherently bad...?
     LOG_EXCEP   = (1<<5 ), // Hardware error handler has been triggered. Probably means the software has crashed.
     LOG_BUG     = (1<<6 ), // Program is triggering hardware bugs.
-    LOG_VRAM    = (1<<7 ), // vram
-    LOG_PPU     = (1<<8 ), // ppu stuff
-    LOG_FLASH   = (1<<9 ), // flash
-    LOG_IO      = (1<<10), // ahb mmapped io
-    LOG_CARD    = (1<<11), // gamecard
-    LOG_GX      = (1<<12), // 3d geometry engine
-    LOG_RTC     = (1<<13), // real time clock hardware
-    LOG_DMA     = (1<<14), // direct memory access
-    LOG_WIFI    = (1<<15), // DS WiFi hardware
-    LOG_TSC     = (1<<16), // DS Touch Screen Controller.
+    LOG_VRAM    = (1<<7 ), // VRAM.
+    LOG_PPU     = (1<<8 ), // PPU.
+    LOG_FLASH   = (1<<9 ), // Flash.
+    LOG_IO      = (1<<10), // Memory mapped IO.
+    LOG_CARD    = (1<<11), // Gamecard.
+    LOG_GX      = (1<<12), // 3D Geometry Engine.
+    LOG_RTC     = (1<<13), // Real Time Clock.
+    LOG_DMA     = (1<<14), // Direct Memory Access.
+    LOG_WIFI    = (1<<15), // WiFi.
+    LOG_TSC     = (1<<16), // Touch Screen Controller.
+    LOG_SOUND   = (1<<17), // Sound Processing.
 };
 
 #define LOG_CPUID (1 << cpu->CPUID)
@@ -155,14 +156,16 @@ enum LoggingLevels : u64
 // for some reason there isn't a rotate right function i can use...?
 [[nodiscard]] static inline u32 ROR32(const u32 val, u8 ror)
 {
-    ror &= 0x1F; // do this to hopefully avoid undefined behavior.
-    return (val >> ror) | (val << (32-ror));
+    // AND to hopefully avoid undefined behavior.
+    ror &= 0x1F;
+    return (val >> ror) | (val << ((32-ror) & 0x1F));
 }
 
 [[nodiscard]] static inline u32 ROL32(const u32 val, u8 rol)
 {
-    rol &= 0x1F; // do this to hopefully avoid undefined behavior.
-    return (val << rol) | (val >> (32-rol));
+    // AND to hopefully avoid undefined behavior.
+    rol &= 0x1F;
+    return (val << rol) | (val >> ((32-rol) & 0x1F));
 }
 
 // TODO: should this be per thread?

@@ -1,4 +1,5 @@
 #include "dma.h"
+#include "sound.h"
 #include "../console.h"
 #include "../scheduler.h"
 
@@ -31,10 +32,10 @@ void DMA_Schedule(struct Console* sys, const bool a9)
     struct DMA_Controller* cnt = ((a9) ? &sys->DMA9 : &sys->DMA7);
 
     timestamp time = timestamp_max;
-    u8 id = 4; // returning an id of 4 makes it check the cur mask somewhere it should always be 0
+    u8 id = 31; // returning an id of 31 makes it check the cur mask somewhere it should always be 0
 
     int max = stdc_trailing_zeros((u32)cnt->CurMask);
-    #pragma unroll 4
+    #pragma unroll (4+16)
     for (int i = 0; i < max; i++)
     {
         if (time > cnt->ChannelTimestamps[i])
@@ -58,11 +59,7 @@ void StartDMA9(struct Console* sys, timestamp start, u8 mode)
         if (sys->DMA9.CurMask & (1<<i))
         {
             // CHECKME
-            if (sys->DMA9.Channels[i].CurrentMode == DMAStart_NTRCard)// || sys->DMA9.Channels[i].CurrentMode == DMAStart_3DFIFO)
-            {
-                sys->DMA9.Channels[i].DMAQueued = true;
-            }
-            else
+            if ((sys->DMA9.Channels[i].CurrentMode != DMAStart_NTRCard) && (sys->DMA9.Channels[i].CurrentMode != DMAStart_3DFIFO))
             {
                 LogPrint(LOG_DMA|LOG_ODD, "DMA9: channel already going??? mask:%X errchan:%i chanmode:%i\n", sys->DMA9.CurMask, i, sys->DMA9.Channels[i].CurrentMode);
             }
@@ -77,7 +74,7 @@ void StartDMA9(struct Console* sys, timestamp start, u8 mode)
 void StartDMA7(struct Console* sys, timestamp start, u8 mode)
 {
     bool update = false;
-    for (int i = 0; i < 4; i++)
+    for (int i = 16; i < (4+16); i++)
     {
         if (!sys->DMA7.Channels[i].CR.Enable) continue;
         if (sys->DMA7.Channels[i].CurrentMode != mode) continue;
@@ -85,11 +82,7 @@ void StartDMA7(struct Console* sys, timestamp start, u8 mode)
         if (sys->DMA7.CurMask & (1<<i))
         {
             // CHECKME
-            if (sys->DMA7.Channels[i].CurrentMode == DMAStart_NTRCard)
-            {
-                sys->DMA7.Channels[i].DMAQueued = true;
-            }
-            else
+            if (sys->DMA7.Channels[i].CurrentMode != DMAStart_NTRCard)
             {
                 LogPrint(LOG_DMA|LOG_ODD, "DMA7: channel already going??? mask:%X errchan:%i chanmode:%i\n", sys->DMA7.CurMask, i, sys->DMA7.Channels[i].CurrentMode);
             }
@@ -101,6 +94,17 @@ void StartDMA7(struct Console* sys, timestamp start, u8 mode)
     if (update) DMA_Schedule(sys, false);
 }
 
+void StartSoundDMA(struct Console* sys, u8 id, timestamp start)
+{
+    if (!sys->DMA7.Channels[id].CR.Enable) return;
+    if (sys->DMA7.ChannelTimestamps[id] != timestamp_max)
+    {
+        LogPrint(LOG_SOUND, "Starting sound dma while active\n");
+        return; // active
+    }
+    sys->DMA7.ChannelTimestamps[id] = start;
+    DMA_Schedule(sys, false);
+}
 
 void DMA7_Enable(struct Console* sys, struct DMA_Channel* channel, u8 channel_id)
 {
@@ -271,10 +275,14 @@ void DMA_Run(struct Console* sys, const bool a9)
     struct DMA_Channel* channel = &cnt->Channels[id];
 
     // CHECKME: idk, where and when things are latched needs testing.
-    if (channel->CR.SourceCR == 3) channel->Latched_SrcAddr = channel->SrcAddr;
+    if (channel->CR.SourceCR == 3)
+    {
+        channel->Latched_SrcAddr = channel->SrcAddr;
+        channel->SrcAddr = channel->SrcAddrReload;
+    }
     if (channel->CR.DestCR == 3) channel->Latched_DstAddr = channel->DstAddr;
 
-    if (channel->Latched_NumWords == 0) channel->Latched_NumWords = (channel->CR.NumWords ? channel->CR.NumWords : 0x200000);
+    if (channel->Latched_NumWords == 0) channel->Latched_NumWords = channel->NumWords;
 
 
     cnt->CurMask |= 1<<id;
@@ -293,6 +301,11 @@ void DMA_Run(struct Console* sys, const bool a9)
     {
         if (numword > 112) numword = 112;
     }
+    if (channel->CurrentMode == DMAStart_Audio)
+    {
+        if (numword > 4) numword = 4; // checkme
+    }
+
 
     while(numword > 0)
     {
@@ -310,6 +323,7 @@ void DMA_Run(struct Console* sys, const bool a9)
             wseq = false;
             tseq = false; // checkme
         }
+        channel->Latched_SrcAddr &= channel->SrcAddrMask;
         //if (channel->CurrentMode == DMAStart_HBlank) printf("dmatimeb: cw%i lw%i nm%i md%i ti%li\n", numword, channel->Latched_NumWords, id, channel->CurrentMode, cnt->ChannelTimestamps[id]);
         //if (a9) printf("dmatimeb: %i %li\n", id, cnt->ChannelTimestamps[id]);
         timestamp diff = cnt->ChannelTimestamps[id];
@@ -323,25 +337,36 @@ void DMA_Run(struct Console* sys, const bool a9)
             read = AHB7_Read(sys, &cnt->ChannelTimestamps[id], channel->Latched_SrcAddr, rmask, false, true, &rseq, true, 0xFFFFFFFF /*checkme?*/);
         }
         diff = cnt->ChannelTimestamps[id] - diff;
+        channel->Latched_SrcAddr += channel->SrcInc;
         //if (a9) printf("dmatimec: %i %li\n", id, cnt->ChannelTimestamps[id]);
         //if (channel->CurrentMode == DMAStart_HBlank) printf("dmatimec: cw%i lw%i nm%i md%i ti%li\n", numword, channel->Latched_NumWords, id, channel->CurrentMode, cnt->ChannelTimestamps[id]);
 
-        channel->Latched_SrcAddr += channel->SrcInc;
-        if (!AHB_NegOwnership(sys, &cnt->ChannelTimestamps[id], false, a9))
+        if (channel->CurrentMode != DMAStart_Audio)
         {
-            rseq = false;
-            wseq = false;
-            tseq = false; // checkme
-        }
-        //if (channel->CurrentMode == DMAStart_HBlank) printf("dmatimed: cw%i lw%i nm%i md%i ti%li\n", numword, channel->Latched_NumWords, id, channel->CurrentMode, cnt->ChannelTimestamps[id]);
-        //if (a9) printf("dmatimed: %i %li\n", id, cnt->ChannelTimestamps[id]);
-        if (a9)
-        {
-            AHB9_Write(sys, &cnt->ChannelTimestamps[id], channel->Latched_DstAddr, read, wmask, false, &wseq, true);
+            if (!AHB_NegOwnership(sys, &cnt->ChannelTimestamps[id], false, a9))
+            {
+                rseq = false;
+                wseq = false;
+                tseq = false; // checkme
+            }
+            //if (channel->CurrentMode == DMAStart_HBlank) printf("dmatimed: cw%i lw%i nm%i md%i ti%li\n", numword, channel->Latched_NumWords, id, channel->CurrentMode, cnt->ChannelTimestamps[id]);
+            //if (a9) printf("dmatimed: %i %li\n", id, cnt->ChannelTimestamps[id]);
+            channel->Latched_DstAddr &= channel->DstAddrMask;
+            if (a9)
+            {
+                AHB9_Write(sys, &cnt->ChannelTimestamps[id], channel->Latched_DstAddr, read, wmask, false, &wseq, true);
+            }
+            else
+            {
+                AHB7_Write(sys, &cnt->ChannelTimestamps[id], channel->Latched_DstAddr, read, wmask, false, &wseq, true, 0xFFFFFFFF /*checkme?*/);
+            }
         }
         else
         {
-            AHB7_Write(sys, &cnt->ChannelTimestamps[id], channel->Latched_DstAddr, read, wmask, false, &wseq, true, 0xFFFFFFFF /*checkme?*/);
+            cnt->ChannelTimestamps[id] += 1;
+            //if (channel->Latched_SrcAddr < 0x02000000) printf("bad sound dma start\n");
+            //printf("fill: %i %lu\n", id, cnt->ChannelTimestamps[id]);
+            SoundFIFO_Fill(sys, read, id, cnt->ChannelTimestamps[id]);
         }
         // CHECKME: should this only apply to the actual first?
         if (!tseq)
@@ -367,10 +392,18 @@ void DMA_Run(struct Console* sys, const bool a9)
 
     cnt->CurMask &= ~1<<id;
 
+    bool dmaqueued = false;
     if (channel->Latched_NumWords == 0)
     {
         if (channel->CR.Repeat && (channel->CurrentMode != DMAStart_Immediate /*checkme?*/))
         {
+            if (channel->CurrentMode == DMAStart_NTRCard)
+            {
+                if ((sys->ExtMemCR_Shared.NDSCardAccess == !a9) && sys->GCROMCR[a9].DataReady)
+                {
+                    dmaqueued = true;
+                }
+            }
             // TODO: reschedule
             // CHECKME: does this even matter anymore? i dont think it does.
             //LogPrint(LOG_UNIMP | LOG_DMA, "UNIMP: DMA WANTS RESCHEDULE %i\n", channel->CurrentMode);
@@ -386,12 +419,17 @@ void DMA_Run(struct Console* sys, const bool a9)
     else if (channel->CurrentMode == DMAStart_3DFIFO)
     {
         if (sys->GX3D.Status.FIFOHalfEmpty)
-            channel->DMAQueued = true;
+            dmaqueued = true;
     }
 
-    if (!channel->DMAQueued)
+    if ((channel->CurrentMode == DMAStart_Audio) && (!sys->SoundChannels[id].FIFOSatiated) && channel->CR.Enable)
+    {
+        dmaqueued = true;
+        //cnt->ChannelTimestamps[id] = channel->SoundLast+channel->SoundIter;
+    }
+
+    if (!dmaqueued)
         cnt->ChannelTimestamps[id] = timestamp_max;
-    else channel->DMAQueued = false;
 
     DMA_Schedule(sys, a9);
 }
@@ -440,6 +478,7 @@ void DMA9_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 
         mask &= 0x0FFFFFFE;
 
         MaskedWrite(cur->SrcAddr, val, mask);
+        cur->SrcAddrReload = cur->SrcAddr;
         break;
     }
     case 1: // destination address
@@ -453,6 +492,7 @@ void DMA9_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 
     {
         union DMA_CR oldcr = cur->CR;
         MaskedWrite(cur->CR.Raw, val, mask);
+        cur->NumWords = (cur->CR.NumWords ? cur->CR.NumWords : 0x200000);
 
         if (oldcr.Enable ^ cur->CR.Enable)
         {
@@ -489,6 +529,7 @@ void DMA7_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 
         val &= ((channel == 0) ? 0x07FFFFFE : 0x0FFFFFFE);
 
         MaskedWrite(cur->SrcAddr, val, mask);
+        cur->SrcAddrReload = cur->SrcAddr;
         break;
     }
     case 1: // destination address
@@ -504,6 +545,7 @@ void DMA7_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 
 
         union DMA_CR oldcr = cur->CR;
         MaskedWrite(cur->CR.Raw, val, mask);
+        cur->NumWords = (cur->CR.NumWords ? cur->CR.NumWords : 0x200000);
 
         if (oldcr.Enable ^ cur->CR.Enable)
         {

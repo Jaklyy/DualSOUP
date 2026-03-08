@@ -181,10 +181,38 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
     sys->DMA9.NextTime = timestamp_max;
     sys->DMA7.NextTime = timestamp_max;
 
-    sys->DMA9.CurMask = 0xF0;
-    sys->DMA7.CurMask = 0xF0;
-    sys->DMA9.NextID = 4;
-    sys->DMA7.NextID = 4;
+    for (int i = 0; i < 16; i++)
+    {
+        sys->DMA7.Channels[i].CurrentMode = DMAStart_Audio;
+        sys->DMA7.Channels[i].CR.Width32 = true;
+        sys->DMA7.Channels[i].SrcInc = 4;
+        sys->DMA7.Channels[i].SrcAddrMask = 0x07FFFFFC;
+    }
+
+    sys->DMA7.Channels[0+16].SrcAddrMask = 0x07FFFFFE;
+    sys->DMA7.Channels[1+16].SrcAddrMask = 0x0FFFFFFE;
+    sys->DMA7.Channels[2+16].SrcAddrMask = 0x0FFFFFFE;
+    sys->DMA7.Channels[3+16].SrcAddrMask = 0x0FFFFFFE;
+
+    sys->DMA7.Channels[0+16].DstAddrMask = 0x0FFFFFFE;
+    sys->DMA7.Channels[1+16].DstAddrMask = 0x0FFFFFFE;
+    sys->DMA7.Channels[2+16].DstAddrMask = 0x0FFFFFFE;
+    sys->DMA7.Channels[3+16].DstAddrMask = 0x07FFFFFE;
+
+    sys->DMA9.Channels[0].SrcAddrMask = 0x0FFFFFFE;
+    sys->DMA9.Channels[1].SrcAddrMask = 0x0FFFFFFE;
+    sys->DMA9.Channels[2].SrcAddrMask = 0x0FFFFFFE;
+    sys->DMA9.Channels[3].SrcAddrMask = 0x0FFFFFFE;
+
+    sys->DMA9.Channels[0].DstAddrMask = 0x0FFFFFFE;
+    sys->DMA9.Channels[1].DstAddrMask = 0x0FFFFFFE;
+    sys->DMA9.Channels[2].DstAddrMask = 0x0FFFFFFE;
+    sys->DMA9.Channels[3].DstAddrMask = 0x0FFFFFFE;
+
+    sys->DMA9.CurMask = 0xFFFFFFF'0;
+    sys->DMA7.CurMask = 0xFFF'0'0000;
+    sys->DMA9.NextID = 31;
+    sys->DMA7.NextID = 31;
 
     sys->IPCFIFO7.CR.RecvFIFOEmpty = true;
     sys->IPCFIFO7.CR.SendFIFOEmpty = true;

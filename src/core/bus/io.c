@@ -7,6 +7,7 @@
 #include "../io/powman.h"
 #include "../video/video.h"
 #include "../io/tsc.h"
+#include "../io/sound.h"
 
 
 
@@ -289,10 +290,10 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask, const bool tim
             return (sys->VCount << 16) | sys->DispStatRO7.Raw | sys->DispStatRW7.Raw;
 
         case 0x00'00'B0 ... 0x00'00'E0-1:
-            return DMA_IOReadHandler(sys->DMA7.Channels, addr);
+            return DMA_IOReadHandler(&sys->DMA7.Channels[16], addr);
 
         case 0x00'01'00 ... 0x00'01'0C:
-            return Timer_IOReadHandler(sys, sys->Timers7, sys->AHB7.Timestamp, addr, false);
+            return Timer_IOReadHandler(sys, sys->AHB7.Timestamp, addr, false);
 
         case 0x00'01'30:
             return Input_PollMain(sys->Pad);
@@ -343,14 +344,32 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask, const bool tim
         case 0x00'03'04:
             return sys->PowerCR7.Raw;
 
+
+        case 0x00'04'00 ... 0x00'04'FC:
+            return SoundChannel_IORead(sys, addr, sys->AHB7.Timestamp);
+
+        case 0x00'05'00:
+            return sys->SoundCR.Raw;
         case 0x00'05'04:
             return sys->SoundBias;
+
+        case 0x00'05'08:
+            return sys->SoundCaptures[0].CR.Raw | (sys->SoundCaptures[1].CR.Raw << 8);
+        case 0x00'05'10:
+            return sys->SoundCaptures[0].DstAddr;
+        case 0x00'05'14:
+            return sys->SoundCaptures[0].Length;
+        case 0x00'05'18:
+            return sys->SoundCaptures[1].DstAddr;
+        case 0x00'05'1C:
+            return sys->SoundCaptures[1].Length;
 
         case 0x10'00'00:
             return IPC_FIFORead(sys, mask, false);
 
         case 0x10'00'10:
             return Gamecard_ROMDataRead(sys, sys->AHB7.Timestamp, false);
+
 
         default:
             if (timings) LogPrint(LOG_ARM7 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO7 READ: %08X %08X @ %08X\n", addr, mask, sys->ARM7.ARM.PC);
@@ -376,11 +395,11 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             break;
 
         case 0x00'00'B0 ... 0x00'00'E0-1:
-            DMA7_IOWriteHandler(sys, sys->DMA7.Channels, addr, val, mask);
+            DMA7_IOWriteHandler(sys, &sys->DMA7.Channels[16], addr, val, mask);
             break;
 
         case 0x00'01'00 ... 0x00'01'0C:
-            Timer_IOWriteHandler(sys, sys->Timers7, sys->AHB7.Timestamp, addr, val, mask, false);
+            Timer_IOWriteHandler(sys, sys->AHB7.Timestamp, addr, val, mask, false);
             break;
 
         case 0x00'01'34:
@@ -464,6 +483,7 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             sys->IF7 |= sys->IF7Held;
             break;
 
+
         case 0x00'03'00:
             if (a7pc < 0x4000) // can only be written from bios. for... some reason?
             {
@@ -507,9 +527,51 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
                 MaskedWrite(sys->Bios7Prot, val, mask & 0xFFFC);
             break;
 
+
+        case 0x00'04'00 ... 0x00'04'FC:
+            SoundChannel_IOWrite(sys, addr, val, mask, sys->AHB7.Timestamp);
+            break;
+
+        case 0x00'05'00:
+            u16 old = sys->SoundCR.Raw;
+            MaskedWrite(sys->SoundCR.Raw, val, mask & 0xBF7F);
+            /*if ((val ^ old) & 0x8000) // checkme?
+            {
+                if (val & 0x8000)
+                {
+                    printf("Sound Master enable\n");
+                    SoundChannel_TryStartAll(sys, sys->AHB7.Timestamp);
+                }
+                else
+                {
+                    printf("Sound Master disable\n");
+                    SoundChannel_KillAll(sys, sys->AHB7.Timestamp);
+                }
+            }*/
+            break;
+
         case 0x00'05'04:
             MaskedWrite(sys->SoundBias, val, mask & 0x3FF);
             break;
+
+        case 0x00'05'08:
+            if (mask & 0x00FF) sys->SoundCaptures[0].CR.Raw = (val>>0) & 0x0E; // actually 8F
+            if (mask & 0xFF00) sys->SoundCaptures[1].CR.Raw = (val>>8) & 0x0E; // actually 8F
+            break;
+
+        case 0x00'05'10:
+            MaskedWrite(sys->SoundCaptures[0].DstAddr, val, mask & 0x7FFFFFF);
+            break;
+        case 0x00'05'14:
+            MaskedWrite(sys->SoundCaptures[0].Length, val, mask & 0xFFFF);
+            break;
+        case 0x00'05'18:
+            MaskedWrite(sys->SoundCaptures[1].DstAddr, val, mask & 0x7FFFFFF);
+            break;
+        case 0x00'05'1C:
+            MaskedWrite(sys->SoundCaptures[1].Length, val, mask & 0xFFFF);
+            break;
+
 
         default:
             LogPrint(LOG_ARM7 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO7 WRITE: %08X %08X %08X @ %08X\n", addr, val, mask, sys->ARM7.ARM.PC);
@@ -549,11 +611,12 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask, const bool tim
         // DMA
         case 0x00'00'B0 ... 0x00'00'E0-1:
             return DMA_IOReadHandler(sys->DMA9.Channels, addr);
+
         case 0x00'00'E0 ... 0x00'00'EC:
             return sys->DMAFill[(addr & 0xF) / 4];
 
         case 0x00'01'00 ... 0x00'01'0C:
-            return Timer_IOReadHandler(sys, sys->Timers9, sys->AHB9.Timestamp, addr, true);
+            return Timer_IOReadHandler(sys, sys->AHB9.Timestamp, addr, true);
 
         case 0x00'01'30:
             return Input_PollMain(sys->Pad);
@@ -747,7 +810,7 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             break;
 
         case 0x00'01'00 ... 0x00'01'0C:
-            Timer_IOWriteHandler(sys, sys->Timers9, sys->AHB9.Timestamp, addr, val, mask, true);
+            Timer_IOWriteHandler(sys, sys->AHB9.Timestamp, addr, val, mask, true);
             break;
 
         case 0x00'01'80: // ipcsync

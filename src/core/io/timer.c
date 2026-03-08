@@ -1,11 +1,15 @@
 #include <stdckdint.h>
 #include "../console.h"
 #include "timer.h"
+#include "sound.h"
 
 
 
 
 extern void Timer_Run(struct Console* sys, struct Timer* timers, const timestamp until, bool a9);
+
+extern void Timer9_UpdateCRs(struct Console* sys, timestamp now);
+extern void Timer7_UpdateCRs(struct Console* sys, timestamp now);
 
 void Timer_SchedRun9(struct Console* sys, timestamp now)
 {
@@ -20,10 +24,21 @@ void Timer_SchedRun7(struct Console* sys, timestamp now)
 void Timer_CalcNextIRQ(struct Console* sys, timestamp now, bool a9)
 {
     struct Timer* timers = ((a9) ? sys->Timers9 : sys->Timers7);
-    timestamp timerrem[4];
-    timestamp timerper[4];
-    timestamp nextirq[4] = {timestamp_max, timestamp_max, timestamp_max, timestamp_max};
-    for (int i = 0; i < 4; i++)
+    timestamp timerrem[20];
+    timestamp timerper[20];
+    timestamp nextirq[20];
+    for (int i = 0; i < (a9 ? 4 : 20); i++) nextirq[i] = timestamp_max;
+
+    for (int i = 0; i < (a9 ? 4 : 20); i++)
+    {
+        if (timers[i].NeedsUpdate)
+        {
+            if (a9) { Schedule_Event(sys, Timer9_UpdateCRs, Evt_Timer9, now+1); return; }
+            else    { Schedule_Event(sys, Timer7_UpdateCRs, Evt_Timer7, now+1); return; }
+        }
+    }
+
+    for (int i = 0; i < (a9 ? 4 : 20); i++)
     {
         if (!timers[i].On)
         {
@@ -55,7 +70,7 @@ void Timer_CalcNextIRQ(struct Console* sys, timestamp now, bool a9)
     }
 
     timestamp next = timestamp_max;
-    for (int i = 0; i < 4; i++)
+    for (int i = 0; i < (a9 ? 4 : 20); i++)
     {
         if (next > nextirq[i])
             next = nextirq[i];
@@ -82,16 +97,24 @@ bool Timer_AddTicks(struct Console* sys, struct Timer* timers, const int timernu
         numoverflows = (ticks / iterlen) + 1;
 
 
-        if ((timernum != 3) // not the last timer
+        if ((timernum < 3) // not the last timer
             && timers[timernum+1].CR.OverflowTick // next timer ticks when we overflow
             && (timers[timernum+1].On)) // next timer is running
         {
             timers[timernum+1].JustOverflowed = Timer_AddTicks(sys, timers, timernum+1, numoverflows, a9); // tick the next timer
         }
 
-        if (timers[timernum].CR.IRQ)
-            Console_ScheduleIRQs(sys, IRQ_Timer0+timernum, a9, timers[timernum].LastUpdated); // last update is kinda wrong to use but probably good enough tbh :: checkme: delay?
-
+        if (timer->CR.IRQ)
+        {
+            if (timernum < 4)
+            {
+                Console_ScheduleIRQs(sys, IRQ_Timer0+timernum, a9, timer->LastUpdated); // last update is kinda wrong to use but probably good enough tbh :: checkme: delay?
+            }
+            else // sound dma; sample audio fifo
+            {
+                SoundFIFO_Sample(sys, timernum-4, timer->LastUpdated);
+            }
+        }
         return (timer->Counter == timer->Reload); // overflowed on last cycle
     }
     else
@@ -105,7 +128,7 @@ void Timer_Run(struct Console* sys, struct Timer* timers, const timestamp until,
 {
     // probably not strictly required to always run all 4 timers.
     // but doing so keeps the logic simple.
-    for (int i = 0; i < 4; i++)
+    for (int i = 0; i < (a9 ? 4 : 20); i++)
     {
         struct Timer* timer = &timers[i];
 
@@ -117,23 +140,23 @@ void Timer_Run(struct Console* sys, struct Timer* timers, const timestamp until,
         timestamp ticks = (until >> timer->DividerShift) - (timer->LastUpdated >> timer->DividerShift);
 
         timer->LastUpdated = until; 
-        timer[i].JustOverflowed = Timer_AddTicks(sys, timers, i, ticks, a9);
+        timer->JustOverflowed = Timer_AddTicks(sys, timers, i, ticks, a9);
     }
     Timer_CalcNextIRQ(sys, until, a9);
 }
 
 void Timer_InitReload(struct Console* sys, timestamp now, bool a9)
 {
-    struct Timer* timer = (a9 ? sys->Timers9 : sys->Timers7);
-    Timer_Run(sys, timer, now, a9);
+    struct Timer* timers = (a9 ? sys->Timers9 : sys->Timers7);
+    Timer_Run(sys, timers, now, a9);
 
-    for (int i = 0; i < 4; i++)
+    for (int i = 0; i < (a9 ? 4 : 20); i++)
     {
-        if (timer[i].NeedsEnable)
+        if (timers[i].NeedsEnable)
         {
-            timer[i].NeedsEnable = false;
-            timer[i].On = true;
-            timer[i].Counter = timer[i].Reload;
+            timers[i].NeedsEnable = false;
+            timers[i].On = true;
+            timers[i].Counter = timers[i].Reload;
         }
     }
     Timer_CalcNextIRQ(sys, now, a9);
@@ -151,33 +174,35 @@ void Timer7_InitReload(struct Console* sys, timestamp now)
 
 void Timer_UpdateCRs(struct Console* sys, timestamp now, bool a9)
 {
-    struct Timer* timer = (a9 ? sys->Timers9 : sys->Timers7);
-    Timer_Run(sys, timer, now, a9);
+    struct Timer* timers = (a9 ? sys->Timers9 : sys->Timers7);
+    Timer_Run(sys, timers, now, a9);
 
-    for (int i = 0; i < 4; i++)
+    for (int i = 0; i < (a9 ? 4 : 20); i++)
     {
-        if (timer[i].NeedsUpdate)
+        struct Timer* timer = &timers[i];
+        if (timer->NeedsUpdate)
         {
-            timer[i].NeedsUpdate = false;
-            bool oldenable = timer[i].CR.Enable;
+            timer->NeedsUpdate = false;
+            bool oldenable = timer->CR.Enable;
 
-            timer[i].Regs = timer[i].BufferedRegs;
+            timer->Regs = timer->BufferedRegs;
 
-            timer->DividerShift = ((timer->CR.Divider == 0) ? 0 : ((timer->CR.Divider * 2) + 4));
+            if (i >= 4) timer->DividerShift = 2;
+            else timer->DividerShift = ((timer->CR.Divider == 0) ? 0 : ((timer->CR.Divider * 2) + 4));
 
-            if (!oldenable && timer[i].CR.Enable)
+            if (!oldenable && timer->CR.Enable)
             {
-                timer[i].NeedsEnable = true;
+                timer->NeedsEnable = true;
             }
             else 
             {
-                if (oldenable && !timer[i].CR.Enable)
+                if (oldenable && !timer->CR.Enable)
                 {
-                    timer[i].On = false;
+                    timer->On = false;
                     // overflow is detected twice
-                    if (timer[i].JustOverflowed && (i != 3) && timer[i+1].CR.OverflowTick && timer[i+1].On)
+                    if (timer[i].JustOverflowed && (i < 3) && timer[i+1].CR.OverflowTick && timer[i+1].On)
                     {
-                        Timer_AddTicks(sys, timer, i+1, 1, a9);
+                        Timer_AddTicks(sys, timers, i+1, 1, a9);
                         // it overflows twice here idk how im adding that rn
                     }
                 }
@@ -186,6 +211,15 @@ void Timer_UpdateCRs(struct Console* sys, timestamp now, bool a9)
     }
     if (a9) Schedule_Event(sys, Timer9_InitReload, Evt_Timer9, now+1);
     else    Schedule_Event(sys, Timer7_InitReload, Evt_Timer7, now+1);
+
+    for (int i = 0; i < (a9 ? 4 : 20); i++)
+    {
+        if (timers[i].NeedsUpdate)
+        {
+            if (a9) { Schedule_Event(sys, Timer9_UpdateCRs, Evt_Timer9, now+1); return; }
+            else    { Schedule_Event(sys, Timer7_UpdateCRs, Evt_Timer7, now+1); return; }
+        }
+    }
 }
 
 void Timer9_UpdateCRs(struct Console* sys, timestamp now)
@@ -198,12 +232,10 @@ void Timer7_UpdateCRs(struct Console* sys, timestamp now)
     Timer_UpdateCRs(sys, now, false);
 }
 
-void Timer_IOWriteHandler(struct Console* sys, struct Timer* timers, const timestamp curts, const u32 addr, const u32 val, const u32 mask, const bool a9)
+void Timer_IOWriteHandler(struct Console* sys, const timestamp curts, const u32 addr, const u32 val, const u32 mask, const bool a9)
 {
     if (a9) Scheduler_RunEventManual(sys, curts, Evt_Timer9, true, true);
     else    Scheduler_RunEventManual(sys, curts, Evt_Timer7, false, true);
-
-    Timer_Run(sys, timers, curts, a9);
 
     unsigned timerno = ((addr & 0xF) / 4) % 4;
     struct Timer* timer = &(a9 ? sys->Timers9 : sys->Timers7)[timerno];
@@ -218,14 +250,13 @@ void Timer_IOWriteHandler(struct Console* sys, struct Timer* timers, const times
     //Timer_CalcNextIRQ(sys, curts, a9);
 }
 
-u32 Timer_IOReadHandler(struct Console* sys, struct Timer* timers, const timestamp curts, const u32 addr, const bool a9)
+u32 Timer_IOReadHandler(struct Console* sys, const timestamp curts, const u32 addr, const bool a9)
 {
     if (a9) Scheduler_RunEventManual(sys, curts, Evt_Timer9, true, true);
     else    Scheduler_RunEventManual(sys, curts, Evt_Timer7, false, true);
 
-    Timer_Run(sys, timers, curts, a9);
+    unsigned timerno = ((addr & 0xF) / 4) % 4;
+    struct Timer* timer = &(a9 ? sys->Timers9 : sys->Timers7)[timerno];
 
-    int timerno = ((addr & 0xF) / 4) % 4;
-
-    return timers[timerno].CR.Raw << 16 | timers[timerno].Counter;
+    return timer->CR.Raw << 16 | timer->Counter;
 }

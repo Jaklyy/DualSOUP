@@ -38,5 +38,5 @@ struct Timer
 
 struct Console;
 
-void Timer_IOWriteHandler(struct Console* sys, struct Timer* timers, const timestamp curts, const u32 addr, u32 val, const u32 mask, const bool a9);
-u32 Timer_IOReadHandler(struct Console* sys, struct Timer* timers, const timestamp curts, const u32 addr, const bool a9);
+void Timer_IOWriteHandler(struct Console* sys, const timestamp curts, const u32 addr, u32 val, const u32 mask, const bool a9);
+u32 Timer_IOReadHandler(struct Console* sys, const timestamp curts, const u32 addr, const bool a9);

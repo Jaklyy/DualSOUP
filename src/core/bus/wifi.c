@@ -117,8 +117,18 @@ void WiFi_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
                 u8 idx = (val & 0xFF);
                 if ((val >> 12) == 5)
                 {
-                    if (((idx < 0x40) && !((1ull << idx) & 0x0000'0080'07C7'E001))
-                        || ((idx < 0x69) && !((1ull << (idx-0x40)) & 0xFFFF'FE52'E000'2000)))
+                    bool pass;
+                    if (idx < 0x40)
+                    {
+                        pass = (!((1ull << idx) & 0x0000'0080'07C7'E001));
+                    } 
+                    else if (idx < 0x69)
+                    {
+                        pass = (!((1ull << (idx-0x40)) & 0xFFFF'FE52'E000'2000));
+                    }
+                    else pass = false;
+
+                    if (pass)
                     {
                         sys->WiFiBB[idx] = sys->WiFiBBWrBuf;
                     }

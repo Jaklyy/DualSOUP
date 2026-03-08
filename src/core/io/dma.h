@@ -6,6 +6,7 @@
 
 enum DMA_StartModes : u8
 {
+    DMAStart_Null,
     DMAStart_Immediate,
     DMAStart_VBlank,
     DMAStart_HBlank,
@@ -15,6 +16,7 @@ enum DMA_StartModes : u8
     DMAStart_AGBPakIRQ,
     DMAStart_3DFIFO,
     DMAStart_WiFiIRQ,
+    DMAStart_Audio,
 };
 
 union DMA_CR
@@ -42,24 +44,27 @@ union DMA_CR
 struct DMA_Channel
 {
     u32 SrcAddr;
+    u32 SrcAddrReload; // for sound dma
     u32 DstAddr;
     union DMA_CR CR;
 
+    u32 SrcAddrMask;
+    u32 DstAddrMask;
     u32 Latched_SrcAddr;
     u32 Latched_DstAddr;
+    u32 NumWords;
     u32 Latched_NumWords;
     s8 SrcInc;
     s8 DstInc;
     u8 CurrentMode;
-    bool DMAQueued;
 };
 
 struct DMA_Controller
 {
-    alignas(sizeof(timestamp[8])) timestamp ChannelTimestamps[5];
+    alignas(sizeof(timestamp[32])) timestamp ChannelTimestamps[4+16+1];
     timestamp NextTime;
-    struct DMA_Channel Channels[4];
-    u8 CurMask;
+    struct DMA_Channel Channels[4+16];
+    u32 CurMask;
     u8 NextID;
 };
 
@@ -71,4 +76,5 @@ void DMA9_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 
 u32 DMA_IOReadHandler(struct DMA_Channel* channels, u32 addr);
 void StartDMA9(struct Console* sys, timestamp start, u8 mode);
 void StartDMA7(struct Console* sys, timestamp start, u8 mode);
+void StartSoundDMA(struct Console* sys, u8 id, timestamp start);
 timestamp DMA_GetNext(struct Console* sys, bool a9, const bool inclusive);

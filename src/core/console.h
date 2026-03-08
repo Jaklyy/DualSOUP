@@ -18,7 +18,7 @@
 #include "io/tsc.h"
 #include "io/powman.h"
 #include "video/3d.h"
-
+#include "io/sound.h"
 
 
 
@@ -34,8 +34,8 @@ constexpr unsigned NTR9_Clock   = Base_Clock * 4; // NARM9 Clock.
 // audio clocks
 // source: gbatek 
 // these numbers seem odd? not sure if these should actually be
-constexpr unsigned SoundMixerFreq = 1048760; // >(1/16); (is this info relevant?)
-constexpr unsigned SoundMixerOutput = 32768; // 
+constexpr unsigned SoundMixerFreq = 1'048'760; // >(1/16); (is this info relevant?)
+constexpr unsigned SoundMixerOutput = 32'768; // 
 
 // yoinked from melonDS; should be validated personally.
 // they're written this way in melonDS; I'm not sure why? Probably makes sense with 2d gpu knowledge.
@@ -221,7 +221,7 @@ struct Console
     } DispStatRO7;
 
     struct Timer Timers9[4];
-    struct Timer Timers7[4];
+    struct Timer Timers7[20];
 
     union
     {
@@ -436,8 +436,6 @@ struct Console
 
     Gamecard Gamecard;
 
-    u16 SoundBias;
-
     RTC RTC;
     u16 RCR;
 
@@ -459,6 +457,27 @@ struct Console
             bool UNK : 1;
         };
     } WiFiPowerUS;
+
+    union
+    {
+        u16 Raw;
+        struct
+        {
+            u16 MasterVol : 7;
+            bool : 1;
+            u16 LeftSrc : 2;
+            u16 RightSrc : 2;
+            bool MixCh1 : 1;
+            bool MixCh3 : 1;
+            bool : 1;
+            bool MasterEn : 1;
+        };
+    } SoundCR;
+
+    SoundChannel SoundChannels[16];
+    SoundCapture SoundCaptures[2];
+
+    u16 SoundBias;
 
 #ifdef MonitorFPS
     u64 OldTime;

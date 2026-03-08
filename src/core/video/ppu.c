@@ -536,11 +536,11 @@ void PPU_BuildSprites(struct Console* sys, const bool b, const u8 y)
 void PPU_RenderScanline(struct Console* sys, const bool b, const s16 y)
 {
     PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
-    u32* scanline = sys->Framebuffer[sys->BackBuf][sys->PowerCR9.AOnBottom ? b : !b][y];
     volatile timestamp* time = (b ? (&sys->PPUBTimestamp) : (&sys->PPUATimestamp));
 
     if (y >= 0)
     {
+        u32* scanline = sys->Framebuffer[sys->BackBuf][sys->PowerCR9.AOnBottom ? b : !b][y];
         switch(ppu->DisplayCR.DisplayMode)
         {
             case 0:

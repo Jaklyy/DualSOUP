@@ -51,7 +51,7 @@ ifeq ($(REL), 1) # release build
 	CFLAGS += -march=x86-64-v3 -O3 -flto
 else # standard build
 	BUILDDIR := $(MISCDIR)
-	CFLAGS += -march=native -O3 -flto
+	CFLAGS += -march=native -O3 -flto -g
 endif
 endif
 endif
