@@ -21,6 +21,7 @@ enum Scheduler_Events : u8
     Evt_IF7Update,
     Evt_Timer7,
     Evt_SPI,
+    Evt_MixAudio,
 
     Evt_Scanline,
     Evt_CardROM,

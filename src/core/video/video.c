@@ -1,3 +1,4 @@
+#include <SDL3/SDL_audio.h>
 #include <SDL3/SDL_timer.h>
 #include <SDL3/SDL.h>
 #include <threads.h>
@@ -104,7 +105,6 @@ void LCD_Scanline(struct Console* sys, timestamp now)
 
     // check for vblank; clear hblank.
     // this occurs before vcount writes
-    if (sys->VCount == 262) PPU_Init(sys, now);
     if (sys->VCount == 192)
     {
         if (SDL_GetGamepadButton(sys->Pad, SDL_GAMEPAD_BUTTON_LEFT_STICK)) // debugging junk
@@ -115,7 +115,7 @@ void LCD_Scanline(struct Console* sys, timestamp now)
                 sys->DMA7.Channels[i].CR.Raw, sys->DMA7.ChannelTimestamps[i], sys->DMA7.Channels[i].Latched_SrcAddr, sys->DMA7.Channels[i].Latched_NumWords, sys->DMA7.Channels[i].CurrentMode, \
                 sys->SoundChannels[i].CR.Raw, sys->SoundChannels[i].CR.Enable, sys->SoundChannels[i].CR.Format, sys->SoundChannels[i].CR.RepeatMode, sys->SoundChannels[i].SoundLen, sys->SoundChannels[i].LoopOffs, \
                 sys->SoundChannels[i].Prog, sys->SoundChannels[i].SampleMax, \
-                sys->Timers7[i+4].Regs, sys->SoundChannels[i].FIFODrainPtr, sys->SoundChannels[i].FIFOFillPtr, sys->SoundChannels[i].FIFOSatiated);
+                sys->Timers7[i+4].Regs, sys->SoundChannels[i].FIFO_DrainPtr, sys->SoundChannels[i].FIFO_FillPtr, sys->SoundChannels[i].FIFO_Bytes);
             }
             printf("dma cur: %08X\n", sys->DMA7.CurMask);
             /*bool seq = false;
@@ -168,6 +168,7 @@ void LCD_Scanline(struct Console* sys, timestamp now)
     {
         sys->DispStatRO9.Raw = 0b000;
         sys->DispStatRO7.Raw = 0b000;
+        PPU_Init(sys, now);
     }
     else
     {

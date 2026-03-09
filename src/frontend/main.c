@@ -1,7 +1,9 @@
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_error.h>
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_render.h>
 #include <SDL3/SDL_timer.h>
+#include <SDL3/SDL_audio.h>
 #include <threads.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -12,12 +14,25 @@
 
 
 
-mtx_t init;
-volatile bool initflag;
+enum InitFlag : u8
+{
+    Init_Busy = 0,
+    Init_Success = 1,
+    Init_Fail = 2,
+};
+
+typedef struct
+{
+    const char* rompath;
+    struct Console* sys;
+    SDL_Gamepad* pad;
+    SDL_AudioStream* aud;
+    u8 initflag;
+} MailBox;
 
 int Core_Init(void* pass)
 {
-    volatile void** mailbox = pass;
+    volatile MailBox* mailbox = pass;
     // init arm luts
     ARM9_InitInstrLUT();
     THUMB9_InitInstrLUT();
@@ -28,6 +43,7 @@ int Core_Init(void* pass)
     if (ntr9 == NULL)
     {
         printf("no ntr arm9 bios :(\n");
+        mailbox->initflag = Init_Fail;
         exit(EXIT_FAILURE);
     }
 
@@ -35,27 +51,36 @@ int Core_Init(void* pass)
     if (ntr7 == NULL)
     {
         printf("no ntr arm7 bios :(\n");
-        exit(EXIT_FAILURE);
+        fclose(ntr9);
+        mailbox->initflag = Init_Fail;
+        return EXIT_FAILURE;
     }
 
     FILE* firmware = fopen("firmware.bin", "rb");
     if (firmware == NULL)
     {
         printf("no firmware :(\n");
-        exit(EXIT_FAILURE);
+        fclose(ntr9);
+        fclose(ntr7);
+        mailbox->initflag = Init_Fail;
+        return EXIT_FAILURE;
     }
 
-    char* ztst = (char*)mailbox[1];
+    const char* rompath = mailbox->rompath;
 
     // initialize main emulator state struct
-    struct Console* sys = Console_Init((struct Console*)mailbox[2], ntr9, ntr7, firmware, ztst, (void*)mailbox[0]);
+    struct Console* sys = Console_Init(mailbox->sys, ntr9, ntr7, firmware, rompath, mailbox->pad, mailbox->aud);
     if (sys == nullptr)
     {
-        exit(EXIT_FAILURE);
+        fclose(ntr9);
+        fclose(ntr7);
+        fclose(firmware);
+        mailbox->initflag = Init_Fail;
+        return EXIT_FAILURE;
     }
 
-    mailbox[2] = sys;
-    initflag = true;
+    mailbox->sys = sys;
+    mailbox->initflag = Init_Success;
 
     fclose(ntr9);
     fclose(ntr7);
@@ -71,13 +96,13 @@ int Core_Init(void* pass)
 
 int main()
 {
-    LogMask = u64_max; // temp
+    LogMask = LOG_SOUND;u64_max; // temp
 
     // TODO investigate: SDL_HINT_TIMER_RESOLUTION
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
     SDL_SetHint(SDL_HINT_NO_SIGNAL_HANDLERS, "1");
 
-    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD | SDL_INIT_EVENTS))
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD | SDL_INIT_EVENTS | SDL_INIT_AUDIO))
     {
         printf("SDLINIT ERROR!!!\n");
         return EXIT_FAILURE;
@@ -90,6 +115,13 @@ int main()
     {
         printf("window/renderer init failure :(\n");
         return EXIT_FAILURE;
+    }
+
+    SDL_AudioSpec audiospec = {SDL_AUDIO_S16LE, 2, SoundMixerOutput};
+    SDL_AudioStream* aud = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &audiospec, NULL, NULL);
+    if (aud == NULL)
+    {
+        printf("audio init failure :( %s\n", SDL_GetError());
     }
 
     int num;
@@ -105,8 +137,6 @@ int main()
     bool threadexists = false;
     thrd_t emu;
     struct Console* sys = nullptr;
-
-    mtx_unlock(&init);
 
     SDL_Texture* blit = SDL_CreateTexture(ren, SDL_PIXELFORMAT_XBGR8888, SDL_TEXTUREACCESS_STREAMING, 256, 192*2);
 
@@ -134,27 +164,36 @@ int main()
                 {
                     sys->KillThread = true;
                     while(sys->KillThread);
+                    threadexists = false;
                 }
 
                 printf("%s\n", ((SDL_DropEvent*)&evts)->data);
-                initflag = false;
-                mtx_init(&init, mtx_plain);
-                mtx_lock(&init);
-                volatile void* mailbox[4] = {pad, (volatile void*)((SDL_DropEvent*)&evts)->data, sys, 0};
-                if (thrd_create(&emu, Core_Init, mailbox) != thrd_success)
+                volatile MailBox mailbox = {.rompath = ((SDL_DropEvent*)&evts)->data, .sys = sys, .pad = pad, .aud = aud, .initflag = Init_Busy};
+                if (thrd_create(&emu, Core_Init, (void*)&mailbox) != thrd_success)
                 {
                     printf("thread init failure :(\n");
                     return EXIT_FAILURE;
                 }
 
-                while(initflag == false);
+                while(mailbox.initflag == Init_Busy);
 
-                if ((bool)mailbox[3])
+                if (mailbox.initflag == Init_Fail)
                     break;
 
-                sys = (void*)mailbox[2];
+                sys = mailbox.sys;
 
                 threadexists = true;
+
+                if (aud != NULL)
+                {
+
+                    s16 padding[546*2] = {};
+                    if (!SDL_ResumeAudioStreamDevice(aud))
+                    {
+                        printf("why no turn on?\n");
+                    }
+                    if (!SDL_PutAudioStreamData(aud, padding, 546*2*2)) printf("%s\n", SDL_GetError());
+                }
                 break;
             }
             default:
@@ -186,11 +225,6 @@ int main()
                 SDL_SetWindowTitle(win, str);
             }
             // todo: handle thrd_error??? what am i even supposed to do with that information
-            /*char newtitle[30];
-
-            snprintf(newtitle, 30, "DualSOUP: %f ms", ((double)(newtime-oldtime) * (1.0 / countpersec)) * 1000);
-            SDL_SetWindowTitle(win, newtitle);
-            oldtime = newtime;*/
         }
         else
         {

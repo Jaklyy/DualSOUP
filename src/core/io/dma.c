@@ -94,12 +94,12 @@ void StartDMA7(struct Console* sys, timestamp start, u8 mode)
     if (update) DMA_Schedule(sys, false);
 }
 
-void StartSoundDMA(struct Console* sys, u8 id, timestamp start)
+void StartSoundDMA(struct Console* sys, u8 id, timestamp start, bool matters)
 {
     if (!sys->DMA7.Channels[id].CR.Enable) return;
     if (sys->DMA7.ChannelTimestamps[id] != timestamp_max)
     {
-        LogPrint(LOG_SOUND, "Starting sound dma while active\n");
+        if (matters) LogPrint(LOG_SOUND, "Starting sound dma while active\n");
         return; // active
     }
     sys->DMA7.ChannelTimestamps[id] = start;
@@ -334,7 +334,7 @@ void DMA_Run(struct Console* sys, const bool a9)
         }
         else
         {
-            read = AHB7_Read(sys, &cnt->ChannelTimestamps[id], channel->Latched_SrcAddr, rmask, false, true, &rseq, true, 0xFFFFFFFF /*checkme?*/);
+            read = AHB7_Read(sys, &cnt->ChannelTimestamps[id], channel->Latched_SrcAddr, rmask, false, true, &rseq, (channel->CurrentMode != DMAStart_Audio), 0xFFFFFFFF /*checkme?*/);
         }
         diff = cnt->ChannelTimestamps[id] - diff;
         channel->Latched_SrcAddr += channel->SrcInc;
@@ -422,7 +422,7 @@ void DMA_Run(struct Console* sys, const bool a9)
             dmaqueued = true;
     }
 
-    if ((channel->CurrentMode == DMAStart_Audio) && (!sys->SoundChannels[id].FIFOSatiated) && channel->CR.Enable)
+    if ((channel->CurrentMode == DMAStart_Audio) && (sys->SoundChannels[id].FIFO_Bytes <= 16) && channel->CR.Enable)
     {
         dmaqueued = true;
         //cnt->ChannelTimestamps[id] = channel->SoundLast+channel->SoundIter;

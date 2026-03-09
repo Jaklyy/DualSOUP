@@ -8,6 +8,7 @@
 #include "arm/arm9/arm.h"
 #include "arm/shared/arm.h"
 #include "io/dma.h"
+#include "irq.h"
 #include "scheduler.h"
 #include "utils.h"
 #include "video/3d.h"
@@ -19,7 +20,7 @@
 
 
 // TODO: this function probably shouldn't manage memory on its own?
-struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* firmware, const char* rom, void* pad)
+struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* firmware, const char* rom, void* pad, void* aud)
 {
     u8* nvram = nullptr;
     if (sys == nullptr)
@@ -156,6 +157,7 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
     }
 
     sys->Pad = pad;
+    sys->Aud = aud;
 
     sys->CountPerFrame = (Frame_Cycles/2) * SDL_GetPerformanceFrequency();// / Base_Clock;
     //sys->FracPerFrame = (Frame_Cycles/2) * SDL_GetPerformanceFrequency() % Base_Clock;
@@ -521,6 +523,7 @@ void IF7_Update(struct Console* sys, timestamp now)
 
 void Console_ScheduleIRQs(struct Console* sys, const u8 irq, const bool a9, timestamp time)
 {
+    //if (irq == IRQ_VBlank) printf("irq: %lu\n", time);
     timestamp* irqs;
     if (a9)
     {
@@ -575,6 +578,7 @@ void Console_MainLoop(struct Console* sys)
     CR_Start = true;
     mtx_lock(&sys->FrameBufferMutex[sys->BackBuf]);
     Scheduler_UpdateTargets(sys);
+    Schedule_Event(sys, AudioMixer_Run, Evt_MixAudio, 0);
     sys->TimeFrac = 0;
     sys->OldTime = SDL_GetPerformanceCounter();
     while(!sys->KillThread)

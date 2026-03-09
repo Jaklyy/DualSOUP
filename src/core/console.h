@@ -467,8 +467,8 @@ struct Console
             bool : 1;
             u16 LeftSrc : 2;
             u16 RightSrc : 2;
-            bool MixCh1 : 1;
-            bool MixCh3 : 1;
+            bool NoMixCh1 : 1;
+            bool NoMixCh3 : 1;
             bool : 1;
             bool MasterEn : 1;
         };
@@ -476,6 +476,8 @@ struct Console
 
     SoundChannel SoundChannels[16];
     SoundCapture SoundCaptures[2];
+    timestamp AudioFrac;
+    timestamp MixerFrac;
 
     u16 SoundBias;
 
@@ -543,8 +545,8 @@ struct Console
 
     bool BackBuf;
     void* Pad;
+    void* Aud;
     mtx_t FrameBufferMutex[2];
-
     //bool dummy; // for debugging i guess
 
     volatile bool KillThread;
@@ -554,7 +556,7 @@ struct Console
 // if a nullptr is passed then it will allocate and initialize a console from scratch.
 // otherwise it will re-initialize an already allocated struct.
 // returns success or failure.
-struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* firmware, const char* rom, void* pad);
+struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* firmware, const char* rom, void* pad, void* aud);
 // emulate a hardware reset.
 void Console_Reset(struct Console* sys);
 // actually run the emulation.
