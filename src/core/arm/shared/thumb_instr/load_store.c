@@ -247,7 +247,6 @@ void THUMB_LoadStoreSPRel(struct ARM* cpu, const struct ARM_Instr instr_data)
 {
     const union THUMB_LoadStoreRel_Decode instr = {.Raw = instr_data.Raw};
 
-    // instruction is unique in that it forces pc to be aligned.
     u32 addr = ARM_GetReg(13) + (instr.Imm8 * 4);
 
     if (instr.Load) LDR(cpu, addr, instr.Rd, width32, false);

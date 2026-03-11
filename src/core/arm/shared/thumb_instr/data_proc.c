@@ -168,7 +168,7 @@ void THUMB_DataProcImm8(struct ARM* cpu, const struct ARM_Instr instr_data)
     {
         rd_val = ARM_ADD(rd_val, instr.Imm8, &flags_out);
     }
-    else // SUB/CMP
+    else // SUBS/CMP
     {
         rd_val = ARM_SUB_RSB(rd_val, instr.Imm8, &flags_out);
     }

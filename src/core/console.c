@@ -357,9 +357,9 @@ void Console_DirectBoot(struct Console* sys)
     for (int i = 0; i < 0x70; i++)
         sys->MainRAM.b8[((0x27FFC80 + i) & (MainRAM_Size-1))] = sys->Firmware.RAM[usersettings+i];
 
-
-    ARM9_SetPC(&sys->ARM9, arm9_entryaddr, false, 0);
-    ARM7_SetPC(&sys->ARM7, arm7_entryaddr, false);
+    ARM9_SetPC(&sys->ARM9, arm9_entryaddr, true, 0);
+    ARM7_SetPC(&sys->ARM7, arm7_entryaddr, true);
+    sys->DirectBoot = true;
 }
 
 void Console_Reset(struct Console* sys)
@@ -584,7 +584,7 @@ void Console_MainLoop(struct Console* sys)
     while(!sys->KillThread)
     {
 #ifdef UseThreads
-        while ((Console_GetARM9Max(sys) < sys->ARM7Target) || (Console_GetARM7Max(sys) < sys->ARM7Target)); //printf("9 %li %li 7 %li %li\n", sys->ARM9.ARM.Timestamp, sys->ARM9Target, sys->ARM7.ARM.Timestamp, sys->ARM7Target);
+        while ((Console_GetARM9Max(sys, true) < sys->ARM7Target) || (Console_GetARM7Max(sys, true) < sys->ARM7Target)); //printf("9 %li %li 7 %li %li\n", sys->ARM9.ARM.Timestamp, sys->ARM9Target, sys->ARM7.ARM.Timestamp, sys->ARM7Target);
 #else
         bool exit = false;
         while(!exit)//(Console_GetARM7Max(sys, true) < sys->ARM7Target) || (Console_GetARM9Max(sys, true) < sys->ARM7Target))

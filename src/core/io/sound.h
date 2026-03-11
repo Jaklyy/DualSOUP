@@ -63,8 +63,6 @@ typedef struct
     u8 FIFO_Bytes;
     u32 Prog;
     u64 SampleMax;
-    u32 DMAINIT;
-    u32 DMAINIT2;
 
     s16 CurSample;
 

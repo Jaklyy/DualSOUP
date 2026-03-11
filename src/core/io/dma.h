@@ -44,7 +44,6 @@ union DMA_CR
 struct DMA_Channel
 {
     u32 SrcAddr;
-    u32 SrcAddrReload; // for sound dma
     u32 DstAddr;
     union DMA_CR CR;
 

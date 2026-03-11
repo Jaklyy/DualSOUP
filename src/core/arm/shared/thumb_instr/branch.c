@@ -59,34 +59,6 @@ union THUMB_Branch_Decode
     };
 };
 
-// TODO: UN FUCK THIS FUNCTION
-/*
-00 == b
-01 == blx (hi)
-10 == bl (lo)
-11 == bl (hi)
-
-
-00
-r15 = r15 + (imm << 1)
-
-01
-if (imm & 1) raise udf;
-pc = r15
-imm <<= 1;
-addr = pc
-r14 = r15 - 3
-pc += imm
-clear thumb
-addr &= ~3
-r15 = pc
-
-raise udf
-clear thumb
-r14 = r15 - 3
-r15 = r15 + (imm << 1)
-*/
-
 void THUMB_Branch(struct ARM* cpu, const struct ARM_Instr instr_data)
 {
     const union THUMB_Branch_Decode instr = {.Raw = instr_data.Raw};
@@ -136,7 +108,7 @@ void THUMB_Branch(struct ARM* cpu, const struct ARM_Instr instr_data)
         else
         {
             // bl(x) hi
-            // this gets the same effect as subtracting 4 and setting the interworking bit
+            // this gets the same effect as subtracting 2 and setting the interworking bit
             link -= 1;
         }
         ARM_SetReg(14, link, false, 0, 0);

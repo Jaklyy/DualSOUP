@@ -12,10 +12,9 @@ void AudioMixer_Run(struct Console* sys, timestamp now)
 {
     s16 sampleout[2] = {0, 0};
 
-    //printf("mixing %lu\n", now);
     if (sys->SoundCR.MasterEn && sys->PowerCR7.SpeakerPower)
     {
-        s32 mixerout[2] = {0, 0};
+        s64 mixerout[2] = {0, 0};
 
 
         u16 mixmaskl = 0;
@@ -24,7 +23,7 @@ void AudioMixer_Run(struct Console* sys, timestamp now)
         if (sys->SoundCR.LeftSrc & 0x2) mixmaskl |= (1<<3);
         if (sys->SoundCR.RightSrc & 0x1) mixmaskr |= (1<<1);
         if (sys->SoundCR.RightSrc & 0x2) mixmaskr |= (1<<3);
-        u32 mixmask = 0xFFFF;
+        u16 mixmask = 0xFFFF;
         if (sys->SoundCR.NoMixCh1) mixmask &= ~(1<<1);
         if (sys->SoundCR.NoMixCh3) mixmask &= ~(1<<3);
         if (!mixmaskl) mixmaskl = mixmask;
@@ -33,8 +32,8 @@ void AudioMixer_Run(struct Console* sys, timestamp now)
         for (int i = 0; i < 16; i++)
         {
             SoundChannel* chan = &sys->SoundChannels[i];
-            s32 sample = chan->CurSample;
-            //chan->CurSample = 0;
+            s64 sample = chan->CurSample;
+
             sample <<= ((chan->CR.VolumeDivider == 3) ? 0 : (4-chan->CR.VolumeDivider));
             sample *= chan->CR.VolumeMultiplier + (chan->CR.VolumeMultiplier == 127);
             u8 panr = chan->CR.Panning + (chan->CR.Panning == 127);
@@ -63,11 +62,10 @@ void AudioMixer_Run(struct Console* sys, timestamp now)
 
 void SoundFIFO_Fill(struct Console* sys, const u32 val, const u8 id, const timestamp now)
 {
-    //printf("try fill %i\n", id);
     //Scheduler_RunEventManual(sys, now, Evt_Timer7, false, false);
     SoundChannel* channel = &sys->SoundChannels[id];
     MemoryWrite(32, channel->FIFO, channel->FIFO_FillPtr, sizeof(channel->FIFO), val, 0xFFFFFFFF);
-    //if (id == 10) printf("fill\n");
+
     channel->FIFO_FillPtr+=4;
     channel->FIFO_FillPtr &= 0x1F;
     channel->FIFO_Bytes+=4;
@@ -77,9 +75,8 @@ u32 SoundFIFO_Drain(struct Console* sys, SoundChannel* channel, u8 numbytes, con
 {
     if (channel->FIFO_Bytes < numbytes) // fifo empty
     {
-        LogPrint(LOG_SOUND, "SOUND FIFO OVERFLOW: Channel: %i cr:%08X p:%X m:%lX dma:%08X tim:%06X dini:%08X din2:%08X\n",
-            id, channel->CR.Raw, channel->Prog, channel->SampleMax, sys->DMA7.Channels[id].CR.Raw, sys->Timers7[id+4].Regs, channel->DMAINIT, channel->DMAINIT2);
-        //if (id == 10) CrashSpectacularly("woah\n");
+        LogPrint(LOG_SOUND, "SOUND FIFO OVERFLOW: Channel: %i cr:%08X p:%X m:%lX dma:%08X tim:%06X\n",
+            id, channel->CR.Raw, channel->Prog, channel->SampleMax, sys->DMA7.Channels[id].CR.Raw, sys->Timers7[id+4].Regs);
         return 0;
     }
     u32 ret;
@@ -90,7 +87,6 @@ u32 SoundFIFO_Drain(struct Console* sys, SoundChannel* channel, u8 numbytes, con
         case 4: ret = MemoryRead(32, channel->FIFO, channel->FIFO_DrainPtr, sizeof(channel->FIFO)); break;
         default: unreachable(); // if you do this you stupid
     }
-    //if (id == 10) printf("drain %i\n", numbytes);
     channel->FIFO_DrainPtr+=numbytes;
     channel->FIFO_DrainPtr &= 0x1F;
     channel->FIFO_Bytes-=numbytes;
@@ -101,15 +97,24 @@ u32 SoundFIFO_Drain(struct Console* sys, SoundChannel* channel, u8 numbytes, con
     return ret;
 }
 
+extern void Timer7_UpdateCRs(struct Console* sys, timestamp now);
 extern void SoundChannel_Disable(struct Console* sys, const u8 id, const timestamp now, const bool bushogged);
 void SoundFIFO_Sample(struct Console* sys, const u8 id, const timestamp now)
 {
-    //printf("try sample %i %lu %06X\n", id, now, sys->Timers7[id+4].Regs);
     SoundChannel* channel = &sys->SoundChannels[id];
+
+    if (!channel->CR.Enable && !(channel->CR.Hold && (channel->CR.RepeatMode == 2)))
+    {
+        channel->CurSample = 0;
+
+        // disable timer
+        sys->Timers7[id+4].NeedsUpdate = true;
+        sys->Timers7[id+4].BufferedRegs = 0x00'0000;
+        Schedule_Event(sys, Timer7_UpdateCRs, Evt_Timer7, now+1);
+    }
 
     if (channel->Prog >= channel->SampleMax)
     {
-        //printf("stopping %i automatically\n", id);
         SoundChannel_Disable(sys, id, now, false);
         return;
     }
@@ -139,10 +144,21 @@ void SoundFIFO_Sample(struct Console* sys, const u8 id, const timestamp now)
     {
         if (channel->Prog >= 12) // pcm
         {
+            if (channel->Prog == channel->ADPCM_LoopStart)
+            {
+                channel->ADPCM_LoopIndex = channel->ADPCM_Index;
+                channel->ADPCM_LoopSample = channel->ADPCM_Sample;
+            }
+            if (channel->Prog >= channel->ADPCM_LoopEnd)
+            {
+                channel->ADPCM_Index = channel->ADPCM_LoopIndex;
+                channel->ADPCM_Sample = channel->ADPCM_LoopSample;
+                channel->Prog = channel->ADPCM_LoopStart;
+            }
+
             if (!(channel->Prog & 1))
             {
                 channel->ADPCM_Data = SoundFIFO_Drain(sys, channel, 1, id, now);
-                //if (channel->Prog-13 == channel->ADPCM_LoopStart) printf("loop data: %02X\n", channel->ADPCM_Data);
             }
             else
             {
@@ -173,7 +189,7 @@ void SoundFIFO_Sample(struct Console* sys, const u8 id, const timestamp now)
         else if (channel->Prog == 8) // fetch header
         {
             u32 header = SoundFIFO_Drain(sys, channel, 4, id, now);
-            channel->ADPCM_Sample = (s16)header;// & 0xFFFF;
+            channel->ADPCM_Sample = (s16)header;
             DS_CLAMP(channel->ADPCM_Sample, >, 0x7FFF)
             DS_CLAMP(channel->ADPCM_Sample, <, -0x7FFF)
             channel->ADPCM_LoopSample = channel->ADPCM_Sample;
@@ -184,32 +200,11 @@ void SoundFIFO_Sample(struct Console* sys, const u8 id, const timestamp now)
             channel->CurSample = 0;
         }
         else channel->CurSample = 0;
-
-        u32 tmp;
-        if (!ckd_add(&tmp, channel->Prog, 1)) channel->Prog = tmp;
-
-        if (channel->Prog-12 == channel->ADPCM_LoopStart)
-        {
-            //channel->CurSample = 0;
-            //printf("loopset: %i %i\n", id, channel->Prog);
-            channel->ADPCM_LoopIndex = channel->ADPCM_Index;
-            channel->ADPCM_LoopSample = channel->ADPCM_Sample;
-        }
-        if (channel->Prog-12 == channel->ADPCM_LoopEnd)
-        {
-            channel->ADPCM_Index = channel->ADPCM_LoopIndex;
-            channel->ADPCM_Sample = channel->ADPCM_LoopSample;
-            channel->Prog = channel->ADPCM_LoopStart+12;
-            //printf("loopret: %i %i\n", id, channel->Prog);
-        }
-
-        //printf("%04hX\n", channel->CurSample);
-        return;
+        break;
     }
 
     case AudioFormat_PSGNoise:
     {
-        // TODO
         if (id >= 14) // noise
         {
             if (channel->Noise_Cur & 0x1)
@@ -240,12 +235,9 @@ void SoundFIFO_Sample(struct Console* sys, const u8 id, const timestamp now)
 
     u32 tmp;
     if (!ckd_add(&tmp, channel->Prog, 1)) channel->Prog = tmp;
-
-    //printf("%i %08X %08X %08X %08X %i %lu\n", id, channel->Prog, channel->SampleMax, sys->Timers7[id+4].Counter, sys->Timers7[id+4].Reload, sys->Timers7[id+4].Regs, now);
 }
 
 
-extern void Timer7_UpdateCRs(struct Console* sys, timestamp now);
 void SoundChannel_Disable(struct Console* sys, const u8 id, const timestamp now, const bool bushogged)
 {
     Scheduler_RunEventManual(sys, now, Evt_Timer7, false, bushogged);
@@ -254,18 +246,7 @@ void SoundChannel_Disable(struct Console* sys, const u8 id, const timestamp now,
     sys->DMA7.Channels[id].CR.Repeat = false;
     sys->DMA7.Channels[id].CR.Enable = false;
 
-    // disable timer
-    sys->Timers7[id+4].NeedsUpdate = true;
-    sys->Timers7[id+4].BufferedRegs = 0x00'0000;
-
     sys->SoundChannels[id].CR.Enable = false;
-    //Timer7_UpdateCRs(sys, now); // hack
-    Schedule_Event(sys, Timer7_UpdateCRs, Evt_Timer7, now+1);
-
-    if (!(sys->SoundChannels[id].CR.Hold && (sys->SoundChannels[id].CR.RepeatMode & 2))) sys->SoundChannels[id].CurSample = 0;
-
-    //printf("channel stop %i %i\n", id, sys->SoundChannels[id].CR.RepeatMode);
-
 }
 
 void SoundChannel_KillAll(struct Console* sys, const timestamp now)
@@ -288,12 +269,9 @@ void SoundChannel_KillAll(struct Console* sys, const timestamp now)
 
 void SoundChannel_Start(struct Console* sys, SoundChannel* channel, const u8 id, const timestamp now)
 {
-    //printf("starting %i manually\n", id);
     if (channel->CR.Format != AudioFormat_PSGNoise) // checkme
     {
         // set up DMA
-        //channel->CR.RepeatMode = 2;
-        //printf("start channel: %i %08X %08X\n", id, channel->SrcAddr, channel->SrcAddr + (channel->LoopOffs*4));
         if (channel->CR.RepeatMode == 0)
         {
             sys->DMA7.Channels[id].Latched_NumWords = 4;
@@ -307,12 +285,9 @@ void SoundChannel_Start(struct Console* sys, SoundChannel* channel, const u8 id,
             sys->DMA7.Channels[id].CR.Repeat = (channel->CR.RepeatMode == 1);
         }
         sys->DMA7.Channels[id].Latched_SrcAddr = channel->SrcAddr;
-        sys->DMA7.Channels[id].SrcAddr = channel->SrcAddr;
-        sys->DMA7.Channels[id].SrcAddrReload = channel->SrcAddr + ((u32)channel->LoopOffs*4);
+        sys->DMA7.Channels[id].SrcAddr = channel->SrcAddr + ((u32)(channel->LoopOffs)*4);
         sys->DMA7.Channels[id].CR.SourceCR = (channel->CR.RepeatMode == 1) ? 3 : 1;
         sys->DMA7.Channels[id].CR.Enable = true;
-        channel->DMAINIT = sys->DMA7.Channels[id].CR.Raw;
-        channel->DMAINIT2 = sys->DMA7.Channels[id].Latched_NumWords;
     }
 
     // set up timers
@@ -320,9 +295,8 @@ void SoundChannel_Start(struct Console* sys, SoundChannel* channel, const u8 id,
     sys->Timers7[id+4].NeedsUpdate = true;
     sys->Timers7[id+4].BufferedRegs = 0xC0'0000 /* Enable, IRQ */ | channel->Timer;
     Schedule_Event(sys, Timer7_UpdateCRs, Evt_Timer7, now+1);
-    //Timer7_UpdateCRs(sys, now); // hack
 
-    if (channel->CR.RepeatMode == 2)// && (channel->CR.Format != AudioFormat_PSGNoise))
+    if (channel->CR.RepeatMode == 2)
     {
         switch(channel->CR.Format)
         {
@@ -346,8 +320,8 @@ void SoundChannel_Start(struct Console* sys, SoundChannel* channel, const u8 id,
     {
         if (channel->CR.RepeatMode == 1)
         {
-            channel->ADPCM_LoopStart = ((channel->LoopOffs-1)*8);
-            channel->ADPCM_LoopEnd = ((channel->SoundLen + channel->LoopOffs-1)*8);
+            channel->ADPCM_LoopStart = ((channel->LoopOffs-1)*8) + 12;
+            channel->ADPCM_LoopEnd = ((channel->SoundLen + channel->LoopOffs-1)*8) + 12;
         }
         else
         {
@@ -380,12 +354,10 @@ void SoundChannel_TryStartAll(struct Console* sys, const timestamp now)
 
 u32 SoundChannel_IORead(struct Console* sys, const u32 addr, const timestamp now)
 {
-    //printf("%08X\n", addr);
     if ((addr & 0xF) != 0) return 0; // checkme: supposedly only each channel's control reg can be read?
     u8 id = ((addr >> 4) & 0xF);
     SoundChannel* channel = &sys->SoundChannels[id];
 
-    //printf("%i %i %i\n", id, channel->CR.Enable, channel->CR.RepeatMode);
     return channel->CR.Raw;
 }
 
@@ -397,7 +369,6 @@ void SoundChannel_IOWrite(struct Console* sys, const u32 addr, const u32 val, co
     switch(addr & 0xC)
     {
     case 0x0:
-        //if (id == 1 || id == 3)printf("write cr: %i %08X %08X\n", id, val, mask);
         u32 oldcr = channel->CR.Raw;
         MaskedWrite(channel->CR.Raw, val, mask & 0xFF7F837F);
         if (channel->CR.Enable && (oldcr>>31) && ((oldcr >> 24) ^ (channel->CR.Raw >> 24))) LogPrint(LOG_SOUND, "Updating sound CR while active %i\n", id);
@@ -407,9 +378,8 @@ void SoundChannel_IOWrite(struct Console* sys, const u32 addr, const u32 val, co
             {
                 SoundChannel_Start(sys, channel, id, now);
             }
-            else //if (!channel->CR.Enable && (oldcr>>31))
+            else
             {
-                //printf("stopping %i manually\n", id);
                 SoundChannel_Disable(sys, id, now, true);
             }
         }
@@ -425,10 +395,10 @@ void SoundChannel_IOWrite(struct Console* sys, const u32 addr, const u32 val, co
         MaskedWrite(channel->LoopOffs, val>>16, (mask>>16) & 0xFFFF);
         if (channel->CR.Enable && mask & 0xFFFF)
         {
-            //Scheduler_RunEventManual(sys, now, Evt_Timer7, false, true);
+            Scheduler_RunEventManual(sys, now, Evt_Timer7, false, true);
             //LogPrint(LOG_SOUND, "Writing timer while active %i\n", id);
-            //sys->Timers7[id+4].BufferedRegs = 0xC0000 | (val & 0xFFFF);
-            //Schedule_Event(sys, Timer7_UpdateCRs, Evt_Timer7, now+1);
+            sys->Timers7[id+4].BufferedRegs = 0xC0000 | (val & 0xFFFF);
+            Schedule_Event(sys, Timer7_UpdateCRs, Evt_Timer7, now+1);
         }
         if (channel->CR.Enable && mask & 0xFFFF0000) LogPrint(LOG_SOUND, "Writing loopoffs while active %i\n", id);
         break;

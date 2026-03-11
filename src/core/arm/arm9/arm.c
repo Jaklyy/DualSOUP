@@ -341,6 +341,7 @@ void ARM9_Step(struct ARM946ES* ARM9)
 void ARM9_MainLoop(struct ARM946ES* ARM9)
 {
     while (!CR_Start);
+    if (cpu->Sys->DirectBoot) ARM9_FlushPipeline(ARM9);
     while(!CR_Kill)
     {
         if ((Console_GetARM9Max(cpu->Sys, false) >= cpu->Sys->ARM7Target))// || cpu->DeadAsleep)

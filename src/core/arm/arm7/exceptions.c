@@ -33,7 +33,7 @@ void ARM7_Reset(struct ARM7TDMI* ARM7)
     cpu->CPSR.IRQDisable = true;
     cpu->CPSR.FIQDisable = true;
 
-    ARM7_SetPC(ARM7, ARMVector_RST, false);
+    ARM7_SetPC(ARM7, ARMVector_RST, true);
 }
 
 void ARM7_RaiseUDF(struct ARM* ARM, const struct ARM_Instr instr_data, const int cycles)

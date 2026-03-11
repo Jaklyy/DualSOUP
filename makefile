@@ -18,7 +18,7 @@ ifeq ($(FPS), 1) # monitor performance -- outputs frametime info via printf
 	CFLAGS += -DMonitorFPS
 endif
 
-ifeq ($(THRD), 1) # use threads instead of coroutines -- NOT RECOMMENDED
+ifeq ($(THRD), 1) # use threads instead of coroutines -- UNSTABLE - NOT RECOMMENDED
 	CFLAGS += -DUseThreads
 endif
 
@@ -37,6 +37,11 @@ endif
 ifeq ($(NOLOG), 1) # disable misc logging prints, purposeful crash prints and FPS prints still occur
 	CFLAGS += -DNOLOGGING
 endif
+
+ifeq ($(DIRBOOT), 1) # boot rom file directly, requires unencrypted rom
+	CFLAGS += -DUSEDIRECTBOOT
+endif
+
 
 ifeq ($(DEB), 1) # debug build
 	BUILDDIR := $(DEBDIR)

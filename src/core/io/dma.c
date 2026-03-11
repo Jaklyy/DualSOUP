@@ -268,21 +268,22 @@ void DMA_Run(struct Console* sys, const bool a9)
     struct DMA_Controller* cnt = ((a9) ? &sys->DMA9 : &sys->DMA7);
     u8 id = cnt->NextID;
 
-    //if (cnt->Channels[id].CurrentMode != DMAStart_NTRCard) printf("dma?? %i %X\n", id, cnt->CurMask);
     if (cnt->CurMask & (1<<id)) return;
     u32 rmask;
     u32 wmask;
     struct DMA_Channel* channel = &cnt->Channels[id];
 
-    // CHECKME: idk, where and when things are latched needs testing.
-    if (channel->CR.SourceCR == 3)
+    if (channel->Latched_NumWords == 0)
     {
-        channel->Latched_SrcAddr = channel->SrcAddr;
-        channel->SrcAddr = channel->SrcAddrReload;
-    }
-    if (channel->CR.DestCR == 3) channel->Latched_DstAddr = channel->DstAddr;
+        // CHECKME: idk, where and when things are latched needs testing.
+        if (channel->CR.SourceCR == 3)
+        {
+            channel->Latched_SrcAddr = channel->SrcAddr;
+        }
+        if (channel->CR.DestCR == 3) channel->Latched_DstAddr = channel->DstAddr;
 
-    if (channel->Latched_NumWords == 0) channel->Latched_NumWords = channel->NumWords;
+        channel->Latched_NumWords = channel->NumWords;
+    }
 
 
     cnt->CurMask |= 1<<id;
@@ -324,6 +325,7 @@ void DMA_Run(struct Console* sys, const bool a9)
             tseq = false; // checkme
         }
         channel->Latched_SrcAddr &= channel->SrcAddrMask;
+
         //if (channel->CurrentMode == DMAStart_HBlank) printf("dmatimeb: cw%i lw%i nm%i md%i ti%li\n", numword, channel->Latched_NumWords, id, channel->CurrentMode, cnt->ChannelTimestamps[id]);
         //if (a9) printf("dmatimeb: %i %li\n", id, cnt->ChannelTimestamps[id]);
         timestamp diff = cnt->ChannelTimestamps[id];
@@ -364,8 +366,6 @@ void DMA_Run(struct Console* sys, const bool a9)
         else
         {
             cnt->ChannelTimestamps[id] += 1;
-            //if (channel->Latched_SrcAddr < 0x02000000) printf("bad sound dma start\n");
-            //printf("fill: %i %lu\n", id, cnt->ChannelTimestamps[id]);
             SoundFIFO_Fill(sys, read, id, cnt->ChannelTimestamps[id]);
         }
         // CHECKME: should this only apply to the actual first?
@@ -425,7 +425,6 @@ void DMA_Run(struct Console* sys, const bool a9)
     if ((channel->CurrentMode == DMAStart_Audio) && (sys->SoundChannels[id].FIFO_Bytes <= 16) && channel->CR.Enable)
     {
         dmaqueued = true;
-        //cnt->ChannelTimestamps[id] = channel->SoundLast+channel->SoundIter;
     }
 
     if (!dmaqueued)
@@ -478,7 +477,6 @@ void DMA9_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 
         mask &= 0x0FFFFFFE;
 
         MaskedWrite(cur->SrcAddr, val, mask);
-        cur->SrcAddrReload = cur->SrcAddr;
         break;
     }
     case 1: // destination address
@@ -503,7 +501,7 @@ void DMA9_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 
             }
             else
             {
-                LogPrint(LOG_UNIMP | LOG_DMA, "UNIMP: Stopping DMA9\n");
+                //LogPrint(LOG_UNIMP | LOG_DMA, "UNIMP: Stopping DMA9\n");
                 // stopping dma channel
                 // TODO: allegedly under specific circumstances this can lock up the bus?
             }
@@ -529,7 +527,6 @@ void DMA7_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 
         val &= ((channel == 0) ? 0x07FFFFFE : 0x0FFFFFFE);
 
         MaskedWrite(cur->SrcAddr, val, mask);
-        cur->SrcAddrReload = cur->SrcAddr;
         break;
     }
     case 1: // destination address
@@ -556,7 +553,7 @@ void DMA7_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 
             }
             else
             {
-                LogPrint(LOG_UNIMP | LOG_DMA, "UNIMP: Stopping DMA7\n");
+                //LogPrint(LOG_UNIMP | LOG_DMA, "UNIMP: Stopping DMA7\n");
                 // stopping dma channel
                 // TODO: allegedly under specific circumstances this can lock up the bus?
             }

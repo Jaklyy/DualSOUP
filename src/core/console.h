@@ -487,6 +487,7 @@ struct Console
     u64 TimeFrac;
     volatile double FrameTime;
     volatile double FrameTimeActual;
+    bool DirectBoot;
 
 
     alignas(HOST_CACHEALIGN)

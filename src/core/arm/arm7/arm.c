@@ -216,6 +216,7 @@ void ARM7_Step(struct ARM7TDMI* ARM7)
 void ARM7_MainLoop(struct ARM7TDMI* ARM7)
 {
     while(!CR_Start);
+    if (cpu->Sys->DirectBoot) ARM7_FlushPipeline(ARM7);
     while(!CR_Kill)
     {
         if ((Console_GetARM7Max(cpu->Sys, false) >= cpu->Sys->ARM7Target))// || cpu->DeadAsleep)
