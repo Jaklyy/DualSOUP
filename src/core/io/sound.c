@@ -39,13 +39,13 @@ void AudioMixer_Run(struct Console* sys, timestamp now)
             u8 panr = chan->CR.Panning + (chan->CR.Panning == 127);
             u8 panl = 128-panr;
 
-            if (mixmaskl & (1<<i)) mixerout[0] += ((s64)sample * panl) >> 10;
-            if (mixmaskr & (1<<i)) mixerout[1] += ((s64)sample * panr) >> 10;
+            if (mixmaskl & (1<<i)) mixerout[0] += (sample * panl) >> 10;
+            if (mixmaskr & (1<<i)) mixerout[1] += (sample * panr) >> 10;
         }
 
         for (int i = 0; i < 2; i++)
         {
-            mixerout[i] = ((s64)mixerout[i] * (sys->SoundCR.MasterVol + (sys->SoundCR.MasterVol == 127))) >> 21;
+            mixerout[i] = (mixerout[i] * (sys->SoundCR.MasterVol + (sys->SoundCR.MasterVol == 127))) >> 21;
             mixerout[i] += sys->SoundBias;
             DS_CLAMP(mixerout[i], <, 0)
             DS_CLAMP(mixerout[i], >, 0x3FF)
@@ -103,19 +103,18 @@ void SoundFIFO_Sample(struct Console* sys, const u8 id, const timestamp now)
 {
     SoundChannel* channel = &sys->SoundChannels[id];
 
-    if (!channel->CR.Enable && !(channel->CR.Hold && (channel->CR.RepeatMode == 2)))
+    if (!channel->CR.Enable)
     {
-        channel->CurSample = 0;
+        if (!(channel->CR.Hold && (channel->CR.RepeatMode == 2 /* checkme? */)))
+            channel->CurSample = 0;
+        //else
+        //    printf("trying to hold sample\n");
 
         // disable timer
+        Scheduler_RunEventManual(sys, now, Evt_Timer7, false, false);
         sys->Timers7[id+4].NeedsUpdate = true;
         sys->Timers7[id+4].BufferedRegs = 0x00'0000;
         Schedule_Event(sys, Timer7_UpdateCRs, Evt_Timer7, now+1);
-    }
-
-    if (channel->Prog >= channel->SampleMax)
-    {
-        SoundChannel_Disable(sys, id, now, false);
         return;
     }
 
@@ -123,26 +122,26 @@ void SoundFIFO_Sample(struct Console* sys, const u8 id, const timestamp now)
     {
     case AudioFormat_PCM8:
     {
-        if (channel->Prog >= 3) // fetch pcm
+        if (channel->Prog >= PCM_Delay) // fetch pcm
         {
              channel->CurSample = SoundFIFO_Drain(sys, channel, 1, id, now) << 8;
         }
-        else channel->CurSample = 0;
+        else if (channel->Prog > 0) channel->CurSample = 0;
         break;
     }
     case AudioFormat_PCM16:
     {
-        if (channel->Prog >= 3) // fetch pcm
+        if (channel->Prog >= PCM_Delay) // fetch pcm
         {
             channel->CurSample = SoundFIFO_Drain(sys, channel, 2, id, now);
         }
-        else channel->CurSample = 0;
+        else if (channel->Prog > 0) channel->CurSample = 0;
         break;
     }
 
     case AudioFormat_ADPCM:
     {
-        if (channel->Prog >= 12) // pcm
+        if (channel->Prog >= ADPCM_Delay) // pcm
         {
             if (channel->Prog == channel->ADPCM_LoopStart)
             {
@@ -186,7 +185,7 @@ void SoundFIFO_Sample(struct Console* sys, const u8 id, const timestamp now)
             DS_CLAMP(channel->ADPCM_Index, >, 88)
             DS_CLAMP(channel->ADPCM_Index, <, 0)
         }
-        else if (channel->Prog == 8) // fetch header
+        else if (channel->Prog == ADPCM_HeaderDelay) // fetch header
         {
             u32 header = SoundFIFO_Drain(sys, channel, 4, id, now);
             channel->ADPCM_Sample = (s16)header;
@@ -198,8 +197,9 @@ void SoundFIFO_Sample(struct Console* sys, const u8 id, const timestamp now)
             DS_CLAMP(channel->ADPCM_Index, >, 88)
             channel->ADPCM_LoopIndex = channel->ADPCM_Index;
             channel->CurSample = 0;
-        }
-        else channel->CurSample = 0;
+        } 
+        else if (channel->Prog > 0) channel->CurSample = 0;
+
         break;
     }
 
@@ -235,13 +235,16 @@ void SoundFIFO_Sample(struct Console* sys, const u8 id, const timestamp now)
 
     u32 tmp;
     if (!ckd_add(&tmp, channel->Prog, 1)) channel->Prog = tmp;
+
+    if (channel->Prog >= channel->SampleMax)
+    {
+        SoundChannel_Disable(sys, id, now, false);
+    }
 }
 
 
 void SoundChannel_Disable(struct Console* sys, const u8 id, const timestamp now, const bool bushogged)
 {
-    Scheduler_RunEventManual(sys, now, Evt_Timer7, false, bushogged);
-
     // disable dma
     sys->DMA7.Channels[id].CR.Repeat = false;
     sys->DMA7.Channels[id].CR.Enable = false;
@@ -251,7 +254,6 @@ void SoundChannel_Disable(struct Console* sys, const u8 id, const timestamp now,
 
 void SoundChannel_KillAll(struct Console* sys, const timestamp now)
 {
-    //printf("killing sound channels\n");
     Scheduler_RunEventManual(sys, now, Evt_Timer7, false, true);
     for (int i = 0; i < 16; i++)
     {
@@ -292,6 +294,7 @@ void SoundChannel_Start(struct Console* sys, SoundChannel* channel, const u8 id,
 
     // set up timers
     Scheduler_RunEventManual(sys, now, Evt_Timer7, false, true);
+    if (sys->Timers7[id+4].CR.Enable) printf("timer fucked it all up!\n"); // todo: is this actually a problem?
     sys->Timers7[id+4].NeedsUpdate = true;
     sys->Timers7[id+4].BufferedRegs = 0xC0'0000 /* Enable, IRQ */ | channel->Timer;
     Schedule_Event(sys, Timer7_UpdateCRs, Evt_Timer7, now+1);
@@ -301,13 +304,13 @@ void SoundChannel_Start(struct Console* sys, SoundChannel* channel, const u8 id,
         switch(channel->CR.Format)
         {
         case AudioFormat_PCM8:
-            channel->SampleMax = ((channel->SoundLen + channel->LoopOffs)*4) + 3;
+            channel->SampleMax = ((channel->SoundLen + channel->LoopOffs)*4) + PCM_Delay;
             break;
         case AudioFormat_PCM16:
-            channel->SampleMax = ((channel->SoundLen + channel->LoopOffs)*2) + 3;
+            channel->SampleMax = ((channel->SoundLen + channel->LoopOffs)*2) + PCM_Delay;
             break;
         case AudioFormat_ADPCM:
-            channel->SampleMax = ((channel->SoundLen + channel->LoopOffs-1)*8) + 12;
+            channel->SampleMax = ((channel->SoundLen + channel->LoopOffs-1)*8) + ADPCM_Delay;
             break;
         case AudioFormat_PSGNoise:
             channel->SampleMax = u64_max;
@@ -320,8 +323,8 @@ void SoundChannel_Start(struct Console* sys, SoundChannel* channel, const u8 id,
     {
         if (channel->CR.RepeatMode == 1)
         {
-            channel->ADPCM_LoopStart = ((channel->LoopOffs-1)*8) + 12;
-            channel->ADPCM_LoopEnd = ((channel->SoundLen + channel->LoopOffs-1)*8) + 12;
+            channel->ADPCM_LoopStart = ((channel->LoopOffs-1)*8) + ADPCM_Delay;
+            channel->ADPCM_LoopEnd = ((channel->SoundLen + channel->LoopOffs-1)*8) + ADPCM_Delay;
         }
         else
         {
@@ -381,8 +384,15 @@ void SoundChannel_IOWrite(struct Console* sys, const u32 addr, const u32 val, co
             else
             {
                 SoundChannel_Disable(sys, id, now, true);
+                // disable timer
+                Scheduler_RunEventManual(sys, now, Evt_Timer7, false, true);
+                sys->Timers7[id+4].NeedsUpdate = true;
+                sys->Timers7[id+4].BufferedRegs = 0x00'0000;
+                Schedule_Event(sys, Timer7_UpdateCRs, Evt_Timer7, now+1);
             }
         }
+        if (!channel->CR.Enable && (!channel->CR.Hold && (oldcr & (1<<15)))) // clear hold (CHECKME?)
+            channel->CurSample = 0;
         break;
 
     case 0x4:
@@ -392,14 +402,15 @@ void SoundChannel_IOWrite(struct Console* sys, const u32 addr, const u32 val, co
 
     case 0x8:
         MaskedWrite(channel->Timer, val, mask & 0xFFFF);
-        MaskedWrite(channel->LoopOffs, val>>16, (mask>>16) & 0xFFFF);
-        if (channel->CR.Enable && mask & 0xFFFF)
+        if (channel->CR.Enable && (mask & 0xFFFF))
         {
             Scheduler_RunEventManual(sys, now, Evt_Timer7, false, true);
-            //LogPrint(LOG_SOUND, "Writing timer while active %i\n", id);
-            sys->Timers7[id+4].BufferedRegs = 0xC0000 | (val & 0xFFFF);
+            sys->Timers7[id+4].NeedsUpdate = true;
+            sys->Timers7[id+4].BufferedRegs = 0xC00000 | (val & 0xFFFF);
             Schedule_Event(sys, Timer7_UpdateCRs, Evt_Timer7, now+1);
         }
+
+        MaskedWrite(channel->LoopOffs, val>>16, (mask>>16) & 0xFFFF);
         if (channel->CR.Enable && mask & 0xFFFF0000) LogPrint(LOG_SOUND, "Writing loopoffs while active %i\n", id);
         break;
 

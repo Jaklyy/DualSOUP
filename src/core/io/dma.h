@@ -41,6 +41,28 @@ union DMA_CR
     };
 };
 
+constexpr int DMA7_NumSound = 16;
+constexpr int DMA7_NumSoundCap = 2;
+constexpr int DMA7_NumNormal = 4;
+constexpr int DMA7_NumNew = 4;
+
+constexpr int DMA7_Base = 0;
+
+constexpr int DMA7_SoundBase = DMA7_Base;
+constexpr int DMA7_SoundMax = DMA7_SoundBase + DMA7_NumSound;
+
+constexpr int DMA7_SoundCapBase = DMA7_SoundMax;
+constexpr int DMA7_SoundCapMax = DMA7_SoundCapBase + DMA7_NumSoundCap;
+
+constexpr int DMA7_NormalBase = DMA7_SoundCapMax;
+constexpr int DMA7_NormalMax = DMA7_NormalBase + DMA7_NumNormal;
+
+constexpr int DMA7_NewBase = DMA7_NormalMax;
+constexpr int DMA7_NewMax = DMA7_NewBase + DMA7_NumNew;
+
+constexpr int DMA7_Max = DMA7_NewMax;
+
+
 struct DMA_Channel
 {
     u32 SrcAddr;
@@ -60,9 +82,9 @@ struct DMA_Channel
 
 struct DMA_Controller
 {
-    alignas(sizeof(timestamp[32])) timestamp ChannelTimestamps[4+16+1];
+    alignas(sizeof(timestamp[32])) timestamp ChannelTimestamps[DMA7_Max+1];
     timestamp NextTime;
-    struct DMA_Channel Channels[4+16];
+    struct DMA_Channel Channels[DMA7_Max];
     u32 CurMask;
     u8 NextID;
 };

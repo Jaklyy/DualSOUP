@@ -110,7 +110,9 @@ void LCD_Scanline(struct Console* sys, timestamp now)
     {
         if (SDL_GetGamepadButton(sys->Pad, SDL_GAMEPAD_BUTTON_LEFT_STICK)) // debugging junk
         {
-            /*for (int i = 0; i < 16; i++)
+
+#if 1
+            for (int i = 0; i < 16; i++)
             {
                 printf("channel %i: dmacr:%08X dmats:%08lX dmasa:%08X dmaln%08X dmamd%i\nchraw: %08X cen:%i cfm:%i crm:%i chln%i chlp%i chpr:%08X chmx:%08lX\ntimercr:%06X fifd:%i fiff:%i fifs:%i\n", i, \
                 sys->DMA7.Channels[i].CR.Raw, sys->DMA7.ChannelTimestamps[i], sys->DMA7.Channels[i].Latched_SrcAddr, sys->DMA7.Channels[i].Latched_NumWords, sys->DMA7.Channels[i].CurrentMode, \
@@ -118,7 +120,8 @@ void LCD_Scanline(struct Console* sys, timestamp now)
                 sys->SoundChannels[i].Prog, sys->SoundChannels[i].SampleMax, \
                 sys->Timers7[i+4].Regs, sys->SoundChannels[i].FIFO_DrainPtr, sys->SoundChannels[i].FIFO_FillPtr, sys->SoundChannels[i].FIFO_Bytes);
             }
-            printf("dma cur: %08X\n", sys->DMA7.CurMask);*/
+            printf("dma cur: %08X\n", sys->DMA7.CurMask);
+#elif
             bool seq = false;
             printf("dumping\n");
             {
@@ -151,6 +154,7 @@ void LCD_Scanline(struct Console* sys, timestamp now)
             }
             printf("done\n");
             while (SDL_GetGamepadButton(sys->Pad, SDL_GAMEPAD_BUTTON_LEFT_STICK));
+#endif
         }
 
         sys->DispStatRO9.Raw = 0b001;

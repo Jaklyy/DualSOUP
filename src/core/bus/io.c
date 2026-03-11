@@ -290,7 +290,7 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask, const bool tim
             return (sys->VCount << 16) | sys->DispStatRO7.Raw | sys->DispStatRW7.Raw;
 
         case 0x00'00'B0 ... 0x00'00'E0-1:
-            return DMA_IOReadHandler(&sys->DMA7.Channels[16], addr);
+            return DMA_IOReadHandler(&sys->DMA7.Channels[DMA7_NormalBase], addr);
 
         case 0x00'01'00 ... 0x00'01'0C:
             return Timer_IOReadHandler(sys, sys->AHB7.Timestamp, addr, false);
@@ -395,7 +395,7 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             break;
 
         case 0x00'00'B0 ... 0x00'00'E0-1:
-            DMA7_IOWriteHandler(sys, &sys->DMA7.Channels[16], addr, val, mask);
+            DMA7_IOWriteHandler(sys, &sys->DMA7.Channels[DMA7_NormalBase], addr, val, mask);
             break;
 
         case 0x00'01'00 ... 0x00'01'0C:

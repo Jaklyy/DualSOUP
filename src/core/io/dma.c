@@ -35,7 +35,7 @@ void DMA_Schedule(struct Console* sys, const bool a9)
     u8 id = 31; // returning an id of 31 makes it check the cur mask somewhere it should always be 0
 
     int max = stdc_trailing_zeros((u32)cnt->CurMask);
-    #pragma unroll (4+16)
+    #pragma unroll (DMA7_Max)
     for (int i = 0; i < max; i++)
     {
         if (time > cnt->ChannelTimestamps[i])
@@ -74,7 +74,7 @@ void StartDMA9(struct Console* sys, timestamp start, u8 mode)
 void StartDMA7(struct Console* sys, timestamp start, u8 mode)
 {
     bool update = false;
-    for (int i = 16; i < (4+16); i++)
+    for (int i = DMA7_NormalBase; i < DMA7_NormalMax; i++)
     {
         if (!sys->DMA7.Channels[i].CR.Enable) continue;
         if (sys->DMA7.Channels[i].CurrentMode != mode) continue;
@@ -276,11 +276,8 @@ void DMA_Run(struct Console* sys, const bool a9)
     if (channel->Latched_NumWords == 0)
     {
         // CHECKME: idk, where and when things are latched needs testing.
-        if (channel->CR.SourceCR == 3)
-        {
-            channel->Latched_SrcAddr = channel->SrcAddr;
-        }
-        if (channel->CR.DestCR == 3) channel->Latched_DstAddr = channel->DstAddr;
+        if (channel->CR.SourceCR == 3) channel->Latched_SrcAddr = channel->SrcAddr;
+        if (channel->CR.DestCR   == 3) channel->Latched_DstAddr = channel->DstAddr;
 
         channel->Latched_NumWords = channel->NumWords;
     }
@@ -362,6 +359,7 @@ void DMA_Run(struct Console* sys, const bool a9)
             {
                 AHB7_Write(sys, &cnt->ChannelTimestamps[id], channel->Latched_DstAddr, read, wmask, false, &wseq, true, 0xFFFFFFFF /*checkme?*/);
             }
+            channel->Latched_DstAddr += channel->DstInc;
         }
         else
         {
@@ -379,8 +377,6 @@ void DMA_Run(struct Console* sys, const bool a9)
 
         rseq = (channel->SrcInc > 0);
         wseq = (channel->DstInc > 0);
-
-        channel->Latched_DstAddr += channel->DstInc;
 
         channel->Latched_NumWords -= 1;
         numword -= 1;

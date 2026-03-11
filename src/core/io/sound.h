@@ -33,6 +33,10 @@ constexpr u16 ADPCM_Table[] =
     0x7FFF,
 };
 
+constexpr int PCM_Delay = 3;
+constexpr int ADPCM_HeaderDelay = 8;
+constexpr int ADPCM_Delay = ADPCM_HeaderDelay + 1 + PCM_Delay;
+
 typedef struct
 {
     union
