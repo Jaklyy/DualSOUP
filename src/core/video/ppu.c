@@ -533,6 +533,30 @@ void PPU_BuildSprites(struct Console* sys, const bool b, const u8 y)
     }
 }
 
+void ApplyBrightnessModifier(u32* scanline, Brightness bright)
+{
+    if (bright.Mode != 1 && bright.Mode != 2) return; // checkme: mode 3?
+    for (int x = 0; x < 256; x++)
+    {
+        u32 out = 0;
+        u8 factor = ((bright.Factor > 16) ? 16 : bright.Factor);
+        for (int i = 0; i < 18; i += 6)
+        {
+            s16 c = (scanline[x] >> i) & 0x3F;
+            if (bright.Mode == 1)
+            {
+                c += ((0x3F - c) * factor) >> 4;
+            }
+            else
+            {
+                c -= ((c * factor) + 0xF) >> 4;
+            }
+            out |= c << i;
+        }
+        scanline[x] = out;
+    }
+}
+
 void PPU_RenderScanline(struct Console* sys, const bool b, const s16 y)
 {
     PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
@@ -547,6 +571,7 @@ void PPU_RenderScanline(struct Console* sys, const bool b, const s16 y)
                 *time += 1538 + HBlank_Cycles;
                 for (int x = 0; x < 256; x++)
                     scanline[x] = 0x3FFFF;
+                ApplyBrightnessModifier(scanline, ppu->Brightness);
                 return;
             case 1:
                 break;
@@ -560,11 +585,13 @@ void PPU_RenderScanline(struct Console* sys, const bool b, const s16 y)
                     scanline[x] = RGB555to666(VRAM_LCD(sys, addr&~3, u32_max, false, 0, false) >> ((addr & 2)*8));
                     addr += 2;
                 }
+                ApplyBrightnessModifier(scanline, ppu->Brightness);
                 return;
             }
             case 3:
                 LogPrint(LOG_PPU|LOG_UNIMP, "INVALID LCDC MODE 3\n");
                 *time += 1538 + HBlank_Cycles;
+                ApplyBrightnessModifier(scanline, ppu->Brightness);
                 return;
         }
 
@@ -578,6 +605,7 @@ void PPU_RenderScanline(struct Console* sys, const bool b, const s16 y)
 
         PPU_BuildBGs(sys, b, y);
         PPU_Composite(sys, b, y);
+        ApplyBrightnessModifier(scanline, ppu->Brightness);
     }
     if (y < 191)
     {

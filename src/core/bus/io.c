@@ -608,6 +608,9 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask, const bool tim
         case 0x00'00'60:
             return sys->GX3D.RasterCR.Raw;
 
+        case 0x00'00'6C:
+            return sys->PPU_A.Brightness.Raw;
+
         // DMA
         case 0x00'00'B0 ... 0x00'00'E0-1:
             return DMA_IOReadHandler(sys->DMA9.Channels, addr);
@@ -727,6 +730,9 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask, const bool tim
         case 0x00'10'1C:
             return sys->PPU_B.Xoff[3] | (sys->PPU_B.Yoff[3] << 16);
 
+        case 0x00'10'6C:
+            return sys->PPU_B.Brightness.Raw;
+
         case 0x00'03'00:
             Console_SyncWith7GT(sys, sys->AHB9.Timestamp, true);
             return sys->PostFlag | (sys->PostFlagA9Bit << 1);
@@ -799,6 +805,11 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
 
         case 0x00'00'60:
             MaskedWrite(sys->GX3D.RasterCR.Raw, val, mask & 0x4FFF);
+            break;
+
+        case 0x00'00'6C:
+            PPU_Sync(sys, sys->AHB9.Timestamp);
+            MaskedWrite(sys->PPU_A.Brightness.Raw, val, mask & 0xC01F);
             break;
 
         // DMA
@@ -1038,6 +1049,11 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             PPU_Sync(sys, sys->AHB9.Timestamp);
             MaskedWrite(sys->PPU_B.Xoff[3], val, mask&0x1FF);
             MaskedWrite(sys->PPU_B.Yoff[3], val>>16, (mask>>16)&0x1FF);
+            break;
+
+        case 0x00'10'6C:
+            PPU_Sync(sys, sys->AHB9.Timestamp);
+            MaskedWrite(sys->PPU_B.Brightness.Raw, val, mask & 0xC01F);
             break;
 
 

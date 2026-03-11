@@ -75,6 +75,17 @@ typedef union
     };
 } SprAttrs2;
 
+typedef union
+{
+    u16 Raw;
+    struct
+    {
+        u16 Factor : 5;
+        u16 : 9;
+        u16 Mode : 2;
+    };
+} Brightness;
+
 typedef struct
 {
     union
@@ -136,6 +147,7 @@ typedef struct
 
     u16 Xoff[4];
     u16 Yoff[4];
+    Brightness Brightness;
 } PPU;
 
 struct Console;
