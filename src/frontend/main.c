@@ -94,7 +94,7 @@ int Core_Init(void* pass)
 
 int main()
 {
-    LogMask = LOG_SOUND;u64_max; // temp
+    LogMask = u64_max; // temp
 
     // TODO investigate: SDL_HINT_TIMER_RESOLUTION
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
@@ -186,10 +186,8 @@ int main()
                     printf("thread init failure :(\n");
                     return EXIT_FAILURE;
                 }
-                printf("dgfhfdgjs\n");
 
                 while(mailbox.initflag == Init_Busy);
-                printf("fdnbgfdhgn\n");
 
                 if (mailbox.initflag == Init_Fail)
                     break;

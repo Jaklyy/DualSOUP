@@ -1,6 +1,7 @@
 #include <stdckdint.h>
 #include <stdbit.h>
 #include <stdlib.h>
+#include <string.h>
 #include "flash.h"
 
 
@@ -9,7 +10,7 @@
 void Flash_Init(Flash* flash, u8* ram, u64 size, bool writeprot, const int id)
 {
     flash->RAMSize = size;
-    flash->WriteProt = writeprot ? ~((size/4)-1) : (u32)~0;
+    flash->WriteProt = writeprot ? 256*256 : 0;
     flash->RAM = ram;
 
     flash->ID[0] = (id>> 0) & 0xFF;
@@ -172,35 +173,31 @@ u8 Flash_PageWrite(Flash* flash, const u8 val, const bool chipsel)
     {
         if (flash->CmdLen != 0)
         {
-            flash->CurAddr = (flash->CurAddr << 8) | val;
+            flash->CurAddr = ((flash->CurAddr << 8) | val) & (flash->RAMSize-1);
         }
         return 0;
     }
-    else if (flash->CurAddr & flash->WriteProt)
+    else if (flash->CurAddr >= flash->WriteProt)
     {
-        if ((flash->CmdLen - 3) >= 256)
+        if (flash->CmdLen == 4)
         {
-            flash->CmdLen = 256 + 3;
+            memcpy(flash->DataBuffer, &flash->RAM[flash->CurAddr & ~0xFF], 256);
+            flash->WritePos = flash->CurAddr & 0xFF;
         }
 
         // checkme: how does it actually do masking?
-        flash->DataBuffer[flash->WritePos] = val;
-        flash->WritePos++;
-
+        flash->DataBuffer[flash->WritePos++] = val;
         flash->WritePos &= 0xFF;
 
         if (!chipsel)
         {
             // CHECKME: is this correct behavior for buffer overflow?
-            for (int i = 0; i < flash->CmdLen - 3; i++)
-            {
-                flash->RAM[flash->CurAddr++ & (flash->RAMSize-1)] = flash->DataBuffer[i];
-
-                // wrap value to page boundary
-                if (!(flash->CurAddr & 0xFF))
-                    flash->CurAddr -= 256;
-            }
+            memcpy(&flash->RAM[flash->CurAddr & ~0xFF], flash->DataBuffer, 256);
         }
+    }
+    else
+    {
+        LogPrint(LOG_FLASH|LOG_ODD, "Flash: Page Write to Protected Page?\n");
     }
     if (!chipsel) flash->WriteEnabled = false;
     return 0;
@@ -218,37 +215,31 @@ u8 Flash_PageProgram(Flash* flash, const u8 val, const bool chipsel)
     {
         if (flash->CmdLen != 0)
         {
-            flash->CurAddr = (flash->CurAddr << 8) | val;
+            flash->CurAddr = ((flash->CurAddr << 8) | val) & (flash->RAMSize-1);
         }
         return 0;
     }
-    else if (flash->CurAddr & flash->WriteProt)
+    else if (flash->CurAddr >= flash->WriteProt)
     {
-        if (chipsel)
+        if (flash->CmdLen == 4)
         {
-            if ((flash->CmdLen - 3) >= 256)
-            {
-                flash->CmdLen = 256 + 3;
-            }
-
-            // checkme: how does it actually do masking?
-            flash->DataBuffer[flash->WritePos++] = val;
-
-            flash->WritePos &= 0xFF;
+            memcpy(flash->DataBuffer, &flash->RAM[flash->CurAddr & ~0xFF], 256);
+            flash->WritePos = flash->CurAddr & 0xFF;
         }
-        else
+
+        // checkme: how does it actually do masking?
+        flash->DataBuffer[flash->WritePos++] &= ~val;
+        flash->WritePos &= 0xFF;
+
+        if (!chipsel)
         {
             // CHECKME: is this correct behavior for buffer overflow?
-            for (int i = 0; i < flash->CmdLen - 3; i++)
-            {
-                // checkme: what does this actually do...?
-                flash->RAM[flash->CurAddr++ & (flash->RAMSize-1)] &= ~flash->DataBuffer[i];
-
-                // wrap value to page boundary
-                if (!(flash->CurAddr & 0xFF))
-                    flash->CurAddr -= 256;
-            }
+            memcpy(&flash->RAM[flash->CurAddr & ~0xFF], flash->DataBuffer, 256);
         }
+    }
+    else
+    {
+        LogPrint(LOG_FLASH|LOG_ODD, "Flash: Page Program to Protected Page?\n");
     }
     if (!chipsel) flash->WriteEnabled = false;
     return 0;
@@ -262,22 +253,23 @@ u8 Flash_PageErase(Flash* flash, const u8 val, const bool chipsel)
         return 0xFF;
     }
 
-    // TODO chipsel?
     if ((flash->CmdLen < 4))
     {
-        // just dont set the low byte tbh
-        if (flash->CmdLen > 1)
+        if (flash->CmdLen != 0)
         {
-            flash->CurAddr = (flash->CurAddr << 8) | val;
+            flash->CurAddr = ((flash->CurAddr << 8) | val) & (flash->RAMSize-1);
         }
         return 0;
     }
-    else if (flash->CurAddr & flash->WriteProt)
-    {
-        for (int i = 0; i < 0x100; i++)
+    else if (flash->CmdLen == 4) // checkme
+    { 
+        if (flash->CurAddr >= flash->WriteProt)
         {
-            // apparently erase means set...?
-            flash->RAM[flash->CurAddr++ & (flash->RAMSize-1)] = 0xFF;
+            memset(&flash->RAM[flash->CurAddr&~0xFF], 0xFF, 256);
+        }
+        else
+        {
+            LogPrint(LOG_FLASH|LOG_ODD, "Flash: Page Erase to Protected Page?\n");
         }
     }
     if (!chipsel) flash->WriteEnabled = false;
@@ -292,22 +284,23 @@ u8 Flash_SectorErase(Flash* flash, const u8 val, const bool chipsel)
         return 0xFF;
     }
 
-    // TODO chipsel?
     if ((flash->CmdLen < 4))
     {
-        // just dont set the low bytes tbh
-        if (flash->CmdLen > 2)
+        if (flash->CmdLen != 0)
         {
-            flash->CurAddr = (flash->CurAddr << 8) | val;
+            flash->CurAddr = ((flash->CurAddr << 8) | val) & (flash->RAMSize-1);
         }
         return 0;
     }
-    else if (flash->CurAddr & flash->WriteProt)
+    else if (flash->CmdLen == 4) // checkme
     {
-        for (int i = 0; i < 0x10000; i++)
+        if (flash->CurAddr >= flash->WriteProt)
         {
-            // apparently erase means set...?
-            flash->RAM[flash->CurAddr++ & (flash->RAMSize-1)] = 0xFF;
+            memset(&flash->RAM[flash->CurAddr&~65536], 0xFF, 65536);
+        }
+        else
+        {
+            LogPrint(LOG_FLASH|LOG_ODD, "Flash: Sector Erase to Protected Sector?\n");
         }
     }
     if (!chipsel) flash->WriteEnabled = false;
