@@ -45,13 +45,26 @@ void AudioMixer_Run(struct Console* sys, timestamp now)
 
         for (int i = 0; i < 2; i++)
         {
-            mixerout[i] = (mixerout[i] * (sys->SoundCR.MasterVol + (sys->SoundCR.MasterVol == 127))) >> 21;
-            mixerout[i] += sys->SoundBias;
-            DS_CLAMP(mixerout[i], <, 0)
-            DS_CLAMP(mixerout[i], >, 0x3FF)
+            mixerout[i] = (mixerout[i] * (sys->SoundCR.MasterVol + (sys->SoundCR.MasterVol == 127)));
 
-            // convert to signed 16 bit
-            sampleout[i] = ((mixerout[i] * 0xFFFF) / 0x3FF) - 0x8000;
+            if (sys->ConsoleModel < MODEL_TWL)
+            {
+                // convert to unsigned 10 bit
+                mixerout[i] >>= 21;
+                mixerout[i] += sys->SoundBias;
+                DS_CLAMP(mixerout[i], <, 0)
+                DS_CLAMP(mixerout[i], >, 0x3FF)
+
+                // convert back to signed 16 bit
+                sampleout[i] = (s16)((((float)mixerout[i] * 0xFFFF) / 0x3FF) - 0x8000);
+            }
+            else
+            {
+                mixerout[i] >>= 15;
+                DS_CLAMP(mixerout[i], <, -0x8000)
+                DS_CLAMP(mixerout[i], >, 0x7FFF)
+                sampleout[i] = mixerout[i];
+            }
         }
     }
     if (!SDL_PutAudioStreamData(sys->Aud, sampleout, 4)) printf("wat %s\n", SDL_GetError());
@@ -155,7 +168,7 @@ void SoundFIFO_Sample(struct Console* sys, const u8 id, const timestamp now)
                 channel->Prog = channel->ADPCM_LoopStart;
             }
 
-            if (!(channel->Prog & 1))
+            if ((channel->Prog & 1) == (ADPCM_Delay & 1))
             {
                 channel->ADPCM_Data = SoundFIFO_Drain(sys, channel, 1, id, now);
             }
@@ -294,8 +307,9 @@ void SoundChannel_Start(struct Console* sys, SoundChannel* channel, const u8 id,
 
     // set up timers
     Scheduler_RunEventManual(sys, now, Evt_Timer7, false, true);
-    if (sys->Timers7[id+4].CR.Enable) printf("timer fucked it all up!\n"); // todo: is this actually a problem?
+    //if (sys->Timers7[id+4].CR.Enable) printf("timer fucked it all up!\n"); // todo: is this actually a problem?
     sys->Timers7[id+4].NeedsUpdate = true;
+    sys->Timers7[id+4].CR.Enable = false; // hacky?
     sys->Timers7[id+4].BufferedRegs = 0xC0'0000 /* Enable, IRQ */ | channel->Timer;
     Schedule_Event(sys, Timer7_UpdateCRs, Evt_Timer7, now+1);
 
@@ -383,12 +397,13 @@ void SoundChannel_IOWrite(struct Console* sys, const u32 addr, const u32 val, co
             }
             else
             {
+                Scheduler_RunEventManual(sys, now, Evt_Timer7, false, true);
                 SoundChannel_Disable(sys, id, now, true);
                 // disable timer
-                Scheduler_RunEventManual(sys, now, Evt_Timer7, false, true);
+                /*Scheduler_RunEventManual(sys, now, Evt_Timer7, false, true);
                 sys->Timers7[id+4].NeedsUpdate = true;
                 sys->Timers7[id+4].BufferedRegs = 0x00'0000;
-                Schedule_Event(sys, Timer7_UpdateCRs, Evt_Timer7, now+1);
+                Schedule_Event(sys, Timer7_UpdateCRs, Evt_Timer7, now+1);*/
             }
         }
         if (!channel->CR.Enable && (!channel->CR.Hold && (oldcr & (1<<15)))) // clear hold (CHECKME?)
@@ -406,7 +421,7 @@ void SoundChannel_IOWrite(struct Console* sys, const u32 addr, const u32 val, co
         {
             Scheduler_RunEventManual(sys, now, Evt_Timer7, false, true);
             sys->Timers7[id+4].NeedsUpdate = true;
-            sys->Timers7[id+4].BufferedRegs = 0xC00000 | (val & 0xFFFF);
+            sys->Timers7[id+4].BufferedRegs = 0xC0'0000 | (val & 0xFFFF);
             Schedule_Event(sys, Timer7_UpdateCRs, Evt_Timer7, now+1);
         }
 

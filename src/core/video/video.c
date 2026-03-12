@@ -1,6 +1,5 @@
 #include <SDL3/SDL_audio.h>
 #include <SDL3/SDL_timer.h>
-#include <SDL3/SDL.h>
 #include <threads.h>
 #include "video.h"
 #include "../scheduler.h"
@@ -63,8 +62,10 @@ void LCD_HBlank(struct Console* sys, timestamp now)
         StartDMA9(sys, now+2+1, DMAStart_HBlank); // checkme: delay?
         PPU_SetTarget(sys, now);
     }
-    if (sys->VCount == 192)
+    if (sys->VCount == 191)
     {
+        Console_DebugLog(sys);
+
         PPU_Sync(sys, now);
         sys->RenderedLines = 0;
         sys->BackBuf = !sys->BackBuf;
@@ -74,12 +75,23 @@ void LCD_HBlank(struct Console* sys, timestamp now)
         // frame limiter
         {
             // TODO: this doesn't really work quite right if you take longer than a frame.
-            u64 target = sys->OldTime + ((sys->CountPerFrame + sys->TimeFrac) / Base_Clock);
-            sys->TimeFrac = (sys->CountPerFrame + sys->TimeFrac) % Base_Clock;
-            double frametimeactual = (double)(SDL_GetPerformanceCounter() - sys->OldTime) * 1000.0 / SDL_GetPerformanceFrequency();
+
+            u64 target = sys->OldTime + ((((Frame_Cycles/2) * SDL_GetPerformanceFrequency()) + sys->TimeFrac) / Base_Clock);
+            sys->TimeFrac =              (((Frame_Cycles/2) * SDL_GetPerformanceFrequency()) + sys->TimeFrac) % Base_Clock;
+
+            double frametimeactual = (double)(SDL_GetPerformanceCounter() - sys->OldTimeActual) * 1000.0 / SDL_GetPerformanceFrequency();
             while(SDL_GetPerformanceCounter() < target) thrd_yield();
-            double frametime = (double)(SDL_GetPerformanceCounter() - sys->OldTime) * 1000.0 / SDL_GetPerformanceFrequency();
-            sys->OldTime = target;
+            double frametime = (double)(SDL_GetPerformanceCounter() - sys->OldTimeActual) * 1000.0 / SDL_GetPerformanceFrequency();
+
+            if ((SDL_GetPerformanceCounter() - (SDL_GetPerformanceFrequency() / 60)) > target)
+            {
+                sys->OldTime = target;
+            }
+            else
+            {
+                sys->OldTime = SDL_GetPerformanceCounter();
+            }
+            sys->OldTimeActual = SDL_GetPerformanceCounter();
             sys->FrameTime = frametime;
             sys->FrameTimeActual = frametimeactual;
 
@@ -108,55 +120,6 @@ void LCD_Scanline(struct Console* sys, timestamp now)
     // this occurs before vcount writes
     if (sys->VCount == 192)
     {
-        if (SDL_GetGamepadButton(sys->Pad, SDL_GAMEPAD_BUTTON_LEFT_STICK)) // debugging junk
-        {
-
-#if 1
-            for (int i = 0; i < 16; i++)
-            {
-                printf("channel %i: dmacr:%08X dmats:%08lX dmasa:%08X dmaln%08X dmamd%i\nchraw: %08X cen:%i cfm:%i crm:%i chln%i chlp%i chpr:%08X chmx:%08lX\ntimercr:%06X fifd:%i fiff:%i fifs:%i\n", i, \
-                sys->DMA7.Channels[i].CR.Raw, sys->DMA7.ChannelTimestamps[i], sys->DMA7.Channels[i].Latched_SrcAddr, sys->DMA7.Channels[i].Latched_NumWords, sys->DMA7.Channels[i].CurrentMode, \
-                sys->SoundChannels[i].CR.Raw, sys->SoundChannels[i].CR.Enable, sys->SoundChannels[i].CR.Format, sys->SoundChannels[i].CR.RepeatMode, sys->SoundChannels[i].SoundLen, sys->SoundChannels[i].LoopOffs, \
-                sys->SoundChannels[i].Prog, sys->SoundChannels[i].SampleMax, \
-                sys->Timers7[i+4].Regs, sys->SoundChannels[i].FIFO_DrainPtr, sys->SoundChannels[i].FIFO_FillPtr, sys->SoundChannels[i].FIFO_Bytes);
-            }
-            printf("dma cur: %08X\n", sys->DMA7.CurMask);
-#elif
-            bool seq = false;
-            printf("dumping\n");
-            {
-                FILE* file = fopen("log7.bin", "wb");
-                for (int i = 0x02000000; i < 0x08000000; i+=4)
-                {
-                    u32 buf = AHB7_Read(sys, NULL, i, 0xFFFFFFFF, false, false, &seq, false, 0);
-                    fwrite(&buf, 4, 1, file);
-                }
-                fclose(file);
-            }
-            {
-                FILE* file = fopen("log9dt.bin", "wb");
-                fwrite(sys->ARM9.DTCM.b8, ARM9_DTCMSize, 1, file);
-                fclose(file);
-            }
-            {
-                FILE* file = fopen("log9it.bin", "wb");
-                fwrite(sys->ARM9.ITCM.b8, ARM9_ITCMSize, 1, file);
-                fclose(file);
-            }
-            {
-                FILE* file = fopen("log9.bin", "wb");
-                for (int i = 0x02000000; i < 0x08000000; i+=4)
-                {
-                    u32 buf = AHB9_Read(sys, NULL, i, 0xFFFFFFFF, false, false, &seq, false);
-                    fwrite(&buf, 4, 1, file);
-                }
-                fclose(file);
-            }
-            printf("done\n");
-            while (SDL_GetGamepadButton(sys->Pad, SDL_GAMEPAD_BUTTON_LEFT_STICK));
-#endif
-        }
-
         sys->DispStatRO9.Raw = 0b001;
         sys->DispStatRO7.Raw = 0b001;
 

@@ -29,7 +29,7 @@ typedef struct
     u8 (*SPI_CMDSend)(void*, const u8, const bool);
     void (*SPI_Cleanup)(void*);
     void* SPI;
-    u32 Key1[4168/4];
+    u32 Key1[4168/sizeof(u32)];
 } Gamecard;
 
 

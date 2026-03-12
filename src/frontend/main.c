@@ -1,6 +1,7 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_error.h>
 #include <SDL3/SDL_events.h>
+#include <SDL3/SDL_gamepad.h>
 #include <SDL3/SDL_render.h>
 #include <SDL3/SDL_timer.h>
 #include <SDL3/SDL_audio.h>
@@ -23,21 +24,16 @@ enum InitFlag : u8
 
 typedef struct
 {
-    const char* rompath;
-    struct Console* sys;
-    SDL_Gamepad* pad;
-    SDL_AudioStream* aud;
-    u8 initflag;
+    volatile const char* rompath;
+    volatile struct Console* sys;
+    volatile SDL_Gamepad* pad;
+    volatile SDL_AudioStream* aud;
+    volatile u8 initflag;
 } MailBox;
 
 int Core_Init(void* pass)
 {
     volatile MailBox* mailbox = pass;
-    // init arm luts
-    ARM9_InitInstrLUT();
-    THUMB9_InitInstrLUT();
-    ARM7_InitInstrLUT();
-    THUMB7_InitInstrLUT();
 
     FILE* ntr9 = fopen("ntr9.bin", "rb");
     if (ntr9 == NULL)
@@ -66,10 +62,10 @@ int Core_Init(void* pass)
         return EXIT_FAILURE;
     }
 
-    const char* rompath = mailbox->rompath;
+    const char* rompath = (const char*)mailbox->rompath;
 
     // initialize main emulator state struct
-    struct Console* sys = Console_Init(mailbox->sys, ntr9, ntr7, firmware, rompath, mailbox->pad, mailbox->aud);
+    struct Console* sys = Console_Init((struct Console*)mailbox->sys, ntr9, ntr7, firmware, rompath, (SDL_Gamepad*)mailbox->pad, (SDL_AudioStream*)mailbox->aud);
     if (sys == nullptr)
     {
         fclose(ntr9);
@@ -98,7 +94,7 @@ int Core_Init(void* pass)
 
 int main()
 {
-    LogMask = u64_max; // temp
+    LogMask = LOG_SOUND;u64_max; // temp
 
     // TODO investigate: SDL_HINT_TIMER_RESOLUTION
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
@@ -150,6 +146,20 @@ int main()
 #endif
         );
 
+    if (aud != NULL)
+    {
+        if (!SDL_ResumeAudioStreamDevice(aud))
+        {
+            printf("why no turn on? %s\n", SDL_GetError());
+        }
+    }
+
+    // init arm luts
+    ARM9_InitInstrLUT();
+    THUMB9_InitInstrLUT();
+    ARM7_InitInstrLUT();
+    THUMB7_InitInstrLUT();
+
     SDL_Event evts;
     u8* buffer;
     bool buf = false;
@@ -176,26 +186,17 @@ int main()
                     printf("thread init failure :(\n");
                     return EXIT_FAILURE;
                 }
+                printf("dgfhfdgjs\n");
 
                 while(mailbox.initflag == Init_Busy);
+                printf("fdnbgfdhgn\n");
 
                 if (mailbox.initflag == Init_Fail)
                     break;
 
-                sys = mailbox.sys;
+                sys = (struct Console*)mailbox.sys;
 
                 threadexists = true;
-
-                if (aud != NULL)
-                {
-
-                    s16 padding[546*2] = {};
-                    if (!SDL_ResumeAudioStreamDevice(aud))
-                    {
-                        printf("why no turn on?\n");
-                    }
-                    if (!SDL_PutAudioStreamData(aud, padding, 546*2*2)) printf("%s\n", SDL_GetError());
-                }
                 break;
             }
             default:
@@ -215,7 +216,7 @@ int main()
                             for (int b = 0; b < 4; b++)
                             {
                                 if (b == 4) continue;
-                                buffer[(s*192*pitch)+(y*pitch)+(x*pitch/256)+b] = (((((sys->Framebuffer[buf][s][y][x] >> (b*6)) & 0x3F) * 0xFF) / 0x3F));
+                                buffer[(s*192*pitch)+(y*pitch)+(x*pitch/256)+b] = (u8)((((float)((sys->Framebuffer[buf][s][y][x] >> (b*6)) & 0x3F) * 0xFF) / 0x3F));
                             }
                 SDL_UnlockTexture(blit);
                 mtx_unlock(&sys->FrameBufferMutex[buf]);

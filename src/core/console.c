@@ -1,4 +1,5 @@
 #include <SDL3/SDL_timer.h>
+#include <SDL3/SDL_gamepad.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -18,6 +19,55 @@
 
 
 
+void Console_DebugLog(struct Console* sys)
+{
+    if (!SDL_GetGamepadButton(sys->Pad, SDL_GAMEPAD_BUTTON_LEFT_STICK)) return;
+
+#if 1
+    for (int i = 0; i < 16; i++)
+    {
+        printf("channel %i: dmacr:%08X dmats:%08lX dmasa:%08X dmaln%08X dmamd%i\nchraw: %08X cen:%i cfm:%i crm:%i chln%i chlp%i chpr:%08X chmx:%08lX\ntimercr:%06X fifd:%i fiff:%i fifs:%i\n", i, \
+        sys->DMA7.Channels[i].CR.Raw, sys->DMA7.ChannelTimestamps[i], sys->DMA7.Channels[i].Latched_SrcAddr, sys->DMA7.Channels[i].Latched_NumWords, sys->DMA7.Channels[i].CurrentMode, \
+        sys->SoundChannels[i].CR.Raw, sys->SoundChannels[i].CR.Enable, sys->SoundChannels[i].CR.Format, sys->SoundChannels[i].CR.RepeatMode, sys->SoundChannels[i].SoundLen, sys->SoundChannels[i].LoopOffs, \
+        sys->SoundChannels[i].Prog, sys->SoundChannels[i].SampleMax, \
+        sys->Timers7[i+4].Regs, sys->SoundChannels[i].FIFO_DrainPtr, sys->SoundChannels[i].FIFO_FillPtr, sys->SoundChannels[i].FIFO_Bytes);
+    }
+    printf("dma cur: %08X\n", sys->DMA7.CurMask);
+#elif
+    bool seq = false;
+    printf("dumping\n");
+    {
+        FILE* file = fopen("log7.bin", "wb");
+        for (int i = 0x02000000; i < 0x08000000; i+=4)
+        {
+            u32 buf = AHB7_Read(sys, NULL, i, 0xFFFFFFFF, false, false, &seq, false, 0);
+            fwrite(&buf, 4, 1, file);
+        }
+        fclose(file);
+    }
+    {
+        FILE* file = fopen("log9dt.bin", "wb");
+        fwrite(sys->ARM9.DTCM.b8, ARM9_DTCMSize, 1, file);
+        fclose(file);
+    }
+    {
+        FILE* file = fopen("log9it.bin", "wb");
+        fwrite(sys->ARM9.ITCM.b8, ARM9_ITCMSize, 1, file);
+        fclose(file);
+    }
+    {
+        FILE* file = fopen("log9.bin", "wb");
+        for (int i = 0x02000000; i < 0x08000000; i+=4)
+        {
+            u32 buf = AHB9_Read(sys, NULL, i, 0xFFFFFFFF, false, false, &seq, false);
+            fwrite(&buf, 4, 1, file);
+        }
+        fclose(file);
+    }
+    printf("done\n");
+    while (SDL_GetGamepadButton(sys->Pad, SDL_GAMEPAD_BUTTON_LEFT_STICK));
+#endif
+}
 
 // TODO: this function probably shouldn't manage memory on its own?
 struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* firmware, const char* rom, void* pad, void* aud)
@@ -42,11 +92,17 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
         CR_Free(sys->HandleARM7);
         mtx_destroy(&sys->FrameBufferMutex[0]);
         mtx_destroy(&sys->FrameBufferMutex[1]);
+#ifdef UseThreads
         mtx_destroy(&sys->Sched.SchedulerMtx);
+#endif
         //Flash_Cleanup(&sys->Firmware);
         nvram = sys->Firmware.RAM;
         Gamecard_Cleanup(&sys->Gamecard);
         int dummy;
+        sys->KillSWRen = true;
+        sys->SWRenStart = true;
+        sys->SWRenTarget = timestamp_max;
+        sys->RenderedLines = 255;
 #ifndef PPUST
         sys->KillPPUs = true;
         sys->PPUStart = true;
@@ -54,9 +110,6 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
         thrd_join(sys->PPUAThread, &dummy);
         thrd_join(sys->PPUBThread, &dummy);
 #endif
-        sys->KillSWRen = true;
-        sys->SWRenStart = true;
-        sys->SWRenTarget = timestamp_max;
         thrd_join(sys->SWRenThread, &dummy);
     }
 
@@ -99,7 +152,11 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
 
     bool mtxinit = (mtx_init(&sys->FrameBufferMutex[0], mtx_plain) == thrd_success);
     bool mtxinit3 = (mtx_init(&sys->FrameBufferMutex[1], mtx_plain) == thrd_success);
+#ifdef UseThreads
     bool mtxinit2 = (mtx_init(&sys->Sched.SchedulerMtx, mtx_recursive) == thrd_success);
+#else
+    bool mtxinit2 = true;
+#endif
 #ifndef PPUST
     bool thrdinit1 = (thrd_create(&sys->PPUAThread, PPUA_MainLoop, sys) == thrd_success);
     bool thrdinit2 = (thrd_create(&sys->PPUBThread, PPUB_MainLoop, sys) == thrd_success);
@@ -136,8 +193,14 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
         if (gcinit) Gamecard_Cleanup(&sys->Gamecard);
         if (mtxinit) mtx_destroy(&sys->FrameBufferMutex[0]);
         if (mtxinit3) mtx_destroy(&sys->FrameBufferMutex[1]);
+#ifdef UseThreads
         if (mtxinit2) mtx_destroy(&sys->Sched.SchedulerMtx);
+#endif
         int dummy;
+        sys->KillSWRen = true;
+        sys->SWRenStart = true;
+        sys->SWRenTarget = timestamp_max;
+        sys->RenderedLines = 255;
 #ifndef PPUST
         sys->KillPPUs = true;
         sys->PPUStart = true;
@@ -145,9 +208,6 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
         thrd_join(sys->PPUAThread, &dummy);
         thrd_join(sys->PPUBThread, &dummy);
 #endif
-        sys->KillSWRen = true;
-        sys->SWRenStart = true;
-        sys->SWRenTarget = timestamp_max;
         thrd_join(sys->SWRenThread, &dummy);
 
         free(sys);
@@ -158,10 +218,6 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
 
     sys->Pad = pad;
     sys->Aud = aud;
-
-    sys->CountPerFrame = (Frame_Cycles/2) * SDL_GetPerformanceFrequency();// / Base_Clock;
-    //sys->FracPerFrame = (Frame_Cycles/2) * SDL_GetPerformanceFrequency() % Base_Clock;
-    //printf("%lX %lX %lX\n", SDL_GetPerformanceFrequency(), sys->CountPerFrame, sys->FracPerFrame);
 
     // init variables
 

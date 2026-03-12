@@ -481,9 +481,9 @@ struct Console
 
     u16 SoundBias;
 
-    u64 CountPerFrame;
     u64 FracPerFrame;
     u64 OldTime;
+    u64 OldTimeActual;
     u64 TimeFrac;
     volatile double FrameTime;
     volatile double FrameTimeActual;
@@ -548,9 +548,9 @@ struct Console
     void* Pad;
     void* Aud;
     mtx_t FrameBufferMutex[2];
-    //bool dummy; // for debugging i guess
 
     volatile bool KillThread;
+    bool dummy; // for debugging i guess
 };
 
 // initialize a console to a clean state.
@@ -565,6 +565,7 @@ void Console_MainLoop(struct Console* sys);
 
 void Console_DirectBoot(struct Console* sys);
 
+void Console_DebugLog(struct Console* sys);
 
 void Console_ScheduleIRQs(struct Console* sys, const u8 irq, const bool a9, timestamp time);
 void Console_ScheduleHeldIRQs(struct Console* sys, const u8 irq, const bool a9, timestamp time);
