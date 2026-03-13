@@ -357,12 +357,8 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask, const bool tim
             return sys->SoundCaptures[0].CR.Raw | (sys->SoundCaptures[1].CR.Raw << 8);
         case 0x00'05'10:
             return sys->SoundCaptures[0].DstAddr;
-        case 0x00'05'14:
-            return sys->SoundCaptures[0].Length;
         case 0x00'05'18:
             return sys->SoundCaptures[1].DstAddr;
-        case 0x00'05'1C:
-            return sys->SoundCaptures[1].Length;
 
         case 0x10'00'00:
             return IPC_FIFORead(sys, mask, false);
@@ -533,6 +529,7 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             break;
 
         case 0x00'05'00:
+            if (!sys->PowerCR7.AudioPower) break; // read only
             u16 old = sys->SoundCR.Raw;
             MaskedWrite(sys->SoundCR.Raw, val, mask & 0xBF7F);
             /*if ((val ^ old) & 0x8000) // checkme?
@@ -551,25 +548,39 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             break;
 
         case 0x00'05'04:
+            if (!sys->PowerCR7.AudioPower) break; // read only
             MaskedWrite(sys->SoundBias, val, mask & 0x3FF);
             break;
 
         case 0x00'05'08:
-            if (mask & 0x00FF) sys->SoundCaptures[0].CR.Raw = (val>>0) & 0x0E; // actually 8F
-            if (mask & 0xFF00) sys->SoundCaptures[1].CR.Raw = (val>>8) & 0x0E; // actually 8F
+            if (!sys->PowerCR7.AudioPower) break; // read only
+            if (mask & 0x00FF)
+            {
+                SoundCapture_CRWrite(sys, val & 0xFF, sys->AHB7.Timestamp, 0);
+            }
+            if (mask & 0xFF00)
+            {
+                SoundCapture_CRWrite(sys, (val >> 8) & 0xFF, sys->AHB7.Timestamp, 1);
+            }
             break;
 
         case 0x00'05'10:
-            MaskedWrite(sys->SoundCaptures[0].DstAddr, val, mask & 0x7FFFFFF);
+            if (!sys->PowerCR7.AudioPower) break; // read only
+            MaskedWrite(sys->SoundCaptures[0].DstAddr, val, mask & 0x07FFFFFC);
             break;
         case 0x00'05'14:
+            if (!sys->PowerCR7.AudioPower) break; // read only
             MaskedWrite(sys->SoundCaptures[0].Length, val, mask & 0xFFFF);
+            if (sys->SoundCaptures[0].Length == 0) sys->SoundCaptures[0].Length = 1; // checkme: should this be displayed?
             break;
         case 0x00'05'18:
-            MaskedWrite(sys->SoundCaptures[1].DstAddr, val, mask & 0x7FFFFFF);
+            if (!sys->PowerCR7.AudioPower) break; // read only
+            MaskedWrite(sys->SoundCaptures[1].DstAddr, val, mask & 0x07FFFFFC);
             break;
         case 0x00'05'1C:
+            if (!sys->PowerCR7.AudioPower) break; // read only
             MaskedWrite(sys->SoundCaptures[1].Length, val, mask & 0xFFFF);
+            if (sys->SoundCaptures[1].Length == 0) sys->SoundCaptures[1].Length = 1; // checkme: should this be displayed?
             break;
 
 

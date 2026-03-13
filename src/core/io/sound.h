@@ -37,6 +37,8 @@ constexpr int PCM_Delay = 3;
 constexpr int ADPCM_HeaderDelay = 8;
 constexpr int ADPCM_Delay = ADPCM_HeaderDelay + 1 + PCM_Delay;
 
+constexpr int MixerDivide = 32;
+
 typedef struct
 {
     union
@@ -67,6 +69,7 @@ typedef struct
     u8 FIFO_Bytes;
     u32 Prog;
     u64 SampleMax;
+    s32 MixedSample;
 
     s16 CurSample;
 
@@ -79,6 +82,7 @@ typedef struct
     s8 ADPCM_LoopIndex;
     u64 ADPCM_LoopStart;
     u64 ADPCM_LoopEnd;
+    timestamp LastSubmit;
 } SoundChannel;
 
 typedef struct
@@ -90,23 +94,33 @@ typedef struct
         {
             bool Addition : 1;
             bool Source : 1;
-            bool Repeat : 1;
+            bool NoLoop : 1;
             bool Format : 1;
             u8 : 3;
             bool Enable : 1;
         };
     } CR;
-        u32 DstAddr;
-        u16 Length;
+    u32 DstAddr;
+    u16 Length;
+    u32 Prog;
+    u8 FIFOPtr;
+    bool Flush;
+    union
+    {
+        u8 PCM8[4];
+        u16 PCM16[2];
+        u32 Raw; // checkme: idk how this actually works?
+    } FIFO;
 } SoundCapture;
 
 struct Console;
 u32 SoundChannel_IORead(struct Console* sys, const u32 addr, const timestamp now);
 void SoundChannel_IOWrite(struct Console* sys, const u32 addr, const u32 val, const u32 mask, const timestamp now);
+void SoundCapture_CRWrite(struct Console* sys, const u8 val, const timestamp now, const u8 id);
 
 void SoundFIFO_Fill(struct Console* sys, const u32 val, const u8 id, const timestamp now);
 void SoundFIFO_Sample(struct Console* sys, const u8 id, const timestamp now);
-void AudioMixer_Run(struct Console* sys, timestamp now);
+void AudioMixer_Sample(struct Console* sys, timestamp now);
 
 void SoundChannel_TryStartAll(struct Console* sys, const timestamp now);
 void SoundChannel_KillAll(struct Console* sys, const timestamp now);

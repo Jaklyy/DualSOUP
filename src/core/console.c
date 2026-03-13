@@ -233,9 +233,6 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
     for (int i = 0; i < IRQ_Max; i++)
         sys->IRQSched7[i] = timestamp_max;
 
-    // TODO: is this always running?
-    Schedule_Event(sys, LCD_Scanline, Evt_Scanline, 0);
-
     for (unsigned i = 0; i < (sizeof(sys->DMA9.ChannelTimestamps) / sizeof(sys->DMA9.ChannelTimestamps[0])); i++)
     {
         sys->DMA9.ChannelTimestamps[i] = timestamp_max;
@@ -251,6 +248,16 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
         sys->DMA7.Channels[i].CR.Width32 = true;
         sys->DMA7.Channels[i].SrcInc = 4;
         sys->DMA7.Channels[i].SrcAddrMask = 0x07FFFFFC;
+    }
+    for (int i = DMA7_SoundCapBase; i < DMA7_SoundCapMax; i++)
+    {
+        sys->DMA7.Channels[i].CurrentMode = DMAStart_AudioCap;
+        sys->DMA7.Channels[i].CR.Width32 = true;
+        sys->DMA7.Channels[i].DstInc = 4;
+        sys->DMA7.Channels[i].CR.DestCR = 3;
+        sys->DMA7.Channels[i].DstAddrMask = 0x07FFFFFC;
+        sys->DMA7.Channels[i].CR.Enable = true;
+        sys->DMA7.Channels[i].CR.Repeat = true;
     }
 
     sys->DMA7.Channels[0+DMA7_NormalBase].SrcAddrMask = 0x07FFFFFE;
@@ -301,6 +308,10 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
     sys->GX3D.TextureMatrix = IdentityMatrix;
 
     RTC_Init(&sys->RTC);
+
+    // TODO: are these always running?
+    Schedule_Event(sys, AudioMixer_Sample, Evt_MixAudio, 0);
+    Schedule_Event(sys, LCD_Scanline, Evt_Scanline, 0);
 
     // run power on/reset logic
     Console_Reset(sys);
@@ -634,9 +645,9 @@ void Console_MainLoop(struct Console* sys)
     CR_Start = true;
     mtx_lock(&sys->FrameBufferMutex[sys->BackBuf]);
     Scheduler_UpdateTargets(sys);
-    Schedule_Event(sys, AudioMixer_Run, Evt_MixAudio, 0);
     sys->TimeFrac = 0;
     sys->OldTime = SDL_GetPerformanceCounter();
+    sys->log = fopen("audioout.bin", "wb");
     while(!sys->KillThread)
     {
 #ifdef UseThreads

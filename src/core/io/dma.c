@@ -96,13 +96,13 @@ void StartDMA7(struct Console* sys, timestamp start, u8 mode)
 
 void StartSoundDMA(struct Console* sys, u8 id, timestamp start, bool matters)
 {
-    if (!sys->DMA7.Channels[id].CR.Enable) return;
-    if (sys->DMA7.ChannelTimestamps[id] != timestamp_max)
+    if (!sys->DMA7.Channels[id+DMA7_SoundBase].CR.Enable) return;
+    if (sys->DMA7.ChannelTimestamps[id+DMA7_SoundBase] != timestamp_max)
     {
         if (matters) LogPrint(LOG_SOUND, "Starting sound dma while active\n");
         return; // active
     }
-    sys->DMA7.ChannelTimestamps[id] = start;
+    sys->DMA7.ChannelTimestamps[id+DMA7_SoundBase] = start;
     DMA_Schedule(sys, false);
 }
 
@@ -303,6 +303,10 @@ void DMA_Run(struct Console* sys, const bool a9)
     {
         if (numword > 4) numword = 4; // checkme
     }
+    if (channel->CurrentMode == DMAStart_AudioCap)
+    {
+        if (numword > 1) numword = 1; // checkme
+    }
 
 
     while(numword > 0)
@@ -314,29 +318,40 @@ void DMA_Run(struct Console* sys, const bool a9)
         }
         //if (channel->CurrentMode == DMAStart_HBlank)
             //printf("dmatimea: cw%i lw%i nm%i md%i ad:%08X ti%li\n", numword, channel->Latched_NumWords, id, channel->CurrentMode, channel->Latched_SrcAddr, cnt->ChannelTimestamps[id]);
-
-        if (!AHB_NegOwnership(sys, &cnt->ChannelTimestamps[id], false, a9))
-        {
-            rseq = false;
-            wseq = false;
-            tseq = false; // checkme
-        }
-        channel->Latched_SrcAddr &= channel->SrcAddrMask;
-
-        //if (channel->CurrentMode == DMAStart_HBlank) printf("dmatimeb: cw%i lw%i nm%i md%i ti%li\n", numword, channel->Latched_NumWords, id, channel->CurrentMode, cnt->ChannelTimestamps[id]);
-        //if (a9) printf("dmatimeb: %i %li\n", id, cnt->ChannelTimestamps[id]);
-        timestamp diff = cnt->ChannelTimestamps[id];
+        timestamp diff;
         u32 read;
-        if (a9)
+        if (channel->CurrentMode != DMAStart_AudioCap)
         {
-            read = AHB9_Read(sys, &cnt->ChannelTimestamps[id], channel->Latched_SrcAddr, rmask, false, true, &rseq, true);
+            if (!AHB_NegOwnership(sys, &cnt->ChannelTimestamps[id], false, a9))
+            {
+                rseq = false;
+                wseq = false;
+                tseq = false; // checkme
+            }
+            channel->Latched_SrcAddr &= channel->SrcAddrMask;
+
+            //if (channel->CurrentMode == DMAStart_HBlank) printf("dmatimeb: cw%i lw%i nm%i md%i ti%li\n", numword, channel->Latched_NumWords, id, channel->CurrentMode, cnt->ChannelTimestamps[id]);
+            //if (a9) printf("dmatimeb: %i %li\n", id, cnt->ChannelTimestamps[id]);
+            diff = cnt->ChannelTimestamps[id];
+            if (a9)
+            {
+                read = AHB9_Read(sys, &cnt->ChannelTimestamps[id], channel->Latched_SrcAddr, rmask, false, true, &rseq, true);
+            }
+            else
+            {
+                read = AHB7_Read(sys, &cnt->ChannelTimestamps[id], channel->Latched_SrcAddr, rmask, false, true, &rseq, true, 0xFFFFFFFF /*checkme?*/);
+            }
+            diff = cnt->ChannelTimestamps[id] - diff;
+            channel->Latched_SrcAddr += channel->SrcInc;
         }
         else
         {
-            read = AHB7_Read(sys, &cnt->ChannelTimestamps[id], channel->Latched_SrcAddr, rmask, false, true, &rseq, (channel->CurrentMode != DMAStart_Audio), 0xFFFFFFFF /*checkme?*/);
+            read = sys->SoundCaptures[id-DMA7_SoundCapBase].FIFO.Raw;
+            sys->SoundCaptures[id-DMA7_SoundCapBase].Flush = false;
+            // checkme: timings?
+            diff = 1;
+            cnt->ChannelTimestamps[id] += 1;
         }
-        diff = cnt->ChannelTimestamps[id] - diff;
-        channel->Latched_SrcAddr += channel->SrcInc;
         //if (a9) printf("dmatimec: %i %li\n", id, cnt->ChannelTimestamps[id]);
         //if (channel->CurrentMode == DMAStart_HBlank) printf("dmatimec: cw%i lw%i nm%i md%i ti%li\n", numword, channel->Latched_NumWords, id, channel->CurrentMode, cnt->ChannelTimestamps[id]);
 
@@ -364,7 +379,7 @@ void DMA_Run(struct Console* sys, const bool a9)
         else
         {
             cnt->ChannelTimestamps[id] += 1;
-            SoundFIFO_Fill(sys, read, id, cnt->ChannelTimestamps[id]);
+            SoundFIFO_Fill(sys, read, id-DMA7_SoundBase, cnt->ChannelTimestamps[id]);
         }
         // CHECKME: should this only apply to the actual first?
         if (!tseq)
@@ -409,8 +424,8 @@ void DMA_Run(struct Console* sys, const bool a9)
             channel->CR.Enable = false;
         }
 
-        if ((channel->Latched_NumWords == 0) && channel->CR.IRQ)
-            Console_ScheduleIRQs(sys, IRQ_DMA0+id, a9, cnt->ChannelTimestamps[id]); // checkme: delay
+        if (channel->CR.IRQ)
+            Console_ScheduleIRQs(sys, IRQ_DMA0+((a9) ? id : (id-DMA7_NormalBase)), a9, cnt->ChannelTimestamps[id]); // checkme: delay
     }
     else if (channel->CurrentMode == DMAStart_3DFIFO)
     {
@@ -418,7 +433,7 @@ void DMA_Run(struct Console* sys, const bool a9)
             dmaqueued = true;
     }
 
-    if ((channel->CurrentMode == DMAStart_Audio) && (sys->SoundChannels[id].FIFO_Bytes <= 16) && channel->CR.Enable)
+    if ((channel->CurrentMode == DMAStart_Audio) && (sys->SoundChannels[id+DMA7_SoundBase].FIFO_Bytes <= 16) && channel->CR.Enable)
     {
         dmaqueued = true;
     }

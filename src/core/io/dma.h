@@ -17,6 +17,7 @@ enum DMA_StartModes : u8
     DMAStart_3DFIFO,
     DMAStart_WiFiIRQ,
     DMAStart_Audio,
+    DMAStart_AudioCap,
 };
 
 union DMA_CR

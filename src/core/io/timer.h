@@ -38,5 +38,6 @@ struct Timer
 
 struct Console;
 
+void Timer_CalcNextIRQ(struct Console* sys, timestamp now, bool a9);
 void Timer_IOWriteHandler(struct Console* sys, const timestamp curts, const u32 addr, u32 val, const u32 mask, const bool a9);
 u32 Timer_IOReadHandler(struct Console* sys, const timestamp curts, const u32 addr, const bool a9);

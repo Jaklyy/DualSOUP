@@ -284,7 +284,7 @@ struct Console
         u8 Raw;
         struct
         {
-            bool SpeakerPower : 1;
+            bool AudioPower : 1;
             bool WifiPower : 1;
         };
     } PowerCR7;
@@ -478,8 +478,10 @@ struct Console
     SoundCapture SoundCaptures[2];
     timestamp AudioFrac;
     timestamp MixerFrac;
+    s32 MixerOut[2];
 
     u16 SoundBias;
+    timestamp MixerLastRun;
 
     u64 FracPerFrame;
     u64 OldTime;
@@ -551,6 +553,7 @@ struct Console
 
     volatile bool KillThread;
     bool dummy; // for debugging i guess
+    FILE* log;
 };
 
 // initialize a console to a clean state.
