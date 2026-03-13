@@ -49,13 +49,13 @@ constexpr int DMA7_NumNew = 4;
 
 constexpr int DMA7_Base = 0;
 
-constexpr int DMA7_SoundBase = DMA7_Base;
-constexpr int DMA7_SoundMax = DMA7_SoundBase + DMA7_NumSound;
-
-constexpr int DMA7_SoundCapBase = DMA7_SoundMax;
+constexpr int DMA7_SoundCapBase = DMA7_Base;
 constexpr int DMA7_SoundCapMax = DMA7_SoundCapBase + DMA7_NumSoundCap;
 
-constexpr int DMA7_NormalBase = DMA7_SoundCapMax;
+constexpr int DMA7_SoundBase = DMA7_SoundCapMax;
+constexpr int DMA7_SoundMax = DMA7_SoundBase + DMA7_NumSound;
+
+constexpr int DMA7_NormalBase = DMA7_SoundMax;
 constexpr int DMA7_NormalMax = DMA7_NormalBase + DMA7_NumNormal;
 
 constexpr int DMA7_NewBase = DMA7_NormalMax;
@@ -99,5 +99,6 @@ void DMA9_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 
 u32 DMA_IOReadHandler(struct DMA_Channel* channels, u32 addr);
 void StartDMA9(struct Console* sys, timestamp start, u8 mode);
 void StartDMA7(struct Console* sys, timestamp start, u8 mode);
+void StartSoundCapDMA(struct Console* sys, u8 id, timestamp start);
 void StartSoundDMA(struct Console* sys, u8 id, timestamp start, bool matters);
 timestamp DMA_GetNext(struct Console* sys, bool a9, const bool inclusive);

@@ -331,24 +331,22 @@ void SoundFIFO_Sample(struct Console* sys, const u8 id, const timestamp now)
 
         if (cap->CR.Format) // pcm8
         {
-            cap->FIFO.PCM8[cap->Prog % 4] = (out >> 8) & 0xFF;
-            cap->Prog++;
-            cap->Flush = ((cap->Prog % 4) == 0);
+            cap->FIFO.PCM8[cap->Prog % sizeof(cap->FIFO)] = (out >> 8) & 0xFF;
+            cap->Prog += 1;
         }
         else // pcm16
         {
-            cap->FIFO.PCM16[cap->Prog % 2] = out;
-            cap->Prog++;
-            cap->Flush = ((cap->Prog % 2) == 0);
+            cap->FIFO.PCM16[(cap->Prog / 2) % (sizeof(cap->FIFO) / 2)] = out;
+            cap->Prog += 2;
         }
+        cap->Flush = ((cap->Prog % sizeof(cap->FIFO)) == 0);
 
         if (cap->Flush)
         {
-            sys->DMA7.ChannelTimestamps[(id/2) + DMA7_SoundCapBase] = now+1;
-            DMA_Schedule(sys, false);
+            StartSoundCapDMA(sys, id/2, now+1);
         }
 
-        if (cap->Prog >= (cap->Length * (cap->CR.Format ? 4 : 2)))
+        if (cap->Prog >= (cap->LatchedLength * sizeof(u32)))
         {
             if (cap->CR.NoLoop)
             {
@@ -554,9 +552,11 @@ void SoundCapture_CRWrite(struct Console* sys, const u8 val, const timestamp now
     {
         if (!olden)
         {
+            cap->Prog = 0;
+            cap->Flush = false;
+            cap->LatchedLength = (cap->Length + (cap->Length == 0)) * sizeof(u32);
             sys->DMA7.Channels[DMA7_SoundCapBase+id].Latched_NumWords = 0;
             sys->DMA7.Channels[DMA7_SoundCapBase+id].DstAddr = cap->DstAddr;
-            sys->DMA7.Channels[DMA7_SoundCapBase+id].NumWords = cap->Length;
             // set up timers
             Scheduler_RunEventManual(sys, now, Evt_Timer7, false, true);
             sys->Timers7[id+4].NeedsUpdate = true;

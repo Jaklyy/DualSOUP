@@ -102,6 +102,7 @@ typedef struct
     } CR;
     u32 DstAddr;
     u16 Length;
+    u32 LatchedLength;
     u32 Prog;
     u8 FIFOPtr;
     bool Flush;
@@ -109,8 +110,8 @@ typedef struct
     {
         u8 PCM8[4];
         u16 PCM16[2];
-        u32 Raw; // checkme: idk how this actually works?
-    } FIFO;
+        u32 Raw;
+    } FIFO; // checkme: how big is this?
 } SoundCapture;
 
 struct Console;

@@ -571,7 +571,7 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
         case 0x00'05'14:
             if (!sys->PowerCR7.AudioPower) break; // read only
             MaskedWrite(sys->SoundCaptures[0].Length, val, mask & 0xFFFF);
-            if (sys->SoundCaptures[0].Length == 0) sys->SoundCaptures[0].Length = 1; // checkme: should this be displayed?
+            sys->DMA7.Channels[0+DMA7_SoundCapBase].NumWords = sys->SoundCaptures[0].Length + (sys->SoundCaptures[0].Length == 0);
             break;
         case 0x00'05'18:
             if (!sys->PowerCR7.AudioPower) break; // read only
@@ -580,7 +580,7 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
         case 0x00'05'1C:
             if (!sys->PowerCR7.AudioPower) break; // read only
             MaskedWrite(sys->SoundCaptures[1].Length, val, mask & 0xFFFF);
-            if (sys->SoundCaptures[1].Length == 0) sys->SoundCaptures[1].Length = 1; // checkme: should this be displayed?
+            sys->DMA7.Channels[1+DMA7_SoundCapBase].NumWords = sys->SoundCaptures[1].Length + (sys->SoundCaptures[1].Length == 0);
             break;
 
 

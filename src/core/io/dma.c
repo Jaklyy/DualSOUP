@@ -94,6 +94,17 @@ void StartDMA7(struct Console* sys, timestamp start, u8 mode)
     if (update) DMA_Schedule(sys, false);
 }
 
+void StartSoundCapDMA(struct Console* sys, u8 id, timestamp start)
+{
+    if (!sys->DMA7.Channels[id+DMA7_SoundCapBase].CR.Enable) return;
+    if (sys->DMA7.ChannelTimestamps[id+DMA7_SoundCapBase] != timestamp_max)
+    {
+        return; // active
+    }
+    sys->DMA7.ChannelTimestamps[id+DMA7_SoundCapBase] = start;
+    DMA_Schedule(sys, false);
+}
+
 void StartSoundDMA(struct Console* sys, u8 id, timestamp start, bool matters)
 {
     if (!sys->DMA7.Channels[id+DMA7_SoundBase].CR.Enable) return;
@@ -433,7 +444,7 @@ void DMA_Run(struct Console* sys, const bool a9)
             dmaqueued = true;
     }
 
-    if ((channel->CurrentMode == DMAStart_Audio) && (sys->SoundChannels[id+DMA7_SoundBase].FIFO_Bytes <= 16) && channel->CR.Enable)
+    if ((channel->CurrentMode == DMAStart_Audio) && (sys->SoundChannels[id-DMA7_SoundBase].FIFO_Bytes <= 16) && channel->CR.Enable)
     {
         dmaqueued = true;
     }
