@@ -323,9 +323,10 @@ void SoundFIFO_Sample(struct Console* sys, const u8 id, const timestamp now)
         }
         else // mixer
         {
-            out = sys->MixerOut[id/2] >> 8;
-            DS_CLAMP(out, <, -0x8000)
-            DS_CLAMP(out, >,  0x7FFF)
+            s32 tmp = sys->MixerOut[id/2] >> 8;
+            DS_CLAMP(tmp, <, -0x8000)
+            DS_CLAMP(tmp, >,  0x7FFF)
+            out = tmp;
         }
 
 

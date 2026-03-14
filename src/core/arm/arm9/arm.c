@@ -3,7 +3,6 @@
 #include "../../console.h"
 #include "instr_il.h"
 #include "arm.h"
-#include <stdlib.h>
 
 
 
@@ -132,6 +131,7 @@ void ARM9_FlushPipeline(struct ARM946ES* ARM9)
     cpu->Instr[1] = cpu->Instr[2];
     REFILLPIPE
 }
+#undef REFILLPIPE
 
 void ARM9_SetPC(struct ARM946ES* ARM9, u32 addr, const bool delayflush, const s8 iloffs)
 {

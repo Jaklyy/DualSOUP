@@ -99,6 +99,7 @@ void ARM7_FlushPipeline(struct ARM7TDMI* ARM7)
     cpu->Instr[1] = cpu->Instr[2];
     REFILLPIPE
 }
+#undef REFILLPIPE
 
 void ARM7_SetPC(struct ARM7TDMI* ARM7, u32 val, const bool delayflush)
 {
