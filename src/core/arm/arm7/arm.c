@@ -150,7 +150,7 @@ if (!ARM7_CheckInterrupts(ARM7)) \
 
 [[nodiscard]] bool ARM7_CheckInterrupts(struct ARM7TDMI* ARM7)
 {
-    Console_SyncWith9GT(cpu->Sys, Console_GetARM7Max(cpu->Sys, false), false);
+    Scheduler_TryRun(cpu->Sys, false, Console_GetARM7Max(cpu->Sys, false), false);
 
     // TODO: schedule this instead
     if (cpu->Sys->IME7 && !cpu->CPSR.IRQDisable && (cpu->Sys->IE7 & cpu->Sys->IF7))
@@ -219,7 +219,7 @@ void ARM7_MainLoop(struct ARM7TDMI* ARM7)
     if (cpu->Sys->DirectBoot) ARM7_FlushPipeline(ARM7);
     while(!CR_Kill)
     {
-        if ((Console_GetARM7Max(cpu->Sys, false) >= cpu->Sys->ARM7Target))// || cpu->DeadAsleep)
+        if (Console_GetARM7Max(cpu->Sys, false) >= cpu->Sys->MainTarget)
         {
             CR_Switch(cpu->Sys->HandleMain);
         }

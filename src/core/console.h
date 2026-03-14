@@ -130,7 +130,7 @@ struct Console
     coroutine HandleARM7;
 
     timestamp ARM9Target;
-    timestamp ARM7Target;
+    timestamp MainTarget;
 
     struct Scheduler Sched;
 

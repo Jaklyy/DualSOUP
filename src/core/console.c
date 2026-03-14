@@ -460,6 +460,9 @@ timestamp Console_GetARM9Max(struct Console* sys, const bool froma7)
     timestamp dmatime = DMA_GetNext(sys, true, froma7);
     ts = sys->ARM9.ARM.Timestamp >> ((sys->ARM9.BoostedClock) ? 2 : 1);
 
+    if (ts < sys->ARM9.MemTimestamp >> ((sys->ARM9.BoostedClock) ? 2 : 1))
+        ts = sys->ARM9.MemTimestamp >> ((sys->ARM9.BoostedClock) ? 2 : 1);
+
     if (ts > dmatime)
         ts = dmatime;
 
@@ -590,7 +593,6 @@ void IF7_Update(struct Console* sys, timestamp now)
 
 void Console_ScheduleIRQs(struct Console* sys, const u8 irq, const bool a9, timestamp time)
 {
-    //if (irq == IRQ_VBlank) printf("irq: %lu\n", time);
     timestamp* irqs;
     if (a9)
     {
@@ -612,9 +614,9 @@ void Console_ScheduleIRQs(struct Console* sys, const u8 irq, const bool a9, time
     }
 
     if (a9)
-        Schedule_Event(sys, IF9_Update, Evt_IF9Update, time);
+        Schedule_Event(sys, IF9_Update, Evt_IF9Update, next);
     else
-        Schedule_Event(sys, IF7_Update, Evt_IF7Update, time);
+        Schedule_Event(sys, IF7_Update, Evt_IF7Update, next);
 }
 
 void Console_ScheduleHeldIRQs(struct Console* sys, const u8 irq, const bool a9, timestamp time)
@@ -637,7 +639,7 @@ void Console_ClearHeldIRQs(struct Console* sys, const u8 irq, const bool a9)
         sys->IF7HoldQueue &= ~(1<<irq);
         sys->IF7Held &= ~(1<<irq); // idk??
     }
-    Console_ScheduleIRQs(sys, irq, a9, timestamp_max);
+    //Console_ScheduleIRQs(sys, irq, a9, timestamp_max); // what was this line supposed to do...?
 }
 
 void Console_MainLoop(struct Console* sys)
@@ -651,32 +653,32 @@ void Console_MainLoop(struct Console* sys)
     while(!sys->KillThread)
     {
 #ifdef UseThreads
-        while ((Console_GetARM9Max(sys, true) < sys->ARM7Target) || (Console_GetARM7Max(sys, true) < sys->ARM7Target)); //printf("9 %li %li 7 %li %li\n", sys->ARM9.ARM.Timestamp, sys->ARM9Target, sys->ARM7.ARM.Timestamp, sys->ARM7Target);
+        while ((Console_GetARM9Max(sys, true) < sys->MainTarget) || (Console_GetARM7Max(sys, true) < sys->MainTarget)); //printf("9 %li %li 7 %li %li\n", sys->ARM9.ARM.Timestamp, sys->ARM9Target, sys->ARM7.ARM.Timestamp, sys->MainTarget);
 #else
         bool exit = false;
         while(!exit)//(Console_GetARM7Max(sys, true) < sys->ARM7Target) || (Console_GetARM9Max(sys, true) < sys->ARM7Target))
         {
-            //printf("9i %lu %lu s:%i\n", Console_GetARM9Max(sys, true), sys->ARM7Target, sys->ARM9.ARM.DeadAsleep);
-            //printf("7i %lu %lu s:%i\n", Console_GetARM7Max(sys, true), sys->ARM7Target, sys->ARM7.ARM.DeadAsleep);
+            //printf("9i %lu %lu s:%i\n", Console_GetARM9Max(sys, true), sys->MainTarget, sys->ARM9.ARM.DeadAsleep);
+            //printf("7i %lu %lu s:%i\n", Console_GetARM7Max(sys, true), sys->MainTarget, sys->ARM7.ARM.DeadAsleep);
             //printf("%lX %lX %lX %lX\n", sys->ARM9.ARM.Timestamp, sys->ARM9.MemTimestamp, sys->AHB9.Timestamp, sys->DMA9.NextTime);
             //if (sys->ARM9.ARM.Timestamp > 0x3FFFFFFFFFFFFFFF || sys->ARM9.MemTimestamp > 0x3FFFFFFFFFFFFFFF || sys->AHB9.Timestamp > 0x3FFFFFFFFFFFFFFF || sys->ARM7.ARM.Timestamp > 0x3FFFFFFFFFFFFFFF || sys->AHB7.Timestamp > 0x3FFFFFFFFFFFFFFF) CrashSpectacularly("TIMESTAMP BORK\n");
             exit = true;
 
-            if (Console_GetARM9Max(sys, true) < sys->ARM7Target)
+            if (Console_GetARM9Max(sys, true) < sys->MainTarget)
             {
                 CR_Switch(sys->HandleARM9);
                 exit = false;
             }
-            if (Console_GetARM7Max(sys, true) < sys->ARM7Target)
+            if (Console_GetARM7Max(sys, true) < sys->MainTarget)
             {
                 CR_Switch(sys->HandleARM7);
                 exit = false;
             }
-            //if ((Console_GetARM7Max(sys) > sys->ARM7Target) && (Console_GetARM9Max(sys, true) > sys->ARM7Target)) printf("zzz, 9: %lu %08X %08X 7: %lu %08X %08X\n", Console_GetARM9Max(sys), sys->IE9, sys->IF9, Console_GetARM7Max(sys), sys->IE7, sys->IF7);
+            //if ((Console_GetARM7Max(sys) > sys->MainTarget) && (Console_GetARM9Max(sys, true) > sys->MainTarget)) printf("zzz, 9: %lu %08X %08X 7: %lu %08X %08X\n", Console_GetARM9Max(sys), sys->IE9, sys->IF9, Console_GetARM7Max(sys), sys->IE7, sys->IF7);
         }
-        //printf("9e %lu %lu s:%i\n", Console_GetARM9Max(sys, true), sys->ARM7Target, sys->ARM9.ARM.DeadAsleep);
+        //printf("9e %lu %lu s:%i\n", Console_GetARM9Max(sys, true), sys->MainTarget, sys->ARM9.ARM.DeadAsleep);
         //printf("%08X %08X\n", sys->ARM9.ARM.LR, sys->ARM9.ARM.PC);
-        //printf("7e %lu %lu s:%i\n", Console_GetARM7Max(sys, true), sys->ARM7Target, sys->ARM7.ARM.DeadAsleep);
+        //printf("7e %lu %lu s:%i\n", Console_GetARM7Max(sys, true), sys->MainTarget, sys->ARM7.ARM.DeadAsleep);
 #endif
         Scheduler_Run(sys);
     }

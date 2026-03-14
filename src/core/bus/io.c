@@ -282,6 +282,7 @@ void SPI_Finish(struct Console* sys, timestamp cur)
 
 u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask, const bool timings)
 {
+    Scheduler_TryRun(sys, false, sys->AHB7.Timestamp, true);
     //printf("ARM7IOREAD: %08X %08X\n", addr, mask);
     switch(addr & 0xFF'FF'FC)
     {
@@ -375,6 +376,7 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask, const bool tim
 
 void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mask, const u32 a7pc)
 {
+    Scheduler_TryRun(sys, false, sys->AHB7.Timestamp, true);
     //printf("io7 %08X %08X %08X %08X\n", addr, val, mask, a7pc);
     switch(addr & 0xFF'FF'FC)
     {
@@ -592,6 +594,7 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
 
 u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask, const bool timings)
 {
+    Scheduler_TryRun(sys, true, sys->AHB9.Timestamp, true);
     //printf("ARM9IOREAD: %08X %08X\n", addr, mask);
     switch (addr & 0xFF'FF'FC)
     {
@@ -762,6 +765,7 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask, const bool tim
 
 void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mask)
 {
+    Scheduler_TryRun(sys, true, sys->AHB9.Timestamp, true);
     //printf("ARM9IOWRITE: %08X %08X %08X\n", addr, mask, val);
     switch (addr & 0xFF'FF'FC)
     {

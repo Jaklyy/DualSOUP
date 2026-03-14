@@ -26,7 +26,7 @@ u8 PowMan_CMDSend(struct Console* sys, const u8 val, const bool chipsel)
                     pow->PowerCR.Raw = val & ((sys->ConsoleModel == MODEL_NTR) ? 0x7F : 0x7D);
                     if (pow->PowerCR.SystemShutDown) // TODO: this is going to need a lot of work to make accurate isn't it
                     {
-                        sys->ARM7Target = 0; // the time is now old man.
+                        sys->MainTarget = 0; // the time is now old man.
                         sys->KillThread = true;
                     }
                     ret = 0;

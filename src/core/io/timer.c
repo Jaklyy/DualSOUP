@@ -27,7 +27,6 @@ void Timer_CalcNextIRQ(struct Console* sys, timestamp now, bool a9)
     timestamp timerrem[20];
     timestamp timerper[20];
     timestamp nextirq[20];
-    for (int i = 0; i < (a9 ? 4 : 20); i++) nextirq[i] = timestamp_max;
 
     for (int i = 0; i < (a9 ? 4 : 20); i++)
     {
@@ -35,6 +34,7 @@ void Timer_CalcNextIRQ(struct Console* sys, timestamp now, bool a9)
         {
             timerrem[i] = timestamp_max;
             timerper[i] = timestamp_max;
+            nextirq[i] = timestamp_max;
             continue;
         }
         timerrem[i] = ((0x10000 - timers[i].Counter) << timers[i].DividerShift) + (now & ((1<<timers[i].DividerShift)-1));
@@ -58,6 +58,8 @@ void Timer_CalcNextIRQ(struct Console* sys, timestamp now, bool a9)
         }
         if (timers[i].CR.IRQ)
             nextirq[i] = timerrem[i] + now;
+        else
+            nextirq[i] = timestamp_max;
     }
 
     timestamp next = timestamp_max;

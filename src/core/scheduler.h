@@ -42,6 +42,8 @@ struct Scheduler
 void Scheduler_UpdateTargets(struct Console* sys);
 // run the next event in the scheduler
 void Scheduler_Run(struct Console* sys);
+// try to run any and all events if possible.
+void Scheduler_TryRun(struct Console* sys, const bool a9, const timestamp now, const bool bushogged);
 // check to run an event manually
 void Scheduler_RunEventManual(struct Console* sys, timestamp time, const u8 event, const u8 a9, const bool bushogged);
 // stall until an event is run

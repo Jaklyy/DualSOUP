@@ -17,20 +17,20 @@ void Scheduler_UpdateTargets(struct Console* sys)
             next = sys->Sched.EventTimes[i];
         }
     }
-    sys->ARM7Target = next;
+    sys->MainTarget = next;
 }
 
 void Scheduler_Run(struct Console* sys)
 {
     u8 nextevt = Evt_Max;
-    if (sys->ARM7Target == timestamp_max) CrashSpectacularly("FATAL: INVALID SCHEDULER TARGET\n");
+    if (sys->MainTarget == timestamp_max) CrashSpectacularly("FATAL: INVALID SCHEDULER TARGET\n");
 
 #ifdef UseThreads
     mtx_lock(&sys->Sched.SchedulerMtx);
 #endif
     for (int i = 0; i < Evt_Max; i++)
     {
-        if (sys->ARM7Target >= sys->Sched.EventTimes[i])
+        if (sys->MainTarget >= sys->Sched.EventTimes[i])
         {
             nextevt = i;
             break;
@@ -44,6 +44,16 @@ void Scheduler_Run(struct Console* sys)
 #ifdef UseThreads
     mtx_unlock(&sys->Sched.SchedulerMtx);
 #endif
+}
+
+void Scheduler_TryRun(struct Console* sys, const bool a9, const timestamp now, const bool bushogged)
+{
+    if (a9) Console_SyncWith7GT(sys, now, bushogged);
+    else    Console_SyncWith9GT(sys, now, bushogged);
+    while (sys->MainTarget < now)
+    {
+        Scheduler_Run(sys);
+    }
 }
 
 void Scheduler_RunEventManual(struct Console* sys, timestamp time, const u8 event, const u8 a9, const bool bushogged)

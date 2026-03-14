@@ -3,6 +3,7 @@
 #include "../../console.h"
 #include "instr_il.h"
 #include "arm.h"
+#include <stdlib.h>
 
 
 
@@ -235,8 +236,8 @@ void ARM9_DeferredITCMWrite(struct ARM946ES* ARM9);
 
 [[nodiscard]] bool ARM9_CheckInterrupts(struct ARM946ES* ARM9)
 {
-    // TODO: fix for dsi mode
-    Console_SyncWith7GT(cpu->Sys, Console_GetARM9Max(cpu->Sys, false), false);
+    // note: cpu will probably wind up waking up too late with how this works?
+    Scheduler_TryRun(cpu->Sys, true, Console_GetARM9Max(cpu->Sys, false), false);
 
     // todo: schedule this instead
     if (cpu->Sys->IME9 && !cpu->CPSR.IRQDisable && (cpu->Sys->IE9 & cpu->Sys->IF9))
@@ -344,7 +345,7 @@ void ARM9_MainLoop(struct ARM946ES* ARM9)
     if (cpu->Sys->DirectBoot) ARM9_FlushPipeline(ARM9);
     while(!CR_Kill)
     {
-        if ((Console_GetARM9Max(cpu->Sys, false) >= cpu->Sys->ARM7Target))// || cpu->DeadAsleep)
+        if (Console_GetARM9Max(cpu->Sys, false) >= cpu->Sys->MainTarget)
         {
             CR_Switch(cpu->Sys->HandleMain);
         }

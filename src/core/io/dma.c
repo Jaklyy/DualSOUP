@@ -564,7 +564,7 @@ void DMA7_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 
 
         union DMA_CR oldcr = cur->CR;
         MaskedWrite(cur->CR.Raw, val, mask);
-        cur->NumWords = (cur->CR.NumWords ? cur->CR.NumWords : 0x200000);
+        cur->NumWords = (cur->CR.NumWords ? cur->CR.NumWords : ((channel == 3) ? 0x10000 : 0x4000));
 
         if (oldcr.Enable ^ cur->CR.Enable)
         {
