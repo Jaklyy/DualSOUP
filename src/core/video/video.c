@@ -168,9 +168,9 @@ void LCD_Scanline(struct Console* sys, timestamp now)
 
     // vcount match
     sys->DispStatRO7.VCountMatch = (sys->TargetVCount7 == sys->VCount);
-    if (sys->TargetVCount7 == sys->VCount) Console_ScheduleIRQs(sys, IRQ_VCount, false, now+2); // checkme: delay?
+    if (sys->DispStatRW7.VCountMatchIRQ && (sys->TargetVCount7 == sys->VCount)) Console_ScheduleIRQs(sys, IRQ_VCount, false, now+2); // checkme: delay?
     sys->DispStatRO9.VCountMatch = (sys->TargetVCount9 == sys->VCount);
-    if (sys->TargetVCount9 == sys->VCount) Console_ScheduleIRQs(sys, IRQ_VCount, true, now+2); // checkme: delay?
+    if (sys->DispStatRW9.VCountMatchIRQ && (sys->TargetVCount9 == sys->VCount)) Console_ScheduleIRQs(sys, IRQ_VCount, true, now+2); // checkme: delay?
 
     // schedule hblank
     Schedule_Event(sys, LCD_HBlank, Evt_Scanline, now + ActiveRender_Cycles);
