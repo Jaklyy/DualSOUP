@@ -279,9 +279,12 @@ void ARM9_Step(struct ARM946ES* ARM9)
         else
         {
             //cpu->DeadAsleep = true;
+            cpu->MinWakeup = cpu->Timestamp;
             cpu->Timestamp = timestamp_max;
             return;
         }
+        if (Console_CheckARM9Wake(cpu->Sys))
+            cpu->CpuSleeping = 0;
     }
 
     ARM9_CatchUpWriteBuffer(ARM9, &cpu->Timestamp);

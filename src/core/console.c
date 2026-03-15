@@ -99,18 +99,18 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
         nvram = sys->Firmware.RAM;
         Gamecard_Cleanup(&sys->Gamecard);
         int dummy;
+#ifndef SingleThreadedRaster
         sys->KillSWRen = true;
         sys->SWRenStart = true;
         sys->SWRenTarget = timestamp_max;
         sys->RenderedLines = 255;
-#ifndef PPUST
         sys->KillPPUs = true;
         sys->PPUStart = true;
         sys->PPUTarget = timestamp_max;
         thrd_join(sys->PPUAThread, &dummy);
         thrd_join(sys->PPUBThread, &dummy);
-#endif
         thrd_join(sys->SWRenThread, &dummy);
+#endif
     }
 
     // wipe entire emulator state
@@ -157,13 +157,13 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
 #else
     bool mtxinit2 = true;
 #endif
-#ifndef PPUST
+#ifndef SingleThreadedRaster
     bool thrdinit1 = (thrd_create(&sys->PPUAThread, PPUA_MainLoop, sys) == thrd_success);
     bool thrdinit2 = (thrd_create(&sys->PPUBThread, PPUB_MainLoop, sys) == thrd_success);
-#else
-    bool thrdinit1 = true, thrdinit2 = true;
-#endif
     bool thrdinit3 = (thrd_create(&sys->SWRenThread, SWRen_MainLoop, sys) == thrd_success);
+#else
+    bool thrdinit1 = true, thrdinit2 = true, thrdinit3 = true;
+#endif
 
     if ((!cr7init) || (!cr9init)|| (num9 != 1) || (num7 != 1) || !firminit || !gcinit || !mtxinit || !mtxinit2|| !mtxinit3 || !thrdinit1 || !thrdinit2)
     {
@@ -197,18 +197,18 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
         if (mtxinit2) mtx_destroy(&sys->Sched.SchedulerMtx);
 #endif
         int dummy;
+#ifndef SingleThreadedRaster
         sys->KillSWRen = true;
         sys->SWRenStart = true;
         sys->SWRenTarget = timestamp_max;
         sys->RenderedLines = 255;
-#ifndef PPUST
         sys->KillPPUs = true;
         sys->PPUStart = true;
         sys->PPUTarget = timestamp_max;
         thrd_join(sys->PPUAThread, &dummy);
         thrd_join(sys->PPUBThread, &dummy);
-#endif
         thrd_join(sys->SWRenThread, &dummy);
+#endif
 
         free(sys);
         sys = nullptr;
@@ -554,6 +554,7 @@ void IF9_Update(struct Console* sys, timestamp now)
     if (sys->ARM9.ARM.CpuSleeping && Console_CheckARM9Wake(sys))
     {
         sys->ARM9.ARM.CpuSleeping = 0;
+
         sys->ARM9.ARM.Timestamp = now << ((sys->ARM9.BoostedClock) ? 2 : 1);
         ARM9_ExecuteCycles(&sys->ARM9, 1, 1);
         sys->ARM9.ARM.CodeSeq = false;

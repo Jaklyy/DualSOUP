@@ -234,7 +234,17 @@ void ARM7_MainLoop(struct ARM7TDMI* ARM7)
             {
                 ARM7_Step(ARM7);
                 if (cpu->WaitForInterrupt)
-                    cpu->Timestamp = timestamp_max;
+                {
+                    if (Console_CheckARM7Wake(cpu->Sys))
+                    {
+                        cpu->CpuSleeping = 0;
+                    }
+                    else
+                    {
+                        cpu->MinWakeup = cpu->Timestamp;
+                        cpu->Timestamp = timestamp_max;
+                    }
+                }
             }
         }
     }

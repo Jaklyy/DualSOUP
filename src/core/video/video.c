@@ -14,7 +14,7 @@
 
 void PPU_SetTarget(struct Console* sys, const timestamp now)
 {
-#ifndef PPUST
+#ifndef SingleThreadedRaster
     if (sys->PPUTarget < now)
         sys->PPUTarget = now;
 #else
@@ -25,7 +25,7 @@ void PPU_SetTarget(struct Console* sys, const timestamp now)
 
 void PPU_Sync(struct Console* sys, timestamp now)
 {
-#ifndef PPUST
+#ifndef SingleThreadedRaster
     if (!sys->PPUStart) return;
     PPU_SetTarget(sys, now);
     while ((sys->PPUATimestamp < now) || (sys->PPUBTimestamp < now)) thrd_yield();
@@ -34,14 +34,14 @@ void PPU_Sync(struct Console* sys, timestamp now)
 
 void PPU_Wait(struct Console* sys, const timestamp now)
 {
-#ifndef PPUST
+#ifndef SingleThreadedRaster
     while (now >= sys->PPUTarget) thrd_yield();
 #endif
 }
 
 void PPU_Init(struct Console* sys, const timestamp now)
 {
-#ifndef PPUST
+#ifndef SingleThreadedRaster
     if (sys->PPUStart) return;
     sys->PPUTarget = now;
     sys->PPUATimestamp = now;
@@ -129,7 +129,9 @@ void LCD_Scanline(struct Console* sys, timestamp now)
         StartDMA9(sys, now+2+1, DMAStart_VBlank); // checkme: delay?
         StartDMA9(sys, now+2+1, DMAStart_VBlank); // checkme: delay?
 
+#ifndef SingleThreadedRaster
         SWRen_Sync(sys, now);
+#endif
         GX_Swap(sys, now);
     }
     else if (sys->VCount == 262)
@@ -147,8 +149,12 @@ void LCD_Scanline(struct Console* sys, timestamp now)
 
     if (sys->VCount == 214)
     {
+#ifdef SingleThreadedRaster
+        SWRen_RasterizerFrame(sys);
+#else
         SWRen_Init(sys, now);
         SWRen_SetTarget(sys, now+Scanline_Cycles*263);
+#endif
         //SWRen_RasterizerFrame(sys);
     }
 

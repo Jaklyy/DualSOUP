@@ -116,6 +116,8 @@ void ARM7_InterruptRequest(struct ARM7TDMI* ARM7)
     cpu->CPSR.Thumb = false;
     cpu->CPSR.IRQDisable = true;
 
+    cpu->CpuSleeping = 0;
+
     ARM7_SetPC(ARM7, ARMVector_IRQ, false);
 }
 
@@ -135,6 +137,8 @@ void ARM7_FastInterruptRequest(struct ARM7TDMI* ARM7)
     cpu->CPSR.Thumb = false;
     cpu->CPSR.IRQDisable = true;
     cpu->CPSR.FIQDisable = true;
+
+    cpu->CpuSleeping = 0;
 
     ARM7_SetPC(ARM7, ARMVector_FIQ, false);
 }

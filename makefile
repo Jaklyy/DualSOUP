@@ -22,8 +22,8 @@ ifeq ($(THRD), 1) # use threads instead of coroutines -- UNSTABLE - NOT RECOMMEN
 	CFLAGS += -DUseThreads
 endif
 
-ifeq ($(PPUST), 1) # disable multithreaded ppus for testing purposes -- also disables per-pixel ppu emulation, and vram timings as those do not have a coroutine fallback
-	CFLAGS += -DPPUST
+ifeq ($(GPUST), 1) # disable multithreaded ppus and gpu for testing purposes -- also disables per-pixel ppu & gpu emulation and vram timings
+	CFLAGS += -DSingleThreadedRaster
 endif
 
 ifeq ($(GENPGO), 1) # generate pgo data
