@@ -6,19 +6,19 @@
 
 
 
-extern void Timer_Run(struct Console* sys, struct Timer* timers, const timestamp until, bool a9);
+extern void Timer_Run(struct Console* sys, struct Timer* timers, const timestamp until, bool a9, const bool dontresched);
 
 extern void Timer9_UpdateCRs(struct Console* sys, timestamp now);
 extern void Timer7_UpdateCRs(struct Console* sys, timestamp now);
 
 void Timer_SchedRun9(struct Console* sys, timestamp now)
 {
-    Timer_Run(sys, sys->Timers9, now, true);
+    Timer_Run(sys, sys->Timers9, now, true, false);
 }
 
 void Timer_SchedRun7(struct Console* sys, timestamp now)
 {
-    Timer_Run(sys, sys->Timers7, now, false);
+    Timer_Run(sys, sys->Timers7, now, false, false);
 }
 
 void Timer_CalcNextIRQ(struct Console* sys, timestamp now, bool a9)
@@ -117,7 +117,7 @@ bool Timer_AddTicks(struct Console* sys, struct Timer* timers, const int timernu
     }
 }
 
-void Timer_Run(struct Console* sys, struct Timer* timers, const timestamp until, bool a9)
+void Timer_Run(struct Console* sys, struct Timer* timers, const timestamp until, bool a9, const bool dontresched)
 {
     // probably not strictly required to always run all 4 timers.
     // but doing so keeps the logic simple.
@@ -135,13 +135,13 @@ void Timer_Run(struct Console* sys, struct Timer* timers, const timestamp until,
         timer->LastUpdated = until; 
         timer->JustOverflowed = Timer_AddTicks(sys, timers, i, ticks, a9);
     }
-    Timer_CalcNextIRQ(sys, until, a9);
+    if (!dontresched) Timer_CalcNextIRQ(sys, until, a9);
 }
 
 void Timer_UpdateCRs(struct Console* sys, timestamp now, bool a9)
 {
     struct Timer* timers = (a9 ? sys->Timers9 : sys->Timers7);
-    Timer_Run(sys, timers, now, a9);
+    Timer_Run(sys, timers, now, a9, true);
 
     for (int i = 0; i < (a9 ? 4 : 20); i++)
     {
@@ -165,19 +165,21 @@ void Timer_UpdateCRs(struct Console* sys, timestamp now, bool a9)
 
             if (!oldenable && timer->CR.Enable)
             {
+                // this is delayed by 1 cycle
                 timer->NeedsEnable = true;
             }
-            else 
+            else if (oldenable && !timer->CR.Enable)
             {
-                if (oldenable && !timer->CR.Enable)
+                // disable is not delayed by 1 cycle...?
+                timer->On = false;
+                // BUG: overflow is detected twice if disabled on the exact cycle an overflow occured.
+                // NOTE: this is probably only observable with overflow tick timers?
+                // irqs and sound timers shouldn't be impacted meaningfully by this.
+                if (timers[i].JustOverflowed && (i < 3) && timers[i+1].CR.OverflowTick && timers[i+1].On)
                 {
-                    timer->On = false;
-                    // overflow is detected twice
-                    if (timers[i].JustOverflowed && (i < 3) && timers[i+1].CR.OverflowTick && timers[i+1].On)
-                    {
-                        Timer_AddTicks(sys, timers, i+1, 1, a9);
-                        // it overflows twice here idk how im adding that rn
-                    }
+                    LogPrint(LOG_IO|LOG_ARM7|LOG_BUG, "HW BUG TRIGGERED: Disabling a timer on the cycle it overflows triggers the overflow twice. Timer: %i\n", i);
+                    Timer_AddTicks(sys, timers, i+1, 1, a9);
+                    // it overflows twice here idk how im adding that rn
                 }
             }
         }
@@ -207,9 +209,6 @@ void Timer7_UpdateCRs(struct Console* sys, timestamp now)
 
 void Timer_IOWriteHandler(struct Console* sys, const timestamp curts, const u32 addr, const u32 val, const u32 mask, const bool a9)
 {
-    if (a9) Scheduler_RunEventManual(sys, curts, Evt_Timer9, true, true);
-    else    Scheduler_RunEventManual(sys, curts, Evt_Timer7, false, true);
-
     unsigned timerno = ((addr & 0xF) / 4) % 4;
     struct Timer* timer = &(a9 ? sys->Timers9 : sys->Timers7)[timerno];
 
@@ -224,11 +223,10 @@ void Timer_IOWriteHandler(struct Console* sys, const timestamp curts, const u32 
 
 u32 Timer_IOReadHandler(struct Console* sys, const timestamp curts, const u32 addr, const bool a9)
 {
-    if (a9) Scheduler_RunEventManual(sys, curts, Evt_Timer9, true, true);
-    else    Scheduler_RunEventManual(sys, curts, Evt_Timer7, false, true);
-
     unsigned timerno = ((addr & 0xF) / 4) % 4;
     struct Timer* timer = &(a9 ? sys->Timers9 : sys->Timers7)[timerno];
+
+    Timer_Run(sys, (a9 ? sys->Timers9 : sys->Timers7), curts, a9, false);
 
     return timer->CR.Raw << 16 | timer->Counter;
 }
