@@ -106,7 +106,6 @@ void AudioMixer_Sample(struct Console* sys, timestamp now)
 
 void SoundFIFO_Fill(struct Console* sys, const u32 val, const u8 id, const timestamp now)
 {
-    //Scheduler_RunEventManual(sys, now, Evt_Timer7, false, false);
     SoundChannel* channel = &sys->SoundChannels[id];
     MemoryWrite(32, channel->FIFO, channel->FIFO_FillPtr, sizeof(channel->FIFO), val, 0xFFFFFFFF);
 
@@ -157,7 +156,6 @@ void SoundFIFO_Sample(struct Console* sys, const u8 id, const timestamp now)
         // disable timer
         if (((id != 1) || !sys->SoundCaptures[0].CR.Enable) && ((id != 3) || !sys->SoundCaptures[1].CR.Enable))
         {
-            Scheduler_RunEventManual(sys, now, Evt_Timer7, false, false);
             sys->Timers7[id+4].NeedsUpdate = true;
             sys->Timers7[id+4].BufferedRegs = 0x00'0000;
             Schedule_Event(sys, Timer7_UpdateCRs, Evt_Timer7, now+1);
@@ -374,7 +372,6 @@ void SoundChannel_Disable(struct Console* sys, const u8 id, const timestamp now,
 
 void SoundChannel_KillAll(struct Console* sys, const timestamp now)
 {
-    Scheduler_RunEventManual(sys, now, Evt_Timer7, false, true);
     for (int i = 0; i < 16; i++)
     {
         // disable dma
@@ -413,7 +410,6 @@ void SoundChannel_Start(struct Console* sys, SoundChannel* channel, const u8 id,
     }
 
     // set up timers
-    Scheduler_RunEventManual(sys, now, Evt_Timer7, false, true);
     //if (sys->Timers7[id+4].CR.Enable) printf("timer fucked it all up!\n"); // todo: is this actually a problem?
     sys->Timers7[id+4].NeedsUpdate = true;
     sys->Timers7[id+4].CR.Enable = false; // hacky?
@@ -494,7 +490,6 @@ void SoundChannel_IOWrite(struct Console* sys, const u32 addr, const u32 val, co
     switch(addr & 0xC)
     {
     case 0x0:
-        Scheduler_RunEventManual(sys, now, Evt_Timer7, false, true);
         u32 oldcr = channel->CR.Raw;
         MaskedWrite(channel->CR.Raw, val, mask & 0xFF7F837F);
         if (channel->CR.Enable && (oldcr>>31) && ((oldcr >> 24) ^ (channel->CR.Raw >> 24))) LogPrint(LOG_SOUND, "Updating sound CR while active %i\n", id);
@@ -527,7 +522,6 @@ void SoundChannel_IOWrite(struct Console* sys, const u32 addr, const u32 val, co
         MaskedWrite(channel->Timer, val, mask & 0xFFFF);
         if (sys->Timers7[id+4].CR.Enable && (mask & 0xFFFF))
         {
-            Scheduler_RunEventManual(sys, now, Evt_Timer7, false, true);
             sys->Timers7[id+4].NeedsUpdate = true;
             sys->Timers7[id+4].BufferedRegs = 0xC0'0000 | (val & 0xFFFF);
             Schedule_Event(sys, Timer7_UpdateCRs, Evt_Timer7, now+1);
@@ -559,7 +553,6 @@ void SoundCapture_CRWrite(struct Console* sys, const u8 val, const timestamp now
             sys->DMA7.Channels[DMA7_SoundCapBase+id].Latched_NumWords = 0;
             sys->DMA7.Channels[DMA7_SoundCapBase+id].DstAddr = cap->DstAddr;
             // set up timers
-            Scheduler_RunEventManual(sys, now, Evt_Timer7, false, true);
             sys->Timers7[id+4].NeedsUpdate = true;
             sys->Timers7[id+4].CR.Enable = false; // hacky?
             sys->Timers7[id+4].BufferedRegs = 0xC0'0000 /* Enable, IRQ */ | sys->SoundChannels[(id*2)+1].Timer;

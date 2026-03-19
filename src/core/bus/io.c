@@ -287,7 +287,6 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask, const bool tim
     switch(addr & 0xFF'FF'FC)
     {
         case 0x00'00'04:
-            Scheduler_RunEventManual(sys, sys->AHB7.Timestamp, Evt_Scanline, false, true);
             return (sys->VCount << 16) | sys->DispStatRO7.Raw | sys->DispStatRW7.Raw;
 
         case 0x00'00'B0 ... 0x00'00'E0-1:
@@ -319,7 +318,6 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask, const bool tim
             return Gamecard_IOReadHandler(sys, addr, sys->AHB7.Timestamp, false);
 
         case 0x00'01'C0:
-            Scheduler_RunEventManual(sys, sys->AHB7.Timestamp, Evt_SPI, false, true);
             return sys->SPICR.Raw | (sys->SPIOut << 16);
 
         case 0x00'02'04: // External Memory Control
@@ -331,7 +329,6 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask, const bool tim
         case 0x00'02'10: // IE
             return sys->IE7;
         case 0x00'02'14: // IF
-            Scheduler_RunEventManual(sys, sys->AHB7.Timestamp, Evt_IF7Update, false, true);
             return sys->IF7;
 
         case 0x00'02'40: // VRAM/WRAM Status
@@ -381,7 +378,6 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
     switch(addr & 0xFF'FF'FC)
     {
         case 0x00'00'04:
-            Scheduler_RunEventManual(sys, sys->AHB7.Timestamp, Evt_Scanline, false, true);
             MaskedWrite(sys->DispStatRW7.Raw, val, mask & 0xFFB8);
             sys->TargetVCount7 = (sys->DispStatRW7.VCountMSB << 8) | sys->DispStatRW7.VCountLSB;\
 
@@ -476,7 +472,6 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             MaskedWrite(sys->IE7, val, mask & 0x01DF3FFF);
             break;
         case 0x00'02'14: // IF
-            Scheduler_RunEventManual(sys, sys->AHB7.Timestamp, Evt_IF7Update, false, true);
             sys->IF7 &= ~(val & mask);
             sys->IF7 |= sys->IF7Held;
             break;
@@ -502,7 +497,6 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
                         sys->ARM7.ARM.WaitForInterrupt = true;
                         break;
                     case 2: // halt
-                        Scheduler_RunEventManual(sys, sys->AHB7.Timestamp, Evt_IF7Update, false, true);
                         if (!Console_CheckARM7Wake(sys)) // checkme: might still halt for a little?
                         {
                             sys->ARM7.ARM.WaitForInterrupt = true;
@@ -602,7 +596,6 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask, const bool tim
             return sys->PPU_A.DisplayCR.Raw;
 
         case 0x00'00'04:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Scanline, true, true);
             return (sys->VCount << 16) | sys->DispStatRO9.Raw |  sys->DispStatRW9.Raw;
 
         case 0x00'00'08:
@@ -660,7 +653,6 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask, const bool tim
             return sys->IE9;
         case 0x00'02'14: // IF
             // TODO: this should run more events?
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_IF9Update, true, true);
             return sys->IF9;
 
         // VRAM/WRAM Control
@@ -675,44 +667,31 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask, const bool tim
 
 
         case 0x00'02'80:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true, true);
             return sys->DivCR.Raw;
 
         case 0x00'02'90:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true, true);
             return sys->DivNum.b32[0];
         case 0x00'02'94:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true, true);
             return sys->DivNum.b32[1];
         case 0x00'02'98:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true, true);
             return sys->DivDen.b32[0];
         case 0x00'02'9C:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true, true);
             return sys->DivDen.b32[1];
         case 0x00'02'A0:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true, true);
             return sys->DivQuo.b32[0];
         case 0x00'02'A4:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true, true);
             return sys->DivQuo.b32[1];
         case 0x00'02'A8:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true, true);
             return sys->DivRem.b32[0];
         case 0x00'02'AC:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true, true);
             return sys->DivRem.b32[1];
         case 0x00'02'B0:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true, true);
             return sys->SqrtCR.Raw;
         case 0x00'02'B4:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true, true);
             return sys->SqrtRes;
         case 0x00'02'B8:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true, true);
             return sys->SqrtParam.b32[0];
         case 0x00'02'BC:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Divider, true, true);
             return sys->SqrtParam.b32[1];
 
 
@@ -775,7 +754,6 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             break;
 
         case 0x00'00'04:
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_Scanline, true, true);
             MaskedWrite(sys->DispStatRW9.Raw, val, mask & 0xFFB8);
             sys->TargetVCount9 = (sys->DispStatRW9.VCountMSB << 8) | sys->DispStatRW9.VCountLSB;
 
@@ -892,7 +870,6 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             break;
         case 0x00'02'14: // IF
             // TODO: this should run more events?
-            Scheduler_RunEventManual(sys, sys->AHB9.Timestamp, Evt_IF9Update, true, true);
             sys->IF9 &= ~(val & mask);
             sys->IF9 |= sys->IF9Held;
             break;
