@@ -74,8 +74,8 @@ struct DMA_Channel
     u32 DstAddrMask;
     u32 Latched_SrcAddr;
     u32 Latched_DstAddr;
-    u32 NumWords;
-    u32 Latched_NumWords;
+    s32 NumWords;
+    s32 Latched_NumWords;
     s8 SrcInc;
     s8 DstInc;
     u8 CurrentMode;
@@ -101,4 +101,4 @@ void StartDMA9(struct Console* sys, timestamp start, u8 mode);
 void StartDMA7(struct Console* sys, timestamp start, u8 mode);
 void StartSoundCapDMA(struct Console* sys, u8 id, timestamp start);
 void StartSoundDMA(struct Console* sys, u8 id, timestamp start, bool matters);
-timestamp DMA_GetNext(struct Console* sys, bool a9, const bool inclusive);
+timestamp DMA_GetNext(struct Console* sys, bool a9);

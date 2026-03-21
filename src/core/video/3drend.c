@@ -36,7 +36,7 @@ u16 VRAM_3DPal(struct Console* sys, u32 addr)
 {
     //addr &= (KiB(512)-1); does this have any wrapping?
     u16 ret = 0;
-    bool any = false;
+    bool any [[maybe_unused]] = false;
     if ((sys->VRAMCR[4].Raw & 0x87) == 0x83)
     {
         if (!(addr & ~(KiB(64)-1)))
@@ -158,7 +158,7 @@ s32 SWRen_FindSlope(Polygon* poly, u8 y, s16* xstart, s16* xend, u8* vcur, u8* v
     return SWRen_CalcSlope(poly->Vertices[*vcur]->X, poly->Vertices[*vnex]->X, poly->Vertices[*vcur]->Y, poly->Vertices[*vnex]->Y, y, xstart, xend, dir);
 }
 
-s32 SWRen_PerspectiveInterp(Polygon* poly, s16 x, const s16 xdiff, const u32 w0, const u32 w1, s32 a0, s32 a1, const bool yaxis)
+s32 SWRen_PerspectiveInterp(s16 x, const s16 xdiff, const u32 w0, const u32 w1, s32 a0, s32 a1, const bool yaxis)
 {
     u32 inc; // note: this should probably be reused.
     u32 w0n, w0d, w1d;
@@ -195,7 +195,7 @@ bool SWRen_CheckPerspectiveLerp(const s32 w0, const s32 w1, const bool yaxis)
     return !((w0 == w1) && !(w0 & mask) && !(w1 & mask));
 }
 
-s32 SWRen_Interpolate(Polygon* poly, s16 x, const s16 x0, const s16 x1, const u32 w0, const u32 w1, const s32 a0, const s32 a1, const bool yaxis, const bool persp, const bool borkedlerp)
+s32 SWRen_Interpolate(s16 x, const s16 x0, const s16 x1, const u32 w0, const u32 w1, const s32 a0, const s32 a1, const bool yaxis, const bool persp, const bool borkedlerp)
 {
     x -= x0;
     s16 xdiff = x1-x0;
@@ -205,7 +205,7 @@ s32 SWRen_Interpolate(Polygon* poly, s16 x, const s16 x0, const s16 x1, const u3
     if (persp)
     {
         // perspective correct interp using W values
-        return SWRen_PerspectiveInterp(poly, x, xdiff, w0, w1, a0, a1, yaxis);
+        return SWRen_PerspectiveInterp(x, xdiff, w0, w1, a0, a1, yaxis);
     }
     else
     {
@@ -236,8 +236,6 @@ Colors SWRen_RGB555to666(Colors color)
 
 Colors SWRen_DecodeTextures(struct Console* sys, Polygon* poly, s16 s, s16 t, u8* texalpha)
 {
-    GX3D* gx = &sys->GX3D;
-
     // discard fractional component
     s >>= 4;
     t >>= 4;
@@ -485,7 +483,7 @@ Colors SWRen_DecodeTextures(struct Console* sys, Polygon* poly, s16 s, s16 t, u8
     }
 }
 
-Colors SWRen_BlendColors(GX3D* gx, Polygon* poly, Colors color, Colors tcolor, u8 talpha, u8* outalpha)
+Colors SWRen_BlendColors(Polygon* poly, Colors color, Colors tcolor, u8 talpha, u8* outalpha)
 {
     color.RGB >>= 3;
     Colors outcol;
@@ -548,7 +546,7 @@ void SWRen_RasterizePixel(GX3D* gx, Polygon* poly, u16 x, u8 y, u32 z, Colors co
     }
 
     u8 finalpha;
-    Colors fincolor = SWRen_BlendColors(gx, poly, color, tcolor, talpha, &finalpha);
+    Colors fincolor = SWRen_BlendColors(poly, color, tcolor, talpha, &finalpha);
 
     if (finalpha < 1) return;
 
@@ -597,14 +595,14 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
     u32 zn = (gx->RenderWBuffer) ? poly->W[ln] << poly->ZDecompress : poly->Vertices[ln]->Z << poly->ZDecompress;
     u8 interpy = y + (lslope <= -(1<<18));
     bool persp = SWRen_CheckPerspectiveLerp(wc, wn, true);
-    u32 wl = SWRen_Interpolate(poly, interpy, yc, yn, wc, wn, wc, wn, true, persp, false);
-    u32 zl = SWRen_Interpolate(poly, interpy, yc, yn, wc, wn, zc, zn, true, gx->RenderWBuffer, false);
+    u32 wl = SWRen_Interpolate(interpy, yc, yn, wc, wn, wc, wn, true, persp, false);
+    u32 zl = SWRen_Interpolate(interpy, yc, yn, wc, wn, zc, zn, true, gx->RenderWBuffer, false);
     Colors cl;
-    cl.R = SWRen_Interpolate(poly, interpy, yc, yn, wc, wn, poly->Vertices[lc]->Color.R, poly->Vertices[ln]->Color.R, true, persp, false);
-    cl.G = SWRen_Interpolate(poly, interpy, yc, yn, wc, wn, poly->Vertices[lc]->Color.G, poly->Vertices[ln]->Color.G, true, persp, false);
-    cl.B = SWRen_Interpolate(poly, interpy, yc, yn, wc, wn, poly->Vertices[lc]->Color.B, poly->Vertices[ln]->Color.B, true, persp, false);
-    s16 sl = SWRen_Interpolate(poly, interpy, yc, yn, wc, wn, poly->Vertices[lc]->S, poly->Vertices[ln]->S, true, persp, false);
-    s16 tl = SWRen_Interpolate(poly, interpy, yc, yn, wc, wn, poly->Vertices[lc]->T, poly->Vertices[ln]->T, true, persp, false);
+    cl.R = SWRen_Interpolate(interpy, yc, yn, wc, wn, poly->Vertices[lc]->Color.R, poly->Vertices[ln]->Color.R, true, persp, false);
+    cl.G = SWRen_Interpolate(interpy, yc, yn, wc, wn, poly->Vertices[lc]->Color.G, poly->Vertices[ln]->Color.G, true, persp, false);
+    cl.B = SWRen_Interpolate(interpy, yc, yn, wc, wn, poly->Vertices[lc]->Color.B, poly->Vertices[ln]->Color.B, true, persp, false);
+    s16 sl = SWRen_Interpolate(interpy, yc, yn, wc, wn, poly->Vertices[lc]->S, poly->Vertices[ln]->S, true, persp, false);
+    s16 tl = SWRen_Interpolate(interpy, yc, yn, wc, wn, poly->Vertices[lc]->T, poly->Vertices[ln]->T, true, persp, false);
 
     yc = poly->Vertices[rc]->Y;
     yn = poly->Vertices[rn]->Y;
@@ -614,14 +612,14 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
     zn = (gx->RenderWBuffer) ? poly->W[rn] << poly->ZDecompress : poly->Vertices[rn]->Z << poly->ZDecompress;
     interpy = y + (rslope >= (1<<18));
     persp = SWRen_CheckPerspectiveLerp(wc, wn, true);
-    u32 wr = SWRen_Interpolate(poly, interpy, yc, yn, wc, wn, wc, wn, true, persp, false);
-    u32 zr = SWRen_Interpolate(poly, interpy, yc, yn, wc, wn, zc, zn, true, gx->RenderWBuffer, false);
+    u32 wr = SWRen_Interpolate(interpy, yc, yn, wc, wn, wc, wn, true, persp, false);
+    u32 zr = SWRen_Interpolate(interpy, yc, yn, wc, wn, zc, zn, true, gx->RenderWBuffer, false);
     Colors cr;
-    cr.R = SWRen_Interpolate(poly, interpy, yc, yn, wc, wn, poly->Vertices[rc]->Color.R, poly->Vertices[rn]->Color.R, true, persp, false);
-    cr.G = SWRen_Interpolate(poly, interpy, yc, yn, wc, wn, poly->Vertices[rc]->Color.G, poly->Vertices[rn]->Color.G, true, persp, false);
-    cr.B = SWRen_Interpolate(poly, interpy, yc, yn, wc, wn, poly->Vertices[rc]->Color.B, poly->Vertices[rn]->Color.B, true, persp, false);
-    s16 sr = SWRen_Interpolate(poly, interpy, yc, yn, wc, wn, poly->Vertices[rc]->S, poly->Vertices[rn]->S, true, persp, false);
-    s16 tr = SWRen_Interpolate(poly, interpy, yc, yn, wc, wn, poly->Vertices[rc]->T, poly->Vertices[rn]->T, true, persp, false);
+    cr.R = SWRen_Interpolate(interpy, yc, yn, wc, wn, poly->Vertices[rc]->Color.R, poly->Vertices[rn]->Color.R, true, persp, false);
+    cr.G = SWRen_Interpolate(interpy, yc, yn, wc, wn, poly->Vertices[rc]->Color.G, poly->Vertices[rn]->Color.G, true, persp, false);
+    cr.B = SWRen_Interpolate(interpy, yc, yn, wc, wn, poly->Vertices[rc]->Color.B, poly->Vertices[rn]->Color.B, true, persp, false);
+    s16 sr = SWRen_Interpolate(interpy, yc, yn, wc, wn, poly->Vertices[rc]->S, poly->Vertices[rn]->S, true, persp, false);
+    s16 tr = SWRen_Interpolate(interpy, yc, yn, wc, wn, poly->Vertices[rc]->T, poly->Vertices[rn]->T, true, persp, false);
 
     rs+=1;
     re+=1;
@@ -648,12 +646,12 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
     else                        attr.LeftYMajor = true;
     for (; (x < le) && (x < 256); x++)
     {
-        z = SWRen_Interpolate(poly, x, ls, re, wl, wr, zl, zr, false, gx->RenderWBuffer, true);
-        color.R = SWRen_Interpolate(poly, x, ls, re, wl, wr, cl.R, cr.R, false, persp, false);
-        color.G = SWRen_Interpolate(poly, x, ls, re, wl, wr, cl.G, cr.G, false, persp, false);
-        color.B = SWRen_Interpolate(poly, x, ls, re, wl, wr, cl.B, cr.B, false, persp, false);
-        s = SWRen_Interpolate(poly, x, ls, re, wl, wr, sl, sr, false, persp, false);
-        t = SWRen_Interpolate(poly, x, ls, re, wl, wr, tl, tr, false, persp, false);
+        z = SWRen_Interpolate(x, ls, re, wl, wr, zl, zr, false, gx->RenderWBuffer, true);
+        color.R = SWRen_Interpolate(x, ls, re, wl, wr, cl.R, cr.R, false, persp, false);
+        color.G = SWRen_Interpolate(x, ls, re, wl, wr, cl.G, cr.G, false, persp, false);
+        color.B = SWRen_Interpolate(x, ls, re, wl, wr, cl.B, cr.B, false, persp, false);
+        s = SWRen_Interpolate(x, ls, re, wl, wr, sl, sr, false, persp, false);
+        t = SWRen_Interpolate(x, ls, re, wl, wr, tl, tr, false, persp, false);
 
         if (gx->LatRasterCR.Texture && poly->TexAttr.Format)
             tcolor = SWRen_DecodeTextures(sys, poly, s, t, &talpha);
@@ -667,12 +665,12 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
     else if (y == poly->Top) attr.TopXMajor  = true;
     for (; (x < rs) && (x < 256); x++)
     {
-        z = SWRen_Interpolate(poly, x, ls, re, wl, wr, zl, zr, false, gx->RenderWBuffer, true);
-        color.R = SWRen_Interpolate(poly, x, ls, re, wl, wr, cl.R, cr.R, false, persp, false);
-        color.G = SWRen_Interpolate(poly, x, ls, re, wl, wr, cl.G, cr.G, false, persp, false);
-        color.B = SWRen_Interpolate(poly, x, ls, re, wl, wr, cl.B, cr.B, false, persp, false);
-        s = SWRen_Interpolate(poly, x, ls, re, wl, wr, sl, sr, false, persp, false);
-        t = SWRen_Interpolate(poly, x, ls, re, wl, wr, tl, tr, false, persp, false);
+        z = SWRen_Interpolate(x, ls, re, wl, wr, zl, zr, false, gx->RenderWBuffer, true);
+        color.R = SWRen_Interpolate(x, ls, re, wl, wr, cl.R, cr.R, false, persp, false);
+        color.G = SWRen_Interpolate(x, ls, re, wl, wr, cl.G, cr.G, false, persp, false);
+        color.B = SWRen_Interpolate(x, ls, re, wl, wr, cl.B, cr.B, false, persp, false);
+        s = SWRen_Interpolate(x, ls, re, wl, wr, sl, sr, false, persp, false);
+        t = SWRen_Interpolate(x, ls, re, wl, wr, tl, tr, false, persp, false);
 
         if (gx->LatRasterCR.Texture && poly->TexAttr.Format)
             tcolor = SWRen_DecodeTextures(sys, poly, s, t, &talpha);
@@ -687,12 +685,12 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
     else                        attr.RightYMajor = true;
     for (; (x < re) && (x < 256); x++)
     {
-        z = SWRen_Interpolate(poly, x, ls, re, wl, wr, zl, zr, false, gx->RenderWBuffer, true);
-        color.R = SWRen_Interpolate(poly, x, ls, re, wl, wr, cl.R, cr.R, false, persp, false);
-        color.G = SWRen_Interpolate(poly, x, ls, re, wl, wr, cl.G, cr.G, false, persp, false);
-        color.B = SWRen_Interpolate(poly, x, ls, re, wl, wr, cl.B, cr.B, false, persp, false);
-        s = SWRen_Interpolate(poly, x, ls, re, wl, wr, sl, sr, false, persp, false);
-        t = SWRen_Interpolate(poly, x, ls, re, wl, wr, tl, tr, false, persp, false);
+        z = SWRen_Interpolate(x, ls, re, wl, wr, zl, zr, false, gx->RenderWBuffer, true);
+        color.R = SWRen_Interpolate(x, ls, re, wl, wr, cl.R, cr.R, false, persp, false);
+        color.G = SWRen_Interpolate(x, ls, re, wl, wr, cl.G, cr.G, false, persp, false);
+        color.B = SWRen_Interpolate(x, ls, re, wl, wr, cl.B, cr.B, false, persp, false);
+        s = SWRen_Interpolate(x, ls, re, wl, wr, sl, sr, false, persp, false);
+        t = SWRen_Interpolate(x, ls, re, wl, wr, tl, tr, false, persp, false);
 
         if (gx->LatRasterCR.Texture && poly->TexAttr.Format)
             tcolor = SWRen_DecodeTextures(sys, poly, s, t, &talpha);

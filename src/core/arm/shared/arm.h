@@ -179,6 +179,7 @@ struct ARM
     u8 CPUID;
     bool Privileged; // permissions
     bool CodeSeq; // should the next code fetch be sequential
+    bool DeadAsleep;
     alignas(alignof(struct ARM_Instr)*4) struct ARM_Instr Instr[3]; // prefetch pipeline
     timestamp Timestamp;
     timestamp MinWakeup;

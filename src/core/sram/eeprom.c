@@ -5,7 +5,7 @@
 
 
 
-void EEPROM_Init(EEPROM* eep, u8* ram, u64 size, u8 addrbytes, u8 writeprot)
+void EEPROM_Init(EEPROM* eep, u8* ram, u64 size, u8 addrbytes, u8 writeprot [[maybe_unused]])
 {
     eep->RAMSize = size;
     eep->AddrBytes = addrbytes;

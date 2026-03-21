@@ -275,6 +275,10 @@ struct ARM9_MPUPerms
         }
 #endif
 
+#define A9ClockShift(a9) ((a9).BoostedClock ? 2 : 1)
+#define A9BusLatency(a9) ((a9).BoostedClock ? 2 : 3) // TODO: there's probably more meaningful logic behind this
+#define A9ClockRound(a9) ((a9).BoostedClock ? 3 : 1)
+
 /*
     arm9 invalid modes:
     mode: 0x4, 0x5, 0x6

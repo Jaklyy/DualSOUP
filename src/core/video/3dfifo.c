@@ -116,7 +116,7 @@ bool GXPipe_Fill(struct Console* sys)
 bool GXPipe_Drain(struct Console* sys)
 {
     GX3D* gx = &sys->GX3D;
-    timestamp* ts = &sys->AHB9.Timestamp;
+    //timestamp* ts = &sys->AHB9.Timestamp;
 
     //if (gx->PipeTS >= *ts)
 
@@ -225,10 +225,7 @@ void GXFIFO_PackedSubmit(struct Console* sys, const u32 val)
     // loop until we can submit a new command.
     while (true)
     {
-        Scheduler_RunEventManual(sys, *ts, Evt_GX, true, true);
-
-        //if (*ts < gx->Timestamp)
-        //    *ts = gx->Timestamp;
+        Scheduler_TryRun(sys, true, *ts);
 
         if (gx->ParamRem > 0) // submit a new parameter if needed.
         {
@@ -241,27 +238,19 @@ void GXFIFO_PackedSubmit(struct Console* sys, const u32 val)
                     gx->ParamRem = ParamLUT[gx->PackBuffer.CurCmd];
                 }
                 Schedule_Event(sys, GX_RunFIFO, Evt_GX, *ts+1);
-                //gx->Timestamp = *ts+1;
                 return;
             }
         }
         else if (gx->BufferFree) // if the buffer is empty then add a new command.
         {
-            //gx->UnpackTS = *ts+1; // checkme: +1?
             gx->PackBuffer.All = val;
             gx->FreshBuffer = true;
             gx->BufferFree = false;
 
             Schedule_Event(sys, GX_RunFIFO, Evt_GX, *ts+1);
-            //gx->Timestamp = *ts+1;
             return;
         }
-        //Scheduler_RunEventManual(sys, *ts, Evt_GX, true, true);
-        //if (*ts < gx->Timestamp)
-        //    *ts = gx->Timestamp;
-        Scheduler_StallToRunEvent(sys, ts, Evt_GX, true, true);
-        CR_Switch(sys->HandleMain);
-        //++*ts;
+        Scheduler_StallToRunEvent(sys, ts, Evt_GX, true);
     }
 }
 
@@ -273,7 +262,7 @@ void GXFIFO_PortSubmit(struct Console* sys, const u32 addr, const u32 val)
     // loop until we can submit a new command.
     while (true)
     {
-        Scheduler_RunEventManual(sys, *ts, Evt_GX, true, true);
+        Scheduler_TryRun(sys, true, *ts);
 
         if (GXFIFO_Fill(sys, addr/4, val))
         {
@@ -281,8 +270,7 @@ void GXFIFO_PortSubmit(struct Console* sys, const u32 addr, const u32 val)
             gx->Timestamp = *ts;
             return;
         }
-        Scheduler_StallToRunEvent(sys, ts, Evt_GX, true, true);
-        CR_Switch(sys->HandleMain);
+        Scheduler_StallToRunEvent(sys, ts, Evt_GX, true);
     }
 }
 

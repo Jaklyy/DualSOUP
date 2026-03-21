@@ -36,5 +36,5 @@ typedef struct
 bool Gamecard_Init(Gamecard* card, const char* romname, u8* bios7);
 void Gamecard_Cleanup(Gamecard* card);
 u32 Gamecard_ROMDataRead(struct Console* sys, timestamp cur, const bool a9);
-u32 Gamecard_IOReadHandler(struct Console* sys, u32 addr, timestamp cur, const bool a9);
+u32 Gamecard_IOReadHandler(struct Console* sys, u32 addr, const bool a9);
 void Gamecard_IOWriteHandler(struct Console* sys, u32 addr, const u32 val, const u32 mask, timestamp cur, const bool a9);

@@ -152,8 +152,8 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
 u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask, const bool timings);
 void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mask);
 
-u32 WiFi_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, bool* seq, const bool timings);
-void WiFi_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, const u32 mask, bool* seq, const bool timings);
+u32 WiFi_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, const bool timings);
+void WiFi_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, const u32 mask, const bool timings);
 
 bool AHB_NegOwnership(struct Console* sys, timestamp* cur, const bool atomic, const bool a9);
 void Bus_MainRAM_ReleaseHold(struct Console* sys, struct AHB* buscur);

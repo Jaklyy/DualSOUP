@@ -5,6 +5,7 @@
 #include "../console.h"
 #include "../sram/flash.h"
 #include "../sram/eeprom.h"
+#include "../sram/ir.h"
 #include "../../frontend/soupparser/soupparser.h"
 
 
@@ -580,7 +581,7 @@ void Gamecard_SPIFinish7(struct Console* sys, [[maybe_unused]] timestamp cur)
     Schedule_Event(sys, nullptr, Evt_CardSPI, timestamp_max);
 }
 
-u32 Gamecard_IOReadHandler(struct Console* sys, u32 addr, timestamp cur, const bool a9)
+u32 Gamecard_IOReadHandler(struct Console* sys, u32 addr, const bool a9)
 {
     addr -= 0x040001A0;
 

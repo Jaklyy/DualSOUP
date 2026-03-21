@@ -2,7 +2,7 @@
 
 
 
-#ifdef UseThreads
+#ifdef REALTHREAD
 #include <threads.h>
 typedef thrd_t coroutine;
 #else

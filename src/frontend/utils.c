@@ -103,7 +103,7 @@ u16 Input_PollExtra(void* pad)
 
 volatile bool CR_Start = false;
 
-#ifdef UseThreads
+#ifdef REALTHREAD
 #include <threads.h>
 volatile bool CR_Kill = false;
 

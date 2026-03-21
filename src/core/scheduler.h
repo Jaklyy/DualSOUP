@@ -38,15 +38,17 @@ struct Scheduler
     mtx_t SchedulerMtx;
 };
 
+void Scheduler_SyncWith7GTE(struct Console* sys, timestamp now);
+void Scheduler_SyncWith7GT(struct Console* sys, timestamp now);
+void Scheduler_SyncWith9MR(struct Console* sys, timestamp now);
+void Scheduler_SyncWith9GT(struct Console* sys, timestamp now);
 // update targets
 void Scheduler_UpdateTargets(struct Console* sys);
 // run the next event in the scheduler
 void Scheduler_Run(struct Console* sys);
 // try to run any and all events if possible.
-void Scheduler_TryRun(struct Console* sys, const bool a9, const timestamp now, const bool bushogged);
-// check to run an event manually
-void Scheduler_RunEventManual(struct Console* sys, timestamp time, const u8 event, const u8 a9, const bool bushogged);
+void Scheduler_TryRun(struct Console* sys, const bool a9, const timestamp now);
 // stall until an event is run
-void Scheduler_StallToRunEvent(struct Console* sys, timestamp* time, const u8 event, const u8 a9, const bool bushogged);
+void Scheduler_StallToRunEvent(struct Console* sys, timestamp* time, const u8 event, const u8 a9);
 // schedule an event to run
 void Schedule_Event(struct Console* sys, void (*callback) (struct Console*, timestamp), u8 event, timestamp time);

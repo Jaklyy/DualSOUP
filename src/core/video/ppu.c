@@ -201,7 +201,7 @@ void PPU_RenderBitmap(struct Console* sys, const bool b, u16 y, const u8 bg, con
     }
 }
 
-void PPU_Affine(struct Console* sys, const bool b, const u16 y, const u8 bg)
+void PPU_Affine(struct Console* sys, const bool b, const u16 y [[maybe_unused]], const u8 bg)
 {
     PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
     LogPrint(LOG_PPU|LOG_UNIMP, "UNIMPLEMENTED: AFFINE BG %i %08X\n", bg, ppu->BGCR[bg].Raw);
@@ -222,10 +222,10 @@ void PPU_Extended(struct Console* sys, const bool b, const u16 y, const u8 bg)
     }
 }
 
-void PPU_Large(struct Console* sys, const bool b, const u16 y, const u8 bg)
+void PPU_Large(struct Console* sys, const bool b, const u16 y [[maybe_unused]], const u8 bg)
 {
     PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
-    CompositeBuffer* buffer = (b ? sys->CompositeBufferB[bg] : sys->CompositeBufferA[bg]);
+    //CompositeBuffer* buffer = (b ? sys->CompositeBufferB[bg] : sys->CompositeBufferA[bg]);
     PPU_None(sys, b, bg);
     LogPrint(LOG_PPU|LOG_UNIMP, "UNIMPLEMENTED: LARGE BG %i %08X\n", bg, ppu->BGCR[bg].Raw);
 }

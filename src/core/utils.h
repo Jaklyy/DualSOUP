@@ -49,7 +49,7 @@ typedef s32 s32x4 __attribute__ ((vector_size(sizeof(u32)*4)));
 // this might incur a noticeable performance penalty on every single timestamp increment.
 // but it would allow for the system to be infinitely running (mind you 727 years is probably a long enough time already)
 // it may also allow for faster scheduling by being able to pack more scheduler timestamps into a single simd reg?
-#ifdef UseThreads
+#ifdef REALTHREAD
 typedef volatile uint64_t timestamp;
 #else
 typedef uint64_t timestamp;
@@ -104,8 +104,8 @@ union { \
 { typeof(l) tmp = (l); (l) = (r); (r) = tmp; }
 
 #define DS_CLAMP(l, op, r) \
-if ((l) op (r)) \
-    (l) = (r);
+{ if ((l) op (r)) \
+    (l) = (r); }
 
 enum CPU_IDs : u8
 {
@@ -176,7 +176,7 @@ void LogPrint(const u64 logtype, const char* str, ...) __attribute__ ((format (p
 void CrashSpectacularly(const char* str, ...) __attribute__ ((format (printf, 1, 2)));
 
 // coroutine stuff
-#ifdef UseThreads
+#ifdef REALTHREAD
 extern volatile bool CR_Kill;
 #else
 constexpr bool CR_Kill = false;

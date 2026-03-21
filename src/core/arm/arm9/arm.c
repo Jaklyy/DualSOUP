@@ -237,7 +237,7 @@ void ARM9_DeferredITCMWrite(struct ARM946ES* ARM9);
 [[nodiscard]] bool ARM9_CheckInterrupts(struct ARM946ES* ARM9)
 {
     // note: cpu will probably wind up waking up too late with how this works?
-    Scheduler_TryRun(cpu->Sys, true, Console_GetARM9Max(cpu->Sys, false), false);
+    Scheduler_SyncWith7GT(cpu->Sys, cpu->Timestamp >> A9ClockShift(*ARM9));
 
     // todo: schedule this instead
     if (cpu->Sys->IME9 && !cpu->CPSR.IRQDisable && (cpu->Sys->IE9 & cpu->Sys->IF9))
@@ -269,22 +269,25 @@ void ARM9_Step(struct ARM946ES* ARM9)
 {
     if (cpu->CpuSleeping)
     {
-        // probably slow; but ensures write buffer drains properly.
-        if (ARM9->WBuffer.FIFOFillPtr != 16)
+        if (Console_CheckARM9Wake(cpu->Sys))
         {
-            ARM9_CatchUpWriteBuffer(ARM9, &cpu->Timestamp);
-            ARM9_ExecuteCycles(ARM9, 2, 1);
-            return;
+            cpu->CpuSleeping = 0;
         }
         else
         {
-            //cpu->DeadAsleep = true;
-            cpu->MinWakeup = cpu->Timestamp;
-            cpu->Timestamp = timestamp_max;
-            return;
+            // probably slow; but ensures write buffer drains properly.
+            if (ARM9->WBuffer.FIFOFillPtr != 16)
+            {
+                ARM9_CatchUpWriteBuffer(ARM9, &cpu->Timestamp);
+                ARM9_ExecuteCycles(ARM9, 2, 1);
+                return;
+            }
+            else
+            {
+                cpu->DeadAsleep = true;
+                return;
+            }
         }
-        if (Console_CheckARM9Wake(cpu->Sys))
-            cpu->CpuSleeping = 0;
     }
 
     ARM9_CatchUpWriteBuffer(ARM9, &cpu->Timestamp);
@@ -336,7 +339,6 @@ void ARM9_Step(struct ARM946ES* ARM9)
             }
         }
     }
-    //ARM9_Log(ARM9);
 }
 
 #undef ILCheck
@@ -348,19 +350,37 @@ void ARM9_MainLoop(struct ARM946ES* ARM9)
     if (cpu->Sys->DirectBoot) ARM9_FlushPipeline(ARM9);
     while(!CR_Kill)
     {
-        if (Console_GetARM9Max(cpu->Sys, false) >= cpu->Sys->MainTarget)
+        if (!cpu->DeadAsleep)
         {
-            CR_Switch(cpu->Sys->HandleMain);
+            if ((cpu->Timestamp >> A9ClockShift(*ARM9)) < cpu->Sys->MainTarget)
+            {
+                if (DMA_GetNext(cpu->Sys, true) <= (cpu->Timestamp >> A9ClockShift(*ARM9)))
+                {
+                    DMA_Run(cpu->Sys, true);
+                }
+                else
+                {
+                    ARM9_Step(ARM9);
+                }
+            }
+            else
+            {
+                cpu->Sys->A9Sync = cpu->Timestamp >> A9ClockShift(*ARM9);
+                CR_Switch(cpu->Sys->HandleMain);
+            }
         }
         else
         {
-            if (DMA_GetNext(cpu->Sys, true, false) <= (cpu->Timestamp >> (ARM9->BoostedClock ? 2 : 1)))
+            if (DMA_GetNext(cpu->Sys, true) < cpu->Sys->MainTarget)
             {
                 DMA_Run(cpu->Sys, true);
             }
             else
             {
-                ARM9_Step(ARM9);
+                cpu->Sys->A9Sync = DMA_GetNext(cpu->Sys, true); // note: this logic might still be able to result in arm7 running ahead too much, not sure.
+                cpu->Sys->Sleep9 = true;
+                CR_Switch(cpu->Sys->HandleMain);
+                cpu->Sys->Sleep9 = false;
             }
         }
     }

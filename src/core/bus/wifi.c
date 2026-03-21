@@ -12,7 +12,7 @@ void WiFi_Init(struct Console* sys)
     sys->WiFiBB[0x64] = 0xFF;
 }
 
-u32 WiFi_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, bool* seq, const bool timings)
+u32 WiFi_Read(struct Console* sys, timestamp* ts [[maybe_unused]], u32 addr, const u32 mask, const bool timings)
 {
     const unsigned width = stdc_count_ones(mask);
     u32 ret;
@@ -68,7 +68,7 @@ u32 WiFi_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, bool
     return ret;
 }
 
-void WiFi_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, const u32 mask, bool* seq, const bool timings)
+void WiFi_Write(struct Console* sys, timestamp* ts [[maybe_unused]], u32 addr, const u32 val, const u32 mask, const bool timings)
 {
     const unsigned width = stdc_count_ones(mask);
 

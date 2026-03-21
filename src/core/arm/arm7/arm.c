@@ -103,10 +103,6 @@ void ARM7_FlushPipeline(struct ARM7TDMI* ARM7)
 
 void ARM7_SetPC(struct ARM7TDMI* ARM7, u32 val, const bool delayflush)
 {
-    // TEMP: debugging
-    //ARM7_Log(ARM7);
-    //printf("%08X\n", val);
-
     // arm7 doesn't seem to implement bit0 of program counter
     // doesn't enforce alignment in arm mode either.
     val &= ~0x1;
@@ -151,7 +147,7 @@ if (!ARM7_CheckInterrupts(ARM7)) \
 
 [[nodiscard]] bool ARM7_CheckInterrupts(struct ARM7TDMI* ARM7)
 {
-    Scheduler_TryRun(cpu->Sys, false, Console_GetARM7Max(cpu->Sys, false), false);
+    Scheduler_SyncWith9GT(cpu->Sys, cpu->Timestamp);
 
     // TODO: schedule this instead
     if (cpu->Sys->IME7 && !cpu->CPSR.IRQDisable && (cpu->Sys->IE7 & cpu->Sys->IF7))
@@ -206,9 +202,18 @@ void ARM7_Step(struct ARM7TDMI* ARM7)
             }
         }
     }
-    //if (cpu->PC == 0x3800478)
-    //if (cpu->PC > 0x3800440 && cpu->PC < 0x380048C)
-    //{printf("FUNNY\n"); ARM7_Log(ARM7);}
+
+    if (cpu->WaitForInterrupt) // is it more correct to do this at the start of a step? does it even matter?
+    {
+        if (Console_CheckARM7Wake(cpu->Sys))
+        {
+            cpu->CpuSleeping = 0;
+        }
+        else
+        {
+            cpu->DeadAsleep = true;
+        }
+    }
 }
 
 #undef ILCheck
@@ -220,31 +225,37 @@ void ARM7_MainLoop(struct ARM7TDMI* ARM7)
     if (cpu->Sys->DirectBoot) ARM7_FlushPipeline(ARM7);
     while(!CR_Kill)
     {
-        if (Console_GetARM7Max(cpu->Sys, false) >= cpu->Sys->MainTarget)
+        if (!cpu->DeadAsleep)
         {
-            CR_Switch(cpu->Sys->HandleMain);
+            if (cpu->Timestamp < cpu->Sys->MainTarget)
+            {
+                if (DMA_GetNext(cpu->Sys, false) <= cpu->Timestamp)
+                {
+                    DMA_Run(cpu->Sys, false);
+                }
+                else
+                {
+                    ARM7_Step(ARM7);
+                }
+            }
+            else
+            {
+                cpu->Sys->A7Sync = cpu->Timestamp;
+                CR_Switch(cpu->Sys->HandleMain);
+            }
         }
         else
         {
-            if (DMA_GetNext(cpu->Sys, false, false) <= (cpu->Timestamp & (timestamp_max >> 1))) // this looks really stupid and that's because it is, but trust me bro
+            if (DMA_GetNext(cpu->Sys, false) < cpu->Sys->MainTarget)
             {
                 DMA_Run(cpu->Sys, false);
             }
             else
             {
-                ARM7_Step(ARM7);
-                if (cpu->WaitForInterrupt)
-                {
-                    if (Console_CheckARM7Wake(cpu->Sys))
-                    {
-                        cpu->CpuSleeping = 0;
-                    }
-                    else
-                    {
-                        cpu->MinWakeup = cpu->Timestamp;
-                        cpu->Timestamp = timestamp_max;
-                    }
-                }
+                cpu->Sys->A7Sync = DMA_GetNext(cpu->Sys, false); // note: this logic might still be able to result in arm9 running ahead too much, not sure.
+                cpu->Sys->Sleep7 = true;
+                CR_Switch(cpu->Sys->HandleMain);
+                cpu->Sys->Sleep7 = false;
             }
         }
     }

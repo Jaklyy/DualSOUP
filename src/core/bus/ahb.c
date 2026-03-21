@@ -57,10 +57,9 @@ bool AHB_NegOwnership(struct Console* sys, timestamp* cur, const bool atomic, co
     if (*cur < bus->Timestamp) *cur = bus->Timestamp;
 
     // check if anything else is able to run
-    if (!atomic && (*cur >= DMA_GetNext(sys, a9, false)))
+    if (!atomic && (*cur >= DMA_GetNext(sys, a9)))
     {
-
-        while (*cur >= DMA_GetNext(sys, a9, false))
+        while (*cur >= DMA_GetNext(sys, a9))
         {
             DMA_Run(sys, a9);
         }
@@ -368,7 +367,7 @@ u32 VRAM_ARM7(struct Console* sys, const u32 addr, const u32 mask, const bool wr
     struct AHB* bus = &sys->AHB7;
     u32 ret = 0;
     bool any = false;
-    if (timings) Console_SyncWith9GT(sys, sys->AHB7.Timestamp, true);
+    if (timings) Scheduler_SyncWith9GT(sys, sys->AHB7.Timestamp);
     if ((sys->VRAMCR[2].Raw & 0x87) == 0x82)
     {
         u32 base = (sys->VRAMCR[2].Offset * 0x20000);
@@ -455,17 +454,22 @@ u32 Bus_MainRAM_Read(struct Console* sys, struct AHB* buscur, const bool bus9, u
         {
             if (atomic) break;
 
-            if (sys->ExtMemCR_Shared.MRPriority)
+            if (bus9)
             {
-                // arm7 has priority
-                if (bus9) Console_SyncWith7GTE(sys, buscur->Timestamp, true);
-                else      Console_SyncWith9GT (sys, buscur->Timestamp, true);
+                // arm 9 cannot have priority changed during the loop so it doesn't need to handle priority changes
+                if (sys->ExtMemCR_Shared.MRPriority)
+                {
+                    Scheduler_SyncWith7GTE(sys, buscur->Timestamp);
+                }
+                else
+                {
+                    Scheduler_SyncWith7GT(sys, buscur->Timestamp);
+                }
             }
             else
             {
-                // arm9 has priority
-                if (bus9) Console_SyncWith7GT (sys, buscur->Timestamp, true);
-                else      Console_SyncWith9GTE(sys, buscur->Timestamp, true);
+                // arm 7 uses a special function that can handle priority changing during the sync loop.
+                Scheduler_SyncWith9MR(sys, buscur->Timestamp);
             }
 
             // if main ram is still busy the accessing bus needs to wait until it's available to begin a new burst to it
@@ -586,17 +590,22 @@ void Bus_MainRAM_Write(struct Console* sys, struct AHB* buscur, const bool bus9,
         {
             if (atomic) break;
 
-            if (sys->ExtMemCR_Shared.MRPriority)
+            if (bus9)
             {
-                // arm7 has priority
-                if (bus9) Console_SyncWith7GTE(sys, buscur->Timestamp, true);
-                else      Console_SyncWith9GT (sys, buscur->Timestamp, true);
+                // arm 9 cannot have priority changed during the loop so it doesn't need to handle priority changes
+                if (sys->ExtMemCR_Shared.MRPriority)
+                {
+                    Scheduler_SyncWith7GTE(sys, buscur->Timestamp);
+                }
+                else
+                {
+                    Scheduler_SyncWith7GT(sys, buscur->Timestamp);
+                }
             }
             else
             {
-                // arm9 has priority
-                if (bus9) Console_SyncWith7GT (sys, buscur->Timestamp, true);
-                else      Console_SyncWith9GTE(sys, buscur->Timestamp, true);
+                // arm 7 uses a special function that can handle priority changing during the sync loop.
+                Scheduler_SyncWith9MR(sys, buscur->Timestamp);
             }
 
             // if main ram is still busy the accessing bus needs to wait until it's available to begin a new burst to it
@@ -1024,7 +1033,7 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
         {
             BusContention(sys->AHBBusyTS, &sys->AHB7.Timestamp, Dev_WRAM7);
             Timing32(&sys->AHB7);
-            Console_SyncWith9GT(sys, sys->AHB7.Timestamp, true);
+            Scheduler_SyncWith9GT(sys, sys->AHB7.Timestamp);
         }
         switch(sys->WRAMCR)
         {
@@ -1058,7 +1067,7 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
         ret = IO7_Read(sys, addr, mask, timings);
         break;
     case 0x048: // WiFi
-        ret = WiFi_Read(sys, ts, addr, mask, seq, timings);
+        ret = WiFi_Read(sys, ts, addr, mask, timings);
         break;
 
     case 0x060: // VRAM
@@ -1122,7 +1131,7 @@ void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
         {
             Timing32(&sys->AHB7);
             AddBusContention(sys->AHBBusyTS, sys->AHB7.Timestamp, Dev_WRAM7);
-            Console_SyncWith9GT(sys, sys->AHB7.Timestamp, true);
+            Scheduler_SyncWith9GT(sys, sys->AHB7.Timestamp);
         }
         switch(sys->WRAMCR)
         {
@@ -1156,7 +1165,7 @@ void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
         IO7_Write(sys, addr, val, mask, a7pc);
         break;
     case 0x048: // WiFi
-        WiFi_Write(sys, ts, addr, val, mask, seq, timings);
+        WiFi_Write(sys, ts, addr, val, mask, timings);
         break;
 
     case 0x060: // VRAM

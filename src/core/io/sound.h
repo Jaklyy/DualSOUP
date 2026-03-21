@@ -115,11 +115,11 @@ typedef struct
 } SoundCapture;
 
 struct Console;
-u32 SoundChannel_IORead(struct Console* sys, const u32 addr, const timestamp now);
+u32 SoundChannel_IORead(struct Console* sys, const u32 addr);
 void SoundChannel_IOWrite(struct Console* sys, const u32 addr, const u32 val, const u32 mask, const timestamp now);
 void SoundCapture_CRWrite(struct Console* sys, const u8 val, const timestamp now, const u8 id);
 
-void SoundFIFO_Fill(struct Console* sys, const u32 val, const u8 id, const timestamp now);
+void SoundFIFO_Fill(struct Console* sys, const u32 val, const u8 id);
 void SoundFIFO_Sample(struct Console* sys, const u8 id, const timestamp now);
 void AudioMixer_Sample(struct Console* sys, timestamp now);
 

@@ -15,15 +15,15 @@ CC := clang
 CFLAGS := -MP -MMD -std=gnu23 -fwrapv -Wimplicit-fallthrough -Wall -Wextra -Werror=implicit-fallthrough -Isrc
 
 ifeq ($(FPS), 1) # monitor performance -- outputs frametime info via printf
-	CFLAGS += -DMonitorFPS
+	CFLAGS += -DFPSLOG
 endif
 
 ifeq ($(THRD), 1) # use threads instead of coroutines -- UNSTABLE - NOT RECOMMENDED
-	CFLAGS += -DUseThreads
+	CFLAGS += -DREALTHREAD
 endif
 
 ifeq ($(GPUST), 1) # disable multithreaded ppus and gpu for testing purposes -- also disables per-pixel ppu & gpu emulation and vram timings
-	CFLAGS += -DSingleThreadedRaster
+	CFLAGS += -DSINGLETHREADRASTER
 endif
 
 ifeq ($(GENPGO), 1) # generate pgo data

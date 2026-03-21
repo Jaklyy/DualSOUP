@@ -129,8 +129,11 @@ struct Console
     coroutine HandleARM9;
     coroutine HandleARM7;
 
-    timestamp ARM9Target;
     timestamp MainTarget;
+    timestamp A9Sync;
+    timestamp A7Sync;
+    bool Sleep9;
+    bool Sleep7;
 
     struct Scheduler Sched;
 
@@ -552,7 +555,7 @@ struct Console
     mtx_t FrameBufferMutex[2];
 
     volatile bool KillThread;
-    bool dummy; // for debugging i guess
+    u64 dummy; // for debugging i guess
     FILE* log;
 };
 
@@ -573,11 +576,5 @@ void Console_DebugLog(struct Console* sys);
 void Console_ScheduleIRQs(struct Console* sys, const u8 irq, const bool a9, timestamp time);
 void Console_ScheduleHeldIRQs(struct Console* sys, const u8 irq, const bool a9, timestamp time);
 void Console_ClearHeldIRQs(struct Console* sys, const u8 irq, const bool a9);
-timestamp Console_GetARM7Max(struct Console* sys, const bool froma9);
-timestamp Console_GetARM9Max(struct Console* sys, const bool froma7);
-void Console_SyncWith7GTE(struct Console* sys, timestamp now, const bool bushogged);
-void Console_SyncWith7GT(struct Console* sys, timestamp now, const bool bushogged);
-void Console_SyncWith9GTE(struct Console* sys, timestamp now, const bool bushogged);
-void Console_SyncWith9GT(struct Console* sys, timestamp now, const bool bushogged);
 bool Console_CheckARM9Wake(struct Console* sys);
 bool Console_CheckARM7Wake(struct Console* sys);

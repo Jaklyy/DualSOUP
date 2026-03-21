@@ -55,13 +55,10 @@ void ARM9_AHBAccess(struct ARM946ES* ARM9, timestamp* ts, const bool atomic, boo
     // stall until aligned with external bus clock
     // TODO: a lot of this logic breaks once you realize that the arm9 isn't the only component that can change the arm9 clock.
     // I dont know how to fix that........
-    const unsigned round = ((ARM9->BoostedClock) ? 3 : 1); // round up
-    const unsigned shift = ((ARM9->BoostedClock) ? 2 : 1); // shift to convert between clocks
-    *ts = ((*ts + round) >> shift);
+    *ts = ((*ts + A9ClockRound(*ARM9)) >> A9ClockShift(*ARM9));
 
-    // external bus accesses have a fixed latency due to buffering.
+    // Note: external bus accesses have a fixed latency due to buffering.
     // this can begin while other internal arm9 buses are using the external bus, thus hiding part or even all of the latency.
-    const unsigned bufferlatency = ((ARM9->BoostedClock) ? 2 : 3);
 
     // the arm9 has multiple components capable of accessing the bus at the same time
     // and they are capable of queueing ext. bus accesses while other int. buses are using it.
@@ -75,7 +72,7 @@ void ARM9_AHBAccess(struct ARM946ES* ARM9, timestamp* ts, const bool atomic, boo
         //if (*seq) LogPrint(LOG_UNIMP, "Sequential in codepath that sequentials should'nt be...?\n");
 
         // CHECKME: how exactly does latency and losing bus ownership work with sharing?
-        *ts += bufferlatency;
+        *ts += A9BusLatency(*ARM9);
 
         // make sure we dont immediately lose bus ownership
         // if we dont lose ownership we don't have to reincur latency
@@ -94,7 +91,7 @@ void ARM9_AHBAccess(struct ARM946ES* ARM9, timestamp* ts, const bool atomic, boo
     }
 
     // add latency. technically still applies for sequential accesses but it's weird tm
-    if (!*seq) *ts += bufferlatency;
+    if (!*seq) *ts += A9BusLatency(*ARM9);
 }
 
 u32 ARM9_AHBRead(struct ARM946ES* ARM9, timestamp* ts, const u32 addr, const u32 mask, const bool atomic, bool* seq)
@@ -115,7 +112,7 @@ u32 ARM9_AHBRead(struct ARM946ES* ARM9, timestamp* ts, const u32 addr, const u32
     // convert clock back
     // the arm9 interacts with the bus on the rising edge of the bus clock so we get the result on the first cycle of the clock.
     // so we do this weird looking thing to get the right effect.
-    *ts = ((*ts - 1) << ((ARM9->BoostedClock) ? 2 : 1)) + 1;
+    *ts = ((*ts - 1) << A9ClockShift(*ARM9)) + 1;
 
     return ret;
 }
@@ -138,7 +135,7 @@ void ARM9_AHBWrite(struct ARM946ES* ARM9, timestamp* ts, const u32 addr, const u
     // convert clock back
     // the arm9 interacts with the bus on the rising edge of the bus clock so we get the result on the first cycle of the clock.
     // so we do this weird looking thing to get the right effect.
-    *ts = ((*ts - 1) << ((ARM9->BoostedClock) ? 2 : 1)) + 1;
+    *ts = ((*ts - 1) << A9ClockShift(*ARM9)) + 1;
 }
 
 #define wb

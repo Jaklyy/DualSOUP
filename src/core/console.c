@@ -92,14 +92,14 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
         CR_Free(sys->HandleARM7);
         mtx_destroy(&sys->FrameBufferMutex[0]);
         mtx_destroy(&sys->FrameBufferMutex[1]);
-#ifdef UseThreads
+#ifdef REALTHREAD
         mtx_destroy(&sys->Sched.SchedulerMtx);
 #endif
         //Flash_Cleanup(&sys->Firmware);
         nvram = sys->Firmware.RAM;
         Gamecard_Cleanup(&sys->Gamecard);
         int dummy;
-#ifndef SingleThreadedRaster
+#ifndef SINGLETHREADRASTER
         sys->KillSWRen = true;
         sys->SWRenStart = true;
         sys->SWRenTarget = timestamp_max;
@@ -152,12 +152,12 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
 
     bool mtxinit = (mtx_init(&sys->FrameBufferMutex[0], mtx_plain) == thrd_success);
     bool mtxinit3 = (mtx_init(&sys->FrameBufferMutex[1], mtx_plain) == thrd_success);
-#ifdef UseThreads
+#ifdef REALTHREAD
     bool mtxinit2 = (mtx_init(&sys->Sched.SchedulerMtx, mtx_recursive) == thrd_success);
 #else
     bool mtxinit2 = true;
 #endif
-#ifndef SingleThreadedRaster
+#ifndef SINGLETHREADRASTER
     bool thrdinit1 = (thrd_create(&sys->PPUAThread, PPUA_MainLoop, sys) == thrd_success);
     bool thrdinit2 = (thrd_create(&sys->PPUBThread, PPUB_MainLoop, sys) == thrd_success);
     bool thrdinit3 = (thrd_create(&sys->SWRenThread, SWRen_MainLoop, sys) == thrd_success);
@@ -193,11 +193,11 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
         if (gcinit) Gamecard_Cleanup(&sys->Gamecard);
         if (mtxinit) mtx_destroy(&sys->FrameBufferMutex[0]);
         if (mtxinit3) mtx_destroy(&sys->FrameBufferMutex[1]);
-#ifdef UseThreads
+#ifdef REALTHREAD
         if (mtxinit2) mtx_destroy(&sys->Sched.SchedulerMtx);
 #endif
         int dummy;
-#ifndef SingleThreadedRaster
+#ifndef SINGLETHREADRASTER
         sys->KillSWRen = true;
         sys->SWRenStart = true;
         sys->SWRenTarget = timestamp_max;
@@ -282,8 +282,8 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
 
     sys->DMA9.CurMask = 0xFFFFFFF'0;
     sys->DMA7.CurMask = u32_max << DMA7_Max;
-    sys->DMA9.NextID = 31;
-    sys->DMA7.NextID = 31;
+    sys->DMA9.NextID = DMA7_Max;
+    sys->DMA7.NextID = DMA7_Max;
 
     sys->IPCFIFO7.CR.RecvFIFOEmpty = true;
     sys->IPCFIFO7.CR.SendFIFOEmpty = true;
@@ -437,89 +437,6 @@ void Console_Reset(struct Console* sys)
     // TODO: reset dma?
 }
 
-timestamp Console_GetARM7Max(struct Console* sys, const bool froma9)
-{
-    timestamp ts;
-
-    timestamp dmatime = DMA_GetNext(sys, false, froma9);
-    ts = sys->ARM7.ARM.Timestamp;
-
-    if (ts > dmatime)
-        ts = dmatime;
-
-    if (ts < sys->AHB7.Timestamp)
-        ts = sys->AHB7.Timestamp;
-
-    return ts;
-}
-
-timestamp Console_GetARM9Max(struct Console* sys, const bool froma7)
-{
-    timestamp ts;
-
-    timestamp dmatime = DMA_GetNext(sys, true, froma7);
-    ts = sys->ARM9.ARM.Timestamp >> ((sys->ARM9.BoostedClock) ? 2 : 1);
-
-    if (ts < sys->ARM9.MemTimestamp >> ((sys->ARM9.BoostedClock) ? 2 : 1))
-        ts = sys->ARM9.MemTimestamp >> ((sys->ARM9.BoostedClock) ? 2 : 1);
-
-    if (ts > dmatime)
-        ts = dmatime;
-
-    if (ts < sys->AHB9.Timestamp)
-        ts = sys->AHB9.Timestamp;
-
-    return ts;
-}
-
-void Console_SyncWith7GTE(struct Console* sys, timestamp now, const bool bushogged)
-{
-    while(now >= Console_GetARM7Max(sys, true))
-    {
-        if (!bushogged && DMA_GetNext(sys, true, false) < Console_GetARM7Max(sys, true))
-        {
-            DMA_Run(sys, true);
-        }
-        CR_Switch(sys->HandleMain);
-    }
-}
-
-void Console_SyncWith7GT(struct Console* sys, timestamp now, const bool bushogged)
-{
-    while(now > Console_GetARM7Max(sys, true))
-    {
-        if (!bushogged && DMA_GetNext(sys, true, false) <= (Console_GetARM7Max(sys, true) & (timestamp_max>>1)))
-        {
-            DMA_Run(sys, true);
-        }
-        CR_Switch(sys->HandleMain);
-    }
-}
-
-void Console_SyncWith9GTE(struct Console* sys, timestamp now, const bool bushogged)
-{
-    while(now >= Console_GetARM9Max(sys, true))
-    {
-        if (!bushogged && DMA_GetNext(sys, false, false) < Console_GetARM9Max(sys, true))
-        {
-            DMA_Run(sys, false);
-        }
-        CR_Switch(sys->HandleMain);
-    }
-}
-
-void Console_SyncWith9GT(struct Console* sys, timestamp now, const bool bushogged)
-{
-    while(now > Console_GetARM9Max(sys, true))
-    {
-        if (!bushogged && DMA_GetNext(sys, false, false) <= (Console_GetARM9Max(sys, true) & (timestamp_max>>1)))
-        {
-            DMA_Run(sys, false);
-        }
-        CR_Switch(sys->HandleMain);
-    }
-}
-
 bool Console_CheckARM9Wake(struct Console* sys)
 {
     return (sys->IME9 && (sys->IE9 & sys->IF9));
@@ -554,9 +471,11 @@ void IF9_Update(struct Console* sys, timestamp now)
     if (sys->ARM9.ARM.CpuSleeping && Console_CheckARM9Wake(sys))
     {
         sys->ARM9.ARM.CpuSleeping = 0;
+        sys->ARM9.ARM.DeadAsleep = false;
 
-        sys->ARM9.ARM.Timestamp = now << ((sys->ARM9.BoostedClock) ? 2 : 1);
+        DS_CLAMP(sys->ARM9.ARM.Timestamp, <, now << A9ClockShift(sys->ARM9)) // checkme
         ARM9_ExecuteCycles(&sys->ARM9, 1, 1);
+        if (sys->Sleep9) DS_CLAMP(sys->A9Sync, >, sys->ARM9.ARM.Timestamp >> A9ClockShift(sys->ARM9));
         sys->ARM9.ARM.CodeSeq = false;
     }
     Schedule_Event(sys, IF9_Update, Evt_IF9Update, next);
@@ -585,8 +504,11 @@ void IF7_Update(struct Console* sys, timestamp now)
     if (sys->ARM7.ARM.CpuSleeping && Console_CheckARM7Wake(sys))
     {
         sys->ARM7.ARM.CpuSleeping = 0;
-        sys->ARM7.ARM.Timestamp = now;
+        sys->ARM7.ARM.DeadAsleep = false;
+
+        DS_CLAMP(sys->ARM7.ARM.Timestamp, <, now) // checkme
         ARM7_ExecuteCycles(&sys->ARM7, 1);
+        if (sys->Sleep7) DS_CLAMP(sys->A7Sync, >, sys->ARM7.ARM.Timestamp);
         sys->ARM7.ARM.CodeSeq = false;
     }
     Schedule_Event(sys, IF7_Update, Evt_IF7Update, next);
@@ -653,34 +575,33 @@ void Console_MainLoop(struct Console* sys)
     sys->log = fopen("audioout.bin", "wb");
     while(!sys->KillThread)
     {
-#ifdef UseThreads
-        while ((Console_GetARM9Max(sys, true) < sys->MainTarget) || (Console_GetARM7Max(sys, true) < sys->MainTarget)); //printf("9 %li %li 7 %li %li\n", sys->ARM9.ARM.Timestamp, sys->ARM9Target, sys->ARM7.ARM.Timestamp, sys->MainTarget);
-#else
+#ifndef REALTHREAD
+        u64 counter = 0;
+#endif
         bool exit = false;
-        while(!exit)//(Console_GetARM7Max(sys, true) < sys->ARM7Target) || (Console_GetARM9Max(sys, true) < sys->ARM7Target))
+        while(!exit)
         {
-            //printf("9i %lu %lu s:%i\n", Console_GetARM9Max(sys, true), sys->MainTarget, sys->ARM9.ARM.DeadAsleep);
-            //printf("7i %lu %lu s:%i\n", Console_GetARM7Max(sys, true), sys->MainTarget, sys->ARM7.ARM.DeadAsleep);
-            //printf("%lX %lX %lX %lX\n", sys->ARM9.ARM.Timestamp, sys->ARM9.MemTimestamp, sys->AHB9.Timestamp, sys->DMA9.NextTime);
-            //if (sys->ARM9.ARM.Timestamp > 0x3FFFFFFFFFFFFFFF || sys->ARM9.MemTimestamp > 0x3FFFFFFFFFFFFFFF || sys->AHB9.Timestamp > 0x3FFFFFFFFFFFFFFF || sys->ARM7.ARM.Timestamp > 0x3FFFFFFFFFFFFFFF || sys->AHB7.Timestamp > 0x3FFFFFFFFFFFFFFF) CrashSpectacularly("TIMESTAMP BORK\n");
             exit = true;
 
-            if (Console_GetARM9Max(sys, true) < sys->MainTarget)
+            // TODO: it might make sense to have the coroutine additionally resolve what its syncing against here?
+            // reducing context switching should be a good way to optimize the emulator.
+            if (sys->A9Sync < sys->MainTarget)
             {
                 CR_Switch(sys->HandleARM9);
                 exit = false;
             }
-            if (Console_GetARM7Max(sys, true) < sys->MainTarget)
+            if (sys->A7Sync < sys->MainTarget)
             {
                 CR_Switch(sys->HandleARM7);
                 exit = false;
             }
-            //if ((Console_GetARM7Max(sys) > sys->MainTarget) && (Console_GetARM9Max(sys, true) > sys->MainTarget)) printf("zzz, 9: %lu %08X %08X 7: %lu %08X %08X\n", Console_GetARM9Max(sys), sys->IE9, sys->IF9, Console_GetARM7Max(sys), sys->IE7, sys->IF7);
-        }
-        //printf("9e %lu %lu s:%i\n", Console_GetARM9Max(sys, true), sys->MainTarget, sys->ARM9.ARM.DeadAsleep);
-        //printf("%08X %08X\n", sys->ARM9.ARM.LR, sys->ARM9.ARM.PC);
-        //printf("7e %lu %lu s:%i\n", Console_GetARM7Max(sys, true), sys->MainTarget, sys->ARM7.ARM.DeadAsleep);
+#ifndef REALTHREAD
+            counter++;
+            if (counter > 0x10000) LogPrint(LOG_ALWAYS, "SYNC HANG!?: %016lX\n%016lX %016lX %016lX %016lX\n%016lX %016lX %016lX %016lX %016lX\n", sys->MainTarget,
+                                                sys->A7Sync, sys->ARM7.ARM.Timestamp, sys->DMA7.NextTime, sys->AHB7.Timestamp,
+                                                sys->A9Sync, sys->ARM9.ARM.Timestamp, sys->ARM9.MemTimestamp, sys->DMA9.NextTime, sys->AHB9.Timestamp);
 #endif
+        }
         Scheduler_Run(sys);
     }
     return;
