@@ -62,59 +62,54 @@ void Schedule_Event(struct Console* sys, void (*callback) (struct Console*, time
 #endif
 }
 
-// TODO: replacing all of the while loops with if statements should be a bit faster, but it isn't a safe optimization currently.
-// i suspect this might be due to swaps for scheduling? this might be a place for future optimizations.
-
-void Scheduler_SyncWith7GTE(struct Console* sys, timestamp now)
+#define A9GO ((sys->A9Sync < sys->MainTarget) && (sys->MR9 ? (sys->A9Sync < sys->A7Sync) : (sys->A9Sync <= sys->A7Sync)))
+#define A7GO ((sys->A7Sync < sys->MainTarget) && ((sys->MR7 && !sys->ExtMemCR_Shared.MRPriority) ? (sys->A7Sync < sys->A9Sync) : (sys->A7Sync <= sys->A9Sync)))
+#define SYSGO ((sys->A9Sync >= sys->MainTarget) && (sys->A7Sync >= sys->MainTarget))
+// if this isn't always inlined the compiler wont optimize out the SyncMode stuff properly.
+__attribute((always_inline)) void Scheduler_Sync(struct Console* sys, timestamp now, const SyncMode mode)
 {
-    sys->A9Sync = now;
+    if (mode >= Sync_9)
+    {
+        sys->A9Sync = now;
+        if (mode == Sync_MainRAM9) sys->MR9 = true;
+        if (mode == Sync_Sleep9) sys->Sleep9 = true;
+    }
+    else
+    {
+        sys->A7Sync = now;
+        if (mode & Sync_MainRAM7) sys->MR7 = true;
+        if (mode & Sync_Sleep7) sys->Sleep7 = true;
+    }
 
-    while(now >= sys->A7Sync)
-        CR_Switch(sys->HandleMain);
+    if A9GO
+    {
+        if (mode < Sync_9) CR_Switch(sys->HandleARM9);
+    }
+    else if A7GO
+    {
+        if (mode >= Sync_9) CR_Switch(sys->HandleARM7);
+    }
+    else while SYSGO
+    {
+        Scheduler_Run(sys);
+    }
 
-    Scheduler_TryRun(sys, true, now);
+    if (mode >= Sync_9)
+    {
+        if (mode == Sync_MainRAM9) sys->MR9 = false;
+        if (mode == Sync_Sleep9) sys->Sleep9 = false;
+    }
+    else
+    {
+        if (mode == Sync_MainRAM7) sys->MR7 = false;
+        if (mode == Sync_Sleep7) sys->Sleep7 = false;
+    }
 }
+#undef A9GO
+#undef A7GO
+#undef SYSGO
 
-void Scheduler_SyncWith7GT(struct Console* sys, timestamp now)
-{
-    sys->A9Sync = now;
-
-    while(now > sys->A7Sync)
-        CR_Switch(sys->HandleMain);
-
-    Scheduler_TryRun(sys, true, now);
-}
-
-void Scheduler_SyncWith9MR(struct Console* sys, timestamp now)
-{
-    sys->A7Sync = now;
-
-    while(((!sys->ExtMemCR_Shared.MRPriority) ? (now >= sys->A9Sync) : (now > sys->A9Sync)))
-        CR_Switch(sys->HandleMain);
-
-    Scheduler_TryRun(sys, false, now);
-}
-
-void Scheduler_SyncWith9GT(struct Console* sys, timestamp now)
-{
-    sys->A7Sync = now;
-
-    while(now > sys->A9Sync)
-        CR_Switch(sys->HandleMain);
-
-    Scheduler_TryRun(sys, false, now);
-}
-
-void Scheduler_TryRun(struct Console* sys, const bool a9, const timestamp now)
-{
-    if (a9) sys->A9Sync = now;
-    else    sys->A7Sync = now;
-
-    while(now >= sys->MainTarget)
-        CR_Switch(sys->HandleMain);
-}
-
-void Scheduler_StallToRunEvent(struct Console* sys, timestamp* time, const u8 event, const u8 a9)
+void Scheduler_StallForEvent(struct Console* sys, timestamp* time, const u8 event, const bool a9)
 {
     // make sure the event is actually scheduled
     if (sys->Sched.EventTimes[event] == timestamp_max) return;
@@ -122,9 +117,5 @@ void Scheduler_StallToRunEvent(struct Console* sys, timestamp* time, const u8 ev
     // wait until event time
     DS_CLAMP(*time, <, sys->Sched.EventTimes[event])
 
-    timestamp* sync = (a9) ? &sys->A9Sync : &sys->A7Sync;
-    *sync = *time;
-
-    while(*sync >= sys->Sched.EventTimes[event])
-        CR_Switch(sys->HandleMain);
+    Scheduler_Sync(sys, *time, (a9 ? Sync_Normal9 : Sync_Normal7));
 }

@@ -21,9 +21,6 @@ u32 IPC_FIFORead(struct Console* sys, [[maybe_unused]] const u32 mask, const boo
     struct IPCFIFO* recv = ((a9) ? &sys->IPCFIFO9 : &sys->IPCFIFO7);
     timestamp ts = ((a9) ? sys->AHB9.Timestamp : sys->AHB7.Timestamp);
 
-    if (a9) Scheduler_SyncWith7GT(sys, ts);
-    else    Scheduler_SyncWith9GT(sys, ts);
-
     u32 ret;
     // CHECKME: do both sides need to be enabled for it to work?
     // CHECKME: halfword/byte accesses?
@@ -65,7 +62,6 @@ u32 IPC_FIFORead(struct Console* sys, [[maybe_unused]] const u32 mask, const boo
         ret = recv->FIFO[recv->DrainPtr];
     }
 
-    //printf("r%i %08X\n", a9, ret);
     return ret;
 }
 
@@ -74,10 +70,6 @@ void IPC_FIFOWrite(struct Console* sys, const u32 val, const u32 mask, const boo
     struct IPCFIFO* send = ((a9) ? &sys->IPCFIFO7 : &sys->IPCFIFO9);
     struct IPCFIFO* recv = ((a9) ? &sys->IPCFIFO9 : &sys->IPCFIFO7);
     timestamp ts = ((a9) ? sys->AHB9.Timestamp : sys->AHB7.Timestamp);
-    if (a9) Scheduler_SyncWith7GT(sys, ts);
-    else    Scheduler_SyncWith9GT(sys, ts);
-
-    //printf("w%i %08X\n", a9, val);
 
     // CHECKME: do both sides need to be enabled for it to work?
     // CHECKME: halfword/byte accesses?
@@ -118,9 +110,6 @@ void IPC_FIFOCRWrite(struct Console* sys, const u32 val, const u32 mask, bool a9
     struct IPCFIFO* send = ((a9) ? &sys->IPCFIFO7 : &sys->IPCFIFO9);
     struct IPCFIFO* recv = ((a9) ? &sys->IPCFIFO9 : &sys->IPCFIFO7);
     timestamp ts = ((a9) ? sys->AHB9.Timestamp : sys->AHB7.Timestamp);
-
-    if (a9) Scheduler_SyncWith7GT(sys, ts);
-    else    Scheduler_SyncWith9GT(sys, ts);
 
     u16 old = recv->CR.Raw;
     MaskedWrite(recv->CR.Raw, val, mask & 0x8404);
@@ -282,9 +271,8 @@ void SPI_Finish(struct Console* sys, timestamp cur)
 
 u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask, const bool timings)
 {
-    Scheduler_TryRun(sys, false, sys->AHB7.Timestamp);
-    //Scheduler_SyncWith9GT(sys, sys->AHB7.Timestamp);
-    //printf("ARM7IOREAD: %08X %08X\n", addr, mask);
+    Scheduler_Sync(sys, sys->AHB7.Timestamp, Sync_Normal7);
+
     switch(addr & 0xFF'FF'FC)
     {
         case 0x00'00'04:
@@ -307,12 +295,10 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask, const bool tim
             return sys->RTC.CR.Raw;
 
         case 0x00'01'80: // ipcsync
-            Scheduler_SyncWith9GT(sys, sys->AHB7.Timestamp);
             return sys->IPCSyncDataTo7
                     | (sys->IPCSyncDataTo9 << 8)
                     | (sys->IPCSyncIRQEnableTo7 << 14);
         case 0x00'01'84:
-            Scheduler_SyncWith9GT(sys, sys->AHB7.Timestamp);
             return sys->IPCFIFO7.CR.Raw;
 
         case 0x00'01'A0 ... 0x00'01'B8:
@@ -322,7 +308,6 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask, const bool tim
             return sys->SPICR.Raw | (sys->SPIOut << 16);
 
         case 0x00'02'04: // External Memory Control
-            Scheduler_SyncWith9GT(sys, sys->AHB7.Timestamp);
             return sys->ExtMemCR_Shared.Raw | sys->ExtMemCR_7.Raw;
 
         case 0x00'02'08: // IME
@@ -333,7 +318,6 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask, const bool tim
             return sys->IF7;
 
         case 0x00'02'40: // VRAM/WRAM Status
-            Scheduler_SyncWith9GT(sys, sys->AHB7.Timestamp);
             return ((sys->VRAMCR[2].Raw & 0x87) == 0x82) | (((sys->VRAMCR[3].Raw & 0x87) == 0x82) << 1)
                    | sys->WRAMCR << 8;
 
@@ -374,9 +358,8 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask, const bool tim
 
 void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mask, const u32 a7pc)
 {
-    Scheduler_TryRun(sys, false, sys->AHB7.Timestamp);
-    //Scheduler_SyncWith9GT(sys, sys->AHB7.Timestamp);
-    //printf("io7 %08X %08X %08X %08X\n", addr, val, mask, a7pc);
+    Scheduler_Sync(sys, sys->AHB7.Timestamp, Sync_Normal7);
+
     switch(addr & 0xFF'FF'FC)
     {
         case 0x00'00'04:
@@ -409,7 +392,6 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
 
         case 0x00'01'80: // ipcsync
         {
-            Scheduler_SyncWith9GT(sys, sys->AHB7.Timestamp);
             if (mask & 0xF00)
             {
                 sys->IPCSyncDataTo9 = (val >> 8) & 0xF;
@@ -484,7 +466,6 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             {
                 if (mask & 0x1) // post flag
                 {
-                    Scheduler_SyncWith9GT(sys, sys->AHB7.Timestamp);
                     sys->PostFlag |= val & 0x1;
                 }
                 if (mask & 0xFF00) // wait control
@@ -590,9 +571,8 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
 
 u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask, const bool timings)
 {
-    Scheduler_TryRun(sys, true, sys->AHB9.Timestamp);
-    //Scheduler_SyncWith7GT(sys, sys->AHB9.Timestamp);
-    //printf("ARM9IOREAD: %08X %08X\n", addr, mask);
+    Scheduler_Sync(sys, sys->AHB9.Timestamp, Sync_Normal9);
+
     switch (addr & 0xFF'FF'FC)
     {
         case 0x00'00'00:
@@ -636,12 +616,10 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask, const bool tim
 
         // IPC
         case 0x00'01'80: // ipcsync
-            Scheduler_SyncWith7GT(sys, sys->AHB9.Timestamp);
             return sys->IPCSyncDataTo9
                     | (sys->IPCSyncDataTo7 << 8)
                     | (sys->IPCSyncIRQEnableTo9 << 14);
         case 0x00'01'84:
-            Scheduler_SyncWith7GT(sys, sys->AHB9.Timestamp);
             return sys->IPCFIFO9.CR.Raw;
 
         case 0x00'01'A0 ... 0x00'01'B8:
@@ -730,7 +708,6 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask, const bool tim
             return sys->PPU_B.Brightness.Raw;
 
         case 0x00'03'00:
-            Scheduler_SyncWith7GT(sys, sys->AHB9.Timestamp);
             return sys->PostFlag | (sys->PostFlagA9Bit << 1);
 
         case 0x10'00'00:
@@ -747,9 +724,8 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask, const bool tim
 
 void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mask)
 {
-    Scheduler_TryRun(sys, true, sys->AHB9.Timestamp);
-    //Scheduler_SyncWith7GT(sys, sys->AHB9.Timestamp);
-    //printf("ARM9IOWRITE: %08X %08X %08X\n", addr, mask, val);
+    Scheduler_Sync(sys, sys->AHB9.Timestamp, Sync_Normal9);
+
     switch (addr & 0xFF'FF'FC)
     {
         case 0x00'00'00:
@@ -823,7 +799,6 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
 
         case 0x00'01'80: // ipcsync
         {
-            Scheduler_SyncWith7GT(sys, sys->AHB9.Timestamp);
             if (mask & 0xF00)
             {
                 sys->IPCSyncDataTo7 = (val >> 8) & 0xF;
@@ -853,7 +828,6 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             break;
 
         case 0x00'02'04: // exmemcnt
-            Scheduler_SyncWith7GT(sys, sys->AHB9.Timestamp);
             MaskedWrite(sys->ExtMemCR_9.Raw, val, mask & 0x7F);
             bool membit1 = sys->ExtMemCR_Shared.MRSomething1;
             bool membit2 = sys->ExtMemCR_Shared.MRSomething2;
@@ -899,14 +873,12 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             {
                 union VRAMCR new = {.Raw = (val>>16) & 0x9F};
                 if ((sys->VRAMCR[2].Mode == 3) || (new.Mode == 3)) SWRen_Sync(sys, sys->AHB9.Timestamp);
-                if ((sys->VRAMCR[2].Mode == 2) || (new.Mode == 2)) Scheduler_SyncWith7GT(sys, sys->AHB9.Timestamp);
                 sys->VRAMCR[2] = new;
             }
             if (mask & 0xFF000000)
             {
                 union VRAMCR new = {.Raw = (val>>24) & 0x9F};
                 if ((sys->VRAMCR[3].Mode == 3) || (new.Mode == 3)) SWRen_Sync(sys, sys->AHB9.Timestamp);
-                if ((sys->VRAMCR[3].Mode == 2) || (new.Mode == 2)) Scheduler_SyncWith7GT(sys, sys->AHB9.Timestamp);
                 sys->VRAMCR[3] = new;
             }
             break;

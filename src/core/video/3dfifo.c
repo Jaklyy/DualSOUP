@@ -225,7 +225,7 @@ void GXFIFO_PackedSubmit(struct Console* sys, const u32 val)
     // loop until we can submit a new command.
     while (true)
     {
-        Scheduler_TryRun(sys, true, *ts);
+        Scheduler_Sync(sys, *ts, Sync_Normal9);
 
         if (gx->ParamRem > 0) // submit a new parameter if needed.
         {
@@ -250,7 +250,7 @@ void GXFIFO_PackedSubmit(struct Console* sys, const u32 val)
             Schedule_Event(sys, GX_RunFIFO, Evt_GX, *ts+1);
             return;
         }
-        Scheduler_StallToRunEvent(sys, ts, Evt_GX, true);
+        Scheduler_StallForEvent(sys, ts, Evt_GX, true);
     }
 }
 
@@ -262,7 +262,7 @@ void GXFIFO_PortSubmit(struct Console* sys, const u32 addr, const u32 val)
     // loop until we can submit a new command.
     while (true)
     {
-        Scheduler_TryRun(sys, true, *ts);
+        Scheduler_Sync(sys, *ts, Sync_Normal9);
 
         if (GXFIFO_Fill(sys, addr/4, val))
         {
@@ -270,7 +270,7 @@ void GXFIFO_PortSubmit(struct Console* sys, const u32 addr, const u32 val)
             gx->Timestamp = *ts;
             return;
         }
-        Scheduler_StallToRunEvent(sys, ts, Evt_GX, true);
+        Scheduler_StallForEvent(sys, ts, Evt_GX, true);
     }
 }
 

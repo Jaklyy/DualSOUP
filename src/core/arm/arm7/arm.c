@@ -147,7 +147,7 @@ if (!ARM7_CheckInterrupts(ARM7)) \
 
 [[nodiscard]] bool ARM7_CheckInterrupts(struct ARM7TDMI* ARM7)
 {
-    Scheduler_SyncWith9GT(cpu->Sys, cpu->Timestamp);
+    Scheduler_Sync(cpu->Sys, cpu->Timestamp, Sync_Normal7);
 
     // TODO: schedule this instead
     if (cpu->Sys->IME7 && !cpu->CPSR.IRQDisable && (cpu->Sys->IE7 & cpu->Sys->IF7))
@@ -241,7 +241,7 @@ void ARM7_MainLoop(struct ARM7TDMI* ARM7)
             else
             {
                 cpu->Sys->A7Sync = cpu->Timestamp;
-                CR_Switch(cpu->Sys->HandleMain);
+                Scheduler_Sync(cpu->Sys, cpu->Timestamp, Sync_Normal7);
             }
         }
         else
@@ -252,10 +252,7 @@ void ARM7_MainLoop(struct ARM7TDMI* ARM7)
             }
             else
             {
-                cpu->Sys->A7Sync = DMA_GetNext(cpu->Sys, false); // note: this logic might still be able to result in arm9 running ahead too much, not sure.
-                cpu->Sys->Sleep7 = true;
-                CR_Switch(cpu->Sys->HandleMain);
-                cpu->Sys->Sleep7 = false;
+                Scheduler_Sync(cpu->Sys, DMA_GetNext(cpu->Sys, false), Sync_Sleep7);
             }
         }
     }

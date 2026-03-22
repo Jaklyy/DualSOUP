@@ -125,7 +125,6 @@ struct Console
     struct BusMainRAM BusMR;
     timestamp AHBBusyTS[Dev_Max];
 
-    coroutine HandleMain;
     coroutine HandleARM9;
     coroutine HandleARM7;
 
@@ -134,6 +133,8 @@ struct Console
     timestamp A7Sync;
     bool Sleep9;
     bool Sleep7;
+    bool MR9;
+    bool MR7;
 
     struct Scheduler Sched;
 

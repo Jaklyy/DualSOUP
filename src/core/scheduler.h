@@ -38,17 +38,22 @@ struct Scheduler
     mtx_t SchedulerMtx;
 };
 
-void Scheduler_SyncWith7GTE(struct Console* sys, timestamp now);
-void Scheduler_SyncWith7GT(struct Console* sys, timestamp now);
-void Scheduler_SyncWith9MR(struct Console* sys, timestamp now);
-void Scheduler_SyncWith9GT(struct Console* sys, timestamp now);
-// update targets
-void Scheduler_UpdateTargets(struct Console* sys);
-// run the next event in the scheduler
-void Scheduler_Run(struct Console* sys);
-// try to run any and all events if possible.
-void Scheduler_TryRun(struct Console* sys, const bool a9, const timestamp now);
-// stall until an event is run
-void Scheduler_StallToRunEvent(struct Console* sys, timestamp* time, const u8 event, const u8 a9);
+typedef enum : u8
+{
+    Sync_7 = 0x00,
+    Sync_Normal7 = 0x00,
+    Sync_MainRAM7 = 0x01,
+    Sync_Sleep7 = 0x02,
+
+    Sync_9 = 0x80,
+    Sync_Normal9 = 0x80,
+    Sync_MainRAM9 = 0x81,
+    Sync_Sleep9 = 0x82,
+} SyncMode;
+
 // schedule an event to run
 void Schedule_Event(struct Console* sys, void (*callback) (struct Console*, timestamp), u8 event, timestamp time);
+// sync arm9, arm7, and system.
+__attribute((always_inline)) void Scheduler_Sync(struct Console* sys, timestamp now, const SyncMode mode);
+// stall until an event is run
+void Scheduler_StallForEvent(struct Console* sys, timestamp* time, const u8 event, const bool a9);

@@ -88,7 +88,6 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
     {
         // de-allocate shit so it can be re-allocated
         // TODO: dont do this?
-        CR_Free(sys->HandleARM9);
         CR_Free(sys->HandleARM7);
         mtx_destroy(&sys->FrameBufferMutex[0]);
         mtx_destroy(&sys->FrameBufferMutex[1]);
@@ -144,11 +143,10 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
     }
 
     // allocate shit
-    bool cr7init = CR_Create(&sys->HandleARM9, (void*)ARM9_MainLoop, &sys->ARM9);
-    bool cr9init = CR_Create(&sys->HandleARM7, (void*)ARM7_MainLoop, &sys->ARM7);
+    sys->HandleARM9 = CR_Active();
+    bool cr7init = CR_Create(&sys->HandleARM7, (void*)ARM7_MainLoop, &sys->ARM7);
 
     bool gcinit = Gamecard_Init(&sys->Gamecard, rom, sys->NTRBios7.b8);
-    sys->HandleMain = CR_Active();
 
     bool mtxinit = (mtx_init(&sys->FrameBufferMutex[0], mtx_plain) == thrd_success);
     bool mtxinit3 = (mtx_init(&sys->FrameBufferMutex[1], mtx_plain) == thrd_success);
@@ -165,11 +163,11 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
     bool thrdinit1 = true, thrdinit2 = true, thrdinit3 = true;
 #endif
 
-    if ((!cr7init) || (!cr9init)|| (num9 != 1) || (num7 != 1) || !firminit || !gcinit || !mtxinit || !mtxinit2|| !mtxinit3 || !thrdinit1 || !thrdinit2)
+    if ((!cr7init) || (num9 != 1) || (num7 != 1) || !firminit || !gcinit || !mtxinit || !mtxinit2|| !mtxinit3 || !thrdinit1 || !thrdinit2)
     {
         // return error messages
-        if ((!cr7init) || (!cr9init))
-            LogPrint(LOG_ALWAYS, "FATAL: Coroutine handle creation failed:%s%s\n", ( cr7init ? " 7": ""), ( cr9init ? " 9": ""));
+        if (!cr7init)
+            LogPrint(LOG_ALWAYS, "FATAL: Coroutine handle creation failed!\n");
         if (!mtxinit || !mtxinit2|| !mtxinit3)
             LogPrint(LOG_ALWAYS, "FATAL: Mutex init failed.\n");
         if (num9 != 1)
@@ -187,7 +185,6 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
         }
 
         // cleanup ones that actually allocated correctly
-        if (cr9init) CR_Free(sys->HandleARM9);
         if (cr7init) CR_Free(sys->HandleARM7);
         if (firminit) Flash_Cleanup(&sys->Firmware);
         if (gcinit) Gamecard_Cleanup(&sys->Gamecard);
@@ -562,47 +559,16 @@ void Console_ClearHeldIRQs(struct Console* sys, const u8 irq, const bool a9)
         sys->IF7HoldQueue &= ~(1<<irq);
         sys->IF7Held &= ~(1<<irq); // idk??
     }
-    //Console_ScheduleIRQs(sys, irq, a9, timestamp_max); // what was this line supposed to do...?
+    Console_ScheduleIRQs(sys, irq, a9, timestamp_max); // what was this line supposed to do...? (i think its supposed to prevent spurious irqs???)
 }
 
 void Console_MainLoop(struct Console* sys)
 {
     CR_Start = true;
     mtx_lock(&sys->FrameBufferMutex[sys->BackBuf]);
-    Scheduler_UpdateTargets(sys);
     sys->TimeFrac = 0;
     sys->OldTime = SDL_GetPerformanceCounter();
     sys->log = fopen("audioout.bin", "wb");
-    while(!sys->KillThread)
-    {
-#ifndef REALTHREAD
-        u64 counter = 0;
-#endif
-        bool exit = false;
-        while(!exit)
-        {
-            exit = true;
-
-            // TODO: it might make sense to have the coroutine additionally resolve what its syncing against here?
-            // reducing context switching should be a good way to optimize the emulator.
-            if (sys->A9Sync < sys->MainTarget)
-            {
-                CR_Switch(sys->HandleARM9);
-                exit = false;
-            }
-            if (sys->A7Sync < sys->MainTarget)
-            {
-                CR_Switch(sys->HandleARM7);
-                exit = false;
-            }
-#ifndef REALTHREAD
-            counter++;
-            if (counter > 0x10000) LogPrint(LOG_ALWAYS, "SYNC HANG!?: %016lX\n%016lX %016lX %016lX %016lX\n%016lX %016lX %016lX %016lX %016lX\n", sys->MainTarget,
-                                                sys->A7Sync, sys->ARM7.ARM.Timestamp, sys->DMA7.NextTime, sys->AHB7.Timestamp,
-                                                sys->A9Sync, sys->ARM9.ARM.Timestamp, sys->ARM9.MemTimestamp, sys->DMA9.NextTime, sys->AHB9.Timestamp);
-#endif
-        }
-        Scheduler_Run(sys);
-    }
+    ARM9_MainLoop(&sys->ARM9);
     return;
 }

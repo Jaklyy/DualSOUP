@@ -367,7 +367,7 @@ u32 VRAM_ARM7(struct Console* sys, const u32 addr, const u32 mask, const bool wr
     struct AHB* bus = &sys->AHB7;
     u32 ret = 0;
     bool any = false;
-    if (timings) Scheduler_SyncWith9GT(sys, sys->AHB7.Timestamp);
+    if (timings) Scheduler_Sync(sys, sys->AHB7.Timestamp, Sync_Normal7);
     if ((sys->VRAMCR[2].Raw & 0x87) == 0x82)
     {
         u32 base = (sys->VRAMCR[2].Offset * 0x20000);
@@ -459,17 +459,17 @@ u32 Bus_MainRAM_Read(struct Console* sys, struct AHB* buscur, const bool bus9, u
                 // arm 9 cannot have priority changed during the loop so it doesn't need to handle priority changes
                 if (sys->ExtMemCR_Shared.MRPriority)
                 {
-                    Scheduler_SyncWith7GTE(sys, buscur->Timestamp);
+                    Scheduler_Sync(sys, buscur->Timestamp, Sync_MainRAM9);
                 }
                 else
                 {
-                    Scheduler_SyncWith7GT(sys, buscur->Timestamp);
+                    Scheduler_Sync(sys, buscur->Timestamp, Sync_Normal9);
                 }
             }
             else
             {
                 // arm 7 uses a special function that can handle priority changing during the sync loop.
-                Scheduler_SyncWith9MR(sys, buscur->Timestamp);
+                Scheduler_Sync(sys, buscur->Timestamp, Sync_MainRAM7);
             }
 
             // if main ram is still busy the accessing bus needs to wait until it's available to begin a new burst to it
@@ -595,17 +595,17 @@ void Bus_MainRAM_Write(struct Console* sys, struct AHB* buscur, const bool bus9,
                 // arm 9 cannot have priority changed during the loop so it doesn't need to handle priority changes
                 if (sys->ExtMemCR_Shared.MRPriority)
                 {
-                    Scheduler_SyncWith7GTE(sys, buscur->Timestamp);
+                    Scheduler_Sync(sys, buscur->Timestamp, Sync_MainRAM9);
                 }
                 else
                 {
-                    Scheduler_SyncWith7GT(sys, buscur->Timestamp);
+                    Scheduler_Sync(sys, buscur->Timestamp, Sync_Normal9);
                 }
             }
             else
             {
                 // arm 7 uses a special function that can handle priority changing during the sync loop.
-                Scheduler_SyncWith9MR(sys, buscur->Timestamp);
+                Scheduler_Sync(sys, buscur->Timestamp, Sync_MainRAM7);
             }
 
             // if main ram is still busy the accessing bus needs to wait until it's available to begin a new burst to it
@@ -1033,7 +1033,7 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
         {
             BusContention(sys->AHBBusyTS, &sys->AHB7.Timestamp, Dev_WRAM7);
             Timing32(&sys->AHB7);
-            Scheduler_SyncWith9GT(sys, sys->AHB7.Timestamp);
+            Scheduler_Sync(sys, sys->AHB7.Timestamp, Sync_Normal7);
         }
         switch(sys->WRAMCR)
         {
@@ -1131,7 +1131,7 @@ void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
         {
             Timing32(&sys->AHB7);
             AddBusContention(sys->AHBBusyTS, sys->AHB7.Timestamp, Dev_WRAM7);
-            Scheduler_SyncWith9GT(sys, sys->AHB7.Timestamp);
+            Scheduler_Sync(sys, sys->AHB7.Timestamp, Sync_Normal7);
         }
         switch(sys->WRAMCR)
         {

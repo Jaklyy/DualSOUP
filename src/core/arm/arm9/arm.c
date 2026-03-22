@@ -236,8 +236,7 @@ void ARM9_DeferredITCMWrite(struct ARM946ES* ARM9);
 
 [[nodiscard]] bool ARM9_CheckInterrupts(struct ARM946ES* ARM9)
 {
-    // note: cpu will probably wind up waking up too late with how this works?
-    Scheduler_SyncWith7GT(cpu->Sys, cpu->Timestamp >> A9ClockShift(*ARM9));
+    Scheduler_Sync(cpu->Sys, cpu->Timestamp >> A9ClockShift(*ARM9), Sync_Normal9);
 
     // todo: schedule this instead
     if (cpu->Sys->IME9 && !cpu->CPSR.IRQDisable && (cpu->Sys->IE9 & cpu->Sys->IF9))
@@ -346,9 +345,8 @@ void ARM9_Step(struct ARM946ES* ARM9)
 
 void ARM9_MainLoop(struct ARM946ES* ARM9)
 {
-    while (!CR_Start);
     if (cpu->Sys->DirectBoot) ARM9_FlushPipeline(ARM9);
-    while(!CR_Kill)
+    while(!cpu->Sys->KillThread)
     {
         if (!cpu->DeadAsleep)
         {
@@ -365,8 +363,7 @@ void ARM9_MainLoop(struct ARM946ES* ARM9)
             }
             else
             {
-                cpu->Sys->A9Sync = cpu->Timestamp >> A9ClockShift(*ARM9);
-                CR_Switch(cpu->Sys->HandleMain);
+                Scheduler_Sync(cpu->Sys, cpu->Timestamp >> A9ClockShift(*ARM9), Sync_Normal9);
             }
         }
         else
@@ -377,10 +374,7 @@ void ARM9_MainLoop(struct ARM946ES* ARM9)
             }
             else
             {
-                cpu->Sys->A9Sync = DMA_GetNext(cpu->Sys, true); // note: this logic might still be able to result in arm7 running ahead too much, not sure.
-                cpu->Sys->Sleep9 = true;
-                CR_Switch(cpu->Sys->HandleMain);
-                cpu->Sys->Sleep9 = false;
+                Scheduler_Sync(cpu->Sys, DMA_GetNext(cpu->Sys, true), Sync_Sleep9);
             }
         }
     }
