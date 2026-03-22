@@ -1,6 +1,6 @@
 #include <stdckdint.h>
+#include <stdlib.h>
 #include "ir.h"
-#include "flash.h"
 
 
 
@@ -16,7 +16,7 @@ u8 IRhle_CMDSend(IRhle* ir, const u8 val, const bool chipsel)
     u8 ret;
     switch(ir->CurCmd)
     {
-        case 0x00: ret = (ir->CmdLen > 0) ? Flash_CMDSend(&ir->Flash, val, chipsel) : 0; break;
+        case 0x00: ret = (ir->CmdLen > 0) ? ir->SRAM_CMDSend(ir->SRAM, val, chipsel) : 0; break;
         case 0x08: ret = (ir->CmdLen == 1) ? 0xAA : 0; break;
         default: ret = 0xFF; break;
     }
@@ -29,4 +29,14 @@ u8 IRhle_CMDSend(IRhle* ir, const u8 val, const bool chipsel)
     ir->PrevChipSelect = chipsel;
 
     return ret;
+}
+
+void IRhle_Cleanup(IRhle* ir)
+{
+    if (ir->SRAM != nullptr)
+    {
+        ir->SRAM_Cleanup((ir->SRAM));
+        free(ir->SRAM);
+        ir->SRAM = nullptr;
+    }
 }

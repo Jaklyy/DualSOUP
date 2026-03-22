@@ -174,16 +174,40 @@ bool Gamecard_Init(Gamecard* card, const char* romname, u8* bios7)
         memset(&sram[savsize], 0xFF, sramsize - savsize);
     }
 
+    void** spi = &card->SPI;
+    void** send = (void*)&card->SPI_CMDSend;
+    void** clean = (void*)&card->SPI_Cleanup;
+
+    if (SOUPParser(soupbowl, "tmp:", "ir", SEARCH_STRING, NULL))
+    {
+        *spi = malloc(sizeof(IRhle));
+        if (*spi == NULL)
+        {
+            LogPrint(LOG_ALWAYS, "Could not allocate RAM for HLE gamecard IR\n");
+            return false;
+        }
+        memset(*spi, 0, sizeof(IRhle));
+        *send = (void*)IRhle_CMDSend;
+        *clean = (void*)IRhle_Cleanup;
+
+        printf("%p %p\n", *spi, (void*)&(((IRhle*)(*spi))->SRAM_CMDSend));
+        // unholy abominations:
+        void* tmp = *spi;
+        spi = &(((IRhle*)tmp)->SRAM);
+        send = (void*)&(((IRhle*)tmp)->SRAM_CMDSend);
+        clean = (void*)&(((IRhle*)tmp)->SRAM_Cleanup);
+    }
+
     u8 addrbytes;
     if (SOUPParser(soupbowl, "spi:", "flash", SEARCH_STRING, NULL))
     {
-        card->SPI = malloc(sizeof(Flash));
-        if (card->SPI == NULL)
+        *spi = malloc(sizeof(Flash));
+        if (*spi == NULL)
         {
             LogPrint(LOG_ALWAYS, "Could not allocate RAM for gamecard flash\n");
             return false;
         }
-        memset(card->SPI, 0, sizeof(Flash));
+        memset(*spi, 0, sizeof(Flash));
 
         u32 flashid;
         if (!SOUPParser(soupbowl, "flashid:", NULL, SEARCH_U32HEX, &flashid))
@@ -191,9 +215,9 @@ bool Gamecard_Init(Gamecard* card, const char* romname, u8* bios7)
             flashid = 0x00010203;
         }
 
-        Flash_Init(card->SPI, sram, sramsize, false, flashid);
-        card->SPI_CMDSend = (void*)Flash_CMDSend;
-        card->SPI_Cleanup = (void*)Flash_Cleanup;
+        Flash_Init(*spi, sram, sramsize, false, flashid);
+        *send = (void*)Flash_CMDSend;
+        *clean = (void*)Flash_Cleanup;
         return true;
     }
     else if (SOUPParser(soupbowl, "spi:", "eep9", SEARCH_STRING, NULL))
@@ -214,17 +238,17 @@ bool Gamecard_Init(Gamecard* card, const char* romname, u8* bios7)
         return false;
     }
 
-    card->SPI = malloc(sizeof(EEPROM));
-    if (card->SPI == NULL)
+    *spi = malloc(sizeof(EEPROM));
+    if (*spi == NULL)
     {
         LogPrint(LOG_ALWAYS, "Could not allocate RAM for gamecard eeprom\n");
         return false;
     }
 
-    memset(card->SPI, 0, sizeof(EEPROM));
-    EEPROM_Init(card->SPI, sram, sramsize, addrbytes, 0);
-    card->SPI_CMDSend = (void*)EEPROM_CMDSend;
-    card->SPI_Cleanup = (void*)EEPROM_Cleanup;
+    memset(*spi, 0, sizeof(EEPROM));
+    EEPROM_Init(*spi, sram, sramsize, addrbytes, 0);
+    *send = (void*)EEPROM_CMDSend;
+    *clean = (void*)EEPROM_Cleanup;
     return true;
 }
 
