@@ -96,9 +96,11 @@ void AudioMixer_Sample(struct Console* sys, timestamp now)
     }
 
     if (!SDL_PutAudioStreamData(sys->Aud, sampleout, sizeof(sampleout))) printf("wat %s\n", SDL_GetError());
-    fwrite(sampleout, sizeof(sampleout), 1, sys->log);
 
+#ifdef DUMPAUDIO
+    fwrite(sampleout, sizeof(sampleout), 1, sys->log);
     fflush(sys->log);
+#endif
 
     sys->AudioFrac = (u64)(NTRBus_Clock + sys->AudioFrac) % SoundMixerOutput;
     Schedule_Event(sys, AudioMixer_Sample, Evt_MixAudio, now + ((u64)(NTRBus_Clock + sys->AudioFrac) / SoundMixerOutput));

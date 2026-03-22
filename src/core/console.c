@@ -568,7 +568,9 @@ void Console_MainLoop(struct Console* sys)
     mtx_lock(&sys->FrameBufferMutex[sys->BackBuf]);
     sys->TimeFrac = 0;
     sys->OldTime = SDL_GetPerformanceCounter();
+#ifdef DUMPAUDIO
     sys->log = fopen("audioout.bin", "wb");
+#endif
     ARM9_MainLoop(&sys->ARM9);
     return;
 }

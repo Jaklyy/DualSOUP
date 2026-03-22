@@ -66,7 +66,7 @@ void Schedule_Event(struct Console* sys, void (*callback) (struct Console*, time
 #define A7GO ((sys->A7Sync < sys->MainTarget) && ((sys->MR7 && !sys->ExtMemCR_Shared.MRPriority) ? (sys->A7Sync < sys->A9Sync) : (sys->A7Sync <= sys->A9Sync)))
 #define SYSGO ((sys->A9Sync >= sys->MainTarget) && (sys->A7Sync >= sys->MainTarget))
 // if this isn't always inlined the compiler wont optimize out the SyncMode stuff properly.
-__attribute((always_inline)) void Scheduler_Sync(struct Console* sys, timestamp now, const SyncMode mode)
+forceinline void Scheduler_Sync(struct Console* sys, timestamp now, const SyncMode mode)
 {
     if (mode >= Sync_9)
     {

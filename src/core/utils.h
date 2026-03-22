@@ -64,12 +64,15 @@ typedef uint64_t timestamp;
 // todo: actually add fallback paths if these dont exist for w/e reason
 /*#define likely(x) __builtin_expect(!!(x), 1)
 #define unlikely(x) __builtin_expect(!!(x), 0)*/
+
 #define bswap(x) _Generic((x), \
     s16: __builtin_bswap16, u16: __builtin_bswap16, \
     s32: __builtin_bswap32, u32: __builtin_bswap32, \
     s64: __builtin_bswap64, u64: __builtin_bswap64)((x))
 
 #define HOST_CACHEALIGN (64)
+
+#define forceinline __attribute((always_inline)) inline
 
 
 // the builtins are constexpr but the actual standard defined functions aren't...

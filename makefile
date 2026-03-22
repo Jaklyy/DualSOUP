@@ -18,6 +18,10 @@ ifeq ($(FPS), 1) # monitor performance -- outputs frametime info via printf
 	CFLAGS += -DFPSLOG
 endif
 
+ifeq ($(AUDMP), 1) # dump raw 2 channel 16 bit pcm audio to audioout.bin
+	CFLAGS += -DDUMPAUDIO
+endif
+
 ifeq ($(THRD), 1) # use threads instead of coroutines -- UNSTABLE - NOT RECOMMENDED
 	CFLAGS += -DREALTHREAD
 endif

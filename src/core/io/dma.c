@@ -30,7 +30,7 @@ void DMA_Schedule(struct Console* sys, const bool a9)
     u8 id = DMA7_Max;
 
     int max = stdc_trailing_zeros((u32)cnt->CurMask);
-    #pragma unroll (DMA7_Max)
+    #pragma GCC unroll (DMA7_Max)
     for (int i = 0; i < max; i++)
     {
         if (time > cnt->ChannelTimestamps[i])

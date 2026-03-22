@@ -54,6 +54,6 @@ typedef enum : u8
 // schedule an event to run
 void Schedule_Event(struct Console* sys, void (*callback) (struct Console*, timestamp), u8 event, timestamp time);
 // sync arm9, arm7, and system.
-__attribute((always_inline)) void Scheduler_Sync(struct Console* sys, timestamp now, const SyncMode mode);
+void Scheduler_Sync(struct Console* sys, timestamp now, const SyncMode mode);
 // stall until an event is run
 void Scheduler_StallForEvent(struct Console* sys, timestamp* time, const u8 event, const bool a9);
