@@ -53,10 +53,10 @@ ifeq ($(SAN), 1) # debug w/ sanitizers
 else
 ifeq ($(REL), 1) # release build
 	BUILDDIR := $(RELDIR)
-	CFLAGS += -march=x86-64-v3 -O3 -flto
+	CFLAGS += -march=x86-64-v3 -O3 -flto=auto
 else # standard build
 	BUILDDIR := $(MISCDIR)
-	CFLAGS += -march=native -O3 -flto -g
+	CFLAGS += -march=native -O3 -flto=auto -g
 endif
 endif
 endif
