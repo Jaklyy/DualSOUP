@@ -85,11 +85,11 @@ void LCD_HBlank(struct Console* sys, timestamp now)
 
             if ((SDL_GetPerformanceCounter() - (SDL_GetPerformanceFrequency() / 60)) > target)
             {
-                sys->OldTime = target;
+                sys->OldTime = SDL_GetPerformanceCounter();
             }
             else
             {
-                sys->OldTime = SDL_GetPerformanceCounter();
+                sys->OldTime = target;
             }
             sys->OldTimeActual = SDL_GetPerformanceCounter();
             sys->FrameTime = frametime;

@@ -89,7 +89,7 @@ forceinline void Scheduler_Sync(struct Console* sys, timestamp now, const SyncMo
     {
         if (mode >= Sync_9) CR_Switch(sys->HandleARM7);
     }
-    else while SYSGO
+    while SYSGO
     {
         Scheduler_Run(sys);
     }

@@ -97,8 +97,12 @@ int main()
     LogMask = u64_max; // temp
 
     // TODO investigate: SDL_HINT_TIMER_RESOLUTION
-    SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
-    SDL_SetHint(SDL_HINT_NO_SIGNAL_HANDLERS, "1");
+    if (!SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1"))
+        printf("%s\n", SDL_GetError());
+    if (!SDL_SetHint(SDL_HINT_NO_SIGNAL_HANDLERS, "1"))
+        printf("%s\n", SDL_GetError());
+    if (!SDL_SetHint(SDL_HINT_AUDIO_DEVICE_RAW_STREAM, "1"))
+        printf("%s\n", SDL_GetError());
 
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD | SDL_INIT_EVENTS | SDL_INIT_AUDIO))
     {
