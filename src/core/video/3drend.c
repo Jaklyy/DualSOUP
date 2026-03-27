@@ -514,12 +514,14 @@ Colors SWRen_BlendColors(Polygon* poly, Colors color, Colors tcolor, u8 talpha, 
 
 void SWRen_AlphaBlend(GX3D* gx, const Polygon* poly, const u16 x, const u8 y, const s32 z, Colors fincolor, u8 finalpha, AttrBuf attr, const bool bot, const bool fill)
 {
+    const bool shadow = (poly->Attrs.PolyID != 0) && (poly->Attrs.Mode == 3);
+
     AttrBuf abuf = gx->ABuf[bot][y][x];
 
     attr.EdgeFlags = abuf.EdgeFlags; // checkme?
     attr.Backfacing = abuf.Backfacing; // checkme?
 
-    if (abuf.Trans && (attr.PolygonID == abuf.PolygonID))
+    if ((abuf.Trans || shadow) && (attr.PolygonID == abuf.PolygonID))
         return;
 
     attr.Trans = true;
@@ -571,12 +573,15 @@ bool SWRen_DepthTest(const GX3D* gx, const bool equaldt, const u16 x, const u8 y
 
 void SWRen_RasterizePixel(GX3D* gx, Polygon* poly, u16 x, u8 y, s32 z, Colors color, Colors tcolor, u8 talpha, AttrBuf attr, const bool fill)
 {
+    const bool stencil = (poly->Attrs.PolyID == 0) && (poly->Attrs.Mode == 3);
+    const bool shadow = (poly->Attrs.PolyID != 0) && (poly->Attrs.Mode == 3);
+
     u8 finalpha;
     Colors fincolor = SWRen_BlendColors(poly, color, tcolor, talpha, &finalpha);
 
     if (finalpha <= gx->LatAlphaThreshold) return;
 
-    if (finalpha < 31)
+    if (finalpha < 31 || stencil || shadow)
     {
         attr.EdgeFlags = 0; // checkme?
     }
@@ -584,14 +589,19 @@ void SWRen_RasterizePixel(GX3D* gx, Polygon* poly, u16 x, u8 y, s32 z, Colors co
     bool bot = false;
     if (!SWRen_DepthTest(gx, poly->Attrs.EqualDepthTest, x, y, z, attr, false))
     {
+        if (stencil) gx->SBuf[false][y%2][x] = true;
         bot = true;
         if (!SWRen_DepthTest(gx, poly->Attrs.EqualDepthTest, x, y, z, attr, true))
         {
+            if (stencil) gx->SBuf[true][y%2][x] = true;
             return;
         }
     }
+    if (stencil) return;
 
-    if (finalpha == 31) // opaque
+    if (shadow && !gx->SBuf[bot][y%2][x]) return;
+
+    if ((finalpha == 31) && !shadow) // opaque
     {
         if (!fill) return;
 
@@ -604,7 +614,7 @@ void SWRen_RasterizePixel(GX3D* gx, Polygon* poly, u16 x, u8 y, s32 z, Colors co
         gx->ABuf[bot][y][x] = attr;
         gx->ZBuf[bot][y][x] = z;
     }
-    else // translucent
+    else // translucent & shadow(?)
     {
         if (!bot) SWRen_AlphaBlend(gx, poly, x, y, z, fincolor, finalpha, attr, false, fill);
         SWRen_AlphaBlend(gx, poly, x, y, z, fincolor, finalpha, attr, true, fill);
@@ -615,6 +625,20 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
 {
     GX3D* gx = &sys->GX3D;
     if ((y == poly->Bot) && (y != poly->Top)) return; // checkme: timings?
+
+    const bool stencil = (poly->Attrs.PolyID == 0) && (poly->Attrs.Mode == 3);
+    const bool shadow = (poly->Attrs.PolyID != 0) && (poly->Attrs.Mode == 3);
+
+    if (stencil && gx->StencilClear[y%2])
+    {
+        gx->StencilClear[y%2] = false;
+        memset(gx->SBuf[0][y%2], 0, 256);
+        memset(gx->SBuf[1][y%2], 0, 256);
+    }
+    else if (shadow)
+    {
+        gx->StencilClear[y%2] = true;
+    }
 
     s16 ls, le, rs, re;
     s32 lslope, rslope;
@@ -709,6 +733,7 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
         s = SWRen_Interpolate(x, ls, re, wl, wr, sl, sr, false, persp, false);
         t = SWRen_Interpolate(x, ls, re, wl, wr, tl, tr, false, persp, false);
 
+        // checkme: can stencil polygons use textures?
         if (gx->LatRasterCR.Texture && poly->TexAttr.Format)
             tcolor = SWRen_DecodeTextures(sys, poly, s, t, &talpha);
         else { tcolor.RGB = color.RGB >> 3; talpha = poly->Attrs.Alpha; }
@@ -728,6 +753,7 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
         s = SWRen_Interpolate(x, ls, re, wl, wr, sl, sr, false, persp, false);
         t = SWRen_Interpolate(x, ls, re, wl, wr, tl, tr, false, persp, false);
 
+        // checkme: can stencil polygons use textures?
         if (gx->LatRasterCR.Texture && poly->TexAttr.Format)
             tcolor = SWRen_DecodeTextures(sys, poly, s, t, &talpha);
         else { tcolor.RGB = color.RGB >> 3; talpha = poly->Attrs.Alpha; }
@@ -748,6 +774,7 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
         s = SWRen_Interpolate(x, ls, re, wl, wr, sl, sr, false, persp, false);
         t = SWRen_Interpolate(x, ls, re, wl, wr, tl, tr, false, persp, false);
 
+        // checkme: can stencil polygons use textures?
         if (gx->LatRasterCR.Texture && poly->TexAttr.Format)
             tcolor = SWRen_DecodeTextures(sys, poly, s, t, &talpha);
         else { tcolor.RGB = color.RGB >> 3; talpha = poly->Attrs.Alpha; }

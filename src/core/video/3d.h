@@ -471,11 +471,13 @@ typedef struct
     RasterCR LatRasterCR;
     RearAttr LatRearAttr;
     u16 LatRearDepth;
+    bool StencilClear[2];
 
     alignas(HOST_CACHEALIGN)
-    u32 CBuf[2][192][256];
-    s32 ZBuf[2][192][256];
-    AttrBuf ABuf[2][192][256];
+    u32 CBuf[2][192][256]; // color buffer
+    s32 ZBuf[2][192][256]; // depth buffer
+    AttrBuf ABuf[2][192][256]; // attribute buffer
+    bool SBuf[2][2][256]; // stencil buffer
 } GX3D;
 
 struct Console;
