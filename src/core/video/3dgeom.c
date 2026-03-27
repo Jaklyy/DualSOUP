@@ -288,10 +288,11 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert, bool* boxtestres)
 
     fin.Frontfacing = frontfacing;
     fin.Attrs = gx->CurPolyAttr;
-    fin.Trans = ((fin.Attrs.Alpha > 0) && (fin.Attrs.Alpha < 31)); // TODO: Texture params impact this!!
     fin.NumVert = nvert;
     fin.TexAttr = gx->TexAttr;
     fin.TexPal = gx->TexPal;
+    // if a polygon has potential to be blended (not fully opaque or transparent) it is sorted differently
+    fin.Trans = ((fin.Attrs.Alpha > 0) && (fin.Attrs.Alpha < 31)) || (fin.TexAttr.Format == 1) || (fin.TexAttr.Format == 6);
 
     s32 ytop = 193, ybot = -1, vtop = 0, vbot = 0;
 
@@ -381,9 +382,9 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert, bool* boxtestres)
     fin.Bot = ybot;
 
     // transparent polygons are sorted last, and ties are broken based on initial index
-    fin.SortKey = (fin.Trans << 31) | (gx->PolyRAMPtr);
+    fin.SortKey = (fin.Trans << 30) | (gx->PolyRAMPtr);
     // sort by polygon top and bottom, can opt out for transparent polygons.
-    if (!fin.Trans || !gx->ManualTransSort)
+    if (!(fin.Trans && gx->ManualTransSort))
         fin.SortKey |= ((ybot << 8) | ytop) << 12;
 
     gx->GXPolyRAM[gx->PolyRAMPtr] = fin;
@@ -1323,7 +1324,7 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
 
 int GX_Cmp(const void* a, const void* b)
 {
-    return ((Polygon*)a)->SortKey - ((Polygon*)b)->SortKey;
+    return ((((Polygon*)a)->SortKey) - ((Polygon*)b)->SortKey);
 }
 
 void GX_Swap(struct Console* sys, const timestamp now)
@@ -1346,11 +1347,14 @@ void GX_Swap(struct Console* sys, const timestamp now)
 
         DS_SWAP(gx->GXVtxRAM, gx->RenderVtxRAM);
 
+        // confirmed latching behavior:
+        gx->LatWBuffer = gx->WBufferNext;
+        gx->WBufferNext = gx->WBuffer;
+        // todo: test latching:
+        gx->LatAlphaThreshold = gx->AlphaThreshold;
         gx->LatRasterCR = gx->RasterCR;
         gx->LatRearAttr = gx->RearAttr;
         gx->LatRearDepth = gx->RearDepth;
-        gx->RenderWBuffer = gx->WBufferNext;
-        gx->WBufferNext = gx->WBuffer;
 
         // make sure to reschedule if needed, since we probably ended up getting this scheduled 5 years into the future, and that might cause problems.
         if (sys->Sched.EventTimes[Evt_GX] > gx->ExecTS)

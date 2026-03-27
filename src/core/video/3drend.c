@@ -512,6 +512,38 @@ Colors SWRen_BlendColors(Polygon* poly, Colors color, Colors tcolor, u8 talpha, 
     return outcol;
 }
 
+void SWRen_AlphaBlend(GX3D* gx, const Polygon* poly, const u16 x, const u8 y, const s32 z, Colors fincolor, u8 finalpha, AttrBuf attr, const bool bot, const bool fill)
+{
+    AttrBuf abuf = gx->ABuf[bot][y][x];
+
+    attr.EdgeFlags = abuf.EdgeFlags; // checkme?
+    attr.Backfacing = abuf.Backfacing; // checkme?
+
+    if (abuf.Trans && (attr.PolygonID == abuf.PolygonID))
+        return;
+
+    attr.Trans = true;
+
+    u32 c = gx->CBuf[bot][y][x];
+    Colors oldc = {.R = (c & 0x3F), .G = ((c >> 6) & 0x3F), .B = ((c >> 12) & 0x3F)};
+    u8 olda = (c >> 18) & 0x1F;
+
+    if (gx->LatRasterCR.AlphaBlend)
+    {
+        fincolor.RGB = ((fincolor.RGB * (finalpha+1)) + (oldc.RGB * (32-(finalpha+1)))) / 32;
+    }
+    else if (!fill) // fill applies if alpha blending is enabled
+        return;
+
+    // checkme: it just takes the highest alpha of the two?
+    DS_CLAMP(finalpha, <, olda)
+
+    gx->CBuf[bot][y][x] = fincolor.R | (fincolor.G << 6) | (fincolor.B << 12) | finalpha << 18;
+    gx->ABuf[bot][y][x] = attr;
+    if (poly->Attrs.TransDepthUpdate)
+        gx->ZBuf[bot][y][x] = z;
+}
+
 bool SWRen_DepthTest(const GX3D* gx, const bool equaldt, const u16 x, const u8 y, s32 z, const AttrBuf attr, const bool bot)
 {
     AttrBuf abuf = gx->ABuf[bot][y][x];
@@ -537,30 +569,46 @@ bool SWRen_DepthTest(const GX3D* gx, const bool equaldt, const u16 x, const u8 y
     }
 }
 
-void SWRen_RasterizePixel(GX3D* gx, Polygon* poly, u16 x, u8 y, s32 z, Colors color, Colors tcolor, u8 talpha, AttrBuf attr)
+void SWRen_RasterizePixel(GX3D* gx, Polygon* poly, u16 x, u8 y, s32 z, Colors color, Colors tcolor, u8 talpha, AttrBuf attr, const bool fill)
 {
+    u8 finalpha;
+    Colors fincolor = SWRen_BlendColors(poly, color, tcolor, talpha, &finalpha);
+
+    if (finalpha <= gx->LatAlphaThreshold) return;
+
+    if (finalpha < 31)
+    {
+        attr.EdgeFlags = 0; // checkme?
+    }
+
     bool bot = false;
-    if (!SWRen_DepthTest(gx, poly->Attrs.EqualDepthTest, x, y, z, attr, bot))
+    if (!SWRen_DepthTest(gx, poly->Attrs.EqualDepthTest, x, y, z, attr, false))
     {
         bot = true;
-        if (!SWRen_DepthTest(gx, poly->Attrs.EqualDepthTest, x, y, z, attr, bot))
+        if (!SWRen_DepthTest(gx, poly->Attrs.EqualDepthTest, x, y, z, attr, true))
         {
             return;
         }
     }
 
-    u8 finalpha;
-    Colors fincolor = SWRen_BlendColors(poly, color, tcolor, talpha, &finalpha);
+    if (finalpha == 31) // opaque
+    {
+        if (!fill) return;
 
-    if (finalpha < 1) return;
+        // move top pixel to bottom layer.
+        gx->CBuf[true][y][x] = gx->CBuf[false][y][x];
+        gx->ABuf[true][y][x] = gx->ABuf[false][y][x];
+        gx->ZBuf[true][y][x] = gx->ZBuf[false][y][x];
 
-    gx->ZBuf[true][y][x] = gx->ZBuf[false][y][x];
-    gx->CBuf[true][y][x] = gx->CBuf[false][y][x];
-    gx->ABuf[true][y][x] = gx->ABuf[false][y][x];
-
-    gx->ZBuf[bot][y][x] = z;
-    gx->CBuf[bot][y][x] = fincolor.R | (fincolor.G << 6) | (fincolor.B << 12) | 0x1F << 18;
-    gx->ABuf[bot][y][x] = attr;
+        gx->CBuf[bot][y][x] = fincolor.R | (fincolor.G << 6) | (fincolor.B << 12) | finalpha << 18;
+        gx->ABuf[bot][y][x] = attr;
+        gx->ZBuf[bot][y][x] = z;
+    }
+    else // translucent
+    {
+        if (!bot) SWRen_AlphaBlend(gx, poly, x, y, z, fincolor, finalpha, attr, false, fill);
+        SWRen_AlphaBlend(gx, poly, x, y, z, fincolor, finalpha, attr, true, fill);
+    }
 }
 
 void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
@@ -580,8 +628,7 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
         rs--;
     }
 
-    AttrBuf attr;
-    attr.Backfacing = !poly->Frontfacing;
+    AttrBuf attr = (AttrBuf){.Backfacing = !poly->Frontfacing, .PolygonID = poly->Attrs.PolyID};
 
     if (ls > re)
     {
@@ -599,12 +646,12 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
     u8 yn = poly->Vertices[ln]->Y;
     u32 wc = poly->W[lc];
     u32 wn = poly->W[ln];
-    s32 zc = (gx->RenderWBuffer ? poly->W[lc] : poly->Vertices[lc]->Z) << poly->ZDecompress;
-    s32 zn = (gx->RenderWBuffer ? poly->W[ln] : poly->Vertices[ln]->Z) << poly->ZDecompress;
+    s32 zc = (gx->LatWBuffer ? poly->W[lc] : poly->Vertices[lc]->Z) << poly->ZDecompress;
+    s32 zn = (gx->LatWBuffer ? poly->W[ln] : poly->Vertices[ln]->Z) << poly->ZDecompress;
     u8 interpy = y + (lslope <= -(1<<18));
     bool persp = SWRen_CheckPerspectiveLerp(wc, wn, true);
     u32 wl = SWRen_Interpolate(interpy, yc, yn, wc, wn, wc, wn, true, persp, false);
-    s32 zl = SWRen_Interpolate(interpy, yc, yn, wc, wn, zc, zn, true, gx->RenderWBuffer, true);
+    s32 zl = SWRen_Interpolate(interpy, yc, yn, wc, wn, zc, zn, true, gx->LatWBuffer, true);
     Colors cl;
     cl.R = SWRen_Interpolate(interpy, yc, yn, wc, wn, poly->Vertices[lc]->Color.R, poly->Vertices[ln]->Color.R, true, persp, false);
     cl.G = SWRen_Interpolate(interpy, yc, yn, wc, wn, poly->Vertices[lc]->Color.G, poly->Vertices[ln]->Color.G, true, persp, false);
@@ -616,12 +663,12 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
     yn = poly->Vertices[rn]->Y;
     wc = poly->W[rc];
     wn = poly->W[rn];
-    zc = (gx->RenderWBuffer ? poly->W[rc] : poly->Vertices[rc]->Z) << poly->ZDecompress;
-    zn = (gx->RenderWBuffer ? poly->W[rn] : poly->Vertices[rn]->Z) << poly->ZDecompress;
+    zc = (gx->LatWBuffer ? poly->W[rc] : poly->Vertices[rc]->Z) << poly->ZDecompress;
+    zn = (gx->LatWBuffer ? poly->W[rn] : poly->Vertices[rn]->Z) << poly->ZDecompress;
     interpy = y + (rslope >= (1<<18));
     persp = SWRen_CheckPerspectiveLerp(wc, wn, true);
     u32 wr = SWRen_Interpolate(interpy, yc, yn, wc, wn, wc, wn, true, persp, false);
-    s32 zr = SWRen_Interpolate(interpy, yc, yn, wc, wn, zc, zn, true, gx->RenderWBuffer, true);
+    s32 zr = SWRen_Interpolate(interpy, yc, yn, wc, wn, zc, zn, true, gx->LatWBuffer, true);
     Colors cr;
     cr.R = SWRen_Interpolate(interpy, yc, yn, wc, wn, poly->Vertices[rc]->Color.R, poly->Vertices[rn]->Color.R, true, persp, false);
     cr.G = SWRen_Interpolate(interpy, yc, yn, wc, wn, poly->Vertices[rc]->Color.G, poly->Vertices[rn]->Color.G, true, persp, false);
@@ -645,6 +692,9 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
     s16 s, t;
     u8 talpha;
     Colors tcolor;
+    bool lfill = true;
+    bool rfill = true;
+    bool cfill = true;
 
     attr.EdgeFlags = 0;
     if      (lslope >  (1<<18)) attr.BotXMajor  = true;
@@ -652,7 +702,7 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
     else                        attr.LeftYMajor = true;
     for (; (x < le) && (x < 256); x++)
     {
-        z = SWRen_Interpolate(x, ls, re, wl, wr, zl, zr, false, gx->RenderWBuffer, true);
+        z = SWRen_Interpolate(x, ls, re, wl, wr, zl, zr, false, gx->LatWBuffer, true);
         color.R = SWRen_Interpolate(x, ls, re, wl, wr, cl.R, cr.R, false, persp, false);
         color.G = SWRen_Interpolate(x, ls, re, wl, wr, cl.G, cr.G, false, persp, false);
         color.B = SWRen_Interpolate(x, ls, re, wl, wr, cl.B, cr.B, false, persp, false);
@@ -663,7 +713,7 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
             tcolor = SWRen_DecodeTextures(sys, poly, s, t, &talpha);
         else { tcolor.RGB = color.RGB >> 3; talpha = poly->Attrs.Alpha; }
 
-        SWRen_RasterizePixel(gx, poly, x, y, z, color, tcolor, talpha, attr);
+        SWRen_RasterizePixel(gx, poly, x, y, z, color, tcolor, talpha, attr, lfill);
     }
 
     attr.EdgeFlags = 0;
@@ -671,7 +721,7 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
     else if (y == poly->Top) attr.TopXMajor  = true;
     for (; (x < rs) && (x < 256); x++)
     {
-        z = SWRen_Interpolate(x, ls, re, wl, wr, zl, zr, false, gx->RenderWBuffer, true);
+        z = SWRen_Interpolate(x, ls, re, wl, wr, zl, zr, false, gx->LatWBuffer, true);
         color.R = SWRen_Interpolate(x, ls, re, wl, wr, cl.R, cr.R, false, persp, false);
         color.G = SWRen_Interpolate(x, ls, re, wl, wr, cl.G, cr.G, false, persp, false);
         color.B = SWRen_Interpolate(x, ls, re, wl, wr, cl.B, cr.B, false, persp, false);
@@ -682,7 +732,7 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
             tcolor = SWRen_DecodeTextures(sys, poly, s, t, &talpha);
         else { tcolor.RGB = color.RGB >> 3; talpha = poly->Attrs.Alpha; }
 
-        SWRen_RasterizePixel(gx, poly, x, y, z, color, tcolor, talpha, attr);
+        SWRen_RasterizePixel(gx, poly, x, y, z, color, tcolor, talpha, attr, cfill);
     }
 
     attr.EdgeFlags = 0;
@@ -691,7 +741,7 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
     else                        attr.RightYMajor = true;
     for (; (x < re) && (x < 256); x++)
     {
-        z = SWRen_Interpolate(x, ls, re, wl, wr, zl, zr, false, gx->RenderWBuffer, true);
+        z = SWRen_Interpolate(x, ls, re, wl, wr, zl, zr, false, gx->LatWBuffer, true);
         color.R = SWRen_Interpolate(x, ls, re, wl, wr, cl.R, cr.R, false, persp, false);
         color.G = SWRen_Interpolate(x, ls, re, wl, wr, cl.G, cr.G, false, persp, false);
         color.B = SWRen_Interpolate(x, ls, re, wl, wr, cl.B, cr.B, false, persp, false);
@@ -702,7 +752,7 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
             tcolor = SWRen_DecodeTextures(sys, poly, s, t, &talpha);
         else { tcolor.RGB = color.RGB >> 3; talpha = poly->Attrs.Alpha; }
 
-        SWRen_RasterizePixel(gx, poly, x, y, z, color, tcolor, talpha, attr);
+        SWRen_RasterizePixel(gx, poly, x, y, z, color, tcolor, talpha, attr, rfill);
     }
 }
 
@@ -722,8 +772,8 @@ void SWRen_ClearScanline(GX3D* gx, u8 y)
 {
     for (int x = 0; x < 256; x++)
     {
-        gx->ZBuf[true][y][x] = (gx->ZBuf[false][y][x] = (((gx->LatRearDepth+1) << ((gx->RenderWBuffer) ? 9 : 8)) - 1)); // checkme
-        gx->ABuf[true][y][x].Raw = (gx->ABuf[false][y][x].Raw = 0);
+        gx->ZBuf[true][y][x] = (gx->ZBuf[false][y][x] = (((gx->LatRearDepth+1) << ((gx->LatWBuffer) ? 9 : 8)) - 1)); // checkme
+        gx->ABuf[true][y][x] = (gx->ABuf[false][y][x] = (AttrBuf){.PolygonID = gx->LatRearAttr.ID}); // checkme: does it default to front or back facing?
 
         Colors color = SWRen_RGB555to666((Colors){.R = gx->LatRearAttr.R, .G = gx->LatRearAttr.G, .B = gx->LatRearAttr.B});
         gx->CBuf[true][y][x] = (gx->CBuf[false][y][x] = (color.R | (color.G << 6) | (color.B << 12) | (gx->LatRearAttr.Alpha << 18)));

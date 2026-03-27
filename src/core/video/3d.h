@@ -179,7 +179,7 @@ typedef union
         bool RenderBack : 1;
         bool RenderFront : 1;
         u32 : 3;
-        bool TranslucentDepthUpdate : 1;
+        bool TransDepthUpdate : 1;
         bool RenderFarPlaneClipped : 1;
         bool RenderZDot : 1;
         bool EqualDepthTest : 1;
@@ -229,7 +229,7 @@ typedef struct
     u16 W[10]; // u16? -- these need to be in the polygon since otherwise the w compression doesn't really work?
     PolyAttr Attrs;
     TexAttr TexAttr;
-    u32 SortKey;
+    s32 SortKey;
     int ZDecompress;
     u16 TexPal; // u13
     bool Frontfacing;
@@ -266,6 +266,9 @@ typedef union
         bool LeftYMajor : 1;
         bool RightYMajor : 1;
         bool Backfacing : 1;
+        bool : 1;
+        bool Trans : 1;
+        u32 PolygonID : 6;
     };
     struct
     {
@@ -455,6 +458,7 @@ typedef struct
     RasterCR RasterCR;
     RearAttr RearAttr;
     u16 RearDepth;
+    u8 AlphaThreshold;
 
 
 
@@ -462,7 +466,8 @@ typedef struct
     Vertex* RenderVtxRAM;
     Polygon* RenderPolyRAM;
     u16 RenderPolyCount;
-    bool RenderWBuffer;
+    bool LatWBuffer;
+    u8 LatAlphaThreshold;
     RasterCR LatRasterCR;
     RearAttr LatRearAttr;
     u16 LatRearDepth;
