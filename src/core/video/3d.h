@@ -216,7 +216,7 @@ typedef union
 typedef struct
 {
     u16 X; // u9
-    u16 Z; // s16?
+    s16 Z; // s15?
     u8 Y; // u8
     s16 S;
     s16 T;
@@ -265,7 +265,7 @@ typedef union
         bool TopXMajor : 1;
         bool LeftYMajor : 1;
         bool RightYMajor : 1;
-        bool Frontfacing : 1;
+        bool Backfacing : 1;
     };
     struct
     {
@@ -427,6 +427,7 @@ typedef struct
 
     bool ManualTransSort;
     bool WBuffer;
+    bool WBufferNext;
 
     bool SwapReq;
 
@@ -468,7 +469,7 @@ typedef struct
 
     alignas(HOST_CACHEALIGN)
     u32 CBuf[2][192][256];
-    u32 ZBuf[2][192][256];
+    s32 ZBuf[2][192][256];
     AttrBuf ABuf[2][192][256];
 } GX3D;
 

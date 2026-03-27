@@ -236,11 +236,9 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert, bool* boxtestres)
         s64 x = poly.Vertices[i].Coords.X, y = poly.Vertices[i].Coords.Y;
         u32 w = poly.Vertices[i].Coords.W;
 
-
-        // w can easily be 0 here
-        if (w == 0)
+        if (w == 0) // w can easily be 0 here, due to the prior discarding of the upper bits
         {
-            // checkme
+            // checkme? not sure if this matters since the polygon doesn't render anyway?
             fin.Vertices[i]->X = 0;
             fin.Vertices[i]->Y = 0;
         }
@@ -248,22 +246,21 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert, bool* boxtestres)
         {
             x *= gx->ViewportWidth;
             y *= gx->ViewportHeight;
-
-            if (w > 0x1FFFF)
+            if (w >= (1<<17))
             {
-                x >>= 2;
-                y >>= 2;
-                w >>= 2;
+                x >>= 1;
+                y >>= 1;
+                w >>= 1;
             }
 
-            fin.Vertices[i]->X = ((x / w) + gx->ViewportLeft) & 0x1FF;
-            fin.Vertices[i]->Y = ((y / w) + gx->ViewportTop) & 0xFF;
+            fin.Vertices[i]->X = ((x / w) + gx->ViewportLeft) & 0x1FF; // x is 9 bit unsigned
+            fin.Vertices[i]->Y = ((y / w) + gx->ViewportTop) & 0xFF; // y is 8 bit unsigned
         }
     }
 
-    // zero dot
+    // TODO: zero dot is probably done here
 
-    // melonds does timings here ig?
+    // Note: melonds does timings here ig?
 
     // set up for next polygon in a strip
     if (poly.Clipped)
@@ -298,7 +295,7 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert, bool* boxtestres)
 
     s32 ytop = 193, ybot = -1, vtop = 0, vbot = 0;
 
-    int wsize = 1;
+    int wsize = 0;
     for (unsigned i = 0; i < nvert; i++)
     {
         fin.Vertices[i]->Color.RGB = (poly.Vertices[i].Color.RGB << 4) + (((s32x4)poly.Vertices[i].Color.RGB > 0) & (u32x4){0xF, 0xF, 0xF, 0xF});
@@ -318,17 +315,12 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert, bool* boxtestres)
             vbot = i;
         }
 
-        // get value to normal W with
-        /*int temp = ((32 - stdc_leading_zeros(poly.Vertices[i].Coords.W>>1)) / 4) * 4;
-
-        if (wsize < temp)
-        {
-            wsize = temp;
-        }*/
-        while((poly.Vertices[i].Coords.W >> wsize))// && (wsize < 32))
-            wsize += 4;
+        // get value to normalize W with
+        int tmp = 32 - (stdc_leading_zeros((u32)poly.Vertices[i].Coords.W/2) & ~0x3);
+        if (wsize < tmp)
+            wsize = tmp;
     }
-    wsize -= 1;
+    wsize += 1;
 
     for (unsigned i = 0; i < nvert; i++)
     {
@@ -357,18 +349,22 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert, bool* boxtestres)
             // compress Z into 16 bits
             if (poly.Vertices[i].Coords.W != 0)
             {
-                ztmp = ((poly.Vertices[i].Coords.Z * 0x4000) / poly.Vertices[i].Coords.W);
+                // z is currently in the range of [0, 2]
+                // w is currently equal to 2
+                // we multiply z by 2, putting it into a range of [0, 4] to allow us to subtract w (2) to put us into the range of [-2, 2]
+                // (note: we can't divide w by 2 instead, because that would lose a single bit of precision, which seems to be inaccurate to hardware)
+                // this is done to interpolate z to fit within 15 bits.
+                ztmp = (((((poly.Vertices[i].Coords.Z * 2) - poly.Vertices[i].Coords.W) * 0x7FFF)) / poly.Vertices[i].Coords.W);
             }
             else ztmp = 0;
 
-            ztmp += 0x3FFF;
+            // practically speaking there's no reason for them to try to handle overflows properly, so im not sure why they do...?
+            // TODO: validate overflow behavior
+            DS_CLAMP(ztmp, >, 0x7FFF)
+            DS_CLAMP(ztmp, <, -0x8000) // i think this can happen?
 
-            if (ztmp < 0) 
-                ztmp = 0;
-            else if (ztmp > 0x7FFF)
-            {
-                ztmp = 0x7FFF;
-            }
+            ztmp = (ztmp + !(ztmp>>15)) >> 1;
+
             fin.Vertices[i]->Z = ztmp;
             fin.ZDecompress = 8;
         }
@@ -439,22 +435,13 @@ void GX_SubmitVertex(struct Console* sys, bool* boxtestres, const bool postest)
     switch(gx->PolygonType)
     {
     case Poly_Tri:
-    {
-        if (gx->TmpPolygonPtr == 3)
-        {
-            gx->TmpPolygonPtr = 0;
-            gx->PartialPolygon = false;
-            GX_FinalizePolygon(sys, 3, nullptr);
-        }
-        break;
-    }
     case Poly_Quad:
     {
-        if (gx->TmpPolygonPtr == 4)
+        if (gx->TmpPolygonPtr == ((gx->PolygonType == Poly_Tri) ? 3 : 4))
         {
-            gx->TmpPolygonPtr = 0;
             gx->PartialPolygon = false;
-            GX_FinalizePolygon(sys, 4, boxtestres);
+            GX_FinalizePolygon(sys, gx->TmpPolygonPtr, boxtestres);
+            gx->TmpPolygonPtr = 0;
         }
         break;
     }
@@ -1295,9 +1282,11 @@ bool GX_RunCommand(struct Console* sys, const timestamp now)
         case GX_Viewport:
         {
             gx->ViewportLeft = param & 0xFF;
-            gx->ViewportTop = 191-((param>>24) & 0xFF);
-            gx->ViewportWidth = (((param>>16) & 0xFF) - gx->ViewportLeft + 1) & 0x1FF; // x coord is u9
-            gx->ViewportHeight = (((191 - (param >> 8)) & 0xFF) - gx->ViewportTop + 1) & 0xFF; // y coord is u8
+            u8 viewportbot = (191 - ((param >> 8) & 0xFF)) & 0xFF;
+            u8 viewportright = (param >> 16) & 0xFF;
+            gx->ViewportTop = (191-((param>>24) & 0xFF)) & 0xFF;
+            gx->ViewportWidth = ((viewportright - gx->ViewportLeft) + 1) & 0x1FF; // x coord is u9
+            gx->ViewportHeight = ((viewportbot - gx->ViewportTop) + 1) & 0xFF; // y coord is u8
             break;
         }
 
@@ -1360,7 +1349,8 @@ void GX_Swap(struct Console* sys, const timestamp now)
         gx->LatRasterCR = gx->RasterCR;
         gx->LatRearAttr = gx->RearAttr;
         gx->LatRearDepth = gx->RearDepth;
-        gx->RenderWBuffer = gx->WBuffer;
+        gx->RenderWBuffer = gx->WBufferNext;
+        gx->WBufferNext = gx->WBuffer;
 
         // make sure to reschedule if needed, since we probably ended up getting this scheduled 5 years into the future, and that might cause problems.
         if (sys->Sched.EventTimes[Evt_GX] > gx->ExecTS)

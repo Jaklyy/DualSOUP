@@ -96,7 +96,6 @@ int main()
 {
     LogMask = u64_max; // temp
 
-    // TODO investigate: SDL_HINT_TIMER_RESOLUTION
     if (!SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1"))
         printf("%s\n", SDL_GetError());
     if (!SDL_SetHint(SDL_HINT_NO_SIGNAL_HANDLERS, "1"))

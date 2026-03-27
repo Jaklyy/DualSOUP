@@ -99,7 +99,8 @@ s32 SWRen_CalcSlope(u16 x0, u16 x1, u8 y0, u8 y1, u8 y, s16* xstart, s16* xend, 
     if (dir && xmajor) xreal -= (1<<18);
 
     // specific ymajor slopes must be incremented one time less for w/e reason.
-    if (((dir && (slope > 0)) || (!dir && (slope < 0))) && !xmajor) xreal -= slope;
+    if ((dir && ((slope > 0) && (slope <= (1<<18)))) || (!dir && ((slope < 0) && (slope > -(1<<18))))) xreal -= slope;
+    if (dir && slope == -(1<<18)) xreal += slope;
 
     // truncate value
     xreal = (xreal << 3) >> (3 + 9);
@@ -211,9 +212,10 @@ s32 SWRen_Interpolate(s16 x, const s16 x0, const s16 x1, const u32 w0, const u32
     {
         if (borkedlerp)
         {
-            // z interp along x seems to be buggy?
+            // z interp seems to be buggy?
             // it loses a lot of precision based on how wide the polygon is...
             // this seems to be fairly close to what hardware actually does, as weird as it is.
+            // this definitely isn't what its actually doing though...
             return a0 + ((a1-a0) / xdiff * x);
         }
         else
@@ -510,10 +512,10 @@ Colors SWRen_BlendColors(Polygon* poly, Colors color, Colors tcolor, u8 talpha, 
     return outcol;
 }
 
-bool SWRen_DepthTest(const GX3D* gx, const bool equaldt, const u16 x, const u8 y, u32 z, const AttrBuf attr, const bool bot)
+bool SWRen_DepthTest(const GX3D* gx, const bool equaldt, const u16 x, const u8 y, s32 z, const AttrBuf attr, const bool bot)
 {
-    AttrBuf attrbuf = gx->ABuf[bot][y][x];
-    u32 zbuf = gx->ZBuf[bot][y][x];
+    AttrBuf abuf = gx->ABuf[bot][y][x];
+    s32 zbuf = gx->ZBuf[bot][y][x];
 
     if (equaldt)
     {
@@ -524,16 +526,18 @@ bool SWRen_DepthTest(const GX3D* gx, const bool equaldt, const u16 x, const u8 y
     else
     {
         // in certain cases the depth test is actually less than or equals
-        if ((attr.Frontfacing && !attrbuf.Frontfacing) // frontfacing > backfacing
-            || ((attr.TopXMajor && gx->ABuf[bot][y][x].BotXMajor) // top xmajor > bot. xmajor
-            || (attr.LeftYMajor && gx->ABuf[bot][y][x].RightYMajor))) // left y major > right y major
+        if (((!attr.Backfacing && abuf.Backfacing) // frontfacing > backfacing
+                && !(attr.BotXMajor && abuf.TopXMajor) // unless the edge flag in the buffer has priority
+                && !(attr.LeftYMajor && abuf.RightYMajor))
+            || (attr.TopXMajor && abuf.BotXMajor) // top xmajor > bot. xmajor
+            || (attr.LeftYMajor && abuf.RightYMajor)) // left y major > right y major
             return (z <= zbuf);
         else
             return (z < zbuf);
     }
 }
 
-void SWRen_RasterizePixel(GX3D* gx, Polygon* poly, u16 x, u8 y, u32 z, Colors color, Colors tcolor, u8 talpha, AttrBuf attr)
+void SWRen_RasterizePixel(GX3D* gx, Polygon* poly, u16 x, u8 y, s32 z, Colors color, Colors tcolor, u8 talpha, AttrBuf attr)
 {
     bool bot = false;
     if (!SWRen_DepthTest(gx, poly->Attrs.EqualDepthTest, x, y, z, attr, bot))
@@ -576,10 +580,14 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
         rs--;
     }
 
+    AttrBuf attr;
+    attr.Backfacing = !poly->Frontfacing;
+
     if (ls > re)
     {
         DS_SWAP(ls, re)
         DS_SWAP(lslope, rslope) // checkme?
+        attr.Backfacing = !attr.Backfacing;
 
         rs = re - 1;
         le = ls + 1;
@@ -591,29 +599,29 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
     u8 yn = poly->Vertices[ln]->Y;
     u32 wc = poly->W[lc];
     u32 wn = poly->W[ln];
-    u32 zc = (gx->RenderWBuffer) ? poly->W[lc] << poly->ZDecompress : poly->Vertices[lc]->Z << poly->ZDecompress;
-    u32 zn = (gx->RenderWBuffer) ? poly->W[ln] << poly->ZDecompress : poly->Vertices[ln]->Z << poly->ZDecompress;
+    s32 zc = (gx->RenderWBuffer ? poly->W[lc] : poly->Vertices[lc]->Z) << poly->ZDecompress;
+    s32 zn = (gx->RenderWBuffer ? poly->W[ln] : poly->Vertices[ln]->Z) << poly->ZDecompress;
     u8 interpy = y + (lslope <= -(1<<18));
     bool persp = SWRen_CheckPerspectiveLerp(wc, wn, true);
     u32 wl = SWRen_Interpolate(interpy, yc, yn, wc, wn, wc, wn, true, persp, false);
-    u32 zl = SWRen_Interpolate(interpy, yc, yn, wc, wn, zc, zn, true, gx->RenderWBuffer, false);
+    s32 zl = SWRen_Interpolate(interpy, yc, yn, wc, wn, zc, zn, true, gx->RenderWBuffer, true);
     Colors cl;
     cl.R = SWRen_Interpolate(interpy, yc, yn, wc, wn, poly->Vertices[lc]->Color.R, poly->Vertices[ln]->Color.R, true, persp, false);
     cl.G = SWRen_Interpolate(interpy, yc, yn, wc, wn, poly->Vertices[lc]->Color.G, poly->Vertices[ln]->Color.G, true, persp, false);
     cl.B = SWRen_Interpolate(interpy, yc, yn, wc, wn, poly->Vertices[lc]->Color.B, poly->Vertices[ln]->Color.B, true, persp, false);
-    s16 sl = SWRen_Interpolate(interpy, yc, yn, wc, wn, poly->Vertices[lc]->S, poly->Vertices[ln]->S, true, persp, false);
-    s16 tl = SWRen_Interpolate(interpy, yc, yn, wc, wn, poly->Vertices[lc]->T, poly->Vertices[ln]->T, true, persp, false);
+    s32 sl = SWRen_Interpolate(interpy, yc, yn, wc, wn, poly->Vertices[lc]->S+0, poly->Vertices[ln]->S+0, true, persp, false);
+    s32 tl = SWRen_Interpolate(interpy, yc, yn, wc, wn, poly->Vertices[lc]->T+0, poly->Vertices[ln]->T+0, true, persp, false);
 
     yc = poly->Vertices[rc]->Y;
     yn = poly->Vertices[rn]->Y;
     wc = poly->W[rc];
     wn = poly->W[rn];
-    zc = (gx->RenderWBuffer) ? poly->W[rc] << poly->ZDecompress : poly->Vertices[rc]->Z << poly->ZDecompress;
-    zn = (gx->RenderWBuffer) ? poly->W[rn] << poly->ZDecompress : poly->Vertices[rn]->Z << poly->ZDecompress;
+    zc = (gx->RenderWBuffer ? poly->W[rc] : poly->Vertices[rc]->Z) << poly->ZDecompress;
+    zn = (gx->RenderWBuffer ? poly->W[rn] : poly->Vertices[rn]->Z) << poly->ZDecompress;
     interpy = y + (rslope >= (1<<18));
     persp = SWRen_CheckPerspectiveLerp(wc, wn, true);
     u32 wr = SWRen_Interpolate(interpy, yc, yn, wc, wn, wc, wn, true, persp, false);
-    u32 zr = SWRen_Interpolate(interpy, yc, yn, wc, wn, zc, zn, true, gx->RenderWBuffer, false);
+    s32 zr = SWRen_Interpolate(interpy, yc, yn, wc, wn, zc, zn, true, gx->RenderWBuffer, true);
     Colors cr;
     cr.R = SWRen_Interpolate(interpy, yc, yn, wc, wn, poly->Vertices[rc]->Color.R, poly->Vertices[rn]->Color.R, true, persp, false);
     cr.G = SWRen_Interpolate(interpy, yc, yn, wc, wn, poly->Vertices[rc]->Color.G, poly->Vertices[rn]->Color.G, true, persp, false);
@@ -632,13 +640,11 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
     persp = SWRen_CheckPerspectiveLerp(wl, wr, false);
 
     s16 x = ls;
-    u32 z;
+    s32 z;
     Colors color;
     s16 s, t;
     u8 talpha;
     Colors tcolor;
-    AttrBuf attr;
-    attr.Frontfacing = poly->Frontfacing;
 
     attr.EdgeFlags = 0;
     if      (lslope >  (1<<18)) attr.BotXMajor  = true;
@@ -661,7 +667,7 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
     }
 
     attr.EdgeFlags = 0;
-    if      (y == poly->Bot) attr.BotXMajor  = true;
+    if      (y >= (poly->Bot-1)) attr.BotXMajor  = true;
     else if (y == poly->Top) attr.TopXMajor  = true;
     for (; (x < rs) && (x < 256); x++)
     {
@@ -716,13 +722,11 @@ void SWRen_ClearScanline(GX3D* gx, u8 y)
 {
     for (int x = 0; x < 256; x++)
     {
-        u32 z = ((gx->RenderWBuffer) ? ((gx->LatRearDepth << 9) + 0x1FF) : ((gx->LatRearDepth << 8) + 0xFF));
-        gx->ZBuf[false][y][x] = z;
-        gx->ZBuf[true][y][x] = z;
+        gx->ZBuf[true][y][x] = (gx->ZBuf[false][y][x] = (((gx->LatRearDepth+1) << ((gx->RenderWBuffer) ? 9 : 8)) - 1)); // checkme
+        gx->ABuf[true][y][x].Raw = (gx->ABuf[false][y][x].Raw = 0);
 
         Colors color = SWRen_RGB555to666((Colors){.R = gx->LatRearAttr.R, .G = gx->LatRearAttr.G, .B = gx->LatRearAttr.B});
-        gx->CBuf[false][y][x] = color.R | (color.G << 6) | (color.B << 12) | (gx->LatRearAttr.Alpha << 18);
-        gx->CBuf[true][y][x] = color.R | (color.G << 6) | (color.B << 12) | (gx->LatRearAttr.Alpha << 18);
+        gx->CBuf[true][y][x] = (gx->CBuf[false][y][x] = (color.R | (color.G << 6) | (color.B << 12) | (gx->LatRearAttr.Alpha << 18)));
     }
 }
 
