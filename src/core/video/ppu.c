@@ -232,11 +232,10 @@ void PPU_Large(struct Console* sys, const bool b, const u16 y [[maybe_unused]], 
 
 void PPU_3D(struct Console* sys, const u16 y)
 {
-    //PPU* ppu = &sys->PPU_A;
     CompositeBuffer* buffer = sys->CompositeBufferA[0];
     SWRen_SyncRenderedLines(sys, y+1);
     for (int x = 0; x < 256; x++)
-        buffer[x] = (CompositeBuffer){sys->GX3D.CBuf[0][y][x] & 0x3FFFF, 0, !(sys->GX3D.CBuf[0][y][x] >> 18) /* TODO */, true, false, true};
+        buffer[x] = (CompositeBuffer){sys->GX3D.CBuf[0][y][x], 0, !(sys->GX3D.CBuf[0][y][x] >> 18) /* TODO */, true, false, true};
 }
 
 void PPU_BG0_Lookup(struct Console* sys, const bool b, const u16 y)
@@ -330,7 +329,6 @@ void PPU_BG3_Lookup(struct Console* sys, const bool b, const u16 y)
 
 void PPU_BuildBGs(struct Console* sys, const bool b, const u16 y)
 {
-
     // todo: windows
 
     // sprite mosaic???
@@ -338,6 +336,67 @@ void PPU_BuildBGs(struct Console* sys, const bool b, const u16 y)
     PPU_BG1_Lookup(sys, b, y);
     PPU_BG2_Lookup(sys, b, y);
     PPU_BG3_Lookup(sys, b, y);
+}
+
+u32 PPU_Blend(PPU* ppu, CompositeBuffer* indices, u32* colors, int* bgs, int num)
+{
+    u8 alpA;
+    u8 alpB;
+
+    u16 rgb[2][4] = {{colors[0] & 0x3F, (colors[0] >> 6) & 0x3F, (colors[0] >> 12) & 0x3F, 0},
+                     {colors[1] & 0x3F, (colors[1] >> 6) & 0x3F, (colors[1] >> 12) & 0x3F, 0}};
+
+    if (indices[0].GPU3D)
+    {
+        alpA = (colors[0] >> 18);
+        alpA += alpA != 0; // checkme?
+
+        alpB = 32 - alpA;
+        goto BLDCR_Blend;
+    }
+
+    switch(ppu->BlendCR.Effect)
+    {
+    case BLDCR_Off:
+        return colors[0];
+
+    case BLDCR_Blend:
+        if ((num == 1) || !(ppu->BlendCR.BlendTop & (1<<bgs[0])) || !(ppu->BlendCR.BlendBot & (1<<bgs[1])))
+            return colors[0];
+
+        alpA = ((ppu->BlendAlpha[0] <= 16) ? ppu->BlendAlpha[0] : 16) << 1;
+        alpB = ((ppu->BlendAlpha[1] <= 16) ? ppu->BlendAlpha[1] : 16) << 1;
+
+        BLDCR_Blend:
+        if (num == 1) return colors[0];
+        for (int i = 0; i < 4; i++)
+        {
+            // rounds to nearest
+            rgb[0][i] = ((rgb[0][i] * alpA) + (rgb[1][i] * alpB) + 16) / 32;
+            DS_CLAMP(rgb[0][i], >, 0x3F);
+        }
+        break;
+
+    case BLDCR_Bright:
+    {
+        u8 bright = ((ppu->BlendBright <= 16) ? ppu->BlendBright : 16);
+        for (int i = 0; i < 4; i++)
+        {
+            rgb[0][i] += (((0x3F - rgb[0][i]) * bright) + 8) / 16;
+        }
+        break;
+    }
+    case BLDCR_Dark:
+    {
+        u8 bright = ((ppu->BlendBright <= 16) ? ppu->BlendBright : 16);
+        for (int i = 0; i < 4; i++)
+        {
+            rgb[0][i] -= ((rgb[0][i] * bright) + 7) / 16;
+        }
+        break;
+    }
+    }
+    return rgb[0][0] | (rgb[0][1] << 6) | (rgb[0][2] << 12);
 }
 
 void PPU_Composite(struct Console* sys, const bool b, const u16 y)
@@ -351,63 +410,76 @@ void PPU_Composite(struct Console* sys, const bool b, const u16 y)
 
     for (int x = 0; x < 256; x++)
     {
-        bool spr = false;
-        int bg;
+        int bg[2];
         // initialize with bg color
-        CompositeBuffer index = (CompositeBuffer){0, 0, false, false, false /* checkme? */, false};
+        CompositeBuffer index[2] = {(CompositeBuffer){0, 0, false, false, false /* checkme? */, false},
+                                    (CompositeBuffer){0, 0, false, false, false /* checkme? */, false}};
+        int i = 0;
         for (int prio = 0; prio < 4; prio++)
         {
             // check if sprites should be rendered
             CompositeBuffer tmp = (b ? sys->CompositeBufferB[4][x] : sys->CompositeBufferA[4][x]);
             if (!tmp.Empty && (tmp.SprPrio == prio))
             {
-                spr = true;
-                index = tmp;
-                goto exit;
+                bg[i] = 4;
+                index[i] = tmp;
+                i++;
+                if (i == 2) goto exit;
             }
 
             // check bgs
-            for (bg = 0; bg < 4; bg++)
+            for (int g = 0; g < 4; g++)
             {
                 // check priority
-                if (ppu->BGCR[bg].BGPriority != prio) continue;
+                if (ppu->BGCR[g].BGPriority != prio) continue;
 
                 // check if bg exists
-                tmp = (b ? sys->CompositeBufferB[bg][x] : sys->CompositeBufferA[bg][x]);
+                tmp = (b ? sys->CompositeBufferB[g][x] : sys->CompositeBufferA[g][x]);
                 if (!tmp.Empty)
                 {
-                    index = tmp;
-                    goto exit;
+                    bg[i] = g;
+                    index[i] = tmp;
+                    i++;
+                    if (i == 2) goto exit;
                 }
             }
         }
+        // no bg selected
+        bg[i] = 5;
+        i++;
+
         exit:
 
-        u32 color;
-        if (index.NotPal) color = index.Index;
-        else if (index.ExtPal)
+        u32 color[2];
+        for (int j = 0; j < i; j++)
         {
-            // TODO: handle sprites
-            if (spr)
+            if (index[j].NotPal) color[j] = index[j].Index;
+            else if (index[j].ExtPal)
             {
-                color = OBJExtPal(sys, index.Index);
+                // TODO: handle sprites
+                if (bg[j] == 4)
+                {
+                    color[j] = OBJExtPal(sys, index[j].Index);
+                }
+                else
+                {
+                    u32 extpalbase = bg[j]*(KiB(8)/sizeof(u16));
+                    if ((bg[j] <= 1) && ppu->BGCR[bg[j]].ExtPalSlot) extpalbase += KiB(16)/sizeof(u16);
+                    color[j] = BGExtPal(sys, index[j].Index+extpalbase);
+                }
             }
             else
             {
-                u32 extpalbase = bg*(KiB(8)/sizeof(u16));
-                if ((bg <= 1) && ppu->BGCR[bg].ExtPalSlot) extpalbase += KiB(16)/sizeof(u16);
-                color = BGExtPal(sys, index.Index+extpalbase);
+                AddBusContention(sys->AHBBusyTS, *time, Dev_Palette);
+                color[j] = palbase[(index[j].Index&0xFF) + ((bg[j] == 4) ? 0x100 : 0)];
             }
-        }
-        else
-        {
-            AddBusContention(sys->AHBBusyTS, *time, Dev_Palette);
-            color = palbase[(index.Index&0xFF) + ((spr) ? 0x100 : 0)];
-        }
-        scanline[x] = (index.GPU3D ? color : RGB565to666(color));
+            color[j] = (index[j].GPU3D ? color[j] : RGB565to666(color[j]));
 
-        *time += 6;
-        PPU_Wait(sys, *time);
+            *time += (i == 2) ? 3 : 6;
+            PPU_Wait(sys, *time);
+        }
+
+        scanline[x] = PPU_Blend(ppu, index, color, bg, i);
     }
     *time += 2+HBlank_Cycles;
 }

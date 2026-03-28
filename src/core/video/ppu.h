@@ -86,6 +86,41 @@ typedef union
     };
 } Brightness;
 
+typedef union
+{
+    u16 Raw;
+    struct
+    {
+        bool BG0F : 1;
+        bool BG1F : 1;
+        bool BG2F : 1;
+        bool BG3F : 1;
+        bool SprF : 1;
+        bool BDrF : 1;
+        u32 Effect : 2;
+        bool BG0S : 1;
+        bool BG1S : 1;
+        bool BG2S : 1;
+        bool BG3S : 1;
+        bool SprS : 1;
+        bool BDrS : 1;
+    };
+    struct
+    {
+        u32 BlendTop : 6;
+        u32 : 2;
+        u32 BlendBot : 6;
+    };
+} BlendCR;
+
+typedef enum
+{
+    BLDCR_Off,
+    BLDCR_Blend,
+    BLDCR_Bright,
+    BLDCR_Dark,
+} BlendMode;
+
 typedef struct
 {
     union
@@ -148,6 +183,9 @@ typedef struct
     u16 Xoff[4];
     u16 Yoff[4];
     Brightness Brightness;
+    BlendCR BlendCR;
+    u8 BlendAlpha[2];
+    u8 BlendBright;
 } PPU;
 
 struct Console;

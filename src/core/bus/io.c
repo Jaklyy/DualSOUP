@@ -595,6 +595,11 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask, const bool tim
         case 0x00'00'1C:
             return sys->PPU_A.Xoff[3] | (sys->PPU_A.Yoff[3] << 16);
 
+        case 0x00'00'50:
+            return sys->PPU_A.BlendCR.Raw | sys->PPU_A.BlendAlpha[0] << 16 | sys->PPU_A.BlendAlpha[1] << 24;
+        case 0x00'00'54:
+            return sys->PPU_A.BlendBright;
+
         case 0x00'00'60:
             return sys->GX3D.RasterCR.Raw;
 
@@ -704,6 +709,11 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask, const bool tim
         case 0x00'10'1C:
             return sys->PPU_B.Xoff[3] | (sys->PPU_B.Yoff[3] << 16);
 
+        case 0x00'10'50:
+            return sys->PPU_B.BlendCR.Raw | sys->PPU_B.BlendAlpha[0] << 16 | sys->PPU_B.BlendAlpha[1] << 24;
+        case 0x00'10'54:
+            return sys->PPU_B.BlendBright;
+
         case 0x00'10'6C:
             return sys->PPU_B.Brightness.Raw;
 
@@ -774,6 +784,17 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             PPU_Sync(sys, sys->AHB9.Timestamp);
             MaskedWrite(sys->PPU_A.Xoff[3], val, mask&0x1FF);
             MaskedWrite(sys->PPU_A.Yoff[3], val>>16, (mask>>16)&0x1FF);
+            break;
+
+        case 0x00'00'50:
+            PPU_Sync(sys, sys->AHB9.Timestamp);
+            MaskedWrite(sys->PPU_A.BlendCR.Raw, val, mask & 0x3FFF);
+            MaskedWrite(sys->PPU_A.BlendAlpha[0], val>>16, (mask>>16) & 0x1F);
+            MaskedWrite(sys->PPU_A.BlendAlpha[1], val>>24, (mask>>24) & 0x1F);
+            break;
+        case 0x00'00'54:
+            PPU_Sync(sys, sys->AHB9.Timestamp);
+            MaskedWrite(sys->PPU_A.BlendBright, val, mask & 0x1F);
             break;
 
         case 0x00'00'60:
@@ -1017,6 +1038,17 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             PPU_Sync(sys, sys->AHB9.Timestamp);
             MaskedWrite(sys->PPU_B.Xoff[3], val, mask&0x1FF);
             MaskedWrite(sys->PPU_B.Yoff[3], val>>16, (mask>>16)&0x1FF);
+            break;
+
+        case 0x00'10'50:
+            PPU_Sync(sys, sys->AHB9.Timestamp);
+            MaskedWrite(sys->PPU_B.BlendCR.Raw, val, mask & 0x3FFF);
+            MaskedWrite(sys->PPU_B.BlendAlpha[0], val>>16, (mask>>16) & 0x1F);
+            MaskedWrite(sys->PPU_B.BlendAlpha[1], val>>24, (mask>>24) & 0x1F);
+            break;
+        case 0x00'10'54:
+            PPU_Sync(sys, sys->AHB9.Timestamp);
+            MaskedWrite(sys->PPU_B.BlendBright, val, mask & 0x1F);
             break;
 
         case 0x00'10'6C:
