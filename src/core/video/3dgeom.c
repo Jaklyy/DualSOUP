@@ -364,6 +364,7 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert, bool* boxtestres)
             DS_CLAMP(ztmp, >, 0x7FFF)
             DS_CLAMP(ztmp, <, -0x8000) // i think this can happen?
 
+            // round away from zero
             ztmp = (ztmp + !(ztmp>>15)) >> 1;
 
             fin.Vertices[i]->Z = ztmp;

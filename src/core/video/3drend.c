@@ -70,82 +70,141 @@ u16 VRAM_3DPal(struct Console* sys, u32 addr)
     return ret;
 }
 
-s32 SWRen_CalcSlope(u16 x0, u16 x1, u8 y0, u8 y1, u8 y, s16* xstart, s16* xend, const bool dir)
+s32 SWRen_CalcSlope(u16 x0, u16 x1, u8 y0, u8 y1, u8 y, s16* xstart, s16* xend, s16* aacov, s16* aainc, const bool right)
 {
     s16 xlen = x1 - x0;
     u8 ylen = (y1 - y0) & 0xFF; // this can overflow under very specific circumstances.
 
     s32 slope;
-    if (ylen == 0)
+    if (ylen == 0) // note: this looks correct, but probably isn't actually correct.
     {
         slope = (1<<18) * xlen;
+    }
+    else if (ylen == xlen) // note: diagonal slopes need special handling
+    {
+        slope = (1<<18);
+    }
+    else if (ylen == -xlen)
+    {
+        slope = -(1<<18);
     }
     else
     {
         slope = ((1<<18) / ylen) * xlen;
     }
 
-    bool xmajor = (slope > (1<<18)) || (slope < -(1<<18));
+    bool xmajor = (abs(slope) > (1<<18));
 
     u8 ydiff = (y - y0) & 0xFF; // this can also overflow.
 
     // multiply slope by distance down the slope.
-    s32 xreal = ydiff * slope;
+    s32 xoffs = ydiff * slope;
 
-    // xmajor slopes are shifted half a pixel to the right
-    if (xmajor) xreal += ((1<<18)/2);
+    // certain slopes need to be adjustments:
 
-    // right facing slopes are stupid.
-    if (dir && xmajor) xreal -= (1<<18);
+    // right slopes need to be shifted left one pixel
+    if (right) xoffs -= (1<<18);
+    // xmajor slopes round to the right by half a pixel
+    if (xmajor) xoffs += (1<<18)/2;
+    // negative xmajor slopes are shifted left one pixel
+    if (slope < -(1<<18)) xoffs -= (1<<18);
 
-    // specific ymajor slopes must be incremented one time less for w/e reason.
-    if ((dir && ((slope > 0) && (slope <= (1<<18)))) || (!dir && ((slope < 0) && (slope > -(1<<18))))) xreal -= slope;
-    if (dir && slope == -(1<<18)) xreal += slope;
+    // truncate upper bits (s29)
+    xoffs = (xoffs << 3) >> 3;
 
-    // truncate value
-    xreal = (xreal << 3) >> (3 + 9);
+    // round towards zero
+    if (slope < 0) xoffs += (1<<18)-1;
 
-    // calculate span bounds
-    *xstart = x0 + (xreal >> 9);
-    *xend = x0 + ((xreal + (slope >> 9)) >> 9);
+    // calculate span bounds:
+    // note: the start and end coords of the span having different rounding during calc can result in single pixel gaps in the slope.
 
+    // start coordinate is offset by the whole number component of the offset
+    *xstart = x0 + (xoffs >> 18);
+    if (xmajor)
+        *xend = x0 + (((xoffs >> 9) + (slope >> 9)) >> 9);
+    else // ymajor slopes are always 1 wide
+        *xend = *xstart + ((slope < 0) ? -1 : 1);
+
+    // negative slopes need to have their start and end swapped.
     if (slope < 0) DS_SWAP(*xstart, *xend);
 
-    {
-        // i think this block is a hack?
-        // i dont think this should be necessary...
-        if (x0 > x1) DS_SWAP(x0, x1);
-        if (slope != 0) x1--;
+#if 0
+    /*
+    step = width * (1<<10) / height;
+    adj1 = step - (dx >> 8);
+    adj2 = adj1 & (~step & 1);
 
-        if ((!dir) && *xstart < x0) *xstart = x0;
-        if ((!dir) && *xstart > x1) *xstart = x1;
-        if ((dir) && *xend < x0) *xend = x0;
-        if ((dir) && *xend > x1) *xend = x1;
+    disp = (y - y0) * dx;
+    fxs = neg ? x0frac - disp : x0frac + disp;
+    fxs = (neg ? ((1<<18) - fsx - 1) : fsx) % (1<<18);
+    basecov = (fxs >> 8) & ~1;
+    bias = step / 2;
+
+    if (basecov + step - adj1 >= (1<<10))
+    {
+        clamp max min?
     }
+    out = base + bias - adj2;
+
+    inv = side == (neg || xmajor);
+    */
+    // calculate aa coverage
+    if ((ylen == 0) || (xlen == 0))
+    {
+        *aainc = 0;
+        if ((ylen == 0) && (xlen == 0)) *aacov = 0;
+        else *aacov = (1<<10)-1;
+    }
+    else
+    {
+        if (xmajor)
+        {
+            *aainc = ((ylen * (1<<10)) / (xlen));
+            *aainc = (1<<10) - *aainc;
+        }
+        else
+        {
+            *aainc = 0;
+            s32 step = ((abs(xlen) * (1<<10)) / ylen);
+            s32 adj1 = step - (abs(slope) >> 8);
+            s32 adj2 = adj1 & (~step & 1);
+
+            s32 fracsx = ((x0 << 18) + (ydiff * slope));
+            fracsx = ((fracsx < 0) ? ((1<<18) - fracsx - 1) : (fracsx)) % (1<<18);
+            s32 basecov = (fracsx >> 8) & ~1;
+            s32 bias = step / 2;
+
+            if (basecov + step - adj1 >= (1<<10))
+            {
+                *aacov = ((1<<10)-1);
+            }
+            else
+            {
+                *aacov = (basecov + bias - adj2);
+            }
+        }
+    }
+    // certain slopes have inverted coverage
+    if (right == xmajor)
+    {
+        *aainc ^= (1<<10)-1;
+        *aacov ^= (1<<10)-1;
+    }
+#else
+    *aacov = (1<<10)-1;
+    *aainc = 0;
+#endif
 
     return slope;
 }
 
-s32 SWRen_FindSlope(Polygon* poly, u8 y, s16* xstart, s16* xend, u8* vcur, u8* vnex, const bool dir)
+s32 SWRen_FindSlope(Polygon* poly, u8 y, s16* xstart, s16* xend, u8* vcur, u8* vnex, s16* aacov, s16* aainc, const bool right)
 {
-    // cursed note: for some reason the modulo operations must be done on separate lines or else the compiler will optimize them away
-    // i dont fucking know honestly.
-    *vcur = poly->VTop;
-    if (poly->Frontfacing ^ dir)
-    {
-        *vnex = (*vcur + 1) % poly->NumVert;
-    }
-    else
-    {
-        *vnex = *vcur - 1;
-        if (*vnex >= poly->NumVert) *vnex = poly->NumVert-1;
-    }
-    *vnex %= poly->NumVert;
-
-    while ((y >= poly->SlopeY[*vnex]) && (*vcur != poly->VBot))
+    *vcur = (*vnex = poly->VTop);
+    do
     {
         *vcur = *vnex;
-        if (poly->Frontfacing ^ dir)
+        if (poly->Frontfacing ^ right)
         {
             *vnex = (*vcur + 1) % poly->NumVert;
         }
@@ -155,8 +214,9 @@ s32 SWRen_FindSlope(Polygon* poly, u8 y, s16* xstart, s16* xend, u8* vcur, u8* v
             if (*vnex >= poly->NumVert) *vnex = poly->NumVert-1;
         }
     }
+    while ((y >= poly->SlopeY[*vnex]) && (*vcur != poly->VBot));
 
-    return SWRen_CalcSlope(poly->Vertices[*vcur]->X, poly->Vertices[*vnex]->X, poly->Vertices[*vcur]->Y, poly->Vertices[*vnex]->Y, y, xstart, xend, dir);
+    return SWRen_CalcSlope(poly->Vertices[*vcur]->X, poly->Vertices[*vnex]->X, poly->Vertices[*vcur]->Y, poly->Vertices[*vnex]->Y, y, xstart, xend, aacov, aainc, right);
 }
 
 s32 SWRen_PerspectiveInterp(s16 x, const s16 xdiff, const u32 w0, const u32 w1, s32 a0, s32 a1, const bool yaxis)
@@ -520,6 +580,7 @@ void SWRen_AlphaBlend(GX3D* gx, const Polygon* poly, const u16 x, const u8 y, co
 
     attr.EdgeFlags = abuf.EdgeFlags; // checkme?
     attr.Backfacing = abuf.Backfacing; // checkme?
+    attr.AACov = abuf.AACov; // checkme
 
     if ((abuf.Trans || shadow) && (attr.PolygonID == abuf.PolygonID))
         return;
@@ -643,8 +704,9 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
     s16 ls, le, rs, re;
     s32 lslope, rslope;
     u8 lc, ln, rc, rn;
-    lslope = SWRen_FindSlope(poly, y, &ls, &le, &lc, &ln, false);
-    rslope = SWRen_FindSlope(poly, y, &rs, &re, &rc, &rn, true);
+    s16 lcov, lcovinc, rcov, rcovinc;
+    lslope = SWRen_FindSlope(poly, y, &ls, &le, &lc, &ln, &lcov, &lcovinc, false);
+    rslope = SWRen_FindSlope(poly, y, &rs, &re, &rc, &rn, &rcov, &rcovinc, true);
 
     if ((rslope == 0) && ((lslope != 0) || (ls != re)))
     {
@@ -659,6 +721,10 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
         DS_SWAP(ls, re)
         DS_SWAP(lslope, rslope) // checkme?
         attr.Backfacing = !attr.Backfacing;
+
+        // checkme
+        lcov = ~lcov;
+        rcov = ~rcov;
 
         rs = re - 1;
         le = ls + 1;
@@ -703,10 +769,9 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
     rs+=1;
     re+=1;
 
-    if (le > re) le = re;
     if (ls < 0) ls = 0;
     if (le <= ls) le = ls+1;
-    if (rs >= re) rs = re-1;
+    //if (rs >= re) rs = re-1;
 
     persp = SWRen_CheckPerspectiveLerp(wl, wr, false);
 
@@ -724,7 +789,10 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
     if      (lslope >  (1<<18)) attr.BotXMajor  = true;
     else if (lslope < -(1<<18)) attr.TopXMajor  = true;
     else                        attr.LeftYMajor = true;
-    for (; (x < le) && (x < 256); x++)
+    s16 end = le;
+    DS_CLAMP(end, >, re)
+    DS_CLAMP(end, >, 256)
+    for (; x < end; x++)
     {
         z = SWRen_Interpolate(x, ls, re, wl, wr, zl, zr, false, gx->LatWBuffer, true);
         color.R = SWRen_Interpolate(x, ls, re, wl, wr, cl.R, cr.R, false, persp, false);
@@ -737,6 +805,9 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
         if (gx->LatRasterCR.Texture && poly->TexAttr.Format)
             tcolor = SWRen_DecodeTextures(sys, poly, s, t, &talpha);
         else { tcolor.RGB = color.RGB >> 3; talpha = poly->Attrs.Alpha; }
+
+        attr.AACov = lcov >> 5;
+        lcov += lcovinc;
 
         SWRen_RasterizePixel(gx, poly, x, y, z, color, tcolor, talpha, attr, lfill);
     }
@@ -744,7 +815,11 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
     attr.EdgeFlags = 0;
     if      (y >= (poly->Bot-1)) attr.BotXMajor  = true;
     else if (y == poly->Top) attr.TopXMajor  = true;
-    for (; (x < rs) && (x < 256); x++)
+
+    end = rs;
+    DS_CLAMP(end, >, re)
+    DS_CLAMP(end, >, 256)
+    for (; (x < end) && (x < 256); x++)
     {
         z = SWRen_Interpolate(x, ls, re, wl, wr, zl, zr, false, gx->LatWBuffer, true);
         color.R = SWRen_Interpolate(x, ls, re, wl, wr, cl.R, cr.R, false, persp, false);
@@ -757,6 +832,8 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
         if (gx->LatRasterCR.Texture && poly->TexAttr.Format)
             tcolor = SWRen_DecodeTextures(sys, poly, s, t, &talpha);
         else { tcolor.RGB = color.RGB >> 3; talpha = poly->Attrs.Alpha; }
+
+        attr.AACov = 0x1F;
 
         SWRen_RasterizePixel(gx, poly, x, y, z, color, tcolor, talpha, attr, cfill);
     }
@@ -765,7 +842,10 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
     if      (rslope < -(1<<18)) attr.BotXMajor   = true;
     else if (rslope >  (1<<18)) attr.TopXMajor   = true;
     else                        attr.RightYMajor = true;
-    for (; (x < re) && (x < 256); x++)
+
+    end = re;
+    DS_CLAMP(end, >, 256)
+    for (; x < end; x++)
     {
         z = SWRen_Interpolate(x, ls, re, wl, wr, zl, zr, false, gx->LatWBuffer, true);
         color.R = SWRen_Interpolate(x, ls, re, wl, wr, cl.R, cr.R, false, persp, false);
@@ -778,6 +858,9 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
         if (gx->LatRasterCR.Texture && poly->TexAttr.Format)
             tcolor = SWRen_DecodeTextures(sys, poly, s, t, &talpha);
         else { tcolor.RGB = color.RGB >> 3; talpha = poly->Attrs.Alpha; }
+
+        attr.AACov = rcov >> 5;
+        rcov += rcovinc;
 
         SWRen_RasterizePixel(gx, poly, x, y, z, color, tcolor, talpha, attr, rfill);
     }
@@ -807,6 +890,30 @@ void SWRen_ClearScanline(GX3D* gx, u8 y)
     }
 }
 
+void SWRen_PostProcessScanline(GX3D* gx, u8 y)
+{
+    if (gx->LatRasterCR.AntiAlias)
+    {
+        for (int x = 0; x < 256; x++)
+        {
+            u8 cov = gx->ABuf[false][y][x].AACov;
+
+            cov += (cov != 0);
+            u32 outc = 0;
+            if ((gx->CBuf[true][y][x] >> 18) != 0)
+            {
+                for (int i = 0; i < 6*4; i+=6)
+                {
+                    u8 tc = (gx->CBuf[false][y][x] >> i) & 0x3F;
+                    u8 bc = (gx->CBuf[true][y][x] >> i) & 0x3F;
+                    outc |= (((tc * cov) + (bc * (32-cov))) / 32) << i;
+                }
+                gx->CBuf[false][y][x] = outc;
+            }
+        }
+    }
+}
+
 void SWRen_RasterizerFrame(struct Console* sys)
 {
     if (!sys->PowerCR9.GPURasterizerPower)
@@ -818,6 +925,7 @@ void SWRen_RasterizerFrame(struct Console* sys)
     {
         SWRen_ClearScanline(&sys->GX3D, y);
         SWRen_RasterizeScanline(sys, y);
+        SWRen_PostProcessScanline(&sys->GX3D, y);
         sys->RenderedLines = y+1;
     }
 }

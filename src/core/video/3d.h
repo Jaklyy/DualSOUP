@@ -266,9 +266,11 @@ typedef union
         bool LeftYMajor : 1;
         bool RightYMajor : 1;
         bool Backfacing : 1;
-        bool : 1;
-        bool Trans : 1;
+        u32 : 2;
         u32 PolygonID : 6;
+        bool Trans : 1;
+        u32 : 1;
+        u32 AACov : 5;
     };
     struct
     {
