@@ -346,7 +346,7 @@ u32 PPU_Blend(PPU* ppu, CompositeBuffer* indices, u32* colors, int* bgs, int num
     u16 rgb[2][4] = {{colors[0] & 0x3F, (colors[0] >> 6) & 0x3F, (colors[0] >> 12) & 0x3F, 0},
                      {colors[1] & 0x3F, (colors[1] >> 6) & 0x3F, (colors[1] >> 12) & 0x3F, 0}};
 
-    if (indices[0].GPU3D)
+    if (indices[0].GPU3D && (ppu->BlendCR.BlendBot & (1<<bgs[1])))
     {
         alpA = (colors[0] >> 18);
         alpA += alpA != 0; // checkme?
