@@ -76,8 +76,11 @@ s32 SWRen_CalcSlope(u16 x0, u16 x1, u8 y0, u8 y1, u8 y, s16* xstart, s16* xend, 
     u8 ylen = (y1 - y0) & 0xFF; // this can overflow under very specific circumstances.
 
     s32 slope;
-    if (ylen == 0) // note: this looks correct, but probably isn't actually correct.
+    if (ylen == 0)
     {
+         // note: this looks correct, but probably isn't actually correct.
+         // This might actually be special cased in the hardware?
+         // i'd need to retest this, but i think buggy oob polygons were evidence?
         slope = (1<<18) * xlen;
     }
     else if (ylen == xlen) // note: diagonal slopes need special handling
@@ -102,26 +105,30 @@ s32 SWRen_CalcSlope(u16 x0, u16 x1, u8 y0, u8 y1, u8 y, s16* xstart, s16* xend, 
 
     // certain slopes need to be adjustments:
 
-    // right slopes need to be shifted left one pixel
-    if (right) xoffs -= (1<<18);
     // xmajor slopes round to the right by half a pixel
     if (xmajor) xoffs += (1<<18)/2;
+
+    // save this for aa, since we only want the fractional component here
+    s32 xoffsaa = xoffs;
+
+    // right slopes need to be shifted left one pixel
+    if (right) xoffs -= (1<<18);
     // negative xmajor slopes are shifted left one pixel
     if (slope < -(1<<18)) xoffs -= (1<<18);
 
     // truncate upper bits (s29)
     xoffs = (xoffs << 3) >> 3;
 
-    // round towards zero
-    if (slope < 0) xoffs += (1<<18)-1;
+    // we need to round towards zero
+    #define round(x) ((slope < 0) ? ((1<<x)-1) : 0)
 
     // calculate span bounds:
     // note: the start and end coords of the span having different rounding during calc can result in single pixel gaps in the slope.
 
     // start coordinate is offset by the whole number component of the offset
-    *xstart = x0 + (xoffs >> 18);
+    *xstart = x0 + ((xoffs + round(18)) >> 18);
     if (xmajor)
-        *xend = x0 + (((xoffs >> 9) + (slope >> 9)) >> 9);
+        *xend = x0 + (((((xoffs + round(9)) >> 9) + ((slope + round(9)) >> 9)) + round(9)) >> 9);
     else // ymajor slopes are always 1 wide
         *xend = *xstart + ((slope < 0) ? -1 : 1);
 
@@ -149,6 +156,7 @@ s32 SWRen_CalcSlope(u16 x0, u16 x1, u8 y0, u8 y1, u8 y, s16* xstart, s16* xend, 
     inv = side == (neg || xmajor);
     */
     // calculate aa coverage
+    *aainc = 0;
     if ((ylen == 0) || (xlen == 0))
     {
         *aainc = 0;
@@ -164,14 +172,13 @@ s32 SWRen_CalcSlope(u16 x0, u16 x1, u8 y0, u8 y1, u8 y, s16* xstart, s16* xend, 
         }
         else
         {
-            *aainc = 0;
             s32 step = ((abs(xlen) * (1<<10)) / ylen);
             s32 adj1 = step - (abs(slope) >> 8);
             s32 adj2 = adj1 & (~step & 1);
 
-            s32 fracsx = ((x0 << 18) + (ydiff * slope));
-            fracsx = ((fracsx < 0) ? ((1<<18) - fracsx - 1) : (fracsx)) % (1<<18);
-            s32 basecov = (fracsx >> 8) & ~1;
+            s32 fracsx = (((x0 << 18) - (slope<0)) + (ydiff * slope));
+            fracsx = ((slope < 0) ? ((1<<18) - fracsx - 1) : (fracsx)) % (1<<18);
+            s32 basecov = (fracsx >> 9) << 1;
             s32 bias = step / 2;
 
             if (basecov + step - adj1 >= (1<<10))
@@ -185,7 +192,48 @@ s32 SWRen_CalcSlope(u16 x0, u16 x1, u8 y0, u8 y1, u8 y, s16* xstart, s16* xend, 
         }
     }
     // certain slopes have inverted coverage
-    if (right == xmajor)
+    if (!right != ((slope<0) || xmajor))
+    {
+        *aainc ^= (1<<10)-1;
+        *aacov ^= (1<<10)-1;
+    }
+    endaa:
+#elif 1
+    // calculate aa coverage
+    // algorithm reference: https://github.com/StrikerX3/nds-aa/blob/main/aalinetest-parser/slope.h
+    // note: the reference algorithm does some weird shit that im not doing here
+    // aka: this probably isn't pixel perfect
+    *aainc = 0;
+    if ((ylen == 0) || (xlen == 0))
+    {
+        // no cov
+        *aacov = 0;
+    }
+    else if (ylen == xlen) // diagonals need special handling (though maybe shouldn't?)
+    {
+        // 50% cov
+        *aacov = ((1<<10)-1)/2;
+    }
+    else
+    {
+        if (xmajor)
+        {
+            s32 step = (ylen * (1<<10)) / abs(xlen);
+
+            s32 scanstart = (abs(xoffsaa)>>18) - x0;
+            s32 bias = ((((2*scanstart) + 1) * ylen * (1<<10)) / (2*abs(xlen))) % (1<<10);
+        }
+        else // ymajor
+        {
+            xoffsaa = (abs(xoffsaa) >> 9) << 1;
+            xoffsaa %= (1<<10);
+            u32 step = abs(slope)>>8;
+            if ((xoffsaa+step) >= (1<<10)) *aacov = (1<<10)-1;
+            else *aacov = xoffsaa + (step/2);
+        }
+    }
+    // certain slopes have inverted coverage
+    if (right == ((slope<0) || xmajor))
     {
         *aainc ^= (1<<10)-1;
         *aacov ^= (1<<10)-1;
