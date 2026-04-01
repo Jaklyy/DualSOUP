@@ -166,7 +166,7 @@ s32 SWRen_CalcSlope(u16 x0, u16 x1, u8 y0, u8 y1, u8 y, s16* xstart, s16* xend, 
     }
     else
     {
-        if (ylen == xlen) // diagonals need special handling (though maybe shouldn't?)
+        if (ylen == abs(xlen)) // diagonals need special handling (though maybe shouldn't?)
         {
             // 50% cov
             *aacov = ((1<<10)-1)/2;
@@ -639,7 +639,7 @@ bool SWRen_DepthTest(const GX3D* gx, const bool equaldt, const u16 x, const u8 y
         // in certain cases the depth test is actually less than or equals
         if (((!attr.Backfacing && abuf.Backfacing) // frontfacing > backfacing
                 && !(attr.BotXMajor && abuf.TopXMajor) // unless the edge flag in the buffer has priority
-                && !(attr.LeftYMajor && abuf.RightYMajor))
+                && !(attr.RightYMajor && abuf.LeftYMajor))
             || (attr.TopXMajor && abuf.BotXMajor) // top xmajor > bot. xmajor
             || (attr.LeftYMajor && abuf.RightYMajor)) // left y major > right y major
             return (z <= zbuf);
@@ -762,7 +762,7 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
     u8 interpy = y + (lslope <= -(1<<18));
     bool persp = SWRen_CheckPerspectiveLerp(wc, wn, true);
     u32 wl = SWRen_Interpolate(interpy, yc, yn, wc, wn, wc, wn, true, persp, false);
-    s32 zl = SWRen_Interpolate(interpy, yc, yn, wc, wn, zc, zn, true, gx->LatWBuffer, true);
+    s32 zl = SWRen_Interpolate(interpy, yc, yn, wc, wn, zc, zn, true, gx->LatWBuffer, false);
     Colors cl;
     cl.R = SWRen_Interpolate(interpy, yc, yn, wc, wn, poly->Vertices[lc]->Color.R, poly->Vertices[ln]->Color.R, true, persp, false);
     cl.G = SWRen_Interpolate(interpy, yc, yn, wc, wn, poly->Vertices[lc]->Color.G, poly->Vertices[ln]->Color.G, true, persp, false);
@@ -779,7 +779,7 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
     interpy = y + (rslope >= (1<<18));
     persp = SWRen_CheckPerspectiveLerp(wc, wn, true);
     u32 wr = SWRen_Interpolate(interpy, yc, yn, wc, wn, wc, wn, true, persp, false);
-    s32 zr = SWRen_Interpolate(interpy, yc, yn, wc, wn, zc, zn, true, gx->LatWBuffer, true);
+    s32 zr = SWRen_Interpolate(interpy, yc, yn, wc, wn, zc, zn, true, gx->LatWBuffer, false);
     Colors cr;
     cr.R = SWRen_Interpolate(interpy, yc, yn, wc, wn, poly->Vertices[rc]->Color.R, poly->Vertices[rn]->Color.R, true, persp, false);
     cr.G = SWRen_Interpolate(interpy, yc, yn, wc, wn, poly->Vertices[rc]->Color.G, poly->Vertices[rn]->Color.G, true, persp, false);
@@ -977,13 +977,18 @@ void SWRen_RasterizerFrame(struct Console* sys)
         sys->RenderedLines+=192;
         return;
     }
-    for (int y = 0; y < 192; y++)
+
+    SWRen_ClearScanline(&sys->GX3D, 0);
+    SWRen_RasterizeScanline(sys, 0);
+    for (int y = 1; y < 192; y++)
     {
         SWRen_ClearScanline(&sys->GX3D, y);
         SWRen_RasterizeScanline(sys, y);
-        SWRen_PostProcessScanline(&sys->GX3D, y);
-        sys->RenderedLines = y+1;
+        SWRen_PostProcessScanline(&sys->GX3D, y-1);
+        sys->RenderedLines = y;
     }
+    SWRen_PostProcessScanline(&sys->GX3D, 191);
+    sys->RenderedLines = 192;
 }
 
 void SWRen_SetTarget(struct Console* sys, const timestamp now)
