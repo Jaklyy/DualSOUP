@@ -107,14 +107,12 @@ s32 SWRen_CalcSlope(u16 x0, u16 x1, u8 y0, u8 y1, u8 y, s16* xstart, s16* xend, 
 
     // xmajor slopes round to the right by half a pixel
     if (xmajor) xoffs += (1<<18)/2;
-
-    // save this for aa, since we only want the fractional component here
-    s32 xoffsaa = xoffs;
-
-    // right slopes need to be shifted left one pixel
-    if (right) xoffs -= (1<<18);
     // negative xmajor slopes are shifted left one pixel
     if (slope < -(1<<18)) xoffs -= (1<<18);
+    // save this for aa
+    s32 xoffsaa = (xoffs << 3) >> 3;
+    // right slopes need to be shifted left one pixel
+    if (right) xoffs -= (1<<18);
 
     // truncate upper bits (s29)
     xoffs = (xoffs << 3) >> 3;
@@ -135,8 +133,8 @@ s32 SWRen_CalcSlope(u16 x0, u16 x1, u8 y0, u8 y1, u8 y, s16* xstart, s16* xend, 
     // negative slopes need to have their start and end swapped.
     if (slope < 0) DS_SWAP(*xstart, *xend);
 
-#if 0
     /*
+    ymajor notes:
     step = width * (1<<10) / height;
     adj1 = step - (dx >> 8);
     adj2 = adj1 & (~step & 1);
@@ -155,73 +153,52 @@ s32 SWRen_CalcSlope(u16 x0, u16 x1, u8 y0, u8 y1, u8 y, s16* xstart, s16* xend, 
 
     inv = side == (neg || xmajor);
     */
-    // calculate aa coverage
-    *aainc = 0;
-    if ((ylen == 0) || (xlen == 0))
-    {
-        *aainc = 0;
-        if ((ylen == 0) && (xlen == 0)) *aacov = 0;
-        else *aacov = (1<<10)-1;
-    }
-    else
-    {
-        if (xmajor)
-        {
-            *aainc = ((ylen * (1<<10)) / (xlen));
-            *aainc = (1<<10) - *aainc;
-        }
-        else
-        {
-            s32 step = ((abs(xlen) * (1<<10)) / ylen);
-            s32 adj1 = step - (abs(slope) >> 8);
-            s32 adj2 = adj1 & (~step & 1);
 
-            s32 fracsx = (((x0 << 18) - (slope<0)) + (ydiff * slope));
-            fracsx = ((slope < 0) ? ((1<<18) - fracsx - 1) : (fracsx)) % (1<<18);
-            s32 basecov = (fracsx >> 9) << 1;
-            s32 bias = step / 2;
-
-            if (basecov + step - adj1 >= (1<<10))
-            {
-                *aacov = ((1<<10)-1);
-            }
-            else
-            {
-                *aacov = (basecov + bias - adj2);
-            }
-        }
-    }
-    // certain slopes have inverted coverage
-    if (!right != ((slope<0) || xmajor))
-    {
-        *aainc ^= (1<<10)-1;
-        *aacov ^= (1<<10)-1;
-    }
-    endaa:
-#elif 1
     // calculate aa coverage
     // algorithm reference: https://github.com/StrikerX3/nds-aa/blob/main/aalinetest-parser/slope.h
-    // note: the reference algorithm does some weird shit that im not doing here
-    // aka: this probably isn't pixel perfect
+    // note: i did not follow the reference algorithm anywhere close to perfectly
+    // so this implementation is probably very wrong
     *aainc = 0;
     if ((ylen == 0) || (xlen == 0))
     {
-        // no cov
-        *aacov = 0;
-    }
-    else if (ylen == xlen) // diagonals need special handling (though maybe shouldn't?)
-    {
-        // 50% cov
-        *aacov = ((1<<10)-1)/2;
+        // full cov
+        *aacov = (1<<10)-1;
     }
     else
     {
-        if (xmajor)
+        if (ylen == xlen) // diagonals need special handling (though maybe shouldn't?)
         {
-            s32 step = (ylen * (1<<10)) / abs(xlen);
+            // 50% cov
+            *aacov = ((1<<10)-1)/2;
 
-            s32 scanstart = (abs(xoffsaa)>>18) - x0;
-            s32 bias = ((((2*scanstart) + 1) * ylen * (1<<10)) / (2*abs(xlen))) % (1<<10);
+            // certain slopes have inverted coverage
+            if (right == (slope<0))
+            {
+                *aacov = ~*aacov;
+            }
+        }
+        else if (xmajor)
+        {
+            *aainc = (ylen<<10) / (xlen);
+
+            s32 start = (xoffsaa + round(18)) >> 18;
+
+            *aacov = (((ylen<<10) * ((start*2)+1)) / ((xlen)*2)) % (1<<10);
+
+            // invert right slopes
+            if (right)
+            {
+                *aainc = -*aainc;
+                *aacov = -*aacov;
+            }
+
+            // negative slopes have their start and end swapped.
+            if (slope < 0)
+            {
+                *aainc = -*aainc;
+                *aacov += (*xend - *xstart) * *aainc;
+                *aacov = -*aacov;
+            }
         }
         else // ymajor
         {
@@ -230,18 +207,14 @@ s32 SWRen_CalcSlope(u16 x0, u16 x1, u8 y0, u8 y1, u8 y, s16* xstart, s16* xend, 
             u32 step = abs(slope)>>8;
             if ((xoffsaa+step) >= (1<<10)) *aacov = (1<<10)-1;
             else *aacov = xoffsaa + (step/2);
+
+            // certain slopes have inverted coverage
+            if (right == (slope<0))
+            {
+                *aacov = ~*aacov;
+            }
         }
     }
-    // certain slopes have inverted coverage
-    if (right == ((slope<0) || xmajor))
-    {
-        *aainc ^= (1<<10)-1;
-        *aacov ^= (1<<10)-1;
-    }
-#else
-    *aacov = (1<<10)-1;
-    *aainc = 0;
-#endif
 
     return slope;
 }
@@ -772,7 +745,11 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
 
         // checkme
         lcov = ~lcov;
+        lcovinc = ~lcovinc;
         rcov = ~rcov;
+        rcovinc = ~rcovinc;
+        DS_SWAP(lcov, rcov)
+        DS_SWAP(lcovinc, rcovinc)
 
         rs = re - 1;
         le = ls + 1;
