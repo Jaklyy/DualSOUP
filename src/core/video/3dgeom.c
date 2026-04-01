@@ -1352,10 +1352,22 @@ void GX_Swap(struct Console* sys, const timestamp now)
         gx->LatWBuffer = gx->WBufferNext;
         gx->WBufferNext = gx->WBuffer;
         // todo: test latching:
-        gx->LatAlphaThreshold = gx->AlphaThreshold;
         gx->LatRasterCR = gx->RasterCR;
+        gx->LatAlphaThreshold = (gx->LatRasterCR.AlphaTest) ? gx->AlphaThreshold : 0;
         gx->LatRearAttr = gx->RearAttr;
         gx->LatRearDepth = gx->RearDepth;
+
+        for (int i = 0; i < 8; i++)
+        {
+            u32 cout = (0x1F<<18); // checkme: opacity?
+            u32 cin = MemoryRead(16, gx->EdgeTable, i*2, sizeof(gx->EdgeTable));
+            for (int j = 0; j < 3; j++)
+            {
+                u8 c = (cin >> (j*5)) & 0x1F;
+                cout |= ((c*2) + (c>0)) << (j*6);
+            }
+            gx->LatEdgeTable[i] = cout;
+        }
 
         // make sure to reschedule if needed, since we probably ended up getting this scheduled 5 years into the future, and that might cause problems.
         if (sys->Sched.EventTimes[Evt_GX] > gx->ExecTS)

@@ -280,6 +280,10 @@ void GX_IOWrite(struct Console* sys, const u32 addr, const u32 mask, const u32 v
 
     switch(addr & 0x7FF)
     {
+        case 0x330 ... 0x33C:
+            MemoryWrite(32, gx->EdgeTable, addr, sizeof(gx->EdgeTable), val, mask);
+            break;
+
         case 0x340:
             MaskedWrite(gx->AlphaThreshold, val, mask & 0x1F);
             break;

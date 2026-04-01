@@ -266,15 +266,19 @@ typedef union
         bool LeftYMajor : 1;
         bool RightYMajor : 1;
         bool Backfacing : 1;
-        u32 : 2;
-        u32 PolygonID : 6;
+        u32 : 3;
+        u32 TransPolygonID : 6;
         bool Trans : 1;
         u32 : 1;
+        u32 OpaquePolygonID : 6;
+        u32 : 2;
         u32 AACov : 5;
     };
     struct
     {
         u32 EdgeFlags : 4;
+        u32 : 4;
+        u32 TransCheck : 7;
     };
 } AttrBuf;
 
@@ -459,6 +463,7 @@ typedef struct
 
     RasterCR RasterCR;
     RearAttr RearAttr;
+    MEMORY(EdgeTable, 8*sizeof(u16));
     u16 RearDepth;
     u8 AlphaThreshold;
 
@@ -473,6 +478,7 @@ typedef struct
     RasterCR LatRasterCR;
     RearAttr LatRearAttr;
     u16 LatRearDepth;
+    u32 LatEdgeTable[8];
     bool StencilClear[2];
 
     alignas(HOST_CACHEALIGN)

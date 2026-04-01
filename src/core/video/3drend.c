@@ -599,14 +599,9 @@ void SWRen_AlphaBlend(GX3D* gx, const Polygon* poly, const u16 x, const u8 y, co
 
     AttrBuf abuf = gx->ABuf[bot][y][x];
 
-    attr.EdgeFlags = abuf.EdgeFlags; // checkme?
-    attr.Backfacing = abuf.Backfacing; // checkme?
-    attr.AACov = abuf.AACov; // checkme
-
-    if ((abuf.Trans || shadow) && (attr.PolygonID == abuf.PolygonID))
+    if ((shadow && (attr.OpaquePolygonID == abuf.OpaquePolygonID))
+     || (attr.TransCheck == abuf.TransCheck))
         return;
-
-    attr.Trans = true;
 
     u32 c = gx->CBuf[bot][y][x];
     Colors oldc = {.R = (c & 0x3F), .G = ((c >> 6) & 0x3F), .B = ((c >> 12) & 0x3F)};
@@ -623,7 +618,7 @@ void SWRen_AlphaBlend(GX3D* gx, const Polygon* poly, const u16 x, const u8 y, co
     DS_CLAMP(finalpha, <, olda)
 
     gx->CBuf[bot][y][x] = fincolor.R | (fincolor.G << 6) | (fincolor.B << 12) | finalpha << 18;
-    gx->ABuf[bot][y][x] = attr;
+    gx->ABuf[bot][y][x].TransCheck = attr.TransCheck; // checkme?
     if (poly->Attrs.TransDepthUpdate)
         gx->ZBuf[bot][y][x] = z;
 }
@@ -698,6 +693,7 @@ void SWRen_RasterizePixel(GX3D* gx, Polygon* poly, u16 x, u8 y, s32 z, Colors co
     }
     else // translucent & shadow(?)
     {
+        if (finalpha != 31) attr.Trans = true; // checkme: opaque shadows
         if (!bot) SWRen_AlphaBlend(gx, poly, x, y, z, fincolor, finalpha, attr, false, fill);
         SWRen_AlphaBlend(gx, poly, x, y, z, fincolor, finalpha, attr, true, fill);
     }
@@ -735,7 +731,7 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
         rs--;
     }
 
-    AttrBuf attr = (AttrBuf){.Backfacing = !poly->Frontfacing, .PolygonID = poly->Attrs.PolyID};
+    AttrBuf attr = (AttrBuf){.Backfacing = !poly->Frontfacing, .OpaquePolygonID = poly->Attrs.PolyID, .TransPolygonID = poly->Attrs.PolyID};
 
     if (ls > re)
     {
@@ -908,7 +904,9 @@ void SWRen_ClearScanline(GX3D* gx, u8 y)
     for (int x = 0; x < 256; x++)
     {
         gx->ZBuf[true][y][x] = (gx->ZBuf[false][y][x] = (((gx->LatRearDepth+1) << ((gx->LatWBuffer) ? 9 : 8)) - 1)); // checkme
-        gx->ABuf[true][y][x] = (gx->ABuf[false][y][x] = (AttrBuf){.PolygonID = gx->LatRearAttr.ID}); // checkme: does it default to front or back facing?
+        // checkme: does it default to front or back facing?
+        // checkme: how does this work with translucency?
+        gx->ABuf[true][y][x] = (gx->ABuf[false][y][x] = (AttrBuf){.OpaquePolygonID = gx->LatRearAttr.ID});
 
         Colors color = SWRen_RGB555to666((Colors){.R = gx->LatRearAttr.R, .G = gx->LatRearAttr.G, .B = gx->LatRearAttr.B});
         gx->CBuf[true][y][x] = (gx->CBuf[false][y][x] = (color.R | (color.G << 6) | (color.B << 12) | (gx->LatRearAttr.Alpha << 18)));
@@ -917,6 +915,39 @@ void SWRen_ClearScanline(GX3D* gx, u8 y)
 
 void SWRen_PostProcessScanline(GX3D* gx, u8 y)
 {
+    if (gx->LatRasterCR.EdgeMark)
+    {
+        for (int x = 0; x < 256; x++)
+        {
+            AttrBuf attr = gx->ABuf[false][y][x];
+            if (attr.EdgeFlags)
+            {
+                for (int i = 0; i < 4; i++)
+                {
+                    constexpr s8 ytable[4] = {-1, 1, 0 ,0};
+                    constexpr s8 xtable[4] = {0, 0, -1, 1};
+                    u8 yc = y + ytable[i];
+                    u16 xc = x + xtable[i];
+                    // NOTE: the hardware does not handle overflow/underflow of the framebuffer gracefully
+                    // this results in it either reading the clear plane attrs/depth *or* the 2nd scanline prior/after
+                    if (((yc > 191) || (xc > 255))
+                        ? ((attr.OpaquePolygonID != gx->LatRearAttr.ID)
+                            && (gx->ZBuf[false][y][x] < (((gx->LatRearDepth+1) << ((gx->LatWBuffer) ? 9 : 8)) - 1)))
+                        : ((attr.OpaquePolygonID != gx->ABuf[false][yc][xc].OpaquePolygonID)
+                            && (gx->ZBuf[false][y][x] < gx->ZBuf[false][yc][xc])))
+                    {
+                        // force coverage to 50%.
+                        // checkme: exact value?
+                        gx->ABuf[false][y][x].AACov = ((1<<5)-1)/2;
+
+                        gx->CBuf[false][y][x] = gx->LatEdgeTable[attr.OpaquePolygonID/8];
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
     if (gx->LatRasterCR.AntiAlias)
     {
         for (int x = 0; x < 256; x++)
