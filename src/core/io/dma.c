@@ -328,14 +328,14 @@ void DMA_Run(struct Console* sys, const bool a9)
 
         timestamp diff;
         u32 read;
+        if (!AHB_NegOwnership(sys, &cnt->ChannelTimestamps[id], false, a9)) // checkme?
+        {
+            rseq = false;
+            wseq = false;
+            tseq = false; // checkme
+        }
         if (channel->CurrentMode != DMAStart_AudioCap)
         {
-            if (!AHB_NegOwnership(sys, &cnt->ChannelTimestamps[id], false, a9))
-            {
-                rseq = false;
-                wseq = false;
-                tseq = false; // checkme
-            }
             channel->Latched_SrcAddr &= channel->SrcAddrMask;
 
             diff = cnt->ChannelTimestamps[id];
