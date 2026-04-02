@@ -293,19 +293,35 @@ s32 SWRen_Interpolate(s16 x, const s16 x0, const s16 x1, const u32 w0, const u32
     {
         if (borkedlerp)
         {
-            // z interp seems to be buggy?
+            // z interp along X is buggy.
             // it loses a lot of precision based on how wide the polygon is...
-            // this seems to be fairly close to what hardware actually does, as weird as it is.
-            // this definitely isn't what its actually doing though...
+            // it seems like the hardware uses an error accumulator, and when interpolating along X it doesn't actually end up accumulating the error properly?
             return a0 + ((a1-a0) / xdiff * x);
         }
         else
         {
-            // this is not correct, it usually looks mostly correct, but it isn't.
+            // this is very close to correct.
+            // upsettingly close to correct.
+            // its not *quite* this simple, but im not sure what exactly its doing.
+#if 1
             if (a0 < a1)
                 return a0 + ((s64)(a1-a0) * x / xdiff);
             else
                 return a1 + ((s64)(a0-a1) * (xdiff-x) / xdiff);
+#else
+            if (a0 < a1)
+            {
+                s32 diff = (a1-a0) / xdiff;
+                s32 error = (a1-a0) % xdiff;
+                return a0 + ((diff * x) + ((error * x) / xdiff));
+            }
+            else
+            {
+                s32 diff = (a0-a1) / xdiff;
+                s32 error = (a0-a1) % xdiff;
+                return a1 + ((diff * (xdiff-x)) + ((error * (xdiff-x)) / xdiff));
+            }
+#endif
         }
     }
 }
@@ -757,8 +773,8 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
     u8 yn = poly->Vertices[ln]->Y;
     u32 wc = poly->W[lc];
     u32 wn = poly->W[ln];
-    s32 zc = (gx->LatWBuffer ? poly->W[lc] : poly->Vertices[lc]->Z) << poly->ZDecompress;
-    s32 zn = (gx->LatWBuffer ? poly->W[ln] : poly->Vertices[ln]->Z) << poly->ZDecompress;
+    s32 zc = poly->Vertices[lc]->Z;
+    s32 zn = poly->Vertices[ln]->Z;
     u8 interpy = y + (lslope <= -(1<<18));
     bool persp = SWRen_CheckPerspectiveLerp(wc, wn, true);
     u32 wl = SWRen_Interpolate(interpy, yc, yn, wc, wn, wc, wn, true, persp, false);
@@ -767,15 +783,15 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
     cl.R = SWRen_Interpolate(interpy, yc, yn, wc, wn, poly->Vertices[lc]->Color.R, poly->Vertices[ln]->Color.R, true, persp, false);
     cl.G = SWRen_Interpolate(interpy, yc, yn, wc, wn, poly->Vertices[lc]->Color.G, poly->Vertices[ln]->Color.G, true, persp, false);
     cl.B = SWRen_Interpolate(interpy, yc, yn, wc, wn, poly->Vertices[lc]->Color.B, poly->Vertices[ln]->Color.B, true, persp, false);
-    s32 sl = SWRen_Interpolate(interpy, yc, yn, wc, wn, poly->Vertices[lc]->S+0, poly->Vertices[ln]->S+0, true, persp, false);
-    s32 tl = SWRen_Interpolate(interpy, yc, yn, wc, wn, poly->Vertices[lc]->T+0, poly->Vertices[ln]->T+0, true, persp, false);
+    s32 sl = SWRen_Interpolate(interpy, yc, yn, wc, wn, poly->Vertices[lc]->S, poly->Vertices[ln]->S, true, persp, false);
+    s32 tl = SWRen_Interpolate(interpy, yc, yn, wc, wn, poly->Vertices[lc]->T, poly->Vertices[ln]->T, true, persp, false);
 
     yc = poly->Vertices[rc]->Y;
     yn = poly->Vertices[rn]->Y;
     wc = poly->W[rc];
     wn = poly->W[rn];
-    zc = (gx->LatWBuffer ? poly->W[rc] : poly->Vertices[rc]->Z) << poly->ZDecompress;
-    zn = (gx->LatWBuffer ? poly->W[rn] : poly->Vertices[rn]->Z) << poly->ZDecompress;
+    zc = poly->Vertices[rc]->Z;
+    zn = poly->Vertices[rn]->Z;
     interpy = y + (rslope >= (1<<18));
     persp = SWRen_CheckPerspectiveLerp(wc, wn, true);
     u32 wr = SWRen_Interpolate(interpy, yc, yn, wc, wn, wc, wn, true, persp, false);

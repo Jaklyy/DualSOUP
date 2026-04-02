@@ -321,24 +321,18 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert, bool* boxtestres)
         if (wsize < tmp)
             wsize = tmp;
     }
-    wsize += 1;
 
     for (unsigned i = 0; i < nvert; i++)
     {
-        // normalize W to fit into 16 bits
+        // normalize W to fit into 16 bits to use for perspective correct interpolation.
         u32 wnorm = poly.Vertices[i].Coords.W >> 1;
         if (wsize < 16)
         {
-            wnorm <<= (16-wsize);
-            fin.W[i] = wnorm;
-            wnorm >>= (16-wsize);
-            fin.ZDecompress = 0;
+            fin.W[i] = wnorm << (16-wsize);
         }
         else
         {
-            wnorm >>= (wsize - 16);
-            fin.W[i] = wnorm;
-            fin.ZDecompress = (wsize - 16);
+            fin.W[i] = wnorm >> (wsize-16);
         }
 
 
@@ -367,14 +361,15 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert, bool* boxtestres)
             // round away from zero
             ztmp = (ztmp + !(ztmp>>15)) >> 1;
 
-            fin.Vertices[i]->Z = ztmp;
-            fin.ZDecompress = 8;
+            // note: Z values seem to be internally stored within 15 bits and given extra fractional depth during rasterization?
+            fin.Vertices[i]->Z = ztmp << 8;
         }
-        /*else
+        else
         {
             // checkme: does the "true" Z get used for rendering in any way with Wbuffering?
+            // note: W values seem to be internally stored within 16(?) bits and have their fractional component restored for W buffering during rasterization.
             fin.Vertices[i]->Z = wnorm;
-        }*/
+        }
     }
 
     fin.VTop = vtop;

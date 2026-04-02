@@ -215,8 +215,8 @@ typedef union
 
 typedef struct
 {
+    s32 Z; // s15?
     u16 X; // u9
-    s16 Z; // s15?
     u8 Y; // u8
     s16 S;
     s16 T;
@@ -230,7 +230,6 @@ typedef struct
     PolyAttr Attrs;
     TexAttr TexAttr;
     s32 SortKey;
-    int ZDecompress;
     u16 TexPal; // u13
     bool Frontfacing;
     u8 NumVert;
