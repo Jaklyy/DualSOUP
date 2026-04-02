@@ -81,17 +81,22 @@ forceinline void Scheduler_Sync(struct Console* sys, timestamp now, const SyncMo
         if (mode & Sync_Sleep7) sys->Sleep7 = true;
     }
 
-    if A9GO
+    while (true)
     {
-        if (mode < Sync_9) CR_Switch(sys->HandleARM9);
-    }
-    else if A7GO
-    {
-        if (mode >= Sync_9) CR_Switch(sys->HandleARM7);
-    }
-    while SYSGO
-    {
-        Scheduler_Run(sys);
+        if A9GO
+        {
+            if (mode < Sync_9) CR_Switch(sys->HandleARM9);
+            else break;
+        }
+        else if A7GO
+        {
+            if (mode >= Sync_9) CR_Switch(sys->HandleARM7);
+            else break;
+        }
+        while SYSGO
+        {
+            Scheduler_Run(sys);
+        }
     }
 
     if (mode >= Sync_9)
