@@ -10,7 +10,7 @@
     return (ARM9->CP15.CR.HiVector ? 0xFFFF0000 : 0x00000000);
 }
 
-void ARM9_Reset(struct ARM946ES* ARM9, const bool itcm, const bool hivec)
+void ARM9_Reset(struct ARM946ES* ARM9, const bool itcm, const bool hivec, const bool delayflush)
 {
     // TODO: how many cycles does this take?
     // 
@@ -138,7 +138,7 @@ void ARM9_Reset(struct ARM946ES* ARM9, const bool itcm, const bool hivec)
 
     cpu->CpuSleeping = 0;
 
-    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVector_RST, false, 0);
+    ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVector_RST, delayflush, 0);
 }
 
 void ARM9_RaiseUDF(struct ARM* ARM, const struct ARM_Instr instr_data, const int execycles, const int memcycles)

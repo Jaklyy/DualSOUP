@@ -393,7 +393,7 @@ void ARM9_MainLoop(struct ARM946ES* ARM9);
 void ARM9_Log(struct ARM946ES* ARM9);
 
 // special exceptions.
-void ARM9_Reset(struct ARM946ES* ARM9, const bool itcm, const bool hivec);
+void ARM9_Reset(struct ARM946ES* ARM9, const bool itcm, const bool hivec, const bool delayflush);
 void ARM9_DataAbort(struct ARM946ES* ARM9);
 void ARM9_InterruptRequest(struct ARM946ES* ARM9);
 // only used by debugger hardware.

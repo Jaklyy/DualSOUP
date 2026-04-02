@@ -345,14 +345,14 @@ void ARM9_Step(struct ARM946ES* ARM9)
 
 void ARM9_MainLoop(struct ARM946ES* ARM9)
 {
-    if (cpu->Sys->DirectBoot) ARM9_FlushPipeline(ARM9);
+    ARM9_FlushPipeline(ARM9);
     while(!cpu->Sys->KillThread)
     {
         if (!cpu->DeadAsleep)
         {
             if ((cpu->Timestamp >> A9ClockShift(*ARM9)) < cpu->Sys->MainTarget)
             {
-                if (DMA_GetNext(cpu->Sys, true) <= (cpu->Timestamp >> A9ClockShift(*ARM9)))
+                if (DMA_GetNext(cpu->Sys, 0, false, true) <= (cpu->Timestamp >> A9ClockShift(*ARM9)))
                 {
                     DMA_Run(cpu->Sys, true);
                 }
@@ -368,13 +368,13 @@ void ARM9_MainLoop(struct ARM946ES* ARM9)
         }
         else
         {
-            if (DMA_GetNext(cpu->Sys, true) < cpu->Sys->MainTarget)
+            if (DMA_GetNext(cpu->Sys, 0, false, true) < cpu->Sys->MainTarget)
             {
                 DMA_Run(cpu->Sys, true);
             }
             else
             {
-                Scheduler_Sync(cpu->Sys, DMA_GetNext(cpu->Sys, true), Sync_Sleep9);
+                Scheduler_Sync(cpu->Sys, DMA_GetNext(cpu->Sys, 0, false, true), Sync_Sleep9);
             }
         }
     }

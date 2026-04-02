@@ -57,9 +57,9 @@ bool AHB_NegOwnership(struct Console* sys, timestamp* cur, const bool atomic, co
     if (*cur < bus->Timestamp) *cur = bus->Timestamp;
 
     // check if anything else is able to run
-    if (!atomic && (*cur >= DMA_GetNext(sys, a9)))
+    if (!atomic && (*cur >= DMA_GetNext(sys, *cur, true, a9)))
     {
-        while (*cur >= DMA_GetNext(sys, a9))
+        while (*cur >= DMA_GetNext(sys, *cur, true, a9))
         {
             DMA_Run(sys, a9);
         }

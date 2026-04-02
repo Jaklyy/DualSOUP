@@ -38,7 +38,7 @@ void ARM7_Init(struct ARM7TDMI* ARM7, struct Console* console);
 void ARM7_MainLoop(struct ARM7TDMI* ARM7);
 
 // special exceptions
-void ARM7_Reset(struct ARM7TDMI* ARM7);
+void ARM7_Reset(struct ARM7TDMI* ARM7, const bool delayflush);
 void ARM7_InterruptRequest(struct ARM7TDMI* ARM7);
 // only used by debug hardware
 void ARM7_FastInterruptRequest(struct ARM7TDMI* ARM7);

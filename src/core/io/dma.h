@@ -101,4 +101,4 @@ void StartDMA9(struct Console* sys, timestamp start, u8 mode);
 void StartDMA7(struct Console* sys, timestamp start, u8 mode);
 void StartSoundCapDMA(struct Console* sys, u8 id, timestamp start);
 void StartSoundDMA(struct Console* sys, u8 id, timestamp start, bool matters);
-timestamp DMA_GetNext(struct Console* sys, bool a9);
+timestamp DMA_GetNext(struct Console* sys, const timestamp now, const bool sync, const bool a9);

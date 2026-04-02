@@ -6,8 +6,9 @@
 
 
 
-timestamp DMA_GetNext(struct Console* sys, bool a9) 
+timestamp DMA_GetNext(struct Console* sys, const timestamp now, const bool sync, const bool a9)
 {
+    if (sync) Scheduler_Sync(sys, now, (a9 ? Sync_Normal9 : Sync_Normal7));
     struct DMA_Controller* cnt = ((a9) ? &sys->DMA9 : &sys->DMA7);
     return cnt->NextTime;
 }

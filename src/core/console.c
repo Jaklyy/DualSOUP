@@ -428,8 +428,8 @@ void Console_DirectBoot(struct Console* sys)
 
 void Console_Reset(struct Console* sys)
 {
-    ARM9_Reset(&sys->ARM9, false /*unverified I guess?*/, true);
-    ARM7_Reset(&sys->ARM7);
+    ARM9_Reset(&sys->ARM9, false /*unverified I guess?*/, true, true);
+    ARM7_Reset(&sys->ARM7, true);
 
     // TODO: reset dma?
 }

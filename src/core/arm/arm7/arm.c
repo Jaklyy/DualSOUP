@@ -222,14 +222,14 @@ void ARM7_Step(struct ARM7TDMI* ARM7)
 void ARM7_MainLoop(struct ARM7TDMI* ARM7)
 {
     while(!CR_Start);
-    if (cpu->Sys->DirectBoot) ARM7_FlushPipeline(ARM7);
+    ARM7_FlushPipeline(ARM7);
     while(!CR_Kill)
     {
         if (!cpu->DeadAsleep)
         {
             if (cpu->Timestamp < cpu->Sys->MainTarget)
             {
-                if (DMA_GetNext(cpu->Sys, false) <= cpu->Timestamp)
+                if (DMA_GetNext(cpu->Sys, 0, false, false) <= cpu->Timestamp)
                 {
                     DMA_Run(cpu->Sys, false);
                 }
@@ -246,13 +246,13 @@ void ARM7_MainLoop(struct ARM7TDMI* ARM7)
         }
         else
         {
-            if (DMA_GetNext(cpu->Sys, false) < cpu->Sys->MainTarget)
+            if (DMA_GetNext(cpu->Sys, 0, false, false) < cpu->Sys->MainTarget)
             {
                 DMA_Run(cpu->Sys, false);
             }
             else
             {
-                Scheduler_Sync(cpu->Sys, DMA_GetNext(cpu->Sys, false), Sync_Sleep7);
+                Scheduler_Sync(cpu->Sys, DMA_GetNext(cpu->Sys, 0, false, false), Sync_Sleep7);
             }
         }
     }
