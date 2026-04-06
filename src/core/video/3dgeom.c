@@ -356,10 +356,12 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert, bool* boxtestres)
             // practically speaking there's no reason for them to try to handle overflows properly, so im not sure why they do...?
             // TODO: validate overflow behavior
             DS_CLAMP(ztmp, >, 0x7FFF)
-            DS_CLAMP(ztmp, <, -0x8000) // i think this can happen?
+            DS_CLAMP(ztmp, <, -0x8000)
 
             // round away from zero
             ztmp = (ztmp + !(ztmp>>15)) >> 1;
+
+            ztmp += 0x4000; // checkme: convert to unsigned for fog?
 
             // note: Z values seem to be internally stored within 15 bits and given extra fractional depth during rasterization?
             fin.Vertices[i]->Z = ztmp << 8;
@@ -1351,6 +1353,9 @@ void GX_Swap(struct Console* sys, const timestamp now)
         gx->LatAlphaThreshold = (gx->LatRasterCR.AlphaTest) ? gx->AlphaThreshold : 0;
         gx->LatRearAttr = gx->RearAttr;
         gx->LatRearDepth = gx->RearDepth;
+        gx->LatFogColor = gx->FogColor;
+        gx->LatFogOffset = gx->FogOffset;
+        memcpy(gx->LatFogTable, gx->FogTable.b8, sizeof(gx->FogTable));
 
         for (int i = 0; i < 8; i++)
         {

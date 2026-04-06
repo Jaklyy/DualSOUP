@@ -265,7 +265,8 @@ typedef union
         bool LeftYMajor : 1;
         bool RightYMajor : 1;
         bool Backfacing : 1;
-        u32 : 3;
+        bool Fog : 1;
+        u32 : 2;
         u32 TransPolygonID : 6;
         bool Trans : 1;
         u32 : 1;
@@ -465,6 +466,9 @@ typedef struct
     MEMORY(EdgeTable, 8*sizeof(u16));
     u16 RearDepth;
     u8 AlphaThreshold;
+    MEMORY(FogTable, 32);
+    u32 FogColor;
+    u16 FogOffset;
 
 
 
@@ -478,6 +482,9 @@ typedef struct
     RearAttr LatRearAttr;
     u16 LatRearDepth;
     u32 LatEdgeTable[8];
+    u32 LatFogColor;
+    u16 LatFogOffset;
+    u8 LatFogTable[32];
     bool StencilClear[2];
 
     alignas(HOST_CACHEALIGN)

@@ -635,6 +635,7 @@ void SWRen_AlphaBlend(GX3D* gx, const Polygon* poly, const u16 x, const u8 y, co
 
     gx->CBuf[bot][y][x] = fincolor.R | (fincolor.G << 6) | (fincolor.B << 12) | finalpha << 18;
     gx->ABuf[bot][y][x].TransCheck = attr.TransCheck; // checkme?
+    gx->ABuf[bot][y][x].Fog &= attr.Fog; // checkme?
     if (poly->Attrs.TransDepthUpdate)
         gx->ZBuf[bot][y][x] = z;
 }
@@ -747,7 +748,7 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
         rs--;
     }
 
-    AttrBuf attr = (AttrBuf){.Backfacing = !poly->Frontfacing, .OpaquePolygonID = poly->Attrs.PolyID, .TransPolygonID = poly->Attrs.PolyID};
+    AttrBuf attr = (AttrBuf){.Backfacing = !poly->Frontfacing, .OpaquePolygonID = poly->Attrs.PolyID, .TransPolygonID = poly->Attrs.PolyID, .Fog = poly->Attrs.FogEnable};
 
     if (ls > re)
     {
@@ -922,7 +923,7 @@ void SWRen_ClearScanline(GX3D* gx, u8 y)
         gx->ZBuf[true][y][x] = (gx->ZBuf[false][y][x] = (((gx->LatRearDepth+1) << ((gx->LatWBuffer) ? 9 : 8)) - 1)); // checkme
         // checkme: does it default to front or back facing?
         // checkme: how does this work with translucency?
-        gx->ABuf[true][y][x] = (gx->ABuf[false][y][x] = (AttrBuf){.OpaquePolygonID = gx->LatRearAttr.ID});
+        gx->ABuf[true][y][x] = (gx->ABuf[false][y][x] = (AttrBuf){.OpaquePolygonID = gx->LatRearAttr.ID, .Fog = gx->LatRearAttr.Fog});
 
         Colors color = SWRen_RGB555to666((Colors){.R = gx->LatRearAttr.R, .G = gx->LatRearAttr.G, .B = gx->LatRearAttr.B});
         gx->CBuf[true][y][x] = (gx->CBuf[false][y][x] = (color.R | (color.G << 6) | (color.B << 12) | (gx->LatRearAttr.Alpha << 18)));
@@ -931,6 +932,48 @@ void SWRen_ClearScanline(GX3D* gx, u8 y)
 
 void SWRen_PostProcessScanline(GX3D* gx, u8 y)
 {
+    if (gx->LatRasterCR.Fog)
+    {
+        Colors fogcolor = SWRen_RGB555to666((Colors){.R = ((gx->LatFogColor >> 0) & 0x1F), .G = ((gx->LatFogColor >> 5) & 0x1F), .B = ((gx->LatFogColor >> 10) & 0x1F)});
+        u8 fogalpha = (gx->LatFogColor >> 16) & 0x1F;
+        for (int i = 0; i < 2; i++)
+        {
+            for (int x = 0; x < 256; x++)
+            {
+                if (!gx->ABuf[i][y][x].Fog) continue;
+
+                s32 z = gx->ZBuf[i][y][x];
+                if (!gx->LatWBuffer)
+                {
+                    // TODO: idk if im handling Z depth properly.
+                    z <<= 1;
+                }
+                z -= gx->LatFogOffset * 0x200;
+                z >>= 2;
+                z <<= gx->LatRasterCR.FogShift;
+
+                DS_CLAMP(z, <, 0)
+                DS_CLAMP(z, >, 32<<17)
+
+                // interpolate fog table
+                s8 index = ((z >> 17) - 1);
+                u32 frac = z & ((1<<17)-1);
+                frac = ((gx->LatFogTable[index+(index<0)] * ((1<<17)-frac)) + (gx->LatFogTable[index+(index<31)] * frac)) >> 17;
+                if (frac >= 127) frac = 128;
+
+                Colors color = (Colors){.R = ((gx->CBuf[i][y][x] >> 0) & 0x3F), .G = ((gx->CBuf[i][y][x] >> 6) & 0x3F), .B = ((gx->CBuf[i][y][x] >> 12) & 0x3F)};
+                if (!gx->LatRasterCR.FogMode)
+                {
+                    color.RGB = ((fogcolor.RGB * frac) + (color.RGB * (128-frac))) / 128;
+                }
+                u8 alpha = (gx->CBuf[i][y][x] >> 18);
+                alpha = ((fogalpha * frac) + (alpha * (128-frac))) / 128;
+
+                gx->CBuf[i][y][x] = color.R | (color.G << 6) | (color.B << 12) | (alpha << 18);
+            }
+        }
+    }
+
     if (gx->LatRasterCR.EdgeMark)
     {
         for (int x = 0; x < 256; x++)
