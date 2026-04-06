@@ -112,11 +112,18 @@ void ARM9_UpdateInterlocks(struct ARM946ES* ARM9, const s8 diff)
 
 void ARM9_InterlockStall(struct ARM946ES* ARM9, const s8 stall)
 {
+#if 1
     if (stall > 0)
     {
         cpu->Timestamp = ARM9->MemTimestamp + stall - 1;
         ARM9_UpdateInterlocks(ARM9, stall);
     }
+#else
+    // branchless version, seems to be significantly slower.
+    u64 mask = (((s64)stall - 1) >> 63);
+    cpu->Timestamp += ((ARM9->MemTimestamp + ((s64)stall - 1)) - cpu->Timestamp) & ~mask;
+    ARM9_UpdateInterlocks(ARM9, stall & ~mask);
+#endif
 }
 
 #define REFILLPIPE \
@@ -170,12 +177,15 @@ void ARM9_CheckInterlocks(struct ARM946ES* ARM9, s8* stall, const int reg, const
 {
     // the fact this always needs a branch really annoys me.
     // but i dont think this is possible to work around without losing accuracy.
+#if 1
     s8 diff = ARM9->RegIL[reg][portc] - cycledelay;
     if (*stall < diff) *stall = diff;
+#else
     // TODO: this *can* be done branchless according to a friend; but it needs profiling.
-#if 0
-    s8 x = *stall - diff;
-    *stall = (x & ~(x>>7)) + diff;
+    s8 diff = ARM9->RegIL[reg][portc] - cycledelay;
+
+    s8 mask = (*stall - diff);
+    *stall = (mask & ~(mask>>7)) + diff;
 #endif
 }
 
@@ -218,10 +228,7 @@ void ARM9_DeferredITCMWrite(struct ARM946ES* ARM9);
 #define ILCheck(size, x) \
     /* Step 1: Handle interlocks. */ \
     s8 stall = x (ARM9, instr); \
-    if (stall) \
-    { \
-        ARM9_InterlockStall(ARM9, stall); \
-    }
+    ARM9_InterlockStall(ARM9, stall); \
 
 #define FetchIRQExec(size, x) \
     /* Step 2: Fetch upcoming instruction. */ \
