@@ -51,17 +51,15 @@ void ARM_DataProc(struct ARM* cpu, const struct ARM_Instr instr_data)
 
     union ARM_FlagsOut flags_out = {.Raw = cpu->CPSR.Flags};
 
-    // note: register shift register variants take two cycles, and Rn is accessed on the second cycle
-    // due to pipelining(?), pc is incremented after the first cycle
-    // so accessing pc via Rn with these variants gets addr + 12
     u32 rn_val = 0;
     bool carry_out = flags_out.Carry;
 
-    if ((instr.Opcode & 0b1101) != 0b1101) // NOT mov or mvn
-        rn_val = ARM_GetReg(instr.Rn);
-
     if (instr.Immediate) // Immediate
     {
+        // rn is fetched before stepping pc
+        if ((instr.Opcode & 0b1101) != 0b1101) // NOT mov or mvn
+            rn_val = ARM_GetReg(instr.Rn);
+
         shifter_out = ARM_ROR(instr.Imm8, instr.RotateImm*2, &carry_out);
         ARM_StepPC(cpu, false);
         ARM_ExeCycles(1, 1, 1);
@@ -72,15 +70,19 @@ void ARM_DataProc(struct ARM* cpu, const struct ARM_Instr instr_data)
 
         // Reg shift Reg variants are two cycles long due to needing to fetch more inputs.
         // order of operations for them is as follows:
-        // Rn && Rs fetched
+        // Rs fetched
         // PC increments
-        // Rm fetched
+        // Rn && Rm fetched
         if (instr.ShiftType & 0x1)
         {
+            // rs is fetched before stepping pc
             rs_val = ARM_GetReg(instr.Rs);
             ARM_StepPC(cpu, false);
             ARM_ExeCycles(2, 2, 1);
         }
+
+        if ((instr.Opcode & 0b1101) != 0b1101) // NOT mov or mvn
+            rn_val = ARM_GetReg(instr.Rn);
 
         u64 rm_val = ARM_GetReg(instr.Rm);
 
@@ -237,22 +239,28 @@ s8 ARM9_DataProc_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_
 {
     const union ARM_DataProc_Decode instr = {.Raw = instr_data.Raw};
 
+    // checkme
     s8 stall = 0;
-    if (!instr.Immediate)
+    if (instr.Immediate)
     {
-        ARM9_CheckInterlocks(ARM9, &stall, instr.Rm, 0, false);
+        if ((instr.Opcode & 0b1101) != 0b1101) // NOT mov or mvn
+            ARM9_CheckInterlocks(ARM9, &stall, instr.Rn, 0, false);
+    }
+    else
+    {
         if (instr.ShiftType & 0x1)
         {
             ARM9_CheckInterlocks(ARM9, &stall, instr.Rs, 0, false);
+            ARM9_CheckInterlocks(ARM9, &stall, instr.Rm, 1, false);
             if ((instr.Opcode & 0b1101) != 0b1101) // NOT mov or mvn
-            {
                 ARM9_CheckInterlocks(ARM9, &stall, instr.Rn, 1, false);
-            }
         }
-    }
-    if ((instr.Opcode & 0b1101) != 0b1101) // NOT mov or mvn
-    {
-        ARM9_CheckInterlocks(ARM9, &stall, instr.Rn, 0, false);
+        else
+        {
+            ARM9_CheckInterlocks(ARM9, &stall, instr.Rm, 0, false);
+            if ((instr.Opcode & 0b1101) != 0b1101) // NOT mov or mvn
+                ARM9_CheckInterlocks(ARM9, &stall, instr.Rn, 0, false);
+        }
     }
     return stall;
 }
