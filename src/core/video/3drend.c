@@ -303,17 +303,55 @@ s32 SWRen_Interpolate(s16 x, const s16 x0, const s16 x1, const u32 w0, const u32
             // this is very close to correct.
             // upsettingly close to correct.
             // its not *quite* this simple, but im not sure what exactly its doing.
-#if 1
+#if 0
             if (a0 < a1)
                 return a0 + ((s64)(a1-a0) * x / xdiff);
             else
                 return a1 + ((s64)(a0-a1) * (xdiff-x) / xdiff);
-#else
+#elif 1
+            if (a0 < a1)
+            {
+                s32 diff = (a1-a0) / xdiff;
+                s32 error = (a1-a0) % xdiff;
+                return a0 + ((diff * x) + (((error * x) + (xdiff>>((yaxis) ? 4 : 5))) / xdiff));
+            }
+            else
+            {
+                s32 diff = (a0-a1) / xdiff;
+                s32 error = (a0-a1) % xdiff;
+                return a1 + ((diff * (xdiff-x)) + ((error * (xdiff-x)/* - (xdiff>>((yaxis) ? 4 : 5))*/) / xdiff));
+            }
+#elif 0
             if (a0 < a1)
             {
                 s32 diff = (a1-a0) / xdiff;
                 s32 error = (a1-a0) % xdiff;
                 return a0 + ((diff * x) + ((error * x) / xdiff));
+            }
+            else
+            {
+                s32 diff = (a0-a1) / xdiff;
+                s32 error = (a0-a1) % xdiff;
+                return (a1 + (diff * xdiff)) - ((diff * x) + ((error * x) / xdiff));
+            }
+#elif 1
+            if (a0 < a1)
+            {
+                s32 diff = (a1-a0) / xdiff;
+                s32 error = ((a1-a0) % xdiff);
+                s32 out = 0;
+                s32 errorcnt = 0;
+                for (int i = 0; i < x; i++)
+                {
+                    out += diff;
+                    errorcnt += error;
+                    while (errorcnt >= xdiff)
+                    {
+                        errorcnt -= xdiff;
+                        out++;
+                    }
+                }
+                return a0 + out;
             }
             else
             {

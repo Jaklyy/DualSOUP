@@ -258,8 +258,9 @@ void PPU_BG0_Lookup(struct Console* sys, const bool b, const u16 y)
         case 6:
             if (!b)
             {
-                PPU_3D(sys, y); // wtf happens to engine b?
+                PPU_3D(sys, y);
             }
+            else PPU_None(sys, b, 0); // wtf happens to engine b?
             break;
     }
 }
