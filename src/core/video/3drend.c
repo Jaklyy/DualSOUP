@@ -281,8 +281,8 @@ s32 SWRen_Interpolate(s16 x, const s16 x0, const s16 x1, const u32 w0, const u32
 {
     x -= x0;
     s16 xdiff = x1-x0;
-    if ((x == 0) || (xdiff == 0)) return a0;
-    if (x0 <= 0 && x1 > 511) return a1; // yes these values *can* occur. there is probably a better explanation for why this happens, but until we get a better answer we shall hardcode it in.
+    if ((x == 0) || (xdiff == 0) || a0 == a1) return a0;
+    if (x0 <= 0 && x1 > 511) return a1; // yes these values *can* occur. there is probably a better explanation for why this happens, but until we get a better answer we shall hardcode it in. (maybe it breaks the divider logic?)
 
     if (persp)
     {
@@ -303,7 +303,7 @@ s32 SWRen_Interpolate(s16 x, const s16 x0, const s16 x1, const u32 w0, const u32
             // this is very close to correct.
             // upsettingly close to correct.
             // its not *quite* this simple, but im not sure what exactly its doing.
-#if 0
+#if 1
             if (a0 < a1)
                 return a0 + ((s64)(a1-a0) * x / xdiff);
             else
@@ -312,8 +312,14 @@ s32 SWRen_Interpolate(s16 x, const s16 x0, const s16 x1, const u32 w0, const u32
             if (a0 < a1)
             {
                 s32 diff = (a1-a0) / xdiff;
-                s32 error = (a1-a0) % xdiff;
-                return a0 + ((diff * x) + (((error * x) + (xdiff>>((yaxis) ? 4 : 5))) / xdiff));
+                s32 error = ((a1-a0) % xdiff);
+
+                printf("%i: %08X %08X %08X\n", x, a0 + (diff * x) + ((error * x) / xdiff), (error*x) % xdiff, xdiff);
+
+                u8 shift = yaxis ? 4 : 5;
+                u8 bias = (xdiff >> shift) - (x % (xdiff >> shift));
+                return a0 + ((diff * x) + (((error * x) + bias) / xdiff));
+                //return a0 + ((diff * x) + (((error * x) + (((error * x) / xdiff)>>shift) + 1) / xdiff));
             }
             else
             {
@@ -324,15 +330,28 @@ s32 SWRen_Interpolate(s16 x, const s16 x0, const s16 x1, const u32 w0, const u32
 #elif 0
             if (a0 < a1)
             {
-                s32 diff = (a1-a0) / xdiff;
-                s32 error = (a1-a0) % xdiff;
-                return a0 + ((diff * x) + ((error * x) / xdiff));
+                u8 shift = (yaxis) ? 4 : 5;
+                s32 whole = a1;
+                s32 frac = 0;
+                s32 wholeinc = ((a1-a0) << shift) / xdiff;
+                /*s32 fracinc = (a1-a0) % xdiff;
+                for (int i = x0; i < x; i++)
+                {
+                    whole += wholeinc;
+                    frac += fracinc;
+                    if (frac >= xdiff)
+                    {
+                        frac -= xdiff;
+                        whole += 1;
+                    }
+                }*/
+                return whole + (((wholeinc * x) + xdiff) >> shift);
             }
             else
             {
                 s32 diff = (a0-a1) / xdiff;
                 s32 error = (a0-a1) % xdiff;
-                return (a1 + (diff * xdiff)) - ((diff * x) + ((error * x) / xdiff));
+                return a1 + ((diff * (xdiff-x)) + ((error * (xdiff-x)/* - (xdiff>>((yaxis) ? 4 : 5))*/) / xdiff));
             }
 #elif 1
             if (a0 < a1)
@@ -814,7 +833,7 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
     u32 wn = poly->W[ln];
     s32 zc = poly->Vertices[lc]->Z;
     s32 zn = poly->Vertices[ln]->Z;
-    u8 interpy = y + (lslope <= -(1<<18));
+    u8 interpy = y + (lslope <= -(1<<18)); // todo: can this overflow?
     bool persp = SWRen_CheckPerspectiveLerp(wc, wn, true);
     u32 wl = SWRen_Interpolate(interpy, yc, yn, wc, wn, wc, wn, true, persp, false);
     s32 zl = SWRen_Interpolate(interpy, yc, yn, wc, wn, zc, zn, true, gx->LatWBuffer, false);
@@ -895,7 +914,7 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
     end = rs;
     DS_CLAMP(end, >, re)
     DS_CLAMP(end, >, 256)
-    for (; (x < end) && (x < 256); x++)
+    for (; x < end; x++)
     {
         z = SWRen_Interpolate(x, ls, re, wl, wr, zl, zr, false, gx->LatWBuffer, true);
         color.R = SWRen_Interpolate(x, ls, re, wl, wr, cl.R, cr.R, false, persp, false);

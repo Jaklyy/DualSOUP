@@ -102,13 +102,13 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
         sys->KillSWRen = true;
         sys->SWRenStart = true;
         sys->SWRenTarget = timestamp_max;
+        thrd_join(sys->SWRenThread, &dummy);
         sys->RenderedLines = 255;
         sys->KillPPUs = true;
         sys->PPUStart = true;
         sys->PPUTarget = timestamp_max;
         thrd_join(sys->PPUAThread, &dummy);
         thrd_join(sys->PPUBThread, &dummy);
-        thrd_join(sys->SWRenThread, &dummy);
 #endif
     }
 
@@ -198,13 +198,13 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
         sys->KillSWRen = true;
         sys->SWRenStart = true;
         sys->SWRenTarget = timestamp_max;
+        thrd_join(sys->SWRenThread, &dummy);
         sys->RenderedLines = 255;
         sys->KillPPUs = true;
         sys->PPUStart = true;
         sys->PPUTarget = timestamp_max;
         thrd_join(sys->PPUAThread, &dummy);
         thrd_join(sys->PPUBThread, &dummy);
-        thrd_join(sys->SWRenThread, &dummy);
 #endif
 
         free(sys);
