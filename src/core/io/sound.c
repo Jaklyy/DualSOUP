@@ -103,7 +103,7 @@ void AudioMixer_Sample(struct Console* sys, timestamp now)
 #endif
 
     Schedule_Event(sys, AudioMixer_Sample, Evt_MixAudio, now + ((u64)(NTRBus_Clock + sys->AudioFrac) / SoundMixerOutput));
-    sys->AudioFrac = (u64)(NTRBus_Clock + sys->AudioFrac) % SoundMixerOutput;
+    sys->AudioFrac = 0;//(u64)(NTRBus_Clock + sys->AudioFrac) % SoundMixerOutput;
 }
 
 void SoundFIFO_Fill(struct Console* sys, const u32 val, const u8 id)

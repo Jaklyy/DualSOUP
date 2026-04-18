@@ -34,8 +34,11 @@ constexpr unsigned NTR9_Clock   = Base_Clock * 4; // NARM9 Clock.
 // audio clocks
 // source: gbatek 
 // these numbers seem odd? not sure if these should actually be
-constexpr unsigned SoundMixerFreq = 1'048'760; // >(1/16); (is this info relevant?)
-constexpr unsigned SoundMixerOutput = 32'768; // 
+constexpr unsigned SoundMixerFreq = Base_Clock/16; // 1'048'760; // >(1/16); (is this info relevant?)
+                                                                 // note: still haven't for sure verified that this is exact.
+constexpr unsigned SoundMixerOutput = Base_Clock/512; //32'768; // not entirely sure if it uses an output frequency of 32.768 Hz or 32.728 Hz
+                                                                // it's a difference of roughly 0.1% so idk if it matters, but it bothers me
+                                                                // fun note: you can set this to Base_Clock/16 to get very high quality audio output.
 
 // yoinked from melonDS; should be validated personally.
 // they're written this way in melonDS; I'm not sure why? Probably makes sense with 2d gpu knowledge.
