@@ -303,11 +303,24 @@ s32 SWRen_Interpolate(s16 x, const s16 x0, const s16 x1, const u32 w0, const u32
             // this is very close to correct.
             // upsettingly close to correct.
             // its not *quite* this simple, but im not sure what exactly its doing.
-#if 1
+#if 0
             if (a0 < a1)
                 return a0 + ((s64)(a1-a0) * x / xdiff);
             else
                 return a1 + ((s64)(a0-a1) * (xdiff-x) / xdiff);
+#elif 0
+            if (a0 < a1)
+            {
+                constexpr u8 shiftbase = 17;
+                u8 shift = yaxis ? 1 : 0;
+                u32 bias = (xdiff << (shift + shiftbase));
+                printf("%i: %lX %X\n", x, (((s64)((1<<(shiftbase+13)) / xdiff) * (a1 - a0)) * x) & ((1<<(shiftbase+13))-1), bias);
+                return a0 + (((((s64)((1<<(shiftbase+13)) / xdiff) * (a1 - a0)) * x) + bias) >> (shiftbase+13));
+            }
+            else
+            {
+                return a1 + ((((s64)((1<<30) / xdiff) * (a0 - a1)) * (xdiff-x)) >> 30);
+            }
 #elif 1
             if (a0 < a1)
             {
