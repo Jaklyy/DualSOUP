@@ -1,7 +1,8 @@
 #pragma once
 
+#include <SDL3/SDL_thread.h>
+#include <SDL3/SDL_mutex.h>
 #include <stdatomic.h>
-#include <threads.h>
 #include <stdio.h>
 #include "utils.h"
 #include "arm/arm9/arm.h"
@@ -526,14 +527,14 @@ struct Console
 
     alignas(HOST_CACHEALIGN) // ppu a sync area
     volatile timestamp PPUATimestamp;
-    thrd_t PPUAThread;
+    SDL_Thread* PPUAThread;
 
     alignas(HOST_CACHEALIGN) // ppu a internal area
     CompositeBuffer CompositeBufferA[5][256];
 
     alignas(HOST_CACHEALIGN) // ppu b sync area
     volatile timestamp PPUBTimestamp;
-    thrd_t PPUBThread;
+    SDL_Thread* PPUBThread;
 
     alignas(HOST_CACHEALIGN) // ppu b internal area
     CompositeBuffer CompositeBufferB[5][256];
@@ -544,7 +545,7 @@ struct Console
     volatile bool PPUStart;
 
     alignas(HOST_CACHEALIGN) // 3d renderer sync area
-    thrd_t SWRenThread;
+    SDL_Thread* SWRenThread;
     volatile timestamp SWRenTimestamp;
     volatile timestamp SWRenTarget;
     volatile bool KillSWRen;
@@ -556,7 +557,7 @@ struct Console
     bool BackBuf;
     void* Pad;
     void* Aud;
-    mtx_t FrameBufferMutex[2];
+    SDL_Mutex* FrameBufferMutex[2];
 
     volatile bool KillThread;
     u64 dummy; // for debugging i guess

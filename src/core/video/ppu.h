@@ -1,4 +1,5 @@
 #pragma once
+#include <SDL3/SDL_thread.h>
 #include "../utils.h"
 
 
@@ -190,5 +191,5 @@ typedef struct
 
 struct Console;
 void PPU_RenderScanline(struct Console* sys, const bool b, const s16 y);
-int PPUA_MainLoop(void* ptr);
-int PPUB_MainLoop(void* ptr);
+int SDLCALL PPUA_MainLoop(void* ptr);
+int SDLCALL PPUB_MainLoop(void* ptr);

@@ -1,4 +1,5 @@
 #pragma once
+#include <SDL3/SDL_thread.h>
 #include "../utils.h"
 
 
@@ -17,5 +18,5 @@ void LCD_Scanline(struct Console* sys, timestamp now);
 void SWRen_Init(struct Console* sys, const timestamp now);
 void SWRen_Sync(struct Console* sys, timestamp now);
 void SWRen_SetTarget(struct Console* sys, const timestamp now);
-int SWRen_MainLoop(void* ptr);
+int SDLCALL SWRen_MainLoop(void* ptr);
 void SWRen_SyncRenderedLines(struct Console* sys, u8 y);

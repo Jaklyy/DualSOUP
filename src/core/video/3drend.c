@@ -303,7 +303,7 @@ s32 SWRen_Interpolate(s16 x, const s16 x0, const s16 x1, const u32 w0, const u32
             // this is very close to correct.
             // upsettingly close to correct.
             // its not *quite* this simple, but im not sure what exactly its doing.
-#if 0
+#if 1
             if (a0 < a1)
                 return a0 + ((s64)(a1-a0) * x / xdiff);
             else
@@ -1130,7 +1130,7 @@ void SWRen_Sync(struct Console* sys, timestamp now)
 {
     if (!sys->SWRenStart) return;
     SWRen_SetTarget(sys, now);
-    while (sys->SWRenTimestamp < now) thrd_yield();
+    while (sys->SWRenTimestamp < now);// thrd_yield();
 }
 
 void SWRen_SyncRenderedLines(struct Console* sys, u8 y)
@@ -1140,7 +1140,7 @@ void SWRen_SyncRenderedLines(struct Console* sys, u8 y)
 
 void SWRen_Wait(struct Console* sys, const timestamp now)
 {
-    while (now >= sys->SWRenTarget) thrd_yield();
+    while (now >= sys->SWRenTarget);// thrd_yield();
 }
 
 void SWRen_Init(struct Console* sys, const timestamp now)
@@ -1151,10 +1151,10 @@ void SWRen_Init(struct Console* sys, const timestamp now)
     sys->SWRenStart = true;
 }
 
-int SWRen_MainLoop(void* ptr)
+int SDLCALL SWRen_MainLoop(void* ptr)
 {
     struct Console* sys = ptr;
-    while (!sys->SWRenStart) thrd_yield();
+    while (!sys->SWRenStart);// thrd_yield();
 
     while (!sys->KillSWRen)
     {

@@ -1,5 +1,4 @@
 #include <stdckdint.h>
-#include <stdbit.h>
 #include <stdlib.h>
 #include <string.h>
 #include "flash.h"

@@ -688,10 +688,10 @@ void PPU_RenderScanline(struct Console* sys, const bool b, const s16 y)
     }
 }
 
-int PPUA_MainLoop(void* ptr)
+int SDLCALL PPUA_MainLoop(void* ptr)
 {
     struct Console* sys = ptr;
-    while (!sys->PPUStart) thrd_yield();
+    while (!sys->PPUStart);// thrd_yield();
 
     while (!sys->KillPPUs)
     {
@@ -706,10 +706,10 @@ int PPUA_MainLoop(void* ptr)
     return 0;
 }
 
-int PPUB_MainLoop(void* ptr)
+int SDLCALL PPUB_MainLoop(void* ptr)
 {
     struct Console* sys = ptr;
-    while (!sys->PPUStart) thrd_yield();
+    while (!sys->PPUStart);// thrd_yield();
 
     while (!sys->KillPPUs)
     {

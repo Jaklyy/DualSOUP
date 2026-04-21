@@ -1,4 +1,3 @@
-#include <stdbit.h>
 #include <stddef.h>
 #include <stdckdint.h>
 #include "../../../utils.h"

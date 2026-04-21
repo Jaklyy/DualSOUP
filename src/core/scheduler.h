@@ -1,5 +1,7 @@
 #pragma once
-#include <threads.h>
+#ifdef REALTHREAD
+    #include <threads.h>
+#endif
 #include "utils.h"
 
 
@@ -35,7 +37,9 @@ struct Scheduler
     alignas(HOST_CACHEALIGN) timestamp EventTimes[Evt_Max];
     void (*EventCallbacks[Evt_Max]) (struct Console*, timestamp);
 
+#ifdef REALTHREAD
     mtx_t SchedulerMtx;
+#endif
 };
 
 typedef enum : u8

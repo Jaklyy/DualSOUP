@@ -5,7 +5,7 @@
 #include <SDL3/SDL_render.h>
 #include <SDL3/SDL_timer.h>
 #include <SDL3/SDL_audio.h>
-#include <threads.h>
+#include <SDL3/SDL_thread.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include "../core/console.h"
@@ -31,7 +31,7 @@ typedef struct
     volatile u8 initflag;
 } MailBox;
 
-int Core_Init(void* pass)
+int SDLCALL Core_Init(void* pass)
 {
     volatile MailBox* mailbox = pass;
 
@@ -136,7 +136,7 @@ int main()
     }
 
     bool threadexists = false;
-    thrd_t emu;
+    SDL_Thread* emu;
     struct Console* sys = nullptr;
 
     SDL_Texture* blit = SDL_CreateTexture(ren, SDL_PIXELFORMAT_XBGR8888, SDL_TEXTUREACCESS_STREAMING, 256, 192*2);
@@ -184,9 +184,9 @@ int main()
 
                 printf("%s\n", ((SDL_DropEvent*)&evts)->data);
                 volatile MailBox mailbox = {.rompath = ((SDL_DropEvent*)&evts)->data, .sys = sys, .pad = pad, .aud = aud, .initflag = Init_Busy};
-                if (thrd_create(&emu, Core_Init, (void*)&mailbox) != thrd_success)
+                if ((emu = SDL_CreateThread(Core_Init, "SOUP_Core", (void*)&mailbox)) == NULL)
                 {
-                    printf("thread init failure :(\n");
+                    printf("thread init failure :( %s\n", SDL_GetError());
                     return EXIT_FAILURE;
                 }
 
@@ -206,8 +206,7 @@ int main()
 
         if (sys && !sys->Powman.PowerCR.SystemShutDown)
         {
-            int ret = mtx_trylock(&sys->FrameBufferMutex[buf]);
-            if (ret == thrd_success)
+            if (SDL_TryLockMutex(sys->FrameBufferMutex[buf]))
             {
                 int pitch; 
                 SDL_LockTexture(blit, NULL, (void**)&buffer, &pitch);
@@ -220,7 +219,7 @@ int main()
                                 buffer[(s*192*pitch)+(y*pitch)+(x*pitch/256)+b] = (u8)((((float)((sys->Framebuffer[buf][s][y][x] >> (b*6)) & 0x3F) * 0xFF) / 0x3F));
                             }
                 SDL_UnlockTexture(blit);
-                mtx_unlock(&sys->FrameBufferMutex[buf]);
+                SDL_UnlockMutex(sys->FrameBufferMutex[buf]);
                 buf = !buf;
                 SDL_RenderTexture(ren, blit, NULL, NULL);
                 SDL_RenderPresent(ren);

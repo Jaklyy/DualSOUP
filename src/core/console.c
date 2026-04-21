@@ -4,7 +4,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/types.h>
-#include <threads.h>
 #include "console.h"
 #include "arm/arm9/arm.h"
 #include "arm/shared/arm.h"
@@ -89,8 +88,8 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
         // de-allocate shit so it can be re-allocated
         // TODO: dont do this?
         CR_Free(sys->HandleARM7);
-        mtx_destroy(&sys->FrameBufferMutex[0]);
-        mtx_destroy(&sys->FrameBufferMutex[1]);
+        SDL_DestroyMutex(sys->FrameBufferMutex[0]);
+        SDL_DestroyMutex(sys->FrameBufferMutex[1]);
 #ifdef REALTHREAD
         mtx_destroy(&sys->Sched.SchedulerMtx);
 #endif
@@ -102,13 +101,13 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
         sys->KillSWRen = true;
         sys->SWRenStart = true;
         sys->SWRenTarget = timestamp_max;
-        thrd_join(sys->SWRenThread, &dummy);
+        SDL_WaitThread(sys->SWRenThread, &dummy); // todo: detach thread instead?
         sys->RenderedLines = 255;
         sys->KillPPUs = true;
         sys->PPUStart = true;
         sys->PPUTarget = timestamp_max;
-        thrd_join(sys->PPUAThread, &dummy);
-        thrd_join(sys->PPUBThread, &dummy);
+        SDL_WaitThread(sys->PPUAThread, &dummy); // todo: detach thread instead?
+        SDL_WaitThread(sys->PPUBThread, &dummy); // todo: detach thread instead?
 #endif
     }
 
@@ -148,17 +147,17 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
 
     bool gcinit = Gamecard_Init(&sys->Gamecard, rom, sys->NTRBios7.b8);
 
-    bool mtxinit = (mtx_init(&sys->FrameBufferMutex[0], mtx_plain) == thrd_success);
-    bool mtxinit3 = (mtx_init(&sys->FrameBufferMutex[1], mtx_plain) == thrd_success);
+    bool mtxinit = ((sys->FrameBufferMutex[0] = SDL_CreateMutex()) != NULL);
+    bool mtxinit3 = ((sys->FrameBufferMutex[1] = SDL_CreateMutex()) != NULL);
 #ifdef REALTHREAD
     bool mtxinit2 = (mtx_init(&sys->Sched.SchedulerMtx, mtx_recursive) == thrd_success);
 #else
     bool mtxinit2 = true;
 #endif
 #ifndef SINGLETHREADRASTER
-    bool thrdinit1 = (thrd_create(&sys->PPUAThread, PPUA_MainLoop, sys) == thrd_success);
-    bool thrdinit2 = (thrd_create(&sys->PPUBThread, PPUB_MainLoop, sys) == thrd_success);
-    bool thrdinit3 = (thrd_create(&sys->SWRenThread, SWRen_MainLoop, sys) == thrd_success);
+    bool thrdinit1 = ((sys->PPUAThread = SDL_CreateThread(PPUA_MainLoop, "SOUP_PPUA", sys)) != NULL);
+    bool thrdinit2 = ((sys->PPUAThread = SDL_CreateThread(PPUB_MainLoop, "SOUP_PPUB", sys)) != NULL);
+    bool thrdinit3 = ((sys->SWRenThread = SDL_CreateThread(SWRen_MainLoop, "SOUP_GPUR", sys)) != NULL);
 #else
     bool thrdinit1 = true, thrdinit2 = true, thrdinit3 = true;
 #endif
@@ -188,8 +187,8 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
         if (cr7init) CR_Free(sys->HandleARM7);
         if (firminit) Flash_Cleanup(&sys->Firmware);
         if (gcinit) Gamecard_Cleanup(&sys->Gamecard);
-        if (mtxinit) mtx_destroy(&sys->FrameBufferMutex[0]);
-        if (mtxinit3) mtx_destroy(&sys->FrameBufferMutex[1]);
+        if (mtxinit) SDL_DestroyMutex(sys->FrameBufferMutex[0]);
+        if (mtxinit3) SDL_DestroyMutex(sys->FrameBufferMutex[1]);
 #ifdef REALTHREAD
         if (mtxinit2) mtx_destroy(&sys->Sched.SchedulerMtx);
 #endif
@@ -198,13 +197,13 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
         sys->KillSWRen = true;
         sys->SWRenStart = true;
         sys->SWRenTarget = timestamp_max;
-        thrd_join(sys->SWRenThread, &dummy);
+        SDL_WaitThread(sys->SWRenThread, &dummy); // todo: detach thread instead?
         sys->RenderedLines = 255;
         sys->KillPPUs = true;
         sys->PPUStart = true;
         sys->PPUTarget = timestamp_max;
-        thrd_join(sys->PPUAThread, &dummy);
-        thrd_join(sys->PPUBThread, &dummy);
+        SDL_WaitThread(sys->PPUAThread, &dummy); // todo: detach thread instead?
+        SDL_WaitThread(sys->PPUBThread, &dummy); // todo: detach thread instead?
 #endif
 
         free(sys);
@@ -212,6 +211,8 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
 
         return nullptr;
     }
+
+    SDL_LockMutex(sys->FrameBufferMutex[sys->BackBuf]);
 
     sys->Pad = pad;
     sys->Aud = aud;
@@ -565,7 +566,6 @@ void Console_ClearHeldIRQs(struct Console* sys, const u8 irq, const bool a9)
 void Console_MainLoop(struct Console* sys)
 {
     CR_Start = true;
-    mtx_lock(&sys->FrameBufferMutex[sys->BackBuf]);
     sys->TimeFrac = 0;
     sys->OldTime = SDL_GetPerformanceCounter();
 #ifdef DUMPAUDIO

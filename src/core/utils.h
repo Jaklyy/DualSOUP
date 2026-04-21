@@ -2,7 +2,6 @@
 
 #include <stdint.h>
 #include <stddef.h>
-#include <stdbit.h>
 #include "../frontend/coroutine.h"
 #include <stdio.h>
 
@@ -64,6 +63,91 @@ typedef uint64_t timestamp;
 // todo: actually add fallback paths if these dont exist for w/e reason
 /*#define likely(x) __builtin_expect(!!(x), 1)
 #define unlikely(x) __builtin_expect(!!(x), 0)*/
+
+// attempt to support platforms that dont support stdbit.h for w/e reason
+#if __has_include(<stdbit.h>)
+    #include <stdbit.h>
+#else
+    //#warning "stdbit.h not detected, fallback options will be used."
+#endif
+
+#ifndef stdc_trailing_zeros
+    //#warning "stdc_trailing_zeros not found, using fallback."
+    static unsigned int ds_internal_stdctz64 [[maybe_unused]] (u64 input)
+    {
+        if (input == 0) return 64;
+        else return __builtin_ctzl(input);
+    }
+    static unsigned int ds_internal_stdctz32 [[maybe_unused]] (u32 input)
+    {
+        if (input == 0) return 32;
+        else return __builtin_ctz(input);
+    }
+    static unsigned int ds_internal_stdctz16 [[maybe_unused]] (u16 input)
+    {
+        if (input == 0) return 16;
+        else return __builtin_ctz(input);
+    }
+    static unsigned int ds_internal_stdctz8 [[maybe_unused]] (u8 input)
+    {
+        if (input == 0) return 8;
+        else return __builtin_ctz(input);
+    }
+    #define stdc_trailing_zeros(x) _Generic((x), \
+        s8: ds_internal_stdctz8, u8: ds_internal_stdctz8, \
+        s16: ds_internal_stdctz16, u16: ds_internal_stdctz16, \
+        s32: ds_internal_stdctz32, u32: ds_internal_stdctz32, \
+        s64: ds_internal_stdctz64, u64: ds_internal_stdctz64)((x))
+#endif
+
+#ifndef stdc_trailing_ones
+    //#warning "stdc_trailing_ones not found, using fallback."
+    #define stdc_trailing_ones(x) stdc_trailing_zeros(~(x))
+#endif
+
+#ifndef stdc_leading_zeros
+    //#warning "stdc_leading_zeros not found, using fallback."
+    static unsigned int ds_internal_stdclz64 [[maybe_unused]] (u64 input)
+    {
+        if (input == 0) return 64;
+        else return __builtin_clzl(input);
+    }
+    static unsigned int ds_internal_stdclz32 [[maybe_unused]] (u32 input)
+    {
+        if (input == 0) return 32;
+        else return __builtin_clz(input);
+    }
+    static unsigned int ds_internal_stdclz16 [[maybe_unused]] (u16 input)
+    {
+        if (input == 0) return 16;
+        else return (32-16)-__builtin_clz(input);
+    }
+    static unsigned int ds_internal_stdclz8 [[maybe_unused]] (u8 input)
+    {
+        if (input == 0) return 8;
+        else return (32-8)-__builtin_clz(input);
+    }
+    #define stdc_leading_zeros(x) _Generic((x), \
+        s8: ds_internal_stdclz8, u8: ds_internal_stdclz8, \
+        s16: ds_internal_stdclz16, u16: ds_internal_stdclz16, \
+        s32: ds_internal_stdclz32, u32: ds_internal_stdclz32, \
+        s64: ds_internal_stdclz64, u64: ds_internal_stdclz64)((x))
+#endif
+
+#ifndef stdc_leading_ones
+    //#warning "stdc_leading_ones not found, using fallback."
+    #define stdc_leading_ones(x) stdc_leading_zeros(~(x))
+#endif
+
+#ifndef stdc_count_ones
+    //#warning "stdc_count_ones not found, using fallback."
+    #define stdc_count_ones(x) __builtin_popcountl((u64)(x))
+#endif
+
+#ifndef stdc_count_zeros
+    //#warning "stdc_count_zeros not found, using fallback."
+    #define stdc_count_zeros(x) stdc_count_ones(~(x))
+#endif
 
 #define bswap(x) _Generic((x), \
     s16: __builtin_bswap16, u16: __builtin_bswap16, \
@@ -178,6 +262,11 @@ void LogPrint(const u64 logtype, const char* str, ...) __attribute__ ((format (p
 // logprint but with more crashing to desktop
 void CrashSpectacularly(const char* str, ...) __attribute__ ((format (printf, 1, 2)));
 
+// input handlers
+
+u16 Input_PollExtra(void* pad);
+u16 Input_PollMain(void* pad);
+
 // coroutine stuff
 #ifdef REALTHREAD
 extern volatile bool CR_Kill;
@@ -190,6 +279,3 @@ bool CR_Create(coroutine* handle, void (*func)(void*), void* param);
 void CR_Free(coroutine handle);
 void CR_Switch(coroutine handle);
 coroutine CR_Active();
-
-u16 Input_PollExtra(void* pad);
-u16 Input_PollMain(void* pad);
