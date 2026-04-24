@@ -81,8 +81,8 @@ bool AHB_NegOwnership(struct Console* sys, timestamp* cur, const bool atomic, co
         { \
             Timing16(&sys->AHB9, mask);  \
             AddBusContention(sys->AHBBusyTS, sys->AHB9.Timestamp, Dev_##x ); \
+            PPU_Sync(sys, sys->AHB9.Timestamp); \
         } \
-        PPU_Sync(sys, sys->AHB9.Timestamp); \
         MemoryWrite(32, sys-> x , addr, x##_Size, val, mask); \
     } \
     else /* read */ \
@@ -188,8 +188,8 @@ u32 VRAM_LCD(struct Console* sys, const u32 addr, const u32 mask, const bool wri
             { \
                 if (!any) Timing16(bus, mask); \
                 AddBusContention(sys->AHBBusyTS, bus->Timestamp, Dev_##x ); \
+                PPU_Sync(sys, sys->AHB9.Timestamp); \
             } \
-            PPU_Sync(sys, sys->AHB9.Timestamp); \
             MemoryWrite(32, sys-> x , addr, x##_Size, val, mask); \
         } \
         else /* read */ \
@@ -708,8 +708,9 @@ u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
         {
             BusContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_IO9); // checkme: does all of IO have write contention at the same time?
             Timing32(&sys->AHB9); // checkme: does all of IO have the exact same timings?
+            ret = IO9_Read(sys, addr, mask, timings);
         }
-        ret = IO9_Read(sys, addr, mask, timings);
+        else ret = 0; // todo: fix this
         break;
 
     case 0x05: // 2D GPU Palette
@@ -882,18 +883,25 @@ void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
         {
             if (mask & 0x0000FFFF)
             {
-                Timing32(&sys->AHB9);
-                PPU_Sync(sys, sys->AHB9.Timestamp);
-                BusContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_Palette);
-                AddBusContention(sys->AHBBusyTS, sys->AHB9.Timestamp, Dev_Palette);
+                if (timings)
+                {
+                    Timing32(&sys->AHB9);
+                    PPU_Sync(sys, sys->AHB9.Timestamp);
+                    BusContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_Palette);
+                    AddBusContention(sys->AHBBusyTS, sys->AHB9.Timestamp, Dev_Palette);
+                }
                 MemoryWrite(32, sys->Palette, addr, Palette_Size, val, mask&0x0000FFFF);
             }
             if (mask & 0xFFFF0000)
             {
-                Timing32(&sys->AHB9);
-                PPU_Sync(sys, sys->AHB9.Timestamp);
-                BusContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_Palette);
-                AddBusContention(sys->AHBBusyTS, sys->AHB9.Timestamp, Dev_Palette);
+                if (timings)
+                {
+                    if (addr == 0x5000620) printf("write to palette %08X %08X %08X\n", addr, val, sys->ARM9.ARM.PC);
+                    Timing32(&sys->AHB9);
+                    PPU_Sync(sys, sys->AHB9.Timestamp);
+                    BusContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_Palette);
+                    AddBusContention(sys->AHBBusyTS, sys->AHB9.Timestamp, Dev_Palette);
+                }
                 MemoryWrite(32, sys->Palette, addr, Palette_Size, val, mask&0xFFFF0000);
             }
         }
@@ -1062,8 +1070,9 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
         {
             BusContention(sys->AHBBusyTS, &sys->AHB7.Timestamp, Dev_IO7); // checkme: does all of IO have write contention at the same time?
             Timing32(&sys->AHB7); // checkme: does all of IO have the exact same timings?
+            ret = IO7_Read(sys, addr, mask, timings);
         }
-        ret = IO7_Read(sys, addr, mask, timings);
+        else ret = 0; // todo: fix this
         break;
     case 0x048: // WiFi
         ret = WiFi_Read(sys, ts, addr, mask, timings);
