@@ -190,9 +190,9 @@ void PPU_RenderBitmap(struct Console* sys, const bool b, u16 y, const u8 bg, con
         {
             u32 addr = screenbase + (x*2) + (y*(width*2));
             u16 color = BG(sys, addr&~3, u32_max, false, 0, false) >> ((addr & 2) * 8);
-            buffer[x] = (CompositeBuffer){color&0x7FFF, 0, !(color & 0x8000), true, false, false, false};
+            buffer[x] = (CompositeBuffer){RGB565to666(color&0x7FFF), 0, !(color & 0x8000), true, false, false, false};
         }
-        else
+        else // 8 bit index
         {
             u32 addr = screenbase + x + (y*width);
             u8 idx = BG(sys, addr&~3, u32_max, false, 0, false) >> ((addr & 3) * 8);
@@ -461,26 +461,28 @@ void PPU_Composite(struct Console* sys, const bool b, const u16 y)
         for (int j = 0; j < i; j++)
         {
             if (index[j].NotPal) color[j] = index[j].Index;
-            else if (index[j].ExtPal)
+            else
             {
-                // TODO: handle sprites
-                if (bg[j] == 4)
+                if (index[j].ExtPal)
                 {
-                    color[j] = OBJExtPal(sys, index[j].Index);
+                    if (bg[j] == 4)
+                    {
+                        color[j] = OBJExtPal(sys, index[j].Index);
+                    }
+                    else
+                    {
+                        u32 extpalbase = bg[j]*(KiB(8)/sizeof(u16));
+                        if ((bg[j] <= 1) && ppu->BGCR[bg[j]].ExtPalSlot) extpalbase += KiB(16)/sizeof(u16);
+                        color[j] = BGExtPal(sys, index[j].Index + extpalbase);
+                    }
                 }
                 else
                 {
-                    u32 extpalbase = bg[j]*(KiB(8)/sizeof(u16));
-                    if ((bg[j] <= 1) && ppu->BGCR[bg[j]].ExtPalSlot) extpalbase += KiB(16)/sizeof(u16);
-                    color[j] = BGExtPal(sys, index[j].Index+extpalbase);
+                    AddBusContention(sys->AHBBusyTS, *time, Dev_Palette);
+                    color[j] = palbase[(index[j].Index & 0xFF) + ((bg[j] == 4) ? 256 : 0)];
                 }
+                color[j] = RGB565to666(color[j]);
             }
-            else
-            {
-                AddBusContention(sys->AHBBusyTS, *time, Dev_Palette);
-                color[j] = palbase[(index[j].Index&0xFF) + ((bg[j] == 4) ? 0x100 : 0)];
-            }
-            color[j] = ((index[j].ForceBlend && index[j].HasAlpha) ? color[j] : RGB565to666(color[j]));
 
             *time += (i == 2) ? 3 : 6;
             PPU_Wait(sys, *time);
@@ -624,10 +626,11 @@ void PPU_SpriteAffine(struct Console* sys, const bool b, const SprAttrs01 attr1,
                 }
 
                 u32 addr = baseaddr + ytile + ypixel + xtile + xpixel;
-                u16 index = (OBJ(sys, addr & ~3, 0xFFFFFFFF, false, 0, false) >> ((addr & 0x3) * 8)) & 0xFFFF;
+                u16 index = OBJ(sys, addr & ~3, 0xFFFFFFFF, false, 0, false) >> ((addr & 0x3) * 8);
 
                 if (attr1.Pal256)
                 {
+                    index &= 0xFF;
                     if (!index) continue;
                     index |= attr2.PaletteOffset * 256;
                 }
@@ -697,18 +700,19 @@ void PPU_SpriteNormal(struct Console* sys, const bool b, const SprAttrs01 attr1,
         for (; ((attr1.HFlip) ? (sx >= 0) : (sx < width)) && (x < 256); ((attr1.HFlip) ? (sx-=1) : (sx+=1)), x++)
         {
             u32 addr = baseaddr + ((sx/8*8) << (2+attr1.Pal256)) + ((sx%8) >> !attr1.Pal256);
-            u8 index = OBJ(sys, addr&~3, 0xFFFFFFFF, false, 0, false) >> ((addr&3)*8);
+            u16 index = OBJ(sys, addr&~3, 0xFFFFFFFF, false, 0, false) >> ((addr&3)*8);
 
             if (attr1.Pal256)
             {
+                index &= 0xFF;
                 if (!index) continue;
-                index += attr2.PaletteOffset * 256; // for extpal
+                index |= attr2.PaletteOffset * 256; // for extpal
             }
             else
             {
                 index = (index >> ((sx&1) * 4)) & 0xF;
                 if (!index) continue;
-                index += attr2.PaletteOffset * 16;
+                index |= attr2.PaletteOffset * 16;
             }
 
             if (buffer[x].Empty || (buffer[x].SprPrio > attr2.Priority))
