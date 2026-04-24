@@ -94,7 +94,7 @@ void PPU_None(struct Console* sys, const bool b, const u8 bg)
 {
     CompositeBuffer* buffer = (b ? sys->CompositeBufferB[bg] : sys->CompositeBufferA[bg]);
     for (int x = 0; x < 256; x++)
-        buffer[x] = (CompositeBuffer){0, 0, true, false, false, false};
+        buffer[x] = (CompositeBuffer){0, 0, true, false, false, false, false};
 }
 
 void PPU_RenderText(struct Console* sys, const bool b, u16 y, const u8 bg)
@@ -152,7 +152,7 @@ void PPU_RenderText(struct Console* sys, const bool b, u16 y, const u8 bg)
             u32 pixeladdr = tilebase + (((tile.TileNum * (TileWidth*TileHeight)) + (yfrac*TileWidth)) + xfrac);
             u8 idx = BG(sys, pixeladdr&~3, u32_max, false, 0, false) >> ((pixeladdr&3)*8);
 
-            buffer[xf] = (CompositeBuffer){idx+(tile.Palette*256), 0, !idx, false, ppu->DisplayCR.BGExtPalEn, false};
+            buffer[xf] = (CompositeBuffer){idx+(tile.Palette*256), 0, !idx, false, ppu->DisplayCR.BGExtPalEn, false, false};
         }
         else // pal 16 4bpp
         {
@@ -161,7 +161,7 @@ void PPU_RenderText(struct Console* sys, const bool b, u16 y, const u8 bg)
             idx = ((idx >> ((xfrac&1)*4)) & 0xF);
 
             // ext pal doesn't apply for 4bpp tilesets for w/e reason
-            buffer[xf] = (CompositeBuffer){idx+(tile.Palette*16), 0, !idx, false, false, false};
+            buffer[xf] = (CompositeBuffer){idx+(tile.Palette*16), 0, !idx, false, false, false, false};
         }
 
         xmsb ^= ckd_add(&x, x, 1) & ppu->BGCR[bg].Wide;
@@ -190,13 +190,13 @@ void PPU_RenderBitmap(struct Console* sys, const bool b, u16 y, const u8 bg, con
         {
             u32 addr = screenbase + (x*2) + (y*(width*2));
             u16 color = BG(sys, addr&~3, u32_max, false, 0, false) >> ((addr & 2) * 8);
-            buffer[x] = (CompositeBuffer){color&0x7FFF, 0, !(color & 0x8000), true, false, false};
+            buffer[x] = (CompositeBuffer){color&0x7FFF, 0, !(color & 0x8000), true, false, false, false};
         }
         else
         {
             u32 addr = screenbase + x + (y*width);
             u8 idx = BG(sys, addr&~3, u32_max, false, 0, false) >> ((addr & 3) * 8);
-            buffer[x] = (CompositeBuffer){idx, 0, !idx, false, false, false};
+            buffer[x] = (CompositeBuffer){idx, 0, !idx, false, false, false, false};
         }
     }
 }
@@ -235,7 +235,7 @@ void PPU_3D(struct Console* sys, const u16 y)
     CompositeBuffer* buffer = sys->CompositeBufferA[0];
     SWRen_SyncRenderedLines(sys, y+1);
     for (int x = 0; x < 256; x++)
-        buffer[x] = (CompositeBuffer){sys->GX3D.CBuf[0][y][x], 0, !(sys->GX3D.CBuf[0][y][x] >> 18) /* TODO */, true, false, true};
+        buffer[x] = (CompositeBuffer){sys->GX3D.CBuf[0][y][x] + (1<<18) /* increase alpha to allow for max alpha for blending */, 0, ((sys->GX3D.CBuf[0][y][x] >> 18) & 0x1F) == 0, true, false, true, true};
 }
 
 void PPU_BG0_Lookup(struct Console* sys, const bool b, const u16 y)
@@ -347,13 +347,19 @@ u32 PPU_Blend(PPU* ppu, CompositeBuffer* indices, u32* colors, int* bgs, int num
     u16 rgb[2][4] = {{colors[0] & 0x3F, (colors[0] >> 6) & 0x3F, (colors[0] >> 12) & 0x3F, 0},
                      {colors[1] & 0x3F, (colors[1] >> 6) & 0x3F, (colors[1] >> 12) & 0x3F, 0}};
 
-    if (indices[0].GPU3D && (ppu->BlendCR.BlendBot & (1<<bgs[1])))
+    if ((num == 2) && indices[0].ForceBlend && (ppu->BlendCR.BlendBot & (1<<bgs[1])))
     {
-        alpA = (colors[0] >> 18);
-        alpA += alpA != 0; // checkme?
+        if (indices[0].HasAlpha)
+        {
+            alpA = (colors[0] >> 18);
 
-        alpB = 32 - alpA;
-        goto BLDCR_Blend;
+            alpB = 32 - alpA;
+            goto Alpha_Blend;
+        }
+        else
+        {
+            goto Force_Blend;
+        }
     }
 
     switch(ppu->BlendCR.Effect)
@@ -365,11 +371,11 @@ u32 PPU_Blend(PPU* ppu, CompositeBuffer* indices, u32* colors, int* bgs, int num
         if ((num == 1) || !(ppu->BlendCR.BlendTop & (1<<bgs[0])) || !(ppu->BlendCR.BlendBot & (1<<bgs[1])))
             return colors[0];
 
+        Force_Blend:
         alpA = ((ppu->BlendAlpha[0] <= 16) ? ppu->BlendAlpha[0] : 16) << 1;
         alpB = ((ppu->BlendAlpha[1] <= 16) ? ppu->BlendAlpha[1] : 16) << 1;
 
-        BLDCR_Blend:
-        if (num == 1) return colors[0];
+        Alpha_Blend:
         for (int i = 0; i < 4; i++)
         {
             // rounds to nearest
@@ -413,8 +419,8 @@ void PPU_Composite(struct Console* sys, const bool b, const u16 y)
     {
         int bg[2];
         // initialize with bg color
-        CompositeBuffer index[2] = {(CompositeBuffer){0, 0, false, false, false /* checkme? */, false},
-                                    (CompositeBuffer){0, 0, false, false, false /* checkme? */, false}};
+        CompositeBuffer index[2] = {(CompositeBuffer){0, 0, false, false, false /* checkme? */, false, false},
+                                    (CompositeBuffer){0, 0, false, false, false /* checkme? */, false, false}};
         int i = 0;
         for (int prio = 0; prio < 4; prio++)
         {
@@ -474,7 +480,7 @@ void PPU_Composite(struct Console* sys, const bool b, const u16 y)
                 AddBusContention(sys->AHBBusyTS, *time, Dev_Palette);
                 color[j] = palbase[(index[j].Index&0xFF) + ((bg[j] == 4) ? 0x100 : 0)];
             }
-            color[j] = (index[j].GPU3D ? color[j] : RGB565to666(color[j]));
+            color[j] = ((index[j].ForceBlend && index[j].HasAlpha) ? color[j] : RGB565to666(color[j]));
 
             *time += (i == 2) ? 3 : 6;
             PPU_Wait(sys, *time);
@@ -485,26 +491,190 @@ void PPU_Composite(struct Console* sys, const bool b, const u16 y)
     *time += 2+HBlank_Cycles;
 }
 
+void PPU_SpriteAffine(struct Console* sys, const bool b, const SprAttrs01 attr1, const SprAttrs2 attr2, const u8 width, const u8 height, u8 y)
+{
+    PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
+    CompositeBuffer* buffer = (b ? sys->CompositeBufferB[4] : sys->CompositeBufferA[4]);
+    u32 (*OBJ)(struct Console*, const u32, const u32, const bool, const u32, const bool) = (b ? VRAM_OBJB : VRAM_OBJA);
+
+    // fetch rotation and scaling parameters
+    volatile u32* oambase = (b ? &sys->OAM.b32[0x400/sizeof(u32)] : &sys->OAM.b32[0]);
+    volatile u32* rotscalbase = &oambase[attr1.AffineParam*(32/sizeof(typeof(*oambase)))];
+    // rot/scal params are stored in the gaps between each sprite's oam data.
+    s16 params[4] = {rotscalbase[1] >> 16, rotscalbase[3] >> 16, rotscalbase[5] >> 16, rotscalbase[7] >> 16};
+
+    // todo: mosaic
+
+    // double size sprites have their bounding boxes doubled
+    u8 widthreal = width;
+    u8 heightreal = height;
+    if (attr1.DoubleSize)
+    {
+        widthreal*=2;
+        heightreal*=2;
+    }
+
+    s16 x; // x coordinate relative to screen
+    s16 sx; // x coordinate relative to left edge of sprite's bounding box
+    if (attr1.X < 0)
+    {
+        // if x is negative, start rendering from the left edge of the screen. (checkme: do oob pixels matter?)
+        x = 0;
+        sx = 0-attr1.X;
+    }
+    else
+    {
+        // otherwise start rendering from left edge of the sprite.
+        x = attr1.X;
+        sx = 0;
+    }
+
+    // MATRIX MATH WOOOOOOOOOOOOOOOOOOOOO
+    // calculate rotscal thingies
+    // sprites are rotated around their center
+    u32 rotx = ((((s32)sx-(widthreal/2)) * params[0]) + (((s32)y-(heightreal/2)) * params[1]) + (width*256/2));
+    u32 roty = ((((s32)sx-(widthreal/2)) * params[2]) + (((s32)y-(heightreal/2)) * params[3]) + (height*256/2));
+
+    if (attr1.Mode == 2)
+    {
+        LogPrint(LOG_PPU|LOG_UNIMP, "UNIMPLEMENTED: WINDOW AFFINE SPRITES\n");
+    }
+    else if (attr1.Mode == 3) // bitmap sprite
+    {
+        u8 alpha = attr2.BitmapAlpha;
+        if (!alpha) return; // checkme?
+        // increase by one to allow for max alpha value
+        // shift left by one to convert to 5 bit alpha (for blending)
+        alpha = (alpha + 1) << 1;
+
+        u32 baseaddr;
+        u32 ystep;
+        if (ppu->DisplayCR.BitmapOBJ1D)
+        {
+            if (ppu->DisplayCR.BitmapOBJ2DDims)
+            {
+                // apparently does nothing??
+                return; // checkme
+            }
+            else
+            {
+                baseaddr = attr2.TileNum << (7+ppu->DisplayCR.BitmapOBJ1DBound);
+                ystep = width;
+            }
+        }
+        else
+        {
+            if (ppu->DisplayCR.BitmapOBJ2DDims)
+            {
+                baseaddr = ((attr2.TileNum % 32) * 16) + ((attr2.TileNum / 32) * 32 * 4);
+                ystep = 256;
+            }
+            else
+            {
+                baseaddr = ((attr2.TileNum % 16) * 16) + ((attr2.TileNum / 16) * 16 * 8);
+                ystep = 128;
+            }
+        }
+
+        for (; (sx < widthreal) && (x < 256); x++, sx++, rotx+=params[0], roty+=params[2])
+        {
+            if ((rotx < (width*256)) && (roty < (height*256)))
+            {
+                u32 addr = baseaddr + (((roty / 256) * ystep) + ((rotx / 256)) * 2);
+                u16 color = OBJ(sys, addr & ~3, 0xFFFFFFFF, false, 0, false) >> ((addr & 0x2) * 8);
+
+                if ((color & 0x8000) && (buffer[x].Empty || (buffer[x].SprPrio > attr2.Priority)))
+                    buffer[x] = (CompositeBuffer){RGB565to666(color & 0x7FFF), attr2.Priority, false, true, false, true, true};
+            }
+        }
+    }
+    else // not bitmap
+    {
+        u32 baseaddr = attr2.TileNum;
+        u32 ystep;
+
+        if (ppu->DisplayCR.TileOBJ1D)
+        {
+            baseaddr <<= ppu->DisplayCR.TileOBJ1DBound;
+            ystep = (width/8) << attr1.Pal256;
+        }
+        else
+        {
+            ystep = 0x20;
+        }
+
+        baseaddr *= 32;
+        ystep *= 32;
+
+        for (; (sx < widthreal) && (x < 256); sx++, x++, rotx+=params[0], roty+=params[2])
+        {
+            if (rotx < (width*256) && roty < (height*256))
+            {
+                u32 xtile = (rotx>>11) * 64;
+                u32 ytile = (roty>>11) * ystep;
+                u32 xpixel = (rotx>>8) % 8;
+                u32 ypixel = ((roty>>8) % 8) * 8;
+                u32 xpixfrac = xpixel & 1;
+
+                if (!attr1.Pal256)
+                {
+                    xtile/=2;
+                    xpixel/=2;
+                    ypixel/=2;
+                }
+
+                u32 addr = baseaddr + ytile + ypixel + xtile + xpixel;
+                u16 index = (OBJ(sys, addr & ~3, 0xFFFFFFFF, false, 0, false) >> ((addr & 0x3) * 8)) & 0xFFFF;
+
+                if (attr1.Pal256)
+                {
+                    if (!index) continue;
+                    index |= attr2.PaletteOffset * 256;
+                }
+                else
+                {
+                    index = (index >> (xpixfrac * 4)) & 0xF;
+                    if (!index) continue;
+                    index |= attr2.PaletteOffset * 16;
+                }
+                if (buffer[x].Empty || (buffer[x].SprPrio > attr2.Priority))
+                    buffer[x] = (CompositeBuffer){index, attr2.Priority, false, false, attr1.Pal256 && ppu->DisplayCR.SprExtPalEn, attr1.Mode == 1, false};
+            }
+        }
+    }
+}
+
 void PPU_SpriteNormal(struct Console* sys, const bool b, const SprAttrs01 attr1, const SprAttrs2 attr2, const u8 width, const u8 height, u8 y)
 {
     PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
     CompositeBuffer* buffer = (b ? sys->CompositeBufferB[4] : sys->CompositeBufferA[4]);
     u32 (*OBJ)(struct Console*, const u32, const u32, const bool, const u32, const bool) = (b ? VRAM_OBJB : VRAM_OBJA);
 
-    if (attr1.VFlip) y = (height - 1 - y);
+    // vertical flip flag means we start from the bottom of the sprite
+    if (attr1.VFlip) y = ((height-1) - y);
 
-    s16 x = attr1.X;
-    s16 xend = x + width;
-    s16 xmod = (x < 0) ? 0-x : 0;
-    if (x < 0) x = 0;
-
-    if (attr1.Mode == 3)
+    s16 x; // x coordinate relative to screen
+    s16 sx; // x coordinate relative to left edge of sprite's bounding box
+    if (attr1.X < 0)
     {
-        LogPrint(LOG_PPU|LOG_UNIMP, "UNIMPLEMENTED: BITMAP SPRITES\n");
+        // if x is negative, start rendering from the left edge of the screen. (checkme: do oob pixels matter?)
+        x = 0;
+        sx = 0-attr1.X;
     }
-    else if (attr1.Mode == 2)
+    else
+    {
+        // otherwise start rendering from left edge of the sprite.
+        x = attr1.X;
+        sx = 0;
+    }
+
+    if (attr1.Mode == 2)
     {
         LogPrint(LOG_PPU|LOG_UNIMP, "UNIMPLEMENTED: WINDOW SPRITES\n");
+    }
+    else if (attr1.Mode == 3)
+    {
+        LogPrint(LOG_PPU|LOG_UNIMP, "UNIMPLEMENTED: BITMAP SPRITES\n");
     }
     else
     {
@@ -519,28 +689,30 @@ void PPU_SpriteNormal(struct Console* sys, const bool b, const SprAttrs01 attr1,
             baseaddr += (y/8)*32;
         }
 
-        if (attr1.Pal256)
-        {
-            baseaddr = (baseaddr * 32) + ((y%8) * 8);
+        // add y pixel offset
+        baseaddr = (baseaddr*32) + ((y%8) << (2+attr1.Pal256));
 
-            for (;x < xend && x < 256; x++, xmod++)
+        if (attr1.HFlip) sx = (width-1) - sx;
+
+        for (; ((attr1.HFlip) ? (sx >= 0) : (sx < width)) && (x < 256); ((attr1.HFlip) ? (sx-=1) : (sx+=1)), x++)
+        {
+            u32 addr = baseaddr + ((sx/8*8) << (2+attr1.Pal256)) + ((sx%8) >> !attr1.Pal256);
+            u8 index = OBJ(sys, addr&~3, 0xFFFFFFFF, false, 0, false) >> ((addr&3)*8);
+
+            if (attr1.Pal256)
             {
-                u32 addr = baseaddr + (attr1.HFlip ? (((width-1-xmod)/8*8*8) + ((width-1-xmod)%8)) : ((xmod/8*8*8) + (xmod%8)));
-                u8 index = OBJ(sys, addr&~3, 0xFFFFFFFF, false, 0, false) >> ((addr&3)*8);
-                if (index && (buffer[x].Empty || (buffer[x].SprPrio > attr2.Priority))) buffer[x] = (CompositeBuffer){index+(attr2.PaletteOffset*256), attr2.Priority, false, false, ppu->DisplayCR.SprExtPalEn, false};
+                if (!index) continue;
+                index += attr2.PaletteOffset * 256; // for extpal
             }
-        }
-        else
-        {
-            baseaddr = (baseaddr * 32) + ((y%8) * 4);
+            else
+            {
+                index = (index >> ((sx&1) * 4)) & 0xF;
+                if (!index) continue;
+                index += attr2.PaletteOffset * 16;
+            }
 
-            for (;x < xend && x < 256; x++, xmod++)
-            { 
-                u32 addr = baseaddr + (attr1.HFlip ? (((width-1-xmod)/8*8*4) + ((width-1-xmod)%8/2)) : ((xmod/8*8*4) + (xmod%8/2)));
-                u8 index = OBJ(sys, addr&~3, 0xFFFFFFFF, false, 0, false) >> ((addr&3)*8);
-                index = ((index >> (((xmod&1)^attr1.HFlip)*4)) & 0xF);
-                if (index && (buffer[x].Empty || (buffer[x].SprPrio > attr2.Priority))) buffer[x] = (CompositeBuffer){index+(attr2.PaletteOffset*16), attr2.Priority, false, false, false, false};
-            }
+            if (buffer[x].Empty || (buffer[x].SprPrio > attr2.Priority))
+                buffer[x] = (CompositeBuffer){index, attr2.Priority, false, false, attr1.Pal256 && ppu->DisplayCR.SprExtPalEn, attr1.Mode == 1, false};
         }
     }
 }
@@ -548,59 +720,76 @@ void PPU_SpriteNormal(struct Console* sys, const bool b, const SprAttrs01 attr1,
 void PPU_BuildSprites(struct Console* sys, const bool b, const u8 y)
 {
     PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
+    // checkme: does this need to be volatile to handle thread sync properly?
     volatile u32* oambase = (b ? &sys->OAM.b32[0x400/sizeof(u32)] : &sys->OAM.b32[0]);
 
     PPU_None(sys, b, 4); // clear sprite buffer
+    // sprites can be disabled entirely in the ppu's control reg
     if (!ppu->DisplayCR.SprEnable) return;
 
+    // note: sprites are rendered from lowest slot to highest slot
+    // this does mean that their oam slot priority resolves as a result of each sprite overwriting the other
+    // but it does mean we end up calculating a lot of pixels that dont end up getting used
+    // but doing it the way hardware does it will allow for implementing sprite timings
     for (int spr = 0; spr < 128; spr++)
     {
         SprAttrs01 attr = {.Raw = oambase[spr*2]};
 
-        if (attr.RotScal)
+        // check if sprite is disabled
+        if (!attr.Affine && attr.Disable) continue;
+
+        // calc sprite bounds
+        u8 width = 8 << attr.Size;
+        u8 height = 8 << attr.Size;
+
+        if (attr.Shape == 1)
         {
-            LogPrint(LOG_PPU|LOG_UNIMP, "UNIMPLEMENTED: AFFINE SPRITES\n");
+            // horizontal: height is cut in half
+            height /= 2;
+            if (height <= 8)
+            {
+                // if the height ends up <= 8 px it's clamped to 8 and the width is doubled
+                height = 8;
+                width *= 2;
+            }
+        }
+        else if (attr.Shape == 2)
+        {
+            // vertical: width is cut in half
+            width /= 2;
+            if (width <= 8) // sprites seem to have a min of 8 wide
+            {
+                // if the width ends up <= 8 px it's clamped to 8 and the height is doubled
+                width = 8;
+                height *= 2;
+            }
+        }
+        else if (attr.Shape == 3)
+        {
+            // invalid shape: supposedly just results in it being 8x8 everytime?
+            // checkme?
+            width = 8;
+            height = 8;
+        }
+
+        // get the y progress through the sprite
+        // note: sprites can wrap the screen if they overflow the 8 bit range (checkme?)
+        u8 sy = (y - attr.Y) & 0xFF;
+        // check if we're actually within the sprite's bounding box
+        // note: affine sprites support doubling the size of their bounding boxes
+        if (sy >= (height << (attr.Affine && attr.DoubleSize))) continue;
+
+        // checkme: does it skip sprites based on x coordinate?
+
+        // fetch attribute 2 now that we know this sprite will render
+        SprAttrs2 attr2 = {.Raw = (oambase[(spr*2)+1] & 0xFFFF)};
+
+        if (attr.Affine)
+        {
+            PPU_SpriteAffine(sys, b, attr, attr2, width, height, sy);
         }
         else
         {
-            if (attr.Disable) continue;
-
-            // step 1: calc sprite y bounds
-            u8 width = 8 << attr.Size;
-            u8 height = 8 << attr.Size;
-
-            if (attr.Shape == 1)
-            {
-                height >>= 1;
-                if (height <= 8)
-                {
-                    height = 8;
-                    width <<= 1;
-                }
-            }
-            else if (attr.Shape == 2)
-            {
-                width >>= 1;
-                if (width <= 8)
-                {
-                    width = 8;
-                    height <<= 1;
-                }
-            }
-            else if (attr.Shape == 3) // checkme?
-            {
-                width = 8;
-                height = 8;
-            }
-
-            u8 sy = (y - attr.Y) & 0xFF;
-            if (sy >= height) continue;
-
-            // checkme: does it skip sprites based on x coordinate?
-
-            // fetch attribute 2 now that we know this sprite will render
-            SprAttrs2 attr2 = {.Raw = (oambase[(spr*2)+1] & 0xFFFF)};
-
             PPU_SpriteNormal(sys, b, attr, attr2, width, height, sy);
         }
     }

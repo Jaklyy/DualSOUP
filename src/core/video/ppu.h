@@ -35,7 +35,8 @@ typedef struct
     bool Empty : 1;
     bool NotPal : 1;
     bool ExtPal : 1;
-    bool GPU3D : 1;
+    bool ForceBlend : 1;
+    bool HasAlpha : 1;
 } CompositeBuffer;
 
 typedef union
@@ -44,8 +45,8 @@ typedef union
     struct
     {
         u32 Y : 8;
-        bool RotScal : 1;
-        bool Disable : 1; // normal spr
+        bool Affine : 1;
+        bool Disable : 1; // enables double size for affine sprites
         u32 Mode : 2;
         bool Mosaic : 1;
         bool Pal256 : 1;
@@ -59,9 +60,9 @@ typedef union
     struct
     {
         u32 : 9;
-        bool DoubleSize : 1; // rotscale
+        bool DoubleSize : 1; // disables sprite if affine bit isn't set
         u32 : 15;
-        u32 RotScaleParam : 5;
+        u32 AffineParam : 5;
     };
 } SprAttrs01;
 
@@ -70,9 +71,14 @@ typedef union
     u16 Raw;
     struct
     {
-        u32 TileNum : 10;
-        u32 Priority : 2;
-        u32 PaletteOffset : 4;
+        u16 TileNum : 10;
+        u16 Priority : 2;
+        u16 PaletteOffset : 4;
+    };
+    struct
+    {
+        u16 : 12;
+        u16 BitmapAlpha : 4;
     };
 } SprAttrs2;
 
@@ -146,7 +152,7 @@ typedef struct
             u32 DisplayMode : 2;
             u32 VRAMSel : 2;
             u32 TileOBJ1DBound : 2;
-            bool BMPOBJ1DBound : 1;
+            bool BitmapOBJ1DBound : 1;
             bool OBJHBlankDisable : 1;
             u32 CharBase : 3;
             u32 ScreenBase : 3;
