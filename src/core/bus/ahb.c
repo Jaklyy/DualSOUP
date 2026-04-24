@@ -896,7 +896,6 @@ void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
             {
                 if (timings)
                 {
-                    if (addr == 0x5000620) printf("write to palette %08X %08X %08X\n", addr, val, sys->ARM9.ARM.PC);
                     Timing32(&sys->AHB9);
                     PPU_Sync(sys, sys->AHB9.Timestamp);
                     BusContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_Palette);

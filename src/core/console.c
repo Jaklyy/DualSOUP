@@ -22,7 +22,7 @@ void Console_DebugLog(struct Console* sys)
 {
     if (!SDL_GetGamepadButton(sys->Pad, SDL_GAMEPAD_BUTTON_LEFT_STICK)) return;
 
-#if 1
+#if 0
     for (int i = 0; i < 16; i++)
     {
         printf("channel %i: dmacr:%08X dmats:%08lX dmasa:%08X dmaln%08X dmamd%i\nchraw: %08X cen:%i cfm:%i crm:%i chln%i chlp%i chpr:%08X chmx:%08lX\ntimercr:%06X fifd:%i fiff:%i fifs:%i\n", i, \
@@ -32,7 +32,7 @@ void Console_DebugLog(struct Console* sys)
         sys->Timers7[i+4].Regs, sys->SoundChannels[i].FIFO_DrainPtr, sys->SoundChannels[i].FIFO_FillPtr, sys->SoundChannels[i].FIFO_Bytes);
     }
     printf("dma cur: %08X\n", sys->DMA7.CurMask);
-#elif
+#elif 1
     bool seq = false;
     printf("dumping\n");
     {

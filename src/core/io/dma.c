@@ -348,6 +348,10 @@ void DMA_Run(struct Console* sys, const bool a9)
             {
                 read = AHB7_Read(sys, &cnt->ChannelTimestamps[id], channel->Latched_SrcAddr, rmask, false, true, &rseq, true, 0xFFFFFFFF /*checkme?*/);
             }
+            if (rmask != wmask) // correct this value for 16 bit dma
+            {
+                read = ROR32(read, 16);
+            }
             diff = cnt->ChannelTimestamps[id] - diff;
             channel->Latched_SrcAddr += channel->SrcInc;
         }
