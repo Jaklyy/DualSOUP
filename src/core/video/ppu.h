@@ -130,6 +130,7 @@ typedef enum
 
 typedef struct
 {
+    alignas(HOST_CACHEALIGN) CompositeBuffer CompositeBuffer[5][256];
     alignas(alignof(u64)*4) u64 SpriteWindow[4];
     union
     {

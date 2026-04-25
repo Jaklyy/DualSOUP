@@ -529,15 +529,13 @@ struct Console
     volatile timestamp PPUATimestamp;
     SDL_Thread* PPUAThread;
 
-    alignas(HOST_CACHEALIGN) // ppu a internal area
-    CompositeBuffer CompositeBufferA[5][256];
+    //alignas(HOST_CACHEALIGN) // ppu a internal area
 
     alignas(HOST_CACHEALIGN) // ppu b sync area
     volatile timestamp PPUBTimestamp;
     SDL_Thread* PPUBThread;
 
-    alignas(HOST_CACHEALIGN) // ppu b internal area
-    CompositeBuffer CompositeBufferB[5][256];
+    //alignas(HOST_CACHEALIGN) // ppu b internal area
 
     alignas(HOST_CACHEALIGN) // ppu shared sync area
     volatile timestamp PPUTarget;

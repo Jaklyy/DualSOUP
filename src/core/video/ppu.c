@@ -92,7 +92,8 @@ u16 VRAM_OBJBExtPal(struct Console* sys, const u16 idx)
 
 void PPU_None(struct Console* sys, const bool b, const u8 bg)
 {
-    CompositeBuffer* buffer = (b ? sys->CompositeBufferB[bg] : sys->CompositeBufferA[bg]);
+    PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
+    CompositeBuffer* buffer = ppu->CompositeBuffer[bg];
     for (int x = 0; x < 256; x++)
         buffer[x] = (CompositeBuffer){0, 0, true, false, false, false, false};
 }
@@ -101,7 +102,7 @@ void PPU_RenderText(struct Console* sys, const bool b, u16 y, const u8 bg)
 {
     PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
     u32 (*BG)(struct Console*, const u32, const u32, const bool, const u32, const bool) = (b ? VRAM_BGB : VRAM_BGA);
-    CompositeBuffer* buffer = (b ? sys->CompositeBufferB[bg] : sys->CompositeBufferA[bg]);
+    CompositeBuffer* buffer = ppu->CompositeBuffer[bg];
 
     u32 tilebase = ppu->BGCR[bg].CharBase * KiB(16);
     u32 screenbase = ppu->BGCR[bg].ScreenBase * KiB(2);
@@ -172,7 +173,7 @@ void PPU_RenderBitmap(struct Console* sys, const bool b, u16 y, const u8 bg, con
 {
     PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
     u32 (*BG)(struct Console*, const u32, const u32, const bool, const u32, const bool) = (b ? VRAM_BGB : VRAM_BGA);
-    CompositeBuffer* buffer = (b ? sys->CompositeBufferB[bg] : sys->CompositeBufferA[bg]);
+    CompositeBuffer* buffer = ppu->CompositeBuffer[bg];
 
     u32 screenbase = ppu->BGCR[bg].ScreenBase * KiB(16);
     u32 width;
@@ -232,7 +233,7 @@ void PPU_Large(struct Console* sys, const bool b, const u16 y [[maybe_unused]], 
 
 void PPU_3D(struct Console* sys, const u16 y)
 {
-    CompositeBuffer* buffer = sys->CompositeBufferA[0];
+    CompositeBuffer* buffer = sys->PPU_A.CompositeBuffer[0];
     SWRen_SyncRenderedLines(sys, y+1);
     for (int x = 0; x < 256; x++)
         buffer[x] = (CompositeBuffer){sys->GX3D.CBuf[0][y][x] + (1<<18) /* increase alpha to allow for max alpha for blending */, 0, ((sys->GX3D.CBuf[0][y][x] >> 18) & 0x1F) == 0, true, false, true, true};
@@ -425,7 +426,7 @@ void PPU_Composite(struct Console* sys, const bool b, const u16 y)
         for (int prio = 0; prio < 4; prio++)
         {
             // check if sprites should be rendered
-            CompositeBuffer tmp = (b ? sys->CompositeBufferB[4][x] : sys->CompositeBufferA[4][x]);
+            CompositeBuffer tmp = ppu->CompositeBuffer[4][x];
             if (!tmp.Empty && (tmp.SprPrio == prio))
             {
                 bg[i] = 4;
@@ -441,7 +442,7 @@ void PPU_Composite(struct Console* sys, const bool b, const u16 y)
                 if (ppu->BGCR[g].BGPriority != prio) continue;
 
                 // check if bg exists
-                tmp = (b ? sys->CompositeBufferB[g][x] : sys->CompositeBufferA[g][x]);
+                tmp = ppu->CompositeBuffer[g][x];
                 if (!tmp.Empty)
                 {
                     bg[i] = g;
@@ -496,7 +497,7 @@ void PPU_Composite(struct Console* sys, const bool b, const u16 y)
 void PPU_SpriteAffine(struct Console* sys, const bool b, const SprAttrs01 attr1, const SprAttrs2 attr2, const u8 width, const u8 height, u8 y)
 {
     PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
-    CompositeBuffer* buffer = (b ? sys->CompositeBufferB[4] : sys->CompositeBufferA[4]);
+    CompositeBuffer* buffer = ppu->CompositeBuffer[4];
     u32 (*OBJ)(struct Console*, const u32, const u32, const bool, const u32, const bool) = (b ? VRAM_OBJB : VRAM_OBJA);
 
     // fetch rotation and scaling parameters
@@ -650,7 +651,7 @@ void PPU_SpriteAffine(struct Console* sys, const bool b, const SprAttrs01 attr1,
 void PPU_SpriteNormal(struct Console* sys, const bool b, const SprAttrs01 attr1, const SprAttrs2 attr2, const u8 width, const u8 height, u8 y)
 {
     PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
-    CompositeBuffer* buffer = (b ? sys->CompositeBufferB[4] : sys->CompositeBufferA[4]);
+    CompositeBuffer* buffer = ppu->CompositeBuffer[4];
     u32 (*OBJ)(struct Console*, const u32, const u32, const bool, const u32, const bool) = (b ? VRAM_OBJB : VRAM_OBJA);
 
     // vertical flip flag means we start from the bottom of the sprite
@@ -772,6 +773,7 @@ void PPU_BuildSprites(struct Console* sys, const bool b, const u8 y)
     volatile u32* oambase = (b ? &sys->OAM.b32[0x400/sizeof(u32)] : &sys->OAM.b32[0]);
 
     PPU_None(sys, b, 4); // clear sprite buffer
+
     // sprites can be disabled entirely in the ppu's control reg
     if (!ppu->DisplayCR.SprEnable) return;
 
