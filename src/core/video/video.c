@@ -115,6 +115,10 @@ void LCD_Scanline(struct Console* sys, timestamp now)
     //ARM9_Log(&sys->ARM9);
     //ARM7_Log(&sys->ARM7);
 
+    // certain ppu state is stepped every scanline.
+    // TODO: should this actually be done on the ppu thread...?
+    PPU_GlobalStep(sys, now, sys->VCount);
+
     // check for vblank; clear hblank.
     // this occurs before vcount writes
     if (sys->VCount == 192)

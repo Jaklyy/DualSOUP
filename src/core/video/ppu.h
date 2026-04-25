@@ -120,6 +120,20 @@ typedef union
     };
 } BlendCR;
 
+typedef union
+{
+    u8 Raw;
+    struct
+    {
+        bool EnableBg0 : 1;
+        bool EnableBg1 : 1;
+        bool EnableBg2 : 1;
+        bool EnableBg3 : 1;
+        bool EnableObj : 1;
+        bool EnableBlend : 1;
+    };
+} WindowCR;
+
 typedef enum
 {
     BLDCR_Off,
@@ -195,9 +209,37 @@ typedef struct
     BlendCR BlendCR;
     u8 BlendAlpha[2];
     u8 BlendBright;
+    bool Window0YActive;
+    bool Window0XActive;
+    bool Window1YActive;
+    bool Window1XActive;
+    union
+    {
+        u32 Raw[3];
+        struct
+        {
+            u8 W0Right;
+            u8 W0Left;
+
+            u8 W1Right;
+            u8 W1Left;
+
+            u8 W0Bot;
+            u8 W0Top;
+
+            u8 W1Bot;
+            u8 W1Top;
+
+            WindowCR W0Cr;
+            WindowCR W1Cr;
+            WindowCR WNoneCr;
+            WindowCR WObjCr;
+        };
+    } Window;
 } PPU;
 
 struct Console;
 void PPU_RenderScanline(struct Console* sys, const bool b, const s16 y);
+void PPU_GlobalStep(struct Console* sys, const timestamp now, const u16 vcount);
 int SDLCALL PPUA_MainLoop(void* ptr);
 int SDLCALL PPUB_MainLoop(void* ptr);

@@ -340,7 +340,7 @@ void PPU_BuildBGs(struct Console* sys, const bool b, const u16 y)
     PPU_BG3_Lookup(sys, b, y);
 }
 
-u32 PPU_Blend(PPU* ppu, CompositeBuffer* indices, u32* colors, int* bgs, int num)
+u32 PPU_Blend(PPU* ppu, CompositeBuffer* indices, u32* colors, int* bgs, int num, const bool enabled)
 {
     u8 alpA;
     u8 alpB;
@@ -363,13 +363,17 @@ u32 PPU_Blend(PPU* ppu, CompositeBuffer* indices, u32* colors, int* bgs, int num
         }
     }
 
+    if (!enabled || !(ppu->BlendCR.BlendTop & (1<<bgs[0])))
+        return colors[0];
+
     switch(ppu->BlendCR.Effect)
     {
     case BLDCR_Off:
         return colors[0];
 
     case BLDCR_Blend:
-        if ((num == 1) || !(ppu->BlendCR.BlendTop & (1<<bgs[0])) || !(ppu->BlendCR.BlendBot & (1<<bgs[1])))
+        // there must be a lower pixel and it must be blendable
+        if ((num == 1) || !(ppu->BlendCR.BlendBot & (1<<bgs[1])))
             return colors[0];
 
         Force_Blend:
@@ -416,8 +420,40 @@ void PPU_Composite(struct Console* sys, const bool b, const u16 y)
     u32* scanline = sys->Framebuffer[sys->BackBuf][sys->PowerCR9.AOnBottom ? b : !b][y];
     volatile timestamp* time = (b ? (&sys->PPUBTimestamp) : (&sys->PPUATimestamp));
 
+    bool winenable = (ppu->DisplayCR.Win0Enable || ppu->DisplayCR.Win1Enable || ppu->DisplayCR.OBJWinEnable);
     for (int x = 0; x < 256; x++)
     {
+        // checkme: idk when this is actually checked
+        // TODO: DSi with PPU rev enabled special cases the ((left == 0) && (right == 0)) case
+        if (x == ppu->Window.W0Right) ppu->Window0XActive = false;
+        else if (x == ppu->Window.W0Left) ppu->Window0XActive = true;
+
+        if (x == ppu->Window.W1Right) ppu->Window1XActive = false;
+        else if (x == ppu->Window.W1Left) ppu->Window1XActive = true;
+
+        // calc window
+        WindowCR enablemask;
+        if (ppu->DisplayCR.Win0Enable && ppu->Window0YActive && ppu->Window0XActive)
+        {
+            enablemask = ppu->Window.W0Cr;
+        }
+        else if (ppu->DisplayCR.Win1Enable && ppu->Window1YActive && ppu->Window1XActive)
+        {
+            enablemask = ppu->Window.W1Cr;
+        }
+        else if (ppu->DisplayCR.OBJWinEnable && (ppu->SpriteWindow[x/64] & (1<<(x%64))))
+        {
+            enablemask = ppu->Window.WObjCr;
+        }
+        else if (winenable)
+        {
+            enablemask = ppu->Window.WNoneCr;
+        }
+        else
+        {
+            enablemask.Raw = 0x3F;
+        }
+
         int bg[2];
         // initialize with bg color
         CompositeBuffer index[2] = {(CompositeBuffer){0, 0, false, false, false /* checkme? */, false, false},
@@ -427,7 +463,7 @@ void PPU_Composite(struct Console* sys, const bool b, const u16 y)
         {
             // check if sprites should be rendered
             CompositeBuffer tmp = ppu->CompositeBuffer[4][x];
-            if (!tmp.Empty && (tmp.SprPrio == prio))
+            if (!tmp.Empty && (tmp.SprPrio == prio) && enablemask.EnableObj)
             {
                 bg[i] = 4;
                 index[i] = tmp;
@@ -438,6 +474,9 @@ void PPU_Composite(struct Console* sys, const bool b, const u16 y)
             // check bgs
             for (int g = 0; g < 4; g++)
             {
+                // check window
+                if (!(enablemask.Raw & (1<<g))) continue;
+
                 // check priority
                 if (ppu->BGCR[g].BGPriority != prio) continue;
 
@@ -489,7 +528,7 @@ void PPU_Composite(struct Console* sys, const bool b, const u16 y)
             PPU_Wait(sys, *time);
         }
 
-        scanline[x] = PPU_Blend(ppu, index, color, bg, i);
+        scanline[x] = PPU_Blend(ppu, index, color, bg, i, enablemask.EnableBlend);
     }
     *time += 2+HBlank_Cycles;
 }
@@ -538,11 +577,7 @@ void PPU_SpriteAffine(struct Console* sys, const bool b, const SprAttrs01 attr1,
     u32 rotx = ((((s32)sx-(widthreal/2)) * params[0]) + (((s32)y-(heightreal/2)) * params[1]) + (width*256/2));
     u32 roty = ((((s32)sx-(widthreal/2)) * params[2]) + (((s32)y-(heightreal/2)) * params[3]) + (height*256/2));
 
-    if (attr1.Mode == 2)
-    {
-        LogPrint(LOG_PPU|LOG_UNIMP, "UNIMPLEMENTED: WINDOW AFFINE SPRITES\n");
-    }
-    else if (attr1.Mode == 3) // bitmap sprite
+    if (attr1.Mode == 3) // bitmap sprite
     {
         u8 alpha = attr2.BitmapAlpha;
         if (!alpha) return; // checkme?
@@ -641,7 +676,10 @@ void PPU_SpriteAffine(struct Console* sys, const bool b, const SprAttrs01 attr1,
                     if (!index) continue;
                     index |= attr2.PaletteOffset * 16;
                 }
-                if (buffer[x].Empty || (buffer[x].SprPrio > attr2.Priority))
+
+                if (attr1.Mode == 2) // window
+                    ppu->SpriteWindow[x/64] |= 1<<(x%64);
+                else if (buffer[x].Empty || (buffer[x].SprPrio > attr2.Priority))
                     buffer[x] = (CompositeBuffer){index, attr2.Priority, false, false, attr1.Pal256 && ppu->DisplayCR.SprExtPalEn, attr1.Mode == 1, false};
             }
         }
@@ -672,11 +710,7 @@ void PPU_SpriteNormal(struct Console* sys, const bool b, const SprAttrs01 attr1,
         sx = 0;
     }
 
-    if (attr1.Mode == 2)
-    {
-        LogPrint(LOG_PPU|LOG_UNIMP, "UNIMPLEMENTED: WINDOW SPRITES\n");
-    }
-    else if (attr1.Mode == 3) // bitmap
+    if (attr1.Mode == 3) // bitmap
     {
         u8 alpha = attr2.BitmapAlpha;
         if (!alpha) return; // checkme?
@@ -760,7 +794,9 @@ void PPU_SpriteNormal(struct Console* sys, const bool b, const SprAttrs01 attr1,
                 index |= attr2.PaletteOffset * 16;
             }
 
-            if (buffer[x].Empty || (buffer[x].SprPrio > attr2.Priority))
+            if (attr1.Mode == 2) // window
+                ppu->SpriteWindow[x/64] |= 1<<(x%64);
+            else if (buffer[x].Empty || (buffer[x].SprPrio > attr2.Priority))
                 buffer[x] = (CompositeBuffer){index, attr2.Priority, false, false, attr1.Pal256 && ppu->DisplayCR.SprExtPalEn, attr1.Mode == 1, false};
         }
     }
@@ -773,6 +809,7 @@ void PPU_BuildSprites(struct Console* sys, const bool b, const u8 y)
     volatile u32* oambase = (b ? &sys->OAM.b32[0x400/sizeof(u32)] : &sys->OAM.b32[0]);
 
     PPU_None(sys, b, 4); // clear sprite buffer
+    memset(ppu->SpriteWindow, 0, sizeof(ppu->SpriteWindow)); // clear sprite window bitfield
 
     // sprites can be disabled entirely in the ppu's control reg
     if (!ppu->DisplayCR.SprEnable) return;
@@ -807,7 +844,7 @@ void PPU_BuildSprites(struct Console* sys, const bool b, const u8 y)
         {
             // vertical: width is cut in half
             width /= 2;
-            if (width <= 8) // sprites seem to have a min of 8 wide
+            if (width <= 8)
             {
                 // if the width ends up <= 8 px it's clamped to 8 and the height is doubled
                 width = 8;
@@ -924,6 +961,27 @@ void PPU_RenderScanline(struct Console* sys, const bool b, const s16 y)
         if (y == -1)
             *time += 1538 + HBlank_Cycles;
         PPU_BuildSprites(sys, b, y+1);
+    }
+}
+
+void PPU_GlobalStep(struct Console* sys, const timestamp now, const u16 vcount)
+{
+    PPU* ppus[2] = {&sys->PPU_A, &sys->PPU_B};
+
+    PPU_Sync(sys, now);
+
+    // windowing y coord is checked every scanline, even ones that aren't rendered on
+    for (int i = 0; i < 2; i++)
+    {
+        // BUG: the NDS only tests the bottom 8 bits of the y coordinate.
+        // TODO: disable this masking when DSi ppu revision bit is enabled.
+        u16 wy = vcount & 0xFF;
+
+        if (ppus[i]->Window.W0Bot == wy) ppus[i]->Window0YActive = false;
+        else if (ppus[i]->Window.W0Top == wy) ppus[i]->Window0YActive = true;
+
+        if (ppus[i]->Window.W1Bot == wy) ppus[i]->Window1YActive = false;
+        else if (ppus[i]->Window.W1Top == wy) ppus[i]->Window1YActive = true;
     }
 }
 
