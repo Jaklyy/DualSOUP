@@ -130,6 +130,7 @@ typedef enum
 
 typedef struct
 {
+    alignas(alignof(u64)*4) u64 SpriteWindow[4];
     union
     {
         u32 Raw;

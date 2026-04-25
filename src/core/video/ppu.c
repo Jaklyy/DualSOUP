@@ -586,7 +586,7 @@ void PPU_SpriteAffine(struct Console* sys, const bool b, const SprAttrs01 attr1,
                 u16 color = OBJ(sys, addr & ~3, 0xFFFFFFFF, false, 0, false) >> ((addr & 0x2) * 8);
 
                 if ((color & 0x8000) && (buffer[x].Empty || (buffer[x].SprPrio > attr2.Priority)))
-                    buffer[x] = (CompositeBuffer){RGB565to666(color & 0x7FFF), attr2.Priority, false, true, false, true, true};
+                    buffer[x] = (CompositeBuffer){RGB565to666(color & 0x7FFF) | (alpha<<18), attr2.Priority, false, true, false, true, true};
             }
         }
     }
@@ -675,11 +675,55 @@ void PPU_SpriteNormal(struct Console* sys, const bool b, const SprAttrs01 attr1,
     {
         LogPrint(LOG_PPU|LOG_UNIMP, "UNIMPLEMENTED: WINDOW SPRITES\n");
     }
-    else if (attr1.Mode == 3)
+    else if (attr1.Mode == 3) // bitmap
     {
-        LogPrint(LOG_PPU|LOG_UNIMP, "UNIMPLEMENTED: BITMAP SPRITES\n");
+        u8 alpha = attr2.BitmapAlpha;
+        if (!alpha) return; // checkme?
+        // increase by one to allow for max alpha value
+        // shift left by one to convert to 5 bit alpha (for blending)
+        alpha = (alpha + 1) << 1;
+
+        u32 baseaddr = attr2.TileNum;
+        if (ppu->DisplayCR.BitmapOBJ1D)
+        {
+            if (ppu->DisplayCR.BitmapOBJ2DDims)
+            {
+                // apparently does nothing??
+                return; // checkme
+            }
+            else
+            {
+                baseaddr = attr2.TileNum << (7+ppu->DisplayCR.BitmapOBJ1DBound);
+                baseaddr += y * (width * 2);
+            }
+        }
+        else
+        {
+            if (ppu->DisplayCR.BitmapOBJ2DDims)
+            {
+                baseaddr = ((attr2.TileNum % 32) * 16) + ((attr2.TileNum / 32) * 32 * 128);
+                baseaddr += y * (256*2);
+            }
+            else
+            {
+                baseaddr = ((attr2.TileNum % 16) * 16) + ((attr2.TileNum / 16) * 16 * 128);
+                baseaddr += y* (128*2);
+            }
+        }
+
+        if (attr1.HFlip) sx = (width-1) - sx;
+
+        for (; ((attr1.HFlip) ? (sx >= 0) : (sx < width)) && (x < 256); ((attr1.HFlip) ? (sx-=1) : (sx+=1)), x++)
+        {
+            u32 addr = baseaddr + (sx*2);
+
+            u16 color = OBJ(sys, addr&~3, 0xFFFFFFFF, false, 0, false) >> ((addr&2)*8);
+
+            if ((color & 0x8000) && (buffer[x].Empty || (buffer[x].SprPrio > attr2.Priority)))
+                buffer[x] = (CompositeBuffer){RGB565to666(color & 0x7FFF) | (alpha<<18), attr2.Priority, false, true, false, true, true};
+        }
     }
-    else
+    else // not bitmap
     {
         u32 baseaddr = attr2.TileNum;
         if (ppu->DisplayCR.TileOBJ1D)
