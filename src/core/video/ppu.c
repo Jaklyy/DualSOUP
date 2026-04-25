@@ -441,7 +441,7 @@ void PPU_Composite(struct Console* sys, const bool b, const u16 y)
         {
             enablemask = ppu->Window.W1Cr;
         }
-        else if (ppu->DisplayCR.OBJWinEnable && (ppu->SpriteWindow[x/64] & (1<<(x%64))))
+        else if (ppu->DisplayCR.OBJWinEnable && (ppu->SpriteWindow[x/64] & ((u64)1<<(x%64))))
         {
             enablemask = ppu->Window.WObjCr;
         }
@@ -678,7 +678,7 @@ void PPU_SpriteAffine(struct Console* sys, const bool b, const SprAttrs01 attr1,
                 }
 
                 if (attr1.Mode == 2) // window
-                    ppu->SpriteWindow[x/64] |= 1<<(x%64);
+                    ppu->SpriteWindow[x/64] |= (u64)1<<(x%64);
                 else if (buffer[x].Empty || (buffer[x].SprPrio > attr2.Priority))
                     buffer[x] = (CompositeBuffer){index, attr2.Priority, false, false, attr1.Pal256 && ppu->DisplayCR.SprExtPalEn, attr1.Mode == 1, false};
             }
@@ -795,7 +795,7 @@ void PPU_SpriteNormal(struct Console* sys, const bool b, const SprAttrs01 attr1,
             }
 
             if (attr1.Mode == 2) // window
-                ppu->SpriteWindow[x/64] |= 1<<(x%64);
+                ppu->SpriteWindow[x/64] |= (u64)1<<(x%64);
             else if (buffer[x].Empty || (buffer[x].SprPrio > attr2.Priority))
                 buffer[x] = (CompositeBuffer){index, attr2.Priority, false, false, attr1.Pal256 && ppu->DisplayCR.SprExtPalEn, attr1.Mode == 1, false};
         }
