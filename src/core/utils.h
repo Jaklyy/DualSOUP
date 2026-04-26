@@ -76,7 +76,7 @@ typedef uint64_t timestamp;
     static unsigned int ds_internal_stdctz64 [[maybe_unused]] (u64 input)
     {
         if (input == 0) return 64;
-        else return __builtin_ctzl(input);
+        else return __builtin_ctzll(input);
     }
     static unsigned int ds_internal_stdctz32 [[maybe_unused]] (u32 input)
     {
@@ -110,7 +110,7 @@ typedef uint64_t timestamp;
     static unsigned int ds_internal_stdclz64 [[maybe_unused]] (u64 input)
     {
         if (input == 0) return 64;
-        else return __builtin_clzl(input);
+        else return __builtin_clzll(input);
     }
     static unsigned int ds_internal_stdclz32 [[maybe_unused]] (u32 input)
     {
@@ -141,7 +141,7 @@ typedef uint64_t timestamp;
 
 #ifndef stdc_count_ones
     //#warning "stdc_count_ones not found, using fallback."
-    #define stdc_count_ones(x) __builtin_popcountl((u64)(x))
+    #define stdc_count_ones(x) __builtin_popcountll((u64)(x))
 #endif
 
 #ifndef stdc_count_zeros
@@ -162,13 +162,13 @@ typedef uint64_t timestamp;
 // the builtins are constexpr but the actual standard defined functions aren't...
 #define CTZ_CONSTEXPR(x) _Generic((x), \
     s32: __builtin_ctz, u32: __builtin_ctz, \
-    s64: __builtin_ctzl, u64: __builtin_ctzl)((x))
+    s64: __builtin_ctzll, u64: __builtin_ctzll)((x))
 #define CLZ_CONSTEXPR(x) _Generic((x), \
     s32: __builtin_clz, u32: __builtin_clz, \
-    s64: __builtin_clzl, u64: __builtin_clzl)((x))
+    s64: __builtin_clzll, u64: __builtin_clzll)((x))
 #define POPCNT_CONSTEXPR(x) _Generic((x), \
     s32: __builtin_popcount, u32: __builtin_popcount, \
-    s64: __builtin_popcountl, u64: __builtin_popcountl)((x))
+    s64: __builtin_popcountll, u64: __builtin_popcountll)((x))
 
 #define MEMORY(name, size) \
 union { \

@@ -75,7 +75,7 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
     if (sys == nullptr)
     {
         // allocate and initialize 
-        sys = aligned_alloc(alignof(struct Console), sizeof(struct Console));
+        sys = SDL_aligned_alloc(alignof(struct Console), sizeof(struct Console));
 
         if (sys == NULL)
         {

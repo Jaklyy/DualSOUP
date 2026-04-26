@@ -47,9 +47,9 @@ constexpr unsigned ActiveRender_Cycles = 48+(256*6); // How long the PPUs are ac
 constexpr unsigned HBlank_Cycles       = 91*6; // length of the HBlank period.
 constexpr unsigned Scanline_Cycles     = HBlank_Cycles + ActiveRender_Cycles; // total length of a scanline in 16 MHz cycles.
 constexpr unsigned Frame_Cycles        = Scanline_Cycles * 263; // total frame length.
-constexpr long double FPS       = 59.8260982881; // how do I represent this losslessly.
-constexpr long double Framems   = 16.7151131131; // see above.
-constexpr long double VCountus  = 63.5555631677; // length of a scanline in us; see above.
+constexpr double FPS       = 59.8260982881; // how do I represent this losslessly.
+constexpr double Framems   = 16.7151131131; // see above.
+constexpr double VCountus  = 63.5555631677; // length of a scanline in us; see above.
 
 
 

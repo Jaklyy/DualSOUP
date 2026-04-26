@@ -36,22 +36,22 @@ bool SOUPParser(const char* haystack, const char* needle, const char* cmpstr, co
         switch (type)
         {
         case SEARCH_S32DEC:
-            *(u32*)ret = (u32)strtol(&spoon[offs], NULL, 10);
+            *(u32*)ret = (u32)strtoll(&spoon[offs], NULL, 10);
             return true;
         case SEARCH_U32DEC:
-            *(u32*)ret = (u32)strtoul(&spoon[offs], NULL, 10);
+            *(u32*)ret = (u32)strtoull(&spoon[offs], NULL, 10);
             return true;
         case SEARCH_U32HEX:
-            *(u32*)ret = (u32)strtoul(&spoon[offs], NULL, 16);
+            *(u32*)ret = (u32)strtoull(&spoon[offs], NULL, 16);
             return true;
         case SEARCH_S64DEC:
-            *(u64*)ret = strtol(&spoon[offs], NULL, 10);
+            *(u64*)ret = strtoll(&spoon[offs], NULL, 10);
             return true;
         case SEARCH_U64DEC:
-            *(u64*)ret = strtoul(&spoon[offs], NULL, 10);
+            *(u64*)ret = strtoull(&spoon[offs], NULL, 10);
             return true;
         case SEARCH_U64HEX:
-            *(u64*)ret = strtoul(&spoon[offs], NULL, 16);
+            *(u64*)ret = strtoull(&spoon[offs], NULL, 16);
             return true;
         case SEARCH_STRING:
             while(spoon[offs] == ' ') offs++;
