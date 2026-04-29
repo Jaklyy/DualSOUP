@@ -119,11 +119,11 @@ void WiFi_Write(struct Console* sys, timestamp* ts [[maybe_unused]], u32 addr, c
                     bool pass;
                     if (idx < 0x40)
                     {
-                        pass = (!((1ull << idx) & 0x0000'0080'07C7'E001));
+                        pass = (!(((u64)1 << idx) & 0x0000'0080'07C7'E001));
                     } 
                     else if (idx < 0x69)
                     {
-                        pass = (!((1ull << (idx-0x40)) & 0xFFFF'FE52'E000'2000));
+                        pass = (!(((u64)1 << (idx-0x40)) & 0xFFFF'FE52'E000'2000));
                     }
                     else pass = false;
 

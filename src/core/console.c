@@ -74,7 +74,8 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
     u8* nvram = nullptr;
     if (sys == nullptr)
     {
-        // allocate and initialize 
+        // allocate
+        // use SDL function for this because windows SUCKS
         sys = SDL_aligned_alloc(alignof(struct Console), sizeof(struct Console));
 
         if (sys == NULL)

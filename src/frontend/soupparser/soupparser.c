@@ -8,7 +8,7 @@
 FILE* FindFileWithSameName(const char* path, const char* ext, const char* mode)
 {
     char newpath[512]; // if you make a longer file path i *will* cry.
-    u64 extlen = strlen(ext);
+    size_t extlen = strlen(ext);
     strncpy(newpath, path, 512-extlen);
     char* end = strrchr(newpath, '.'); // find extension marker
 
