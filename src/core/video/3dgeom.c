@@ -298,7 +298,17 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert, bool* boxtestres)
     int wsize = 0;
     for (unsigned i = 0; i < nvert; i++)
     {
-        fin.Vertices[i]->Color.RGB = (poly.Vertices[i].Color.RGB << 4) + (((s32x4)poly.Vertices[i].Color.RGB > 0) & (u32x4){0xF, 0xF, 0xF, 0xF});
+        // checkme: how much precision is used here?
+        if (fin.Attrs.Mode == 2)
+        {
+            // note: toon & highlight modes are weird: all vertex color components are set to the red component, and it doesn't add 0xF when increasing the precision used.
+            fin.Vertices[i]->Color.RGB = (u32x4){fin.Vertices[i]->Color.R, fin.Vertices[i]->Color.R, fin.Vertices[i]->Color.R, fin.Vertices[i]->Color.R};
+            fin.Vertices[i]->Color.RGB <<= 4;
+        }
+        else
+        {
+            fin.Vertices[i]->Color.RGB = (poly.Vertices[i].Color.RGB << 4) + (((s32x4)poly.Vertices[i].Color.RGB > 0) & (u32x4){0xF, 0xF, 0xF, 0xF});
+        }
 
         fin.SlopeY[i] = fin.Vertices[i]->Y;
         fin.Vertices[i]->S = poly.Vertices[i].TexCoords[0];
@@ -1355,6 +1365,7 @@ void GX_Swap(struct Console* sys, const timestamp now)
         gx->LatFogColor = gx->FogColor;
         gx->LatFogOffset = gx->FogOffset;
         memcpy(gx->LatFogTable, gx->FogTable.b8, sizeof(gx->FogTable));
+        memcpy(&gx->LatToonTable, gx->ToonTable.b8, sizeof(gx->ToonTable));
 
         for (int i = 0; i < 8; i++)
         {

@@ -652,26 +652,64 @@ Colors SWRen_DecodeTextures(struct Console* sys, Polygon* poly, s16 s, s16 t, u8
     }
 }
 
-Colors SWRen_BlendColors(Polygon* poly, Colors color, Colors tcolor, u8 talpha, u8* outalpha)
+Colors SWRen_BlendColors(struct Console* sys, Polygon* poly, Colors vcolor, s16 s, s16 t, u8* outalpha)
 {
-    color.RGB >>= 3;
+    GX3D* gx = &sys->GX3D;
+    vcolor.RGB >>= 3;
     Colors outcol;
-    if (poly->Attrs.Mode & 1) // decal and shadow
+    u16 toonraw;
+
+    if (poly->Attrs.Mode == 2)
     {
-        // CHECKME: this division is weird, does hardware really do that?
-        // (melonds has special case logic for talpha == 0 / 31, so i guess that's how hardware gets around the incorrect math?)
-        outcol.RGB = ((tcolor.RGB * talpha) + (color.RGB * (31-talpha))) / 32;
-        *outalpha = poly->Attrs.Alpha;
-    }
-    else // modulate / toon/highlight
-    {
-        outcol.RGB = (((tcolor.RGB+1) * (color.RGB+1)) - 1) / 64;
-        *outalpha = ((talpha+1) * (poly->Attrs.Alpha+1) - 1) / 32;
+        // red component is used to look up toon color
+        toonraw = gx->LatToonTable[vcolor.R>>1];
+
+        // toon mode does blending with the toon color instead of vtx color
+        if (!gx->LatRasterCR.ShadingMode)
+        {
+            vcolor = SWRen_RGB555to666((Colors){.R=(toonraw & 0x1F), .G=((toonraw>>5)&0x1F), .B=((toonraw>>10)&0x1F)});
+        }
     }
 
-    // clamp to max
-    //outcol.RGB = (outcol.RGB & ~((s32x4)outcol.RGB > 63)) | ((u32x4){63, 63, 63, 0} & ((s32x4)outcol.RGB > 63));
-    //if (*outalpha > 31) *outalpha = 31;
+    if (gx->LatRasterCR.Texture && poly->TexAttr.Format != 0)
+    {
+        u8 talpha;
+        Colors tcolor = SWRen_DecodeTextures(sys, poly, s, t, &talpha);
+
+        if (poly->Attrs.Mode & 1) // decal and shadow
+        {
+            // 0 and 31 talpha are special cased.
+            if      (talpha == 0 ) outcol = vcolor;
+            else if (talpha == 31) outcol = tcolor;
+            else
+            {
+                // hardware interpolates the colors for decal mode by using a somewhat questionable algorithm that results in slightly darker colors
+                outcol.RGB = ((tcolor.RGB * talpha) + (vcolor.RGB * (31-talpha))) / 32;
+            }
+            *outalpha = poly->Attrs.Alpha;
+        }
+        else // modulation / toon / highlight
+        {
+            outcol.RGB = (((tcolor.RGB+1) * (vcolor.RGB+1)) - 1) / 64;
+            *outalpha = ((talpha+1) * (poly->Attrs.Alpha+1) - 1) / 32;
+        }
+    }
+    else
+    {
+        outcol = vcolor;
+        *outalpha = poly->Attrs.Alpha;
+    }
+
+    // highlight shading adds the toon colors after blending
+    if ((poly->Attrs.Mode == 2) && gx->LatRasterCR.ShadingMode)
+    {
+        // note: highlight shading converts toon colors differently than most of the rendering hardware, not adding 1
+        outcol.RGB += (u32x4){(toonraw & 0x1F), ((toonraw>>5)&0x1F), ((toonraw>>10)&0x1F)};
+
+        // clamp to max 63 (check 4 element to encourage simd optimization)
+        for (int i = 0; i < 4; i++)
+            if (outcol.Arr[i] > 63) outcol.Arr[i] = 63;
+    }
 
     // wireframes ignore all alpha
     if (poly->Attrs.Alpha == 0) *outalpha = 31;
@@ -695,9 +733,12 @@ void SWRen_AlphaBlend(GX3D* gx, const Polygon* poly, const u16 x, const u8 y, co
 
     if (gx->LatRasterCR.AlphaBlend)
     {
-        fincolor.RGB = ((fincolor.RGB * (finalpha+1)) + (oldc.RGB * (32-(finalpha+1)))) / 32;
+        // checkme: it would be really funny if this inexplicably triggered fill rules
+        // checkme: it would be even funnier if this is actually checking if the pixel is "clear" in some way
+        if (olda != 0)
+            fincolor.RGB = ((fincolor.RGB * (finalpha+1)) + (oldc.RGB * (32-(finalpha+1)))) / 32;
     }
-    else if (!fill) // fill applies if alpha blending is enabled
+    else if (!fill) // fill applies if alpha blending is disabled
         return;
 
     // checkme: it just takes the highest alpha of the two?
@@ -735,13 +776,14 @@ bool SWRen_DepthTest(const GX3D* gx, const bool equaldt, const u16 x, const u8 y
     }
 }
 
-void SWRen_RasterizePixel(GX3D* gx, Polygon* poly, u16 x, u8 y, s32 z, Colors color, Colors tcolor, u8 talpha, AttrBuf attr, const bool fill)
+void SWRen_RasterizePixel(struct Console* sys, Polygon* poly, u16 x, u8 y, s32 z, Colors color, s16 s, s16 t, AttrBuf attr, const bool fill)
 {
+    GX3D* gx = &sys->GX3D;
     const bool stencil = (poly->Attrs.PolyID == 0) && (poly->Attrs.Mode == 3);
     const bool shadow = (poly->Attrs.PolyID != 0) && (poly->Attrs.Mode == 3);
 
     u8 finalpha;
-    Colors fincolor = SWRen_BlendColors(poly, color, tcolor, talpha, &finalpha);
+    Colors fincolor = SWRen_BlendColors(sys, poly, color, s, t, &finalpha);
 
     if (finalpha <= gx->LatAlphaThreshold) return;
 
@@ -887,8 +929,6 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
     s32 z;
     Colors color;
     s16 s, t;
-    u8 talpha;
-    Colors tcolor;
     bool lfill = true;
     bool rfill = true;
     bool cfill = true;
@@ -909,21 +949,17 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
         s = SWRen_Interpolate(x, ls, re, wl, wr, sl, sr, false, persp, false);
         t = SWRen_Interpolate(x, ls, re, wl, wr, tl, tr, false, persp, false);
 
-        // checkme: can stencil polygons use textures?
-        if (gx->LatRasterCR.Texture && poly->TexAttr.Format)
-            tcolor = SWRen_DecodeTextures(sys, poly, s, t, &talpha);
-        else { tcolor.RGB = color.RGB >> 3; talpha = poly->Attrs.Alpha; }
-
         attr.AACov = lcov >> 5;
         lcov += lcovinc;
 
-        SWRen_RasterizePixel(gx, poly, x, y, z, color, tcolor, talpha, attr, lfill);
+        SWRen_RasterizePixel(sys, poly, x, y, z, color, s, t, attr, lfill);
     }
 
     attr.EdgeFlags = 0;
     if      (y >= (poly->Bot-1)) attr.BotXMajor  = true;
     else if (y == poly->Top) attr.TopXMajor  = true;
 
+    attr.AACov = 0x1F;
     end = rs;
     DS_CLAMP(end, >, re)
     DS_CLAMP(end, >, 256)
@@ -936,14 +972,7 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
         s = SWRen_Interpolate(x, ls, re, wl, wr, sl, sr, false, persp, false);
         t = SWRen_Interpolate(x, ls, re, wl, wr, tl, tr, false, persp, false);
 
-        // checkme: can stencil polygons use textures?
-        if (gx->LatRasterCR.Texture && poly->TexAttr.Format)
-            tcolor = SWRen_DecodeTextures(sys, poly, s, t, &talpha);
-        else { tcolor.RGB = color.RGB >> 3; talpha = poly->Attrs.Alpha; }
-
-        attr.AACov = 0x1F;
-
-        SWRen_RasterizePixel(gx, poly, x, y, z, color, tcolor, talpha, attr, cfill);
+        SWRen_RasterizePixel(sys, poly, x, y, z, color, s, t, attr, cfill);
     }
 
     attr.EdgeFlags = 0;
@@ -962,15 +991,10 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
         s = SWRen_Interpolate(x, ls, re, wl, wr, sl, sr, false, persp, false);
         t = SWRen_Interpolate(x, ls, re, wl, wr, tl, tr, false, persp, false);
 
-        // checkme: can stencil polygons use textures?
-        if (gx->LatRasterCR.Texture && poly->TexAttr.Format)
-            tcolor = SWRen_DecodeTextures(sys, poly, s, t, &talpha);
-        else { tcolor.RGB = color.RGB >> 3; talpha = poly->Attrs.Alpha; }
-
         attr.AACov = rcov >> 5;
         rcov += rcovinc;
 
-        SWRen_RasterizePixel(gx, poly, x, y, z, color, tcolor, talpha, attr, rfill);
+        SWRen_RasterizePixel(sys, poly, x, y, z, color, s, t, attr, rfill);
     }
 }
 

@@ -469,6 +469,7 @@ typedef struct
     MEMORY(FogTable, 32);
     u32 FogColor;
     u16 FogOffset;
+    MEMORY(ToonTable, 32*2);
 
 
 
@@ -486,6 +487,7 @@ typedef struct
     u16 LatFogOffset;
     u8 LatFogTable[32];
     bool StencilClear[2];
+    u16 LatToonTable[32];
 
     alignas(HOST_CACHEALIGN)
     u32 CBuf[2][192][256]; // color buffer

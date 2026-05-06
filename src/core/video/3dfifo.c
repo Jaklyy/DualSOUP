@@ -308,6 +308,10 @@ void GX_IOWrite(struct Console* sys, const u32 addr, const u32 mask, const u32 v
             MemoryWrite(32, gx->FogTable, addr, sizeof(gx->FogTable), val, mask & 0x7F7F7F7F);
             break;
 
+        case 0x380 ... 0x3BC:
+            MemoryWrite(32, gx->ToonTable, addr, sizeof(gx->ToonTable), val, mask & 0x7FFF7FFF);
+            break;
+
         case 0x400 ... 0x43C:
             //printf("subm2 %08X\n", val);
             if (mask != 0xFFFFFFFF) LogPrint(LOG_GX|LOG_UNIMP, "Non 32 bit packed command write?\n");
