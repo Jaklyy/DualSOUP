@@ -565,16 +565,18 @@ void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
             {
                 val = ARM7_DataRead32(ARM7Cast, addr, &seq);
 
-                // base writeback after first access
-                if (reg == stdc_trailing_zeros((u32)rlistinit))
+                // checkme: thumb ldmia is specified to ignore writeback if base is in rlist
+                // this doesn't matter in practice on the arm7tdmi, as those cases always result in no writeback occurring.
+                // but it could be possible that there is an explicit check anyway?
+                if (reg == stdc_trailing_zeros((u32)rlistinit)) // base writeback after first access
                     ARM_SetReg(instr.Rn, wbaddr, false, 0, 0);
             }
             else
             {
                 val = ARM9_DataRead32(ARM9Cast, addr, &seq, &dabt);
 
-                // base writeback before last access
-                if (reg == (31-stdc_leading_zeros((u32)rlistinit)))
+                if ((reg == (31-stdc_leading_zeros((u32)rlistinit))) // base writeback occurs before last access
+                    && !(rlistinit & (1<<instr.Rn))) // thumb ldmia has an explicit check to make sure the base register is not in the rlist
                     ARM_SetReg(instr.Rn, wbaddr, false, 0, 0);
             }
 
@@ -636,7 +638,8 @@ void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
     if (cpu->CPUID == ARM9ID && !earlyfix)
         ARM9_FixupLoadStore(ARM9Cast, truenregs, ARM9Cast->MemTimestamp - oldts);
 
-    if (nregs == 1 || !instr.RList)
+    if ((nregs == 1 || !instr.RList) // arm9 needs special logic to handle the case of a 1 or 0 reg ldmia
+    && !(rlistinit & (1<<instr.Rn))) // thumb ldmia has an explicit check to make sure the base register is not in the rlist
     {
         // not an interlock but close enough
         if (cpu->CPUID == ARM9ID)
