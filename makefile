@@ -1,3 +1,5 @@
+MAKEFLAGS := -j
+
 RELDIR := build-rel
 DEBDIR := build-deb
 SANDIR := build-san
