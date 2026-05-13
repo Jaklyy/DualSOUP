@@ -72,7 +72,7 @@ void AudioMixer_Sample(struct Console* sys, timestamp now)
         {
             out[i] = ((s64)out[i] * (sys->SoundCR.MasterVol + (sys->SoundCR.MasterVol == 127))) >> 15;
 
-            if (sys->ConsoleModel < MODEL_TWL)
+            if (sys->SysCfg.NTRAudioOut == NTRAudioOut_10)
             {
                 if (sys->Powman.PowerCR.SoundAmpEn)
                 {

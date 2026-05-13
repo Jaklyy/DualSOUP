@@ -2,8 +2,11 @@
 
 #include <stdint.h>
 #include <stddef.h>
-#include "../frontend/coroutine.h"
 #include <stdio.h>
+
+#include <SDL3/SDL_mutex.h>
+
+#include "../frontend/coroutine.h"
 
 
 
@@ -266,6 +269,90 @@ void CrashSpectacularly(const char* str, ...) __attribute__ ((format (printf, 1,
 
 u16 Input_PollExtra(void* pad);
 u16 Input_PollMain(void* pad);
+
+// runtime configuration data for the emulation core
+/*typedef enum : u8
+{
+    MODEL_NTR,
+    MODEL_USG,
+    MODEL_TWL,
+    MODEL_CTR,
+} ConsoleModel;*/
+
+typedef enum : u8
+{
+    NTRAudioOut_10,
+    NTRAudioOut_16,
+} NTRAudioOut;
+
+typedef enum : u8
+{
+    NTRPowMan_NTR, // Phat
+    NTRPowMan_USG, // Lite
+    NTRPowMan_TWL, // DSi
+} NTRPowMan;
+
+typedef enum : u8
+{
+    NTRFCRAM_4MiB, // NTR/USG Retail
+    NTRFCRAM_8MiB, // NTR/USG Debugger
+    NTRFCRAM_16MiB, // TWL Retail
+    NTRFCRAM_32MiB, // TWL Debugger/3DS Retail
+} NTRFCRAM; // TODO: replace with selection of specific chips?
+
+typedef enum : u8
+{
+    WiFiNVRAM_256KiB, // NTR/USG
+    WiFiNVRAM_512KiB, // iQue DS // codename?
+    WiFiNVRAM_128KiB, // Early TWL?
+    WiFiNVRAM_4KiB, // Late TWL/All 3DS?
+} WiFiNVRAMSize; // TODO: replace with selection of specific chips?
+
+typedef enum : u8
+{
+    WiFiNVRAMWriteProt_Enabled,
+    WiFiNVRAMWriteProt_Disabled,
+} WiFiNVRAMWriteProt; // can be disabled on some retail models by shorting a pin iirc?
+
+typedef struct
+{
+    NTRAudioOut NTRAudioOut;
+    NTRPowMan NTRPowMan;
+    NTRFCRAM NTRFCRAM;
+    WiFiNVRAMSize WiFiNVRAMSize;
+    WiFiNVRAMWriteProt WiFiNVRAMWriteProt;
+} SysCfg;
+
+constexpr u64 FileLengthMax = KiB(4);
+
+typedef struct
+{
+    SDL_Mutex* Mutex; // make sure these values aren't being messed with before reading.
+    bool Dirty; // update the fecking config file
+    SysCfg SysCfg;
+    struct {
+        char* Bios7;
+        char* PakROM;
+        char* PakSRAM;
+    } AGB; // AGB+ (excl. TWL)
+    struct {
+        char* Bios7;
+        char* Bios9;
+        char* NVRAM;
+        char* CardROM;
+        char* CardSRAM;
+    } NTR; // NTR+
+    struct {
+        char* Bios7;
+        char* Bios9;
+        char* NAND;
+        char* SDCard;
+    } TWL;// TWL+
+    struct {
+        char* Boot9;
+        char* Boot11;
+    } CTR; // CTR+
+} CoreCfg;
 
 // coroutine stuff
 #ifdef REALTHREAD

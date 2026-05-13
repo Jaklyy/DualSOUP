@@ -11,8 +11,8 @@ u8 PowMan_CMDSend(struct Console* sys, const u8 val, const bool chipsel)
     if (!pow->PrevChipSelect)
     {
         pow->CurCmd = val;
-        if (sys->ConsoleModel == MODEL_NTR) pow->CurCmd &= 0x83;
-        if (sys->ConsoleModel == MODEL_USG) pow->CurCmd &= 0x87;
+        if (sys->SysCfg.NTRPowMan == NTRPowMan_NTR) pow->CurCmd &= 0x83;
+        if (sys->SysCfg.NTRPowMan == NTRPowMan_USG) pow->CurCmd &= 0x87;
         pow->CmdLen = 0;
         ret = 0;
     }
@@ -23,7 +23,7 @@ u8 PowMan_CMDSend(struct Console* sys, const u8 val, const bool chipsel)
             switch(pow->CurCmd)
             {
                 case 0x00:
-                    pow->PowerCR.Raw = val & ((sys->ConsoleModel == MODEL_NTR) ? 0x7F : 0x7D);
+                    pow->PowerCR.Raw = val & ((sys->SysCfg.NTRPowMan == NTRPowMan_NTR) ? 0x7F : 0x7D);
                     if (pow->PowerCR.SystemShutDown) // TODO: this is going to need a lot of work to make accurate isn't it
                     {
                         sys->MainTarget = 0; // the time is now old man.
@@ -60,7 +60,7 @@ u8 PowMan_CMDSend(struct Console* sys, const u8 val, const bool chipsel)
                     break;
 
                 case 0x05 ... 0x07:
-                    if (sys->ConsoleModel != MODEL_USG)
+                    if (sys->SysCfg.NTRPowMan != NTRPowMan_USG)
                     {
                         ret = 0;
                         break;
@@ -72,7 +72,7 @@ u8 PowMan_CMDSend(struct Console* sys, const u8 val, const bool chipsel)
                     break;
 
                 case 0x85 ... 0x87:
-                    if (sys->ConsoleModel != MODEL_USG)
+                    if (sys->SysCfg.NTRPowMan != NTRPowMan_USG)
                     {
                         ret = 0;
                         break;

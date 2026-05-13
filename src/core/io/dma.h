@@ -83,7 +83,7 @@ struct DMA_Channel
 
 struct DMA_Controller
 {
-    alignas(sizeof(timestamp[32])) timestamp ChannelTimestamps[DMA7_Max+1];
+    alignas(HOST_CACHEALIGN) timestamp ChannelTimestamps[DMA7_Max+1];
     timestamp NextTime;
     struct DMA_Channel Channels[DMA7_Max];
     u32 CurMask;

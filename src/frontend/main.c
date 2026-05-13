@@ -1,4 +1,6 @@
-#include <SDL3/SDL.h>
+#include <stdlib.h>
+#include <stdio.h>
+
 #include <SDL3/SDL_error.h>
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_gamepad.h>
@@ -6,8 +8,13 @@
 #include <SDL3/SDL_timer.h>
 #include <SDL3/SDL_audio.h>
 #include <SDL3/SDL_thread.h>
-#include <stdlib.h>
-#include <stdio.h>
+#include <SDL3/SDL_filesystem.h>
+
+#include "../../libs/imgui/dcimgui_impl_sdl3.h"
+
+#include "gui/maingui.h"
+#include "soupparser/soupparser.h"
+
 #include "../core/console.h"
 #include "../core/arm/arm9/instr_luts.h"
 #include "../core/arm/arm7/instr_luts.h"
@@ -96,6 +103,8 @@ int main()
 {
     LogMask = u64_max; // temp
 
+    SDL_SetAppMetadata("DualSOUP", NULL, NULL);
+
     if (!SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1"))
         printf("%s\n", SDL_GetError());
     if (!SDL_SetHint(SDL_HINT_NO_SIGNAL_HANDLERS, "1"))
@@ -105,24 +114,19 @@ int main()
 
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD | SDL_INIT_EVENTS | SDL_INIT_AUDIO))
     {
-        printf("SDLINIT ERROR!!!\n");
+        printf("SDL_Init Error!!! %s\n", SDL_GetError());
         return EXIT_FAILURE;
     }
 
-    SDL_Window* win;
-    SDL_Renderer* ren;
+    atexit(SDL_Quit); // apparently this is a thing i should be doing.
 
-    if (!SDL_CreateWindowAndRenderer("DualSOUP", 256*2, 192*2*2, /*SDL_WINDOW_RESIZABLE*/ /* TODO */ 0, &win, &ren))
-    {
-        printf("window/renderer init failure :(\n");
-        return EXIT_FAILURE;
-    }
+    MainGUI mgui = MainGUI_Init();
 
     SDL_AudioSpec audiospec = {SDL_AUDIO_S16LE, 2, SoundMixerOutput};
     SDL_AudioStream* aud = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &audiospec, NULL, NULL);
     if (aud == NULL)
     {
-        printf("audio init failure :( %s\n", SDL_GetError());
+        printf("ERROR: SDL Audio open failure :( %s\n", SDL_GetError());
     }
 
     int num;
@@ -139,24 +143,19 @@ int main()
     SDL_Thread* emu;
     struct Console* sys = nullptr;
 
-    SDL_Texture* blit = SDL_CreateTexture(ren, SDL_PIXELFORMAT_XBGR8888, SDL_TEXTUREACCESS_STREAMING, 256, 192*2);
+    char* path = SDL_GetPrefPath("Jakly", "DualSOUP");
 
-    SDL_SetTextureScaleMode(blit,
-#if SDL_VERSION_ATLEAST(3, 4, 0)
-        SDL_SCALEMODE_PIXELART
-#else
-        SDL_SCALEMODE_NEAREST
-#endif
-        );
+    CoreCfg corecfg = Config_Load(path);
 
     if (aud != NULL)
     {
         if (!SDL_ResumeAudioStreamDevice(aud))
         {
-            printf("why no turn on? %s\n", SDL_GetError());
+            printf("ERROR: why audio no turn on? %s\n", SDL_GetError());
         }
     }
 
+    // TODO: do this at compile time?
     // init arm luts
     ARM9_InitInstrLUT();
     THUMB9_InitInstrLUT();
@@ -164,78 +163,53 @@ int main()
     THUMB7_InitInstrLUT();
 
     SDL_Event evts;
-    u8* buffer;
-    bool buf = false;
     while(true)
     {
-        SDL_PollEvent(&evts);
-        switch(evts.type)
+        while (SDL_PollEvent(&evts))
         {
-            case SDL_EVENT_QUIT:
-                return EXIT_SUCCESS;
-            case SDL_EVENT_DROP_FILE:
+            cImGui_ImplSDL3_ProcessEvent(&evts);
+            switch(evts.type)
             {
-                if (threadexists)
+                case SDL_EVENT_QUIT:
+                    return EXIT_SUCCESS;
+                case SDL_EVENT_DROP_FILE:
                 {
-                    sys->KillThread = true;
-                    while(sys->KillThread);
-                    threadexists = false;
-                }
+                    if (threadexists)
+                    {
+                        sys->KillThread = true;
+                        while(sys->KillThread);
+                        threadexists = false;
+                    }
 
-                printf("%s\n", ((SDL_DropEvent*)&evts)->data);
-                volatile MailBox mailbox = {.rompath = ((SDL_DropEvent*)&evts)->data, .sys = sys, .pad = pad, .aud = aud, .initflag = Init_Busy};
-                if ((emu = SDL_CreateThread(Core_Init, "SOUP_Core", (void*)&mailbox)) == NULL)
-                {
-                    printf("thread init failure :( %s\n", SDL_GetError());
-                    return EXIT_FAILURE;
-                }
+                    printf("%s\n", ((SDL_DropEvent*)&evts)->data);
+                    volatile MailBox mailbox = {.rompath = ((SDL_DropEvent*)&evts)->data, .sys = sys, .pad = pad, .aud = aud, .initflag = Init_Busy};
+                    if ((emu = SDL_CreateThread(Core_Init, "SOUP_Core", (void*)&mailbox)) == NULL)
+                    {
+                        printf("ERROR: thread init failure :( %s\n", SDL_GetError());
+                        return EXIT_FAILURE;
+                    }
 
-                while(mailbox.initflag == Init_Busy);
+                    while(mailbox.initflag == Init_Busy);
 
-                if (mailbox.initflag == Init_Fail)
+                    if (mailbox.initflag == Init_Fail)
+                        break;
+
+                    sys = (struct Console*)mailbox.sys;
+
+                    mgui.Buffer = false;
+                    threadexists = true;
                     break;
-
-                sys = (struct Console*)mailbox.sys;
-
-                threadexists = true;
-                break;
+                }
+                default:
+                    break;
             }
-            default:
-                break;
         }
 
-        if (sys && !sys->Powman.PowerCR.SystemShutDown)
-        {
-            if (SDL_TryLockMutex(sys->FrameBufferMutex[buf]))
-            {
-                int pitch; 
-                SDL_LockTexture(blit, NULL, (void**)&buffer, &pitch);
-                for (int s = 0; s < 2; s++)
-                    for (int y = 0; y < 192; y++)
-                        for (int x = 0; x < pitch/4; x++)
-                            for (int b = 0; b < 4; b++)
-                            {
-                                if (b == 4) continue;
-                                buffer[(s*192*pitch)+(y*pitch)+(x*pitch/256)+b] = (u8)((((float)((sys->Framebuffer[buf][s][y][x] >> (b*6)) & 0x3F) * 0xFF) / 0x3F));
-                            }
-                SDL_UnlockTexture(blit);
-                SDL_UnlockMutex(sys->FrameBufferMutex[buf]);
-                buf = !buf;
-                SDL_RenderTexture(ren, blit, NULL, NULL);
-                SDL_RenderPresent(ren);
-                char str[256] = "";
-                snprintf(str, 256, "DualSOUP - %f ms - %f ms", sys->FrameTime, sys->FrameTimeActual);
-                SDL_SetWindowTitle(win, str);
-            }
-            // todo: handle thrd_error??? what am i even supposed to do with that information
-        }
-        else
-        {
-            threadexists = false;
-            SDL_RenderClear(ren);
-            SDL_RenderPresent(ren);
-            SDL_SetWindowTitle(win, "DualSOUP");
-        }
+        threadexists = MainGUI_Loop(sys, &mgui, &corecfg);
 
+        if (corecfg.Dirty)
+        {
+            Config_Write(path, &corecfg);
+        }
     }
 }

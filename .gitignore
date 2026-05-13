@@ -6,4 +6,5 @@ DualSOUP
 *.exe
 *.o
 *.nds
+*.ini
 profile.json.gz
