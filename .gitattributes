@@ -1,0 +1,2 @@
+src/**/*.h linguist-language=C
+libs/** linguist-vendored
