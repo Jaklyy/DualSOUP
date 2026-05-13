@@ -15,6 +15,7 @@
 #include "gui/maingui.h"
 #include "soupparser/soupparser.h"
 
+#include "../core/utils.h"
 #include "../core/console.h"
 #include "../core/arm/arm9/instr_luts.h"
 #include "../core/arm/arm7/instr_luts.h"
@@ -143,9 +144,15 @@ int main()
     SDL_Thread* emu;
     struct Console* sys = nullptr;
 
-    char* path = SDL_GetPrefPath("Jakly", "DualSOUP");
+    char* path = SDL_GetPrefPath("DualSOUP", "DualSOUP");
+    constexpr char ininame[] = "DualSOUP.ini";
+    char* cfgpath = malloc(strlen(path)+sizeof(ininame));
+    strcpy(cfgpath, path);
+    strcat(cfgpath, ininame);
 
-    CoreCfg corecfg = Config_Load(path);
+    CoreCfg corecfg = {.Dirty = false};
+    Config_Load(cfgpath, &corecfg, MainCfg, sizeof(MainCfg)/sizeof(MainCfg[0]), &corecfg.Dirty, &corecfg.Mutex);
+    Config_Load(NULL, &corecfg.SysCfg, SystemCfg, sizeof(SystemCfg)/sizeof(SystemCfg[0]), NULL, &corecfg.Mutex);
 
     if (aud != NULL)
     {
@@ -209,7 +216,7 @@ int main()
 
         if (corecfg.Dirty)
         {
-            Config_Write(path, &corecfg);
+            Config_Write(cfgpath, &corecfg, MainCfg, sizeof(MainCfg)/sizeof(MainCfg[0]), &corecfg.Dirty, corecfg.Mutex);
         }
     }
 }

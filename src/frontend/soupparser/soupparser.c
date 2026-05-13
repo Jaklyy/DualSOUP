@@ -72,25 +72,21 @@ bool SOUPParser(const char* haystack, const char* needle, const char* cmpstr, co
 }
 
 // TODO: re-use for ALL config types
-void Config_Write(const char* path, CoreCfg* corecfg)
+void Config_Write(const char* path, void* cfgin, const ConfigEntry* cfgref, const size_t cfgnum, bool* dirtyflag, SDL_Mutex* mutex)
 {
-    char* savpath = malloc(strlen(path)+sizeof("DualSOUP.ini"));
-    strcpy(savpath, path);
-    strcat(savpath, "DualSOUP.ini");
-    SDL_IOStream* file = SDL_IOFromFile(savpath, "wt");
-    free(savpath);
-    SDL_LockMutex(corecfg->Mutex);
+    SDL_IOStream* file = SDL_IOFromFile(path, "wt");
+    if (mutex != NULL) SDL_LockMutex(mutex);
 
-    for (size_t i = 0; i < (sizeof(MainCfg) / sizeof(MainCfg[0])); i++)
+    for (size_t i = 0; i < cfgnum; i++)
     {
         const union
         {
-            CoreCfg cfg;
-            u8 byte[sizeof(CoreCfg)/sizeof(u8)];
-            char* str[sizeof(CoreCfg)/sizeof(char*)];
-        } pun = {.cfg = *corecfg};
+            void* cfg;
+            u8* byte;
+            char** str;
+        } pun = {.cfg = cfgin};
 
-        const ConfigEntry entry = MainCfg[i];
+        const ConfigEntry entry = cfgref[i];
         char* entrystr = entry.Name;
         char* outstr;
         size_t baselen = strlen(entrystr)+sizeof(char);
@@ -101,9 +97,9 @@ void Config_Write(const char* path, CoreCfg* corecfg)
         case SEARCH_ENUMU8:
         {
             u8 val = pun.byte[entry.Offset/sizeof(pun.byte[0])];
-            if (val >= entry.MaxNum)
+            if (val >= entry.MaxEnum)
             {
-                printf("Config Error: value of %s == %u >= max value of: %u", entrystr, val, entry.MaxNum);
+                printf("Config Error: value of %s == %u >= max value of: %u", entrystr, val, entry.MaxEnum);
                 continue;
             }
             char* valstr = entry.EnumNames[val];
@@ -133,71 +129,78 @@ void Config_Write(const char* path, CoreCfg* corecfg)
         outstr[fulllen-1] = '\n'; // string is no longer 0 terminated
 
         SDL_WriteIO(file, outstr, fulllen);
-        free (outstr);
+        free(outstr);
     }
-    corecfg->Dirty = false;
-    SDL_UnlockMutex(corecfg->Mutex);
+
+    *dirtyflag = false;
+    if (mutex != NULL) SDL_UnlockMutex(mutex);
     if (!SDL_CloseIO(file)) printf("%s\n", SDL_GetError());
 }
 
-CoreCfg Config_Load(const char* path)
+void Config_Load(const char* path, void* cfgout, const ConfigEntry* cfgref, const size_t cfgnum, bool* dirtyflag, SDL_Mutex** mutex)
 {
-    char* savpath = malloc(strlen(path)+sizeof("DualSOUP.ini"));
-    strcpy(savpath, path);
-    strcat(savpath, "DualSOUP.ini");
     SDL_IOStream* file;
     size_t cfgsize;
-    char* cfgdat;
+    char* cfgdat = NULL;
     bool loaddefaults = true;
     bool dirty = false;
 
     union
     {
-        CoreCfg cfg;
-        u8 byte[sizeof(CoreCfg)/sizeof(u8)];
-        char* str[sizeof(CoreCfg)/sizeof(char*)];
-    } pun = {};
+        void* cfg;
+        u8* byte;
+        char** str;
+    } pun = {cfgout};
 
-    pun.cfg.Mutex = SDL_CreateMutex();
-    if (pun.cfg.Mutex == NULL)
+    if (mutex == NULL)
     {
-        printf("ERROR: setting mutex creation failure... %s\n", SDL_GetError());
-        exit(EXIT_FAILURE);
-    }
-
-    if ((file = SDL_IOFromFile(savpath, "rt")) != NULL)
-    {
-        if ((s64)(cfgsize = SDL_SeekIO(file, 0, SDL_IO_SEEK_END)) > 0)
+        if (*mutex == NULL)
         {
-            if ((cfgdat = malloc(cfgsize)) == NULL)
+            *mutex = SDL_CreateMutex();
+            if (*mutex == NULL)
             {
-                printf("FATAL: malloc failed.\n");
+                printf("ERROR: setting mutex creation failure... %s\n", SDL_GetError());
                 exit(EXIT_FAILURE);
             }
-            if (SDL_SeekIO(file, 0, SDL_IO_SEEK_SET) != -1)
-            {
-                if (SDL_ReadIO(file, cfgdat, cfgsize) == cfgsize)
-                    loaddefaults = false;
-                else
-                {
-                    // todo: actually check error
-                    printf("Cfg file read error.\n");
-                }
-            }
-            else printf("%s\n", SDL_GetError());
         }
-        else
-        {
-            if (cfgsize == 0) printf("Note: config file empty?\n");
-            else printf("%s\n", SDL_GetError());
-        }
-        if (!SDL_CloseIO(file)) printf("%s\n", SDL_GetError());
+        SDL_LockMutex(*mutex);
     }
-    else printf("%s\n", SDL_GetError());
-    free(savpath);
 
-    bool initialized[sizeof(MainCfg) / sizeof(MainCfg[0])] = {};
-    for (size_t nument = 0, pos = 0; nument < (sizeof(MainCfg) / sizeof(MainCfg[0])); nument++)
+    if (path != NULL)
+    {
+        if ((file = SDL_IOFromFile(path, "rt")) != NULL)
+        {
+            if ((s64)(cfgsize = SDL_SeekIO(file, 0, SDL_IO_SEEK_END)) > 0)
+            {
+                if ((cfgdat = malloc(cfgsize)) == NULL)
+                {
+                    printf("FATAL: malloc failed.\n");
+                    exit(EXIT_FAILURE);
+                }
+                if (SDL_SeekIO(file, 0, SDL_IO_SEEK_SET) != -1)
+                {
+                    if (SDL_ReadIO(file, cfgdat, cfgsize) == cfgsize)
+                        loaddefaults = false;
+                    else
+                    {
+                        // todo: actually check error
+                        printf("Cfg file read error.\n");
+                    }
+                }
+                else printf("%s\n", SDL_GetError());
+            }
+            else
+            {
+                if (cfgsize == 0) printf("Note: config file empty?\n");
+                else printf("%s\n", SDL_GetError());
+            }
+            if (!SDL_CloseIO(file)) printf("%s\n", SDL_GetError());
+        }
+        else printf("%s\n", SDL_GetError());
+    }
+
+    bool initialized[cfgnum] = {};
+    for (size_t nument = 0, pos = 0; nument < cfgnum; nument++)
     {
         size_t i = 0;
         if (!loaddefaults)
@@ -211,12 +214,12 @@ CoreCfg Config_Load(const char* path)
                     break;
                 }
                 // find a valid command
-                for (; i < (sizeof(MainCfg) / sizeof(MainCfg[0])); i++)
+                for (; i < cfgnum; i++)
                 {
                     if (initialized[i]) continue;
-                    size_t namelen = strlen(MainCfg[i].Name);
+                    size_t namelen = strlen(cfgref[i].Name);
                     if ((pos+namelen) >= cfgsize) continue; // buffer overflow; must be invalid
-                    if ((memcmp(&cfgdat[pos], MainCfg[i].Name, namelen) == 0) && (cfgdat[pos+namelen] == '='))
+                    if ((memcmp(&cfgdat[pos], cfgref[i].Name, namelen) == 0) && (cfgdat[pos+namelen] == '='))
                     {
                         // string match found: continue to next step
                         pos += namelen+1;
@@ -238,7 +241,7 @@ CoreCfg Config_Load(const char* path)
         if (loaddefaults)
         {
             i = 0;
-            for (; i < (sizeof(MainCfg) / sizeof(MainCfg[0])); i++)
+            for (; i < cfgnum; i++)
             {
                 if (!initialized[i]) break;
             }
@@ -246,7 +249,7 @@ CoreCfg Config_Load(const char* path)
         found:
 
         printf("entries: %lu\n", i);
-        const ConfigEntry entry = MainCfg[i];
+        const ConfigEntry entry = cfgref[i];
 
         switch(entry.Type)
         {
@@ -256,7 +259,7 @@ CoreCfg Config_Load(const char* path)
             u8 j = 0;
             if (!loaddefaults)
             {
-                for (; j < entry.MaxNum; j++)
+                for (; j < entry.MaxEnum; j++)
                 {
                     size_t enumlen = strlen(entry.EnumNames[j]);
                     if ((pos+enumlen) >= cfgsize) continue; // buffer overflow; must be invalid
@@ -303,7 +306,9 @@ CoreCfg Config_Load(const char* path)
         initialized[i] = true;
     }
 
-    pun.cfg.Dirty = (dirty || loaddefaults);
+    if (dirtyflag != NULL) *dirtyflag = (dirty || loaddefaults);
 
-    return pun.cfg;
+    if (mutex != NULL) SDL_UnlockMutex(*mutex);
+
+    if (cfgdat != NULL) free(cfgdat);
 }

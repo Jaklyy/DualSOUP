@@ -314,6 +314,12 @@ typedef enum : u8
     WiFiNVRAMWriteProt_Disabled,
 } WiFiNVRAMWriteProt; // can be disabled on some retail models by shorting a pin iirc?
 
+typedef enum : u8
+{
+    ConsoleModel_Custom,
+    ConsoleModel_USG,
+} ConsoleModel;
+
 typedef struct
 {
     NTRAudioOut NTRAudioOut;
@@ -330,6 +336,8 @@ typedef struct
     SDL_Mutex* Mutex; // make sure these values aren't being messed with before reading.
     bool Dirty; // update the fecking config file
     SysCfg SysCfg;
+    ConsoleModel Model;
+    char* CustomModel;
     struct {
         char* Bios7;
         char* PakROM;
