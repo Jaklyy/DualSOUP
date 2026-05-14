@@ -68,8 +68,32 @@ void Console_DebugLog(struct Console* sys)
 #endif
 }
 
+bool Console_ReadFile(u8* buf, const char* path, const size_t num, const char* name)
+{
+    SDL_IOStream* file;
+    if ((file = SDL_IOFromFile(path, "rb")))
+    {
+        if (SDL_ReadIO(file, buf, num) == num)
+        {
+            SDL_CloseIO(file);
+            return true;
+        }
+        else
+        {
+            SDL_CloseIO(file);
+            printf("%s File Read Error: idk ask jakly to actually add the proper diagnostics, but ig it couldn't read the full file\n", name);
+        }
+    }
+    else
+    {
+        printf("%s File Open Error: %s\n", name, SDL_GetError());
+    }
+    return false;
+}
+
 // TODO: this function probably shouldn't manage memory on its own?
-struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* firmware, const char* rom, void* pad, void* aud)
+// TODO: this function is a complete mess. it NEEDS to be restructured heavily at some point.
+struct Console* Console_Init(struct Console* sys, CoreCfg cfg, void* pad, void* aud)
 {
     u8* nvram = nullptr;
     if (sys == nullptr)
@@ -94,8 +118,8 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
 #ifdef REALTHREAD
         mtx_destroy(&sys->Sched.SchedulerMtx);
 #endif
-        //Flash_Cleanup(&sys->Firmware);
-        nvram = sys->Firmware.RAM;
+        Flash_Cleanup(&sys->Firmware);
+        //nvram = sys->Firmware.RAM;
         Gamecard_Cleanup(&sys->Gamecard);
         int dummy;
 #ifndef SINGLETHREADRASTER
@@ -116,35 +140,34 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
     memset(sys, 0, sizeof(*sys));
     CR_Start = false;
 
-    int num9 = 0;
-    if (ntr9 != NULL) num9 = fread(sys->NTRBios9.b8, NTRBios9_Size, 1, ntr9);
-    int num7 = 0;
-    if (ntr7 != NULL) num7 = fread(sys->NTRBios7.b8, NTRBios7_Size, 1, ntr7);
+    sys->SysCfg = cfg.SysCfg;
+
+    bool ntr9init = Console_ReadFile(sys->NTRBios9.b8, cfg.NTR.Bios9, NTRBios9_Size, "DS ARM9 Bios");
+    bool ntr7init = Console_ReadFile(sys->NTRBios7.b8, cfg.NTR.Bios7, NTRBios7_Size, "DS ARM7 Bios");
 
     bool firminit = false;
-    fseek(firmware, 0, SEEK_END);
-    u64 nvramsize = ftell(firmware);
-    fseek(firmware, 0, SEEK_SET);
-    if (nvram == nullptr)
+    size_t nvramsize;
+    switch(cfg.SysCfg.WiFiNVRAMSize)
     {
-        nvram = malloc(nvramsize);
-        if (nvram != NULL)
-        {
-            firminit = fread(nvram, nvramsize, 1, firmware) != 0;
-            Flash_Init(&sys->Firmware, nvram, nvramsize, true, 0x010101);
-        }
+        case WiFiNVRAM_4KiB: nvramsize = KiB(4); break;
+        case WiFiNVRAM_128KiB: nvramsize = KiB(128); break;
+        default: LogPrint(LOG_ALWAYS, "UNHANDLED ENUM FOR WIFI NVRAM SIZE DURING CORE INIT!!!\n"); [[fallthrough]];
+        case WiFiNVRAM_256KiB: nvramsize = KiB(256); break;
+        case WiFiNVRAM_512KiB: nvramsize = KiB(512); break;
     }
-    else
+    if ((nvram = malloc(nvramsize)) != NULL)
     {
-        firminit = true;
-        Flash_Init(&sys->Firmware, nvram, nvramsize, true, 0x010101);
+        if ((firminit = Console_ReadFile(nvram, cfg.NTR.NVRAM, nvramsize, "DS Firmware")))
+        {
+            Flash_Init(&sys->Firmware, nvram, nvramsize, cfg.SysCfg.WiFiNVRAMWriteProt, 0x010101);
+        }
     }
 
     // allocate shit
     sys->HandleARM9 = CR_Active();
     bool cr7init = CR_Create(&sys->HandleARM7, (void*)ARM7_MainLoop, &sys->ARM7);
 
-    bool gcinit = Gamecard_Init(&sys->Gamecard, rom, sys->NTRBios7.b8);
+    bool gcinit = Gamecard_Init(&sys->Gamecard, cfg.NTR.CardROM, sys->NTRBios7.b8);
 
     bool mtxinit = ((sys->FrameBufferMutex[0] = SDL_CreateMutex()) != NULL);
     bool mtxinit3 = ((sys->FrameBufferMutex[1] = SDL_CreateMutex()) != NULL);
@@ -161,16 +184,16 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
     bool thrdinit1 = true, thrdinit2 = true, thrdinit3 = true;
 #endif
 
-    if ((!cr7init) || (num9 != 1) || (num7 != 1) || !firminit || !gcinit || !mtxinit || !mtxinit2|| !mtxinit3 || !thrdinit1 || !thrdinit2)
+    if ((!cr7init) || !ntr9init || !ntr7init || !firminit || !gcinit || !mtxinit || !mtxinit2|| !mtxinit3 || !thrdinit1 || !thrdinit2)
     {
         // return error messages
         if (!cr7init)
             LogPrint(LOG_ALWAYS, "FATAL: Coroutine handle creation failed!\n");
         if (!mtxinit || !mtxinit2|| !mtxinit3)
             LogPrint(LOG_ALWAYS, "FATAL: Mutex init failed.\n");
-        if (num9 != 1)
+        if (!ntr9init)
             LogPrint(LOG_ALWAYS, "FATAL: ARM9 BIOS did not load properly.\n");
-        if (num7 != 1)
+        if (!ntr7init)
             LogPrint(LOG_ALWAYS, "FATAL: ARM7 BIOS did not load properly.\n");
         if (!thrdinit1 || !thrdinit2)
             LogPrint(LOG_ALWAYS, "FATAL: PPU Thread creation failed.\n");
@@ -205,7 +228,7 @@ struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* 
         SDL_WaitThread(sys->PPUBThread, &dummy); // todo: detach thread instead?
 #endif
 
-        free(sys);
+        SDL_aligned_free(sys);
         sys = nullptr;
 
         return nullptr;

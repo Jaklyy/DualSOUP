@@ -23,72 +23,36 @@
 
 
 
-enum InitFlag : u8
+typedef enum : u8
 {
     Init_Busy = 0,
     Init_Success = 1,
     Init_Fail = 2,
-};
+} InitFlag;
 
 typedef struct
 {
-    volatile const char* rompath;
     volatile struct Console* sys;
-    volatile SDL_Gamepad* pad;
-    volatile SDL_AudioStream* aud;
-    volatile u8 initflag;
+    SDL_Gamepad* pad;
+    SDL_AudioStream* aud;
+    volatile InitFlag initflag;
+    CoreCfg cfg;
 } MailBox;
 
 int SDLCALL Core_Init(void* pass)
 {
-    volatile MailBox* mailbox = pass;
-
-    FILE* ntr9 = fopen("ntr9.bin", "rb");
-    if (ntr9 == NULL)
-    {
-        printf("no ntr arm9 bios :(\n");
-        mailbox->initflag = Init_Fail;
-        exit(EXIT_FAILURE);
-    }
-
-    FILE* ntr7 = fopen("ntr7.bin", "rb");
-    if (ntr7 == NULL)
-    {
-        printf("no ntr arm7 bios :(\n");
-        fclose(ntr9);
-        mailbox->initflag = Init_Fail;
-        return EXIT_FAILURE;
-    }
-
-    FILE* firmware = fopen("firmware.bin", "rb");
-    if (firmware == NULL)
-    {
-        printf("no firmware :(\n");
-        fclose(ntr9);
-        fclose(ntr7);
-        mailbox->initflag = Init_Fail;
-        return EXIT_FAILURE;
-    }
-
-    const char* rompath = (const char*)mailbox->rompath;
+    MailBox* mailbox = pass;
 
     // initialize main emulator state struct
-    struct Console* sys = Console_Init((struct Console*)mailbox->sys, ntr9, ntr7, firmware, rompath, (SDL_Gamepad*)mailbox->pad, (SDL_AudioStream*)mailbox->aud);
+    struct Console* sys = Console_Init((struct Console*)mailbox->sys, mailbox->cfg, mailbox->pad, mailbox->aud);
     if (sys == nullptr)
     {
-        fclose(ntr9);
-        fclose(ntr7);
-        fclose(firmware);
         mailbox->initflag = Init_Fail;
         return EXIT_FAILURE;
     }
 
     mailbox->sys = sys;
     mailbox->initflag = Init_Success;
-
-    fclose(ntr9);
-    fclose(ntr7);
-    fclose(firmware);
 
 #ifdef USEDIRECTBOOT
     Console_DirectBoot(sys);
@@ -98,6 +62,34 @@ int SDLCALL Core_Init(void* pass)
     sys->KillThread = false;
 
     return EXIT_SUCCESS;
+}
+
+void CoreThread_Reset(struct Console** sys, SDL_Thread** thrd, SDL_Gamepad* pad, SDL_AudioStream* aud, const CoreCfg cfg, bool* frontbuffer, bool* thrdrunning)
+{
+    if (*thrdrunning)
+    {
+        (*sys)->KillThread = true;
+        while((*sys)->KillThread);
+        *thrdrunning = false;
+    }
+
+    MailBox mailbox = {.sys = *sys, .pad = pad, .aud = aud, .initflag = Init_Busy, .cfg = cfg};
+    if (!*thrdrunning && ((*thrd = SDL_CreateThread(Core_Init, "SOUP_Core", (void*)&mailbox)) == NULL))
+    {
+        printf("ERROR: thread init failure :( %s\n", SDL_GetError());
+        exit(EXIT_FAILURE);
+    }
+
+    while(mailbox.initflag == Init_Busy);
+
+    if (mailbox.initflag == Init_Fail)
+        return;
+
+    *sys = (struct Console*)mailbox.sys;
+
+    *frontbuffer = false; // feels wrong to be resetting this here...?
+    *thrdrunning = true;
+    return;
 }
 
 int main()
@@ -140,8 +132,8 @@ int main()
         pad = SDL_OpenGamepad(joysticks[0]);
     }
 
-    bool threadexists = false;
-    SDL_Thread* emu;
+    bool thrdrunning = false;
+    SDL_Thread* cthrd;
     struct Console* sys = nullptr;
 
     char* path = SDL_GetPrefPath("DualSOUP", "DualSOUP");
@@ -150,9 +142,9 @@ int main()
     strcpy(cfgpath, path);
     strcat(cfgpath, ininame);
 
-    CoreCfg corecfg = {.Dirty = false};
-    Config_Load(cfgpath, &corecfg, MainCfg, sizeof(MainCfg)/sizeof(MainCfg[0]), &corecfg.Dirty, &corecfg.Mutex);
-    Config_Load(NULL, &corecfg.SysCfg, SystemCfg, sizeof(SystemCfg)/sizeof(SystemCfg[0]), NULL, &corecfg.Mutex);
+    CoreCfg mcfg = {.Dirty = false};
+    Config_Load(cfgpath, &mcfg, MainCfg, sizeof(MainCfg)/sizeof(MainCfg[0]), &mcfg.Dirty, &mcfg.Mutex);
+    Config_Load(NULL, &mcfg.SysCfg, SystemCfg, sizeof(SystemCfg)/sizeof(SystemCfg[0]), NULL, &mcfg.Mutex);
 
     if (aud != NULL)
     {
@@ -181,30 +173,9 @@ int main()
                     return EXIT_SUCCESS;
                 case SDL_EVENT_DROP_FILE:
                 {
-                    if (threadexists)
-                    {
-                        sys->KillThread = true;
-                        while(sys->KillThread);
-                        threadexists = false;
-                    }
-
-                    printf("%s\n", ((SDL_DropEvent*)&evts)->data);
-                    volatile MailBox mailbox = {.rompath = ((SDL_DropEvent*)&evts)->data, .sys = sys, .pad = pad, .aud = aud, .initflag = Init_Busy};
-                    if ((emu = SDL_CreateThread(Core_Init, "SOUP_Core", (void*)&mailbox)) == NULL)
-                    {
-                        printf("ERROR: thread init failure :( %s\n", SDL_GetError());
-                        return EXIT_FAILURE;
-                    }
-
-                    while(mailbox.initflag == Init_Busy);
-
-                    if (mailbox.initflag == Init_Fail)
-                        break;
-
-                    sys = (struct Console*)mailbox.sys;
-
-                    mgui.Buffer = false;
-                    threadexists = true;
+                    printf("%s\n", ((SDL_DropEvent*)&evts)->data);                    
+                    mcfg.NTR.CardROM = ((SDL_DropEvent*)&evts)->data;
+                    CoreThread_Reset(&sys, &cthrd, pad, aud, mcfg, &mgui.Buffer, &thrdrunning);
                     break;
                 }
                 default:
@@ -212,11 +183,11 @@ int main()
             }
         }
 
-        threadexists = MainGUI_Loop(sys, &mgui, &corecfg);
+        thrdrunning = MainGUI_Loop(sys, &mgui, &mcfg);
 
-        if (corecfg.Dirty)
+        if (mcfg.Dirty)
         {
-            Config_Write(cfgpath, &corecfg, MainCfg, sizeof(MainCfg)/sizeof(MainCfg[0]), &corecfg.Dirty, corecfg.Mutex);
+            Config_Write(cfgpath, &mcfg, MainCfg, sizeof(MainCfg)/sizeof(MainCfg[0]), &mcfg.Dirty, mcfg.Mutex);
         }
     }
 }

@@ -1,25 +1,28 @@
 #pragma once
 
-#include <SDL3/SDL_thread.h>
-#include <SDL3/SDL_mutex.h>
 #include <stdatomic.h>
 #include <stdio.h>
+
+#include <SDL3/SDL_iostream.h>
+#include <SDL3/SDL_thread.h>
+#include <SDL3/SDL_mutex.h>
+
+#include "scheduler.h"
 #include "utils.h"
+#include "irq.h"
 #include "arm/arm9/arm.h"
 #include "arm/arm7/arm.h"
-#include "io/dma.h"
 #include "bus/ahb.h"
+#include "io/sound.h"
 #include "io/timer.h"
-#include "scheduler.h"
-#include "irq.h"
-#include "video/ppu.h"
-#include "sram/flash.h"
-#include "carts/gamecard.h"
+#include "io/dma.h"
 #include "io/rtc.h"
 #include "io/tsc.h"
 #include "io/powman.h"
+#include "carts/gamecard.h"
+#include "sram/flash.h"
+#include "video/ppu.h"
 #include "video/3d.h"
-#include "io/sound.h"
 
 
 
@@ -560,7 +563,7 @@ struct Console
 // if a nullptr is passed then it will allocate and initialize a console from scratch.
 // otherwise it will re-initialize an already allocated struct.
 // returns success or failure.
-struct Console* Console_Init(struct Console* sys, FILE* ntr9, FILE* ntr7, FILE* firmware, const char* rom, void* pad, void* aud);
+struct Console* Console_Init(struct Console* sys, CoreCfg cfg, void* pad, void* aud);
 // emulate a hardware reset.
 void Console_Reset(struct Console* sys);
 // actually run the emulation.
