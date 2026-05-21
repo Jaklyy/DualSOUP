@@ -74,7 +74,7 @@ u16 Input_PollMain(void* pad)
     return inputs;
 }
 
-u16 Input_PollExtra(void* pad)
+u16 Input_PollExtra(const bool touched, void* pad)
 {
     u16 inputs = (1<<2) | (1<<4) | (1<<5)
                | (1<<3) // debug
@@ -89,10 +89,7 @@ u16 Input_PollExtra(void* pad)
         inputs |= !SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_NORTH) << 0;
         inputs |= !SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_WEST) << 1;
     }
-    float y;
-    bool lmb = SDL_GetMouseState(NULL, &y);
-    lmb &= (y >= (192*2));
-    inputs |= !lmb << 6; // pen
+    inputs |= !touched << 6; // pen
 
     inputs &= ~(SDL_GetKeyboardState(NULL)[SDL_SCANCODE_P] << 0);
     inputs &= ~(SDL_GetKeyboardState(NULL)[SDL_SCANCODE_L] << 1);

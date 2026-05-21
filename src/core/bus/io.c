@@ -288,7 +288,7 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask, const bool tim
             return Input_PollMain(sys->Pad);
 
         case 0x00'01'34:
-            u32 ret = sys->RCR | (Input_PollExtra(sys->Pad) << 16);
+            u32 ret = sys->RCR | (Input_PollExtra(sys->TSC.State.Touched, sys->Pad) << 16);
             return ret;
 
         case 0x00'01'38:

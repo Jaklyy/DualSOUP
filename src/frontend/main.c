@@ -122,7 +122,17 @@ int main()
 
     atexit(SDL_Quit); // apparently this is a thing i should be doing.
 
-    MainGUI mgui = MainGUI_Init();
+    char* path = SDL_GetPrefPath("DualSOUP", "DualSOUP");
+    constexpr char ininame[] = "DualSOUP.ini";
+    char* cfgpath = malloc(strlen(path)+sizeof(ininame));
+    strcpy(cfgpath, path);
+    strcat(cfgpath, ininame);
+
+    MainCfg mcfg = {.Dirty = false};
+    Config_Load(cfgpath, &mcfg, MainCfgData, sizeof(MainCfgData)/sizeof(MainCfgData[0]), &mcfg.Dirty, &mcfg.Mutex);
+    Config_Load(NULL, &mcfg.CoreCfg.SysCfg, SystemCfgData, sizeof(SystemCfgData)/sizeof(SystemCfgData[0]), NULL, &mcfg.Mutex);
+
+    MainGUI mgui = MainGUI_Init(&mcfg);
 
     SDL_AudioSpec audiospec = {SDL_AUDIO_S16LE, 2, SoundMixerOutput};
     SDL_AudioStream* aud = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &audiospec, NULL, NULL);
@@ -144,16 +154,6 @@ int main()
     bool thrdrunning = false;
     SDL_Thread* cthrd;
     struct Console* sys = nullptr;
-
-    char* path = SDL_GetPrefPath("DualSOUP", "DualSOUP");
-    constexpr char ininame[] = "DualSOUP.ini";
-    char* cfgpath = malloc(strlen(path)+sizeof(ininame));
-    strcpy(cfgpath, path);
-    strcat(cfgpath, ininame);
-
-    MainCfg mcfg = {.Dirty = false};
-    Config_Load(cfgpath, &mcfg, MainCfgData, sizeof(MainCfgData)/sizeof(MainCfgData[0]), &mcfg.Dirty, &mcfg.Mutex);
-    Config_Load(NULL, &mcfg.CoreCfg.SysCfg, SystemCfgData, sizeof(SystemCfgData)/sizeof(SystemCfgData[0]), NULL, &mcfg.Mutex);
 
     if (aud != NULL)
     {

@@ -23,7 +23,7 @@ u8 TSC_SendCommand(TSC* tsc, const u8 val)
         case 1: // touch y
             if (tsc->State.Touched)
             {
-                tsc->Ret = tsc->State.Y;
+                tsc->Ret = tsc->State.Y & 0xFFF;
             }
             else tsc->Ret = 0xFFF;
             break;
@@ -43,7 +43,7 @@ u8 TSC_SendCommand(TSC* tsc, const u8 val)
         case 5: // touch xRet
             if (tsc->State.Touched)
             {
-                tsc->Ret = tsc->State.X;
+                tsc->Ret = tsc->State.X & 0xFFF;
             }
             else tsc->Ret = 0xFFF;
             break;

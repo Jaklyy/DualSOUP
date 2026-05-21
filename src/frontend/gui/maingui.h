@@ -40,11 +40,11 @@ constexpr float GUI_MaxDisplayPosX = 999999.0;
 constexpr float GUI_MinDisplayPosY = 0;
 constexpr float GUI_MaxDisplayPosY = 999999.0;
 
-#define GUI_INPUTCLAMPED(type, label, var, range) \
+#define GUI_INPUTCLAMPED(type, label, var, rangelo, rangehi) \
     if (ImGui_Input##type(label, &var)) \
     { \
-        DS_CLAMP(var, <, GUI_Min##range) \
-        DS_CLAMP(var, >, GUI_Max##range) \
+        DS_CLAMP(var, <, rangelo) \
+        DS_CLAMP(var, >, rangehi) \
         mcfg->Dirty = true; \
     }
 
@@ -91,5 +91,5 @@ typedef struct
 } MainGUI;
 
 typedef struct MainCfg MainCfg;
-MainGUI MainGUI_Init();
+MainGUI MainGUI_Init(MainCfg* mcfg);
 bool MainGUI_Loop(struct Console* sys, MainGUI* mgui, MainCfg* mcfg);

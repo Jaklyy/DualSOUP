@@ -84,15 +84,30 @@ void ConfigGUI_Loop(MainGUI* mgui, MainCfg* mcfg)
                 SelectFile(NTR.NVRAM, "NDS Firmware", "bin;rom;mem", 1)
 
                 ImGui_SeparatorText("TSC Range");
-
                 ImGui_InputText("TSC Left", mgui->TSCRange[0], sizeof(mgui->TSCRange[0]), ImGuiInputTextFlags_CharsHexadecimal|ImGuiInputTextFlags_CharsUppercase);
-                if (ImGui_IsItemDeactivatedAfterEdit()) mcfg->CoreCfg.SysCfg.TSCL = strtoul(mgui->TSCRange[0], NULL, 16);
+                if (ImGui_IsItemDeactivatedAfterEdit())
+                {
+                    // TODO: add dirty flag once system configs are worked out?
+                    mcfg->CoreCfg.SysCfg.TSCL = strtoul(mgui->TSCRange[0], NULL, 16);
+                }
                 ImGui_InputText("TSC Right", mgui->TSCRange[1], sizeof(mgui->TSCRange[1]), ImGuiInputTextFlags_CharsHexadecimal|ImGuiInputTextFlags_CharsUppercase);
-                if (ImGui_IsItemDeactivatedAfterEdit()) mcfg->CoreCfg.SysCfg.TSCR = strtoul(mgui->TSCRange[1], NULL, 16);
+                if (ImGui_IsItemDeactivatedAfterEdit())
+                {
+                    // TODO: add dirty flag once system configs are worked out?
+                    mcfg->CoreCfg.SysCfg.TSCR = strtoul(mgui->TSCRange[1], NULL, 16);
+                }
                 ImGui_InputText("TSC Top", mgui->TSCRange[2], sizeof(mgui->TSCRange[2]), ImGuiInputTextFlags_CharsHexadecimal|ImGuiInputTextFlags_CharsUppercase);
-                if (ImGui_IsItemDeactivatedAfterEdit()) mcfg->CoreCfg.SysCfg.TSCT = strtoul(mgui->TSCRange[2], NULL, 16);
+                if (ImGui_IsItemDeactivatedAfterEdit())
+                {
+                    // TODO: add dirty flag once system configs are worked out?
+                    mcfg->CoreCfg.SysCfg.TSCT = strtoul(mgui->TSCRange[2], NULL, 16);
+                }
                 ImGui_InputText("TSC Bottom", mgui->TSCRange[3], sizeof(mgui->TSCRange[3]), ImGuiInputTextFlags_CharsHexadecimal|ImGuiInputTextFlags_CharsUppercase);
-                if (ImGui_IsItemDeactivatedAfterEdit()) mcfg->CoreCfg.SysCfg.TSCB = strtoul(mgui->TSCRange[3], NULL, 16);
+                if (ImGui_IsItemDeactivatedAfterEdit())
+                {
+                    // TODO: add dirty flag once system configs are worked out?
+                    mcfg->CoreCfg.SysCfg.TSCB = strtoul(mgui->TSCRange[3], NULL, 16);
+                }
                 ImGui_EndTabItem();
             }
             if (ImGui_BeginTabItem("Layout", NULL, ImGuiTabItemFlags_None))

@@ -109,7 +109,7 @@ static const ConfigEntry SystemCfgData[] =
     },
     {
         .Name=      "TSCRightMax",
-        .Offset=    offsetof(SysCfg, TSCL),
+        .Offset=    offsetof(SysCfg, TSCR),
         .UDefVal=   0xFFF,
         .UMinVal=   0,
         .UMaxVal=   0xFFF,
@@ -117,7 +117,7 @@ static const ConfigEntry SystemCfgData[] =
     },
     {
         .Name=      "TSCTopMax",
-        .Offset=    offsetof(SysCfg, TSCL),
+        .Offset=    offsetof(SysCfg, TSCT),
         .UDefVal=   0,
         .UMinVal=   0,
         .UMaxVal=   0xFFF,
@@ -125,7 +125,7 @@ static const ConfigEntry SystemCfgData[] =
     },
     {
         .Name=      "TSCBottomMax",
-        .Offset=    offsetof(SysCfg, TSCL),
+        .Offset=    offsetof(SysCfg, TSCB),
         .UDefVal=   0xBFF,
         .UMinVal=   0,
         .UMaxVal=   0xFFF,
@@ -172,7 +172,7 @@ static_assert((sizeof(GUI_DisplayOffsetDefaults) / sizeof(GUI_DisplayOffsetDefau
     { \
         .Name=      "DispWin"#winnum"_Disp"#dispnum"_IsBottomScreen", \
         .Offset=    offsetof(MainCfg, GuiCfg.DisplayWindow[winnum].Display[dispnum].Bottom), \
-        .FDefVal=   (dispnum&1), \
+        .BDefVal=   (dispnum&1), \
         .Type=      SEARCH_BOOL,\
     }, \
 

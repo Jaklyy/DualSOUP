@@ -269,7 +269,7 @@ void LogPrint(const u64 logtype, const char* str, ...) __attribute__ ((format (p
 
 // input handlers
 
-u16 Input_PollExtra(void* pad);
+u16 Input_PollExtra(const bool touched, void* pad);
 u16 Input_PollMain(void* pad);
 
 // runtime configuration data for the emulation core

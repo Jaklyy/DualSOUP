@@ -16,7 +16,7 @@
 
 
 
-MainGUI MainGUI_Init()
+MainGUI MainGUI_Init(MainCfg* mcfg)
 {
     MainGUI mgui = {};
     if (!SDL_CreateWindowAndRenderer("DualSOUP", 256*2, 192*2*2, SDL_WINDOW_RESIZABLE, &mgui.Win, &mgui.Ren))
@@ -48,6 +48,11 @@ MainGUI MainGUI_Init()
 
     cImGui_ImplSDL3_InitForSDLRenderer(mgui.Win, mgui.Ren);
     cImGui_ImplSDLRenderer3_Init(mgui.Ren);
+
+    snprintf(mgui.TSCRange[0], 4, "%03X", mcfg->CoreCfg.SysCfg.TSCL);
+    snprintf(mgui.TSCRange[1], 4, "%03X", mcfg->CoreCfg.SysCfg.TSCR);
+    snprintf(mgui.TSCRange[2], 4, "%03X", mcfg->CoreCfg.SysCfg.TSCT);
+    snprintf(mgui.TSCRange[3], 4, "%03X", mcfg->CoreCfg.SysCfg.TSCB);
 
     return mgui;
 }
@@ -196,17 +201,17 @@ bool MainGUI_Loop(struct Console* sys, MainGUI* mgui, MainCfg* mcfg)
             if (ImGui_BeginPopupContextWindow())
             {
                 ImGui_SeparatorText("Display Window Settings");
-                ImGui_Checkbox("Lock Window", &dispwin->LockPos);
-                ImGui_Checkbox("Display Only", &dispwin->NoDecor);
+                if (ImGui_Checkbox("Lock Window", &dispwin->LockPos)) mcfg->Dirty = true;
+                if (ImGui_Checkbox("Display Only", &dispwin->NoDecor)) mcfg->Dirty = true;
 
-                GUI_INPUTCLAMPED(Float, "X Pos", dispwin->Pos.x, DisplayWindowPosX)
-                GUI_INPUTCLAMPED(Float, "Y Pos", dispwin->Pos.y, DisplayWindowPosY)
-                GUI_INPUTCLAMPED(Float, "Width", dispwin->Sz.x, DisplayWindowWidth)
-                GUI_INPUTCLAMPED(Float, "Height", dispwin->Sz.x, DisplayWindowHeight)
+                GUI_INPUTCLAMPED(Float, "X Pos", dispwin->Pos.x, GUI_MinDisplayWindowPosX, GUI_MaxDisplayWindowPosX)
+                GUI_INPUTCLAMPED(Float, "Y Pos", dispwin->Pos.y, GUI_MinDisplayWindowPosY, GUI_MaxDisplayWindowPosY)
+                GUI_INPUTCLAMPED(Float, "Width", dispwin->Sz.x, GUI_MinDisplayWindowWidth, GUI_MaxDisplayWindowWidth)
+                GUI_INPUTCLAMPED(Float, "Height", dispwin->Sz.x, GUI_MinDisplayWindowHeight, GUI_MaxDisplayWindowHeight)
 
                 ImGui_SeparatorText("Per Window Display Settings");
 
-                GUI_INPUTCLAMPED(Int, "Num Displays", dispwin->NumDisplays, DisplaysPerWindow)
+                GUI_INPUTCLAMPED(Int, "Num Displays", dispwin->NumDisplays, GUI_MinDisplaysPerWindow, GUI_MaxDisplaysPerWindow)
                 const char* inputs[] = {"No Scaling", "Stetch", "Maintain Aspect Ratio", "Integer Scale"};
                 if (ImGui_ComboChar("Scaling Mode", &dispwin->ScaleMode, inputs, sizeof(inputs)/sizeof(inputs[0])))
                 {
@@ -225,11 +230,11 @@ bool MainGUI_Loop(struct Console* sys, MainGUI* mgui, MainCfg* mcfg)
                     Display* disp = &dispwin->Display[j];
 
 
-                    ImGui_Checkbox("Bottom Screen", &disp->Bottom);
-                    GUI_INPUTCLAMPED(Float, "X Pos", disp->Pos.x, DisplayPosX)
-                    GUI_INPUTCLAMPED(Float, "Y Pos", disp->Pos.y, DisplayPosY)
-                    GUI_INPUTCLAMPED(Float, "Width", disp->Sz.x, DisplayWidth)
-                    GUI_INPUTCLAMPED(Float, "Height", disp->Sz.y, DisplayHeight)
+                    if (ImGui_Checkbox("Bottom Screen", &disp->Bottom)) mcfg->Dirty = true;
+                    GUI_INPUTCLAMPED(Float, "X Pos", disp->Pos.x, GUI_MinDisplayPosX, GUI_MaxDisplayPosX)
+                    GUI_INPUTCLAMPED(Float, "Y Pos", disp->Pos.y, GUI_MinDisplayPosY, GUI_MaxDisplayPosY)
+                    GUI_INPUTCLAMPED(Float, "Width", disp->Sz.x, GUI_MinDisplayWidth, GUI_MaxDisplayWidth)
+                    GUI_INPUTCLAMPED(Float, "Height", disp->Sz.y, GUI_MinDisplayHeight, GUI_MaxDisplayHeight)
 
                     ImGui_PopID();
                 }
@@ -246,19 +251,19 @@ bool MainGUI_Loop(struct Console* sys, MainGUI* mgui, MainCfg* mcfg)
                 ImGui_SetCursorPos((ImVec2){basepos.x + (disp->Pos.x * scale.x), basepos.y + (disp->Pos.y * scale.y)});
                 ImVec2 dispsz = {disp->Sz.x * scale.x, disp->Sz.y * scale.y};
 
+                ImVec2 curpos = ImGui_GetCursorScreenPos(); // get screen rel cursor position before submission for touch coord calc
+                ImGui_Image((ImTextureRef){._TexID = (intptr_t)(disp->Bottom ? mgui->Bot : mgui->Top)}, dispsz);
+
                 // calculate tsc touch coords if needed
                 if (active && disp->Bottom && ImGui_IsMouseDown(ImGuiMouseButton_Left) && ImGui_IsItemHovered(ImGuiHoveredFlags_None))
                 {
-                    ImVec2 curpos = ImGui_GetCursorScreenPos();
                     ImVec2 moupos = ImGui_GetMousePos();
                     if (dispsz.x == 0.0) sys->TSC.State.X = 0; // dont div by 0 pls
-                    else sys->TSC.State.X = ((moupos.x-curpos.x) * (scfg->TSCR - scfg->TSCL) / dispsz.x) + scfg->TSCL;
+                    else sys->TSC.State.X = (((moupos.x-curpos.x) * (scfg->TSCR - scfg->TSCL)) / dispsz.x) + scfg->TSCL;
                     if (dispsz.y == 0.0) sys->TSC.State.Y = 0; // dont div by 0 pls
-                    else sys->TSC.State.Y = ((moupos.y-curpos.y) * (scfg->TSCB - scfg->TSCT) / dispsz.y) + scfg->TSCT;
+                    else sys->TSC.State.Y = (((moupos.y-curpos.y) * (scfg->TSCB - scfg->TSCT)) / dispsz.y) + scfg->TSCT;
                     sys->TSC.State.Touched = true;
                 }
-
-                ImGui_Image((ImTextureRef){._TexID = (intptr_t)(disp->Bottom ? mgui->Bot : mgui->Top)}, dispsz);
             }
         }
         ImGui_End();
