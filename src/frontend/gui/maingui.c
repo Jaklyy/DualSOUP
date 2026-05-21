@@ -224,6 +224,8 @@ bool MainGUI_Loop(struct Console* sys, MainGUI* mgui, MainCfg* mcfg)
                     ImGui_SeparatorText(displabel);
                     Display* disp = &dispwin->Display[j];
 
+
+                    ImGui_Checkbox("Bottom Screen", &disp->Bottom);
                     GUI_INPUTCLAMPED(Float, "X Pos", disp->Pos.x, DisplayPosX)
                     GUI_INPUTCLAMPED(Float, "Y Pos", disp->Pos.y, DisplayPosY)
                     GUI_INPUTCLAMPED(Float, "Width", disp->Sz.x, DisplayWidth)
