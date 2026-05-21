@@ -93,7 +93,7 @@ bool Console_ReadFile(u8* buf, const char* path, const size_t num, const char* n
 
 // TODO: this function probably shouldn't manage memory on its own?
 // TODO: this function is a complete mess. it NEEDS to be restructured heavily at some point.
-struct Console* Console_Init(struct Console* sys, CoreCfg cfg, void* pad, void* aud)
+struct Console* Console_Init(struct Console* sys, CoreCfg* cfg, void* pad, void* aud)
 {
     u8* nvram = nullptr;
     if (sys == nullptr)
@@ -140,16 +140,16 @@ struct Console* Console_Init(struct Console* sys, CoreCfg cfg, void* pad, void* 
     memset(sys, 0, sizeof(*sys));
     CR_Start = false;
 
-    sys->SysCfg = cfg.SysCfg;
+    sys->SysCfg = cfg->SysCfg;
 
-    bool ntr9init = Console_ReadFile(sys->NTRBios9.b8, cfg.NTR.Bios9, NTRBios9_Size, "DS ARM9 Bios");
-    bool ntr7init = Console_ReadFile(sys->NTRBios7.b8, cfg.NTR.Bios7, NTRBios7_Size, "DS ARM7 Bios");
+    bool ntr9init = Console_ReadFile(sys->NTRBios9.b8, cfg->NTR.Bios9, NTRBios9_Size, "DS ARM9 Bios");
+    bool ntr7init = Console_ReadFile(sys->NTRBios7.b8, cfg->NTR.Bios7, NTRBios7_Size, "DS ARM7 Bios");
 
     bool firminit = false;
     size_t nvramsize;
-    switch(cfg.SysCfg.WiFiNVRAMSize)
+    switch(sys->SysCfg.WiFiNVRAMSize)
     {
-        case WiFiNVRAM_4KiB: nvramsize = KiB(4); break;
+        //case WiFiNVRAM_4KiB: nvramsize = KiB(4); break; TODO: dumpers typically overdump these as 128KiB(?) The address space is also still 128 KiB, its just most of it is unmapped iirc.
         case WiFiNVRAM_128KiB: nvramsize = KiB(128); break;
         default: LogPrint(LOG_ALWAYS, "UNHANDLED ENUM FOR WIFI NVRAM SIZE DURING CORE INIT!!!\n"); [[fallthrough]];
         case WiFiNVRAM_256KiB: nvramsize = KiB(256); break;
@@ -157,9 +157,9 @@ struct Console* Console_Init(struct Console* sys, CoreCfg cfg, void* pad, void* 
     }
     if ((nvram = malloc(nvramsize)) != NULL)
     {
-        if ((firminit = Console_ReadFile(nvram, cfg.NTR.NVRAM, nvramsize, "DS Firmware")))
+        if ((firminit = Console_ReadFile(nvram, cfg->NTR.NVRAM, nvramsize, "DS Firmware")))
         {
-            Flash_Init(&sys->Firmware, nvram, nvramsize, cfg.SysCfg.WiFiNVRAMWriteProt, 0x010101);
+            Flash_Init(&sys->Firmware, nvram, nvramsize, sys->SysCfg.WiFiNVRAMWriteProt, 0x010101);
         }
     }
 
@@ -167,7 +167,7 @@ struct Console* Console_Init(struct Console* sys, CoreCfg cfg, void* pad, void* 
     sys->HandleARM9 = CR_Active();
     bool cr7init = CR_Create(&sys->HandleARM7, (void*)ARM7_MainLoop, &sys->ARM7);
 
-    bool gcinit = Gamecard_Init(&sys->Gamecard, cfg.NTR.CardROM, sys->NTRBios7.b8);
+    bool gcinit = Gamecard_Init(&sys->Gamecard, cfg->NTR.CardROM, sys->NTRBios7.b8);
 
     bool mtxinit = ((sys->FrameBufferMutex[0] = SDL_CreateMutex()) != NULL);
     bool mtxinit3 = ((sys->FrameBufferMutex[1] = SDL_CreateMutex()) != NULL);

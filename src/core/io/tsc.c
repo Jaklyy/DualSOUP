@@ -1,5 +1,4 @@
 #include <stdckdint.h>
-#include <SDL3/SDL_mouse.h>
 #include "tsc.h"
 
 
@@ -11,9 +10,9 @@ u8 TSC_SendCommand(TSC* tsc, const u8 val)
     if (val & 0x80)
     {
         tsc->ControlByte.Raw = val;
+        //printf("CONTROL BYTE: %02X\n", val);
         //tsc->CmdLen = 0;
 
-        float a;
         switch(tsc->ControlByte.ChannelSel)
         {
         case 0: // temp 0
@@ -22,13 +21,9 @@ u8 TSC_SendCommand(TSC* tsc, const u8 val)
             tsc->Ret = 0; break;
 
         case 1: // touch y
-            if (SDL_BUTTON_LMASK & SDL_GetMouseState(NULL, &a))
+            if (tsc->State.Touched)
             {
-                if (a >= (192*2))
-                {
-                    tsc->Ret = (u16)((a - (192*2)) * (256 * 16) / (192*2));
-                }
-                else tsc->Ret = 0xFFF;
+                tsc->Ret = tsc->State.Y;
             }
             else tsc->Ret = 0xFFF;
             break;
@@ -46,9 +41,9 @@ u8 TSC_SendCommand(TSC* tsc, const u8 val)
             tsc->Ret = 0xFFF; break;
 
         case 5: // touch xRet
-            if (SDL_BUTTON_LMASK & SDL_GetMouseState(&a, NULL))
+            if (tsc->State.Touched)
             {
-                tsc->Ret = (u16)(a * 16 / 2);
+                tsc->Ret = tsc->State.X;
             }
             else tsc->Ret = 0xFFF;
             break;

@@ -26,7 +26,7 @@ void LogPrint(const u64 logtype, const char* str, ...)
     va_end(args);
 }
 
-void CrashSpectacularly(const char* str, ...)
+[[noreturn]] void CrashSpectacularly(const char* str, ...)
 {
     va_list args;
     va_start(args);

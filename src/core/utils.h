@@ -3,6 +3,8 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <limits.h>
+#include <inttypes.h>
 
 #include <SDL3/SDL_mutex.h>
 
@@ -263,7 +265,7 @@ extern u64 LogMask;
 // printf but with support for filtering out the noise
 void LogPrint(const u64 logtype, const char* str, ...) __attribute__ ((format (printf, 2, 3)));
 // logprint but with more crashing to desktop
-void CrashSpectacularly(const char* str, ...) __attribute__ ((format (printf, 1, 2)));
+[[noreturn]] void CrashSpectacularly(const char* str, ...) __attribute__ ((format (printf, 1, 2)));
 
 // input handlers
 
@@ -271,18 +273,13 @@ u16 Input_PollExtra(void* pad);
 u16 Input_PollMain(void* pad);
 
 // runtime configuration data for the emulation core
-/*typedef enum : u8
-{
-    MODEL_NTR,
-    MODEL_USG,
-    MODEL_TWL,
-    MODEL_CTR,
-} ConsoleModel;*/
 
 typedef enum : u8
 {
     NTRAudioOut_10,
     NTRAudioOut_16,
+
+    NTRAudioOut_MAX [[maybe_unused]],
 } NTRAudioOut;
 
 typedef enum : u8
@@ -290,6 +287,8 @@ typedef enum : u8
     NTRPowMan_NTR, // Phat
     NTRPowMan_USG, // Lite
     NTRPowMan_TWL, // DSi
+
+    NTRPowMan_MAX [[maybe_unused]],
 } NTRPowMan;
 
 typedef enum : u8
@@ -298,6 +297,8 @@ typedef enum : u8
     NTRFCRAM_8MiB, // NTR/USG Debugger
     NTRFCRAM_16MiB, // TWL Retail
     NTRFCRAM_32MiB, // TWL Debugger/3DS Retail
+
+    NTRFCRAM_MAX [[maybe_unused]],
 } NTRFCRAM; // TODO: replace with selection of specific chips?
 
 typedef enum : u8
@@ -306,20 +307,41 @@ typedef enum : u8
     WiFiNVRAM_512KiB, // iQue DS // codename?
     WiFiNVRAM_128KiB, // Early TWL?
     WiFiNVRAM_4KiB, // Late TWL/All 3DS?
+
+    WiFiNVRAM_MAX [[maybe_unused]],
 } WiFiNVRAMSize; // TODO: replace with selection of specific chips?
 
 typedef enum : u8
 {
     WiFiNVRAMWriteProt_Enabled,
     WiFiNVRAMWriteProt_Disabled,
+
+    WiFiNVRAMWriteProt_MAX [[maybe_unused]],
 } WiFiNVRAMWriteProt; // can be disabled on some retail models by shorting a pin iirc?
 
 typedef enum : u8
 {
     ConsoleModel_Custom,
-    ConsoleModel_USG,
+
+    // TODO: dev models?
+    ConsoleModel_NTR001, // DS (Phat)
+    // TODO: late NTR models using a ds lite soc apparently existed?
+    ConsoleModel_USG001, // DS Lite
+
+    ConsoleModel_TWL001, // DSi
+    ConsoleModel_UTL001, // DSi XL
+
+    ConsoleModel_CTR001, // (old) 3DS
+    ConsoleModel_SPR001, // (old) 3DS XL
+    ConsoleModel_FTR001, // (old) 2DS
+    ConsoleModel_KTR001, // New 3DS
+    ConsoleModel_RED001, // New 3DS XL
+    ConsoleModel_JAN001, // New 2DS XL
+
+    ConsoleModel_MAX [[maybe_unused]],
 } ConsoleModel;
 
+// cfg used at runtime to determine what model the core should emulate for each component
 typedef struct
 {
     NTRAudioOut NTRAudioOut;
@@ -327,14 +349,15 @@ typedef struct
     NTRFCRAM NTRFCRAM;
     WiFiNVRAMSize WiFiNVRAMSize;
     WiFiNVRAMWriteProt WiFiNVRAMWriteProt;
+    u16 TSCL;
+    u16 TSCR;
+    u16 TSCT;
+    u16 TSCB;
 } SysCfg;
 
-constexpr u64 FileLengthMax = KiB(4);
-
+// cfg used to initialize the emulator core
 typedef struct
 {
-    SDL_Mutex* Mutex; // make sure these values aren't being messed with before reading.
-    bool Dirty; // update the fecking config file
     SysCfg SysCfg;
     ConsoleModel Model;
     char* CustomModel;

@@ -3,6 +3,7 @@
 #include <SDL3/SDL_mutex.h>
 #include <string.h>
 #include <stdlib.h>
+#include <ctype.h>
 
 #include <SDL3/SDL_iostream.h>
 
@@ -13,9 +14,9 @@
 
 FILE* FindFileWithSameName(const char* path, const char* ext, const char* mode)
 {
-    char newpath[FileLengthMax]; // if you make a longer file path i *will* cry.
+    char newpath[KiB(4)]; // if you make a longer file path i *will* cry.
     size_t extlen = strlen(ext);
-    strncpy(newpath, path, FileLengthMax-extlen-1);
+    strncpy(newpath, path, KiB(4)-extlen-1);
     char* end = strrchr(newpath, '.'); // find extension marker
 
     if (end == NULL)
@@ -65,11 +66,29 @@ bool SOUPParser(const char* haystack, const char* needle, const char* cmpstr, co
         case SEARCH_EXISTS:
             return true;
         default:
-            CrashSpectacularly("INVALID SOUP PARSER TYPE: %i???\n", type);
+            CrashSpectacularly("INVALID SOUP PARSER TYPE: %"PRIu8"???\n", type);
         }
     }
     return false;
 }
+
+
+typedef union
+{
+    void* cfg;
+    u8* u8;
+    s8* s8;
+    u16* u16;
+    s16* s16;
+    u32* u32;
+    s32* s32;
+    u64* u64;
+    s64* s64;
+    int* integer;
+    char** str;
+    bool* boolean;
+    float* floating;
+} pun;
 
 // TODO: re-use for ALL config types
 void Config_Write(const char* path, void* cfgin, const ConfigEntry* cfgref, const size_t cfgnum, bool* dirtyflag, SDL_Mutex* mutex)
@@ -79,49 +98,70 @@ void Config_Write(const char* path, void* cfgin, const ConfigEntry* cfgref, cons
 
     for (size_t i = 0; i < cfgnum; i++)
     {
-        const union
-        {
-            void* cfg;
-            u8* byte;
-            char** str;
-        } pun = {.cfg = cfgin};
+        pun pun = {.cfg = cfgin};
 
         const ConfigEntry entry = cfgref[i];
-        char* entrystr = entry.Name;
+        const char* entrystr = entry.Name;
         char* outstr;
         size_t baselen = strlen(entrystr)+sizeof(char);
         size_t fulllen = baselen+sizeof(char[2]);
 
+        bool valstrneedssdlfree = false;
+        const char* valstr;
         switch(entry.Type)
         {
-        case SEARCH_ENUMU8:
-        {
-            u8 val = pun.byte[entry.Offset/sizeof(pun.byte[0])];
-            if (val >= entry.MaxEnum)
-            {
-                printf("Config Error: value of %s == %u >= max value of: %u", entrystr, val, entry.MaxEnum);
-                continue;
-            }
-            char* valstr = entry.EnumNames[val];
-            fulllen += strlen(valstr);
-            outstr = malloc(fulllen);
-            strcpy(outstr, entrystr);
-            strcpy(&outstr[baselen], valstr);
-            break;
+        case SEARCH_NULL: CrashSpectacularly("Jakly i am going to kill you. you forgot to add a search type to entry %zu\n", i);
+        default: printf("WRITE: UNHANDLED CONFIG ENUM TYPE FOR ENTRY: %zu!!!\n", i); continue;
+
+#define STOREENUM(searchtype, type, prefix, fmt) \
+    case SEARCH_##searchtype: \
+    { \
+        if (entry.EnumNames == NULL) CrashSpectacularly("Jakly you dumb motherfucker you forgot to define literally any enum names for entry %zu\n", i); \
+        typeof(pun.type[0]) val = pun.type[entry.Offset/sizeof(pun.type[0])]; \
+        if (val >= entry.prefix##MaxVal) \
+        { \
+            printf("Config Error: value of %s == %"fmt" >= max value of: %zu", entrystr, val, entry.prefix##MaxVal); \
+            continue; \
+        } \
+        valstr = entry.EnumNames[val]; \
+        break; \
+    }
+
+        STOREENUM(ENUMU8, u8, U, PRIu8)
+        STOREENUM(ENUMINT, integer, S, "i")
+
+#undef STOREENUM
+
+#define STOREVAL(searchtype, fmt, type) \
+        case SEARCH_##searchtype: \
+        { \
+            SDL_asprintf((char**)&valstr, fmt, pun.type[entry.Offset/sizeof(pun.type[0])]); \
+            break; \
         }
+
+        STOREVAL(INT, "%i", integer)
+        STOREVAL(FLOAT, "%f", floating)
+        STOREVAL(U16HEX, "%"PRIX16, u16)
+
+#undef STOREVAL
 
         case SEARCH_STRING:
         {
-            char* valstr = pun.str[entry.Offset/sizeof(pun.str[0])];
-            fulllen += strlen(valstr);
-            outstr = malloc(fulllen);
-            strcpy(outstr, entrystr);
-            strcpy(&outstr[baselen], valstr);
+            valstr = pun.str[entry.Offset/sizeof(pun.str[0])];
             break;
         }
-
-        default: printf("WRITE: UNHANDLED CONFIG ENUM TYPE!!!\n"); continue;
+        case SEARCH_BOOL:
+        {
+            valstr = boolnames[pun.boolean[entry.Offset/sizeof(pun.boolean[0])]];
+            break;
         }
+        }
+        fulllen += strlen(valstr);
+        outstr = malloc(fulllen);
+        strcpy(outstr, entrystr);
+        strcpy(&outstr[baselen], valstr);
+
+        if (valstrneedssdlfree) SDL_free((char**)valstr);
 
         // add some filler
         // string should now look like: "entrystr=valstr\0\n"
@@ -144,13 +184,7 @@ void Config_Load(const char* path, void* cfgout, const ConfigEntry* cfgref, cons
     char* cfgdat = NULL;
     bool loaddefaults = true;
     bool dirty = false;
-
-    union
-    {
-        void* cfg;
-        u8* byte;
-        char** str;
-    } pun = {cfgout};
+    pun pun = {.cfg = cfgout};
 
     if (mutex == NULL)
     {
@@ -248,22 +282,29 @@ void Config_Load(const char* path, void* cfgout, const ConfigEntry* cfgref, cons
         }
         found:
 
-        printf("entries: %lu\n", i);
         const ConfigEntry entry = cfgref[i];
 
         switch(entry.Type)
         {
+        case SEARCH_NULL: CrashSpectacularly("Jakly i am going to kill you. you forgot to add a search type to entry %zu\n", i);
+        default: printf("LOAD: UNHANDLED CONFIG ENUM TYPE FOR ENTRY: %zu!!!\n", i); break;
+
         case SEARCH_ENUMU8:
+        case SEARCH_ENUMINT:
+        case SEARCH_BOOL:
         {
+            if ((entry.Type != SEARCH_BOOL) && (entry.EnumNames == NULL)) CrashSpectacularly("Jakly you dumb motherfucker you forgot to define literally any enum names for entry %zu\n", i);
             bool success = false;
-            u8 j = 0;
+            u8 j = (entry.Type == SEARCH_BOOL) ? 0 : entry.UMinVal;
             if (!loaddefaults)
             {
-                for (; j < entry.MaxEnum; j++)
+                u64 max = (entry.Type == SEARCH_BOOL) ? 2 : entry.UMaxVal;
+                const char** names = (entry.Type == SEARCH_BOOL) ? boolnames : entry.EnumNames;
+                for (; j < max; j++)
                 {
-                    size_t enumlen = strlen(entry.EnumNames[j]);
+                    size_t enumlen = strlen(names[j]);
                     if ((pos+enumlen) >= cfgsize) continue; // buffer overflow; must be invalid
-                    if (memcmp(&cfgdat[pos], entry.EnumNames[j], enumlen) == 0)
+                    if (memcmp(&cfgdat[pos], names[j], enumlen) == 0)
                     {
                         // match found.
                         pos += enumlen + 2;
@@ -275,11 +316,17 @@ void Config_Load(const char* path, void* cfgout, const ConfigEntry* cfgref, cons
 
             if (loaddefaults || !success)
             {
-                j = entry.Default;
+                j = (entry.Type == SEARCH_BOOL) ? entry.BDefVal : entry.UDefVal;
                 dirty = true;
             }
 
-            pun.byte[entry.Offset/sizeof(pun.byte[0])] = j;
+            switch(entry.Type)
+            {
+            case SEARCH_ENUMU8: pun.u8[entry.Offset/sizeof(pun.u8[0])] = j; break;
+            case SEARCH_ENUMINT: pun.integer[entry.Offset/sizeof(pun.integer[0])] = j; break;
+            case SEARCH_BOOL: pun.boolean[entry.Offset/sizeof(pun.boolean[0])] = j; break;
+            default: CrashSpectacularly("JAKLY THE ENUMS: %zu\n", i);
+            }
             break;
         }
 
@@ -288,7 +335,7 @@ void Config_Load(const char* path, void* cfgout, const ConfigEntry* cfgref, cons
             size_t vallen;
             if (!loaddefaults && ((vallen = strnlen(&cfgdat[pos], cfgsize-pos-1)) != (cfgsize-pos-1)))
             {
-                pun.str[entry.Offset/sizeof(pun.str[0])] = malloc(vallen);
+                pun.str[entry.Offset/sizeof(pun.str[0])] = malloc(vallen+1);
                 strcpy(pun.str[entry.Offset/sizeof(pun.str[0])], &cfgdat[pos]);
                 pos += vallen + 2;
             }
@@ -301,7 +348,32 @@ void Config_Load(const char* path, void* cfgout, const ConfigEntry* cfgref, cons
             break;
         }
 
-        default: printf("LOAD: UNHANDLED CONFIG ENUM TYPE!!!\n"); break;
+#define READNUMBER(search, type, numchk, prefix, numberget, ...) \
+    case SEARCH_##search: \
+    { \
+        typeof(pun.type[0]) val; \
+        size_t vallen; \
+        if (!loaddefaults && (numchk(cfgdat[pos])) && ((vallen = strnlen(&cfgdat[pos], cfgsize-pos-1)) != (cfgsize-pos-1))) \
+        { \
+            val = numberget(&cfgdat[pos], __VA_ARGS__); \
+            DS_CLAMP(val, <, entry.prefix##MinVal) \
+            DS_CLAMP(val, >, entry.prefix##MaxVal) \
+        } \
+        else \
+        { \
+            val = entry.prefix##DefVal; \
+            dirty = true; \
+        } \
+        pun.type[entry.Offset/sizeof(pun.type[0])] = val; \
+        break; \
+    } \
+
+        READNUMBER(INT, integer, isdigit, S, strtoll, NULL, 10)
+        READNUMBER(FLOAT, floating, isdigit, F, strtof, NULL)
+        READNUMBER(U16HEX, u16, isxdigit, U, strtoll, NULL, 16)
+
+#undef READNUMBER
+
         }
         initialized[i] = true;
     }

@@ -563,7 +563,7 @@ struct Console
 // if a nullptr is passed then it will allocate and initialize a console from scratch.
 // otherwise it will re-initialize an already allocated struct.
 // returns success or failure.
-struct Console* Console_Init(struct Console* sys, CoreCfg cfg, void* pad, void* aud);
+struct Console* Console_Init(struct Console* sys, CoreCfg* cfg, void* pad, void* aud);
 // emulate a hardware reset.
 void Console_Reset(struct Console* sys);
 // actually run the emulation.

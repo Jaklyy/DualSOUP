@@ -1,3 +1,4 @@
+#include <SDL3/SDL_mutex.h>
 #include <stdlib.h>
 #include <stdio.h>
 
@@ -32,11 +33,12 @@ typedef enum : u8
 
 typedef struct
 {
-    volatile struct Console* sys;
-    SDL_Gamepad* pad;
-    SDL_AudioStream* aud;
-    volatile InitFlag initflag;
-    CoreCfg cfg;
+    volatile struct Console* Sys;
+    SDL_Gamepad* Pad;
+    SDL_AudioStream* Aud;
+    volatile InitFlag InitFlag;
+    CoreCfg* Cfg;
+    SDL_Mutex* CfgMutex;
 } MailBox;
 
 int SDLCALL Core_Init(void* pass)
@@ -44,15 +46,17 @@ int SDLCALL Core_Init(void* pass)
     MailBox* mailbox = pass;
 
     // initialize main emulator state struct
-    struct Console* sys = Console_Init((struct Console*)mailbox->sys, mailbox->cfg, mailbox->pad, mailbox->aud);
+    SDL_LockMutex(mailbox->CfgMutex);
+    struct Console* sys = Console_Init((struct Console*)mailbox->Sys, mailbox->Cfg, mailbox->Pad, mailbox->Aud);
+    SDL_UnlockMutex(mailbox->CfgMutex);
     if (sys == nullptr)
     {
-        mailbox->initflag = Init_Fail;
+        mailbox->InitFlag = Init_Fail;
         return EXIT_FAILURE;
     }
 
-    mailbox->sys = sys;
-    mailbox->initflag = Init_Success;
+    mailbox->Sys = sys;
+    mailbox->InitFlag = Init_Success;
 
 #ifdef USEDIRECTBOOT
     Console_DirectBoot(sys);
@@ -64,28 +68,33 @@ int SDLCALL Core_Init(void* pass)
     return EXIT_SUCCESS;
 }
 
-void CoreThread_Reset(struct Console** sys, SDL_Thread** thrd, SDL_Gamepad* pad, SDL_AudioStream* aud, const CoreCfg cfg, bool* frontbuffer, bool* thrdrunning)
+void CoreThread_Shutdown(volatile struct Console* sys, bool* thrdrunning)
 {
     if (*thrdrunning)
     {
-        (*sys)->KillThread = true;
-        while((*sys)->KillThread);
+        sys->KillThread = true;
+        while(sys->KillThread); // todo: add timeout
         *thrdrunning = false;
     }
+}
 
-    MailBox mailbox = {.sys = *sys, .pad = pad, .aud = aud, .initflag = Init_Busy, .cfg = cfg};
+void CoreThread_Reset(struct Console** sys, SDL_Thread** thrd, SDL_Gamepad* pad, SDL_AudioStream* aud, CoreCfg* cfg, SDL_Mutex* cfgmutex, bool* frontbuffer, bool* thrdrunning)
+{
+    CoreThread_Shutdown(*sys, thrdrunning);
+
+    MailBox mailbox = {.Sys = *sys, .Pad = pad, .Aud = aud, .InitFlag = Init_Busy, .Cfg = cfg, .CfgMutex = cfgmutex};
     if (!*thrdrunning && ((*thrd = SDL_CreateThread(Core_Init, "SOUP_Core", (void*)&mailbox)) == NULL))
     {
         printf("ERROR: thread init failure :( %s\n", SDL_GetError());
         exit(EXIT_FAILURE);
     }
 
-    while(mailbox.initflag == Init_Busy);
+    while(mailbox.InitFlag == Init_Busy);
 
-    if (mailbox.initflag == Init_Fail)
+    if (mailbox.InitFlag == Init_Fail)
         return;
 
-    *sys = (struct Console*)mailbox.sys;
+    *sys = (struct Console*)mailbox.Sys;
 
     *frontbuffer = false; // feels wrong to be resetting this here...?
     *thrdrunning = true;
@@ -142,9 +151,9 @@ int main()
     strcpy(cfgpath, path);
     strcat(cfgpath, ininame);
 
-    CoreCfg mcfg = {.Dirty = false};
-    Config_Load(cfgpath, &mcfg, MainCfg, sizeof(MainCfg)/sizeof(MainCfg[0]), &mcfg.Dirty, &mcfg.Mutex);
-    Config_Load(NULL, &mcfg.SysCfg, SystemCfg, sizeof(SystemCfg)/sizeof(SystemCfg[0]), NULL, &mcfg.Mutex);
+    MainCfg mcfg = {.Dirty = false};
+    Config_Load(cfgpath, &mcfg, MainCfgData, sizeof(MainCfgData)/sizeof(MainCfgData[0]), &mcfg.Dirty, &mcfg.Mutex);
+    Config_Load(NULL, &mcfg.CoreCfg.SysCfg, SystemCfgData, sizeof(SystemCfgData)/sizeof(SystemCfgData[0]), NULL, &mcfg.Mutex);
 
     if (aud != NULL)
     {
@@ -170,12 +179,13 @@ int main()
             switch(evts.type)
             {
                 case SDL_EVENT_QUIT:
+                    CoreThread_Shutdown(sys, &thrdrunning);
                     return EXIT_SUCCESS;
                 case SDL_EVENT_DROP_FILE:
                 {
-                    printf("%s\n", ((SDL_DropEvent*)&evts)->data);                    
-                    mcfg.NTR.CardROM = ((SDL_DropEvent*)&evts)->data;
-                    CoreThread_Reset(&sys, &cthrd, pad, aud, mcfg, &mgui.Buffer, &thrdrunning);
+                    printf("%s\n", ((SDL_DropEvent*)&evts)->data);
+                    mcfg.CoreCfg.NTR.CardROM = ((SDL_DropEvent*)&evts)->data;
+                    CoreThread_Reset(&sys, &cthrd, pad, aud, &mcfg.CoreCfg, mcfg.Mutex, &mgui.Buffer, &thrdrunning);
                     break;
                 }
                 default:
@@ -187,7 +197,7 @@ int main()
 
         if (mcfg.Dirty)
         {
-            Config_Write(cfgpath, &mcfg, MainCfg, sizeof(MainCfg)/sizeof(MainCfg[0]), &mcfg.Dirty, mcfg.Mutex);
+            Config_Write(cfgpath, &mcfg, MainCfgData, sizeof(MainCfgData)/sizeof(MainCfgData[0]), &mcfg.Dirty, mcfg.Mutex);
         }
     }
 }

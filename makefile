@@ -1,8 +1,8 @@
 MAKEFLAGS := -j
 
-RELDIR := build-rel
-DEBDIR := build-deb
-SANDIR := build-san
+RELDIR := build
+DEBDIR := build
+SANDIR := build
 MISCDIR := build
 
 OBJDIR := /obj
@@ -90,6 +90,6 @@ $(BUILDDIR)/DualSOUP: $(OBJS)
 
 .PHONY: clean
 clean:
-	@rm -rf build build-rel build-deb build-san
+	@rm -rf build
 
 -include $(DEPS)
