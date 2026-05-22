@@ -42,6 +42,10 @@ endif
 ifeq ($(DIRBOOT), 1) # boot rom file directly, requires unencrypted rom
 	CFLAGS += -DUSEDIRECTBOOT
 endif
+ifeq ($(USEGCC), 1) # compile with gcc, strongly recommended against, gcc hates my codebase and it runs really slowly
+	CC := gcc
+	CXX := g++
+endif
 
 
 ifeq ($(DEB), 1) # debug build

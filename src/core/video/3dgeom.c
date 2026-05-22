@@ -302,7 +302,7 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert, bool* boxtestres)
         if (fin.Attrs.Mode == 2)
         {
             // note: toon & highlight modes are weird: all vertex color components are set to the red component, and it doesn't add 0xF when increasing the precision used.
-            fin.Vertices[i]->Color.RGB = (u32x4){fin.Vertices[i]->Color.R, fin.Vertices[i]->Color.R, fin.Vertices[i]->Color.R, fin.Vertices[i]->Color.R};
+            fin.Vertices[i]->Color.RGB = (u32x4){poly.Vertices[i].Color.R, poly.Vertices[i].Color.R, poly.Vertices[i].Color.R, poly.Vertices[i].Color.R};
             fin.Vertices[i]->Color.RGB <<= 4;
         }
         else
