@@ -12,7 +12,60 @@ enum EncryptMode : u8
     Key2,
 };
 
-constexpr u32 DefaultChipID = 0x04030201;
+typedef enum : u8
+{
+    Gamecard_ROMBus_Standard,
+    //Gamecard_ROMBus_NAND,
+    //Gamecard_ROMBus_FlashcartGeneric,
+
+    Gamecard_ROMBus_MAX [[maybe_unused]],
+} Gamecard_ROMBus;
+
+typedef enum : u8
+{
+    Gamecard_SPIBus_None,
+    Gamecard_SPIBus_DirectSRAM,
+    Gamecard_SPIBus_InfraredHLE,
+    //Gamecard_SPIBus_InfraredLLE,
+    //Gamecard_SPIBus_BluetoothHLE,
+    //Gamecard_SPIBus_BluetoothLLE,
+
+    Gamecard_SPIBus_MAX [[maybe_unused]],
+} Gamecard_SPIBus;
+
+typedef enum : u8
+{
+    Gamecard_SRAMChip_None,
+    Gamecard_SRAMChip_Flash24BitAddr,
+    Gamecard_SRAMChip_EEPROM9BitAddr,
+    Gamecard_SRAMChip_EEPROM16BitAddr,
+    Gamecard_SRAMChip_EEPROM24BitAddr,
+    //Gamecard_SRAMChip_FRAM9BitAddr,
+    //Gamecard_SRAMChip_FRAM16BitAddr,
+    //Gamecard_SRAMChip_FRAM24BitAddr,
+
+    Gamecard_SRAMChip_MAX [[maybe_unused]],
+} Gamecard_SRAMChip;
+
+constexpr u32 DefaultChipID  = 0x04030201;
+constexpr u32 DefaultFlashID = 0x030201;
+
+typedef struct
+{
+    Gamecard_ROMBus ROMBusType;
+    u8 ROMChipSize;
+    u8 ROMPaddingByte;
+    u32 ROMChipID;
+    char* ROMPath;
+
+    Gamecard_SPIBus SPIBusType;
+    Gamecard_SRAMChip SRAMChipType;
+    u8 SRAMChipSize;
+    u32 FlashChipID;
+
+    bool ImportKey1FromNTRBios7;
+    char* ManualKey1Path;
+} GamecardConfig;
 
 typedef struct
 {

@@ -9,6 +9,10 @@
 typedef enum : u8
 {
     SEARCH_NULL,
+
+    SEARCH_S8DEC,
+    SEARCH_U8DEC,
+    SEARCH_U8HEX,
     SEARCH_ENUMU8,
 
     SEARCH_S16DEC,
@@ -60,6 +64,98 @@ typedef struct MainCfg
     CoreCfg CoreCfg;
     GuiCfg GuiCfg;
 } MainCfg;
+
+#include "../../core/carts/gamecard.h"
+
+static const ConfigEntry GamecardCfgData[] =
+{
+    {
+        .Name=      "ROMBusType",
+        .EnumNames= (const char*[]){"Standard"},
+        .Offset=    offsetof(GamecardConfig, ROMBusType),
+        .UDefVal=   Gamecard_ROMBus_Standard,
+        .UMinVal=   0,
+        .UMaxVal=   Gamecard_ROMBus_MAX,
+        .Type=      SEARCH_ENUMU8,
+    },
+    {
+        .Name=      "ROMChipSize",
+        .Offset=    offsetof(GamecardConfig, ROMChipSize),
+        .UDefVal=   -1, // auto
+        .UMinVal=   0,
+        .UMaxVal=   32, // standard cart protocol doesn't support >32 bit addresses
+        .Type=      SEARCH_S8DEC,
+    },
+    {
+        .Name=      "ROMPaddingByte", // TODO: consider allowing multi-byte patterns?
+        .Offset=    offsetof(GamecardConfig, ROMPaddingByte),
+        .UDefVal=   0xFF,
+        .UMinVal=   0,
+        .UMaxVal=   0xFF,
+        .Type=      SEARCH_U8HEX,
+    },
+    {
+        .Name=      "ROMChipID",
+        .Offset=    offsetof(GamecardConfig, ROMChipID),
+        .UDefVal=   DefaultChipID,
+        .UMinVal=   0x00000000, // NOTE: should i allow the user to submit an 0x0 value? supposedly games dont like that...
+        .UMaxVal=   0xFFFFFFFF,
+        .Type=      SEARCH_U32HEX,
+    },
+    {
+        .Name=      "ROMPath",
+        .Offset=    offsetof(GamecardConfig, ROMPath),
+        .Type=      SEARCH_STRING,
+    },
+    {
+        .Name=      "SPIBusType",
+        .EnumNames= (const char*[]){"None", "DirectSRAM", "InfraredHLE"},
+        .Offset=    offsetof(GamecardConfig, SPIBusType),
+        .UDefVal=   Gamecard_SPIBus_DirectSRAM,
+        .UMinVal=   0,
+        .UMaxVal=   Gamecard_SPIBus_MAX,
+        .Type=      SEARCH_ENUMU8,
+    },
+    {
+        .Name=      "SRAMChipType",
+        .EnumNames= (const char*[]){"None", "Flash24", "EEPROM9", "EEPROM16", "EEPROM24"},
+        .Offset=    offsetof(GamecardConfig, SRAMChipType),
+        .UDefVal=   Gamecard_SRAMChip_None,
+        .UMinVal=   0,
+        .UMaxVal=   Gamecard_SRAMChip_MAX,
+        .Type=      SEARCH_ENUMU8,
+    },
+    {
+        .Name=      "SRAMChipSize",
+        .Offset=    offsetof(GamecardConfig, SRAMChipSize),
+        .UDefVal=   -1, // auto
+        .UMinVal=   0,
+        .UMaxVal=   24, // standard sram chips dont seem to support > 24 bit address indexing
+        .Type=      SEARCH_U8DEC,
+    },
+    {
+        .Name=      "FlashChipID",
+        .Offset=    offsetof(GamecardConfig, FlashChipID),
+        .UDefVal=   DefaultFlashID,
+        .UMinVal=   0x000000,
+        .UMaxVal=   0xFFFFFF,
+        .Type=      SEARCH_U32HEX,
+    },
+    {
+        .Name=      "Key1FromBios",
+        .Offset=    offsetof(GamecardConfig, FlashChipID),
+        .BDefVal=   true,
+        .Type=      SEARCH_BOOL,
+    },
+    {
+        .Name=      "ManualKey1Path",
+        .Offset=    offsetof(GamecardConfig, ManualKey1Path),
+        .Type=      SEARCH_STRING,
+    },
+};
+
+static_assert(sizeof(GamecardCfgData[0].EnumNames)/sizeof(GamecardCfgData[0].EnumNames[0]) == Gamecard_ROMBus_MAX);
+static_assert(sizeof(GamecardCfgData[0].EnumNames)/sizeof(GamecardCfgData[0].EnumNames[0]) == Gamecard_ROMBus_MAX);
 
 static const ConfigEntry SystemCfgData[] =
 {
