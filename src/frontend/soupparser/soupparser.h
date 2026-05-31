@@ -67,28 +67,28 @@ typedef struct MainCfg
 
 #include "../../core/carts/gamecard.h"
 
-static const ConfigEntry GamecardCfgData[] =
+static const ConfigEntry GameCardCfgData[] =
 {
     {
         .Name=      "ROMBusType",
         .EnumNames= (const char*[]){"Standard"},
-        .Offset=    offsetof(GamecardConfig, ROMBusType),
-        .UDefVal=   Gamecard_ROMBus_Standard,
+        .Offset=    offsetof(GameCardConfig, ROMBusType),
+        .UDefVal=   GameCard_ROMBus_Standard,
         .UMinVal=   0,
-        .UMaxVal=   Gamecard_ROMBus_MAX,
+        .UMaxVal=   GameCard_ROMBus_MAX,
         .Type=      SEARCH_ENUMU8,
     },
     {
         .Name=      "ROMChipSize",
-        .Offset=    offsetof(GamecardConfig, ROMChipSize),
+        .Offset=    offsetof(GameCardConfig, ROMChipSize),
         .UDefVal=   -1, // auto
         .UMinVal=   0,
-        .UMaxVal=   32, // standard cart protocol doesn't support >32 bit addresses
+        .UMaxVal=   32, // standard card protocol doesn't support >32 bit addresses
         .Type=      SEARCH_S8DEC,
     },
     {
         .Name=      "ROMPaddingByte", // TODO: consider allowing multi-byte patterns?
-        .Offset=    offsetof(GamecardConfig, ROMPaddingByte),
+        .Offset=    offsetof(GameCardConfig, ROMPaddingByte),
         .UDefVal=   0xFF,
         .UMinVal=   0,
         .UMaxVal=   0xFF,
@@ -96,7 +96,7 @@ static const ConfigEntry GamecardCfgData[] =
     },
     {
         .Name=      "ROMChipID",
-        .Offset=    offsetof(GamecardConfig, ROMChipID),
+        .Offset=    offsetof(GameCardConfig, ROMChipID),
         .UDefVal=   DefaultChipID,
         .UMinVal=   0x00000000, // NOTE: should i allow the user to submit an 0x0 value? supposedly games dont like that...
         .UMaxVal=   0xFFFFFFFF,
@@ -104,30 +104,30 @@ static const ConfigEntry GamecardCfgData[] =
     },
     {
         .Name=      "ROMPath",
-        .Offset=    offsetof(GamecardConfig, ROMPath),
+        .Offset=    offsetof(GameCardConfig, ROMPath),
         .Type=      SEARCH_STRING,
     },
     {
         .Name=      "SPIBusType",
         .EnumNames= (const char*[]){"None", "DirectSRAM", "InfraredHLE"},
-        .Offset=    offsetof(GamecardConfig, SPIBusType),
-        .UDefVal=   Gamecard_SPIBus_DirectSRAM,
+        .Offset=    offsetof(GameCardConfig, SPIBusType),
+        .UDefVal=   GameCard_SPIBus_DirectSRAM,
         .UMinVal=   0,
-        .UMaxVal=   Gamecard_SPIBus_MAX,
+        .UMaxVal=   GameCard_SPIBus_MAX,
         .Type=      SEARCH_ENUMU8,
     },
     {
         .Name=      "SRAMChipType",
         .EnumNames= (const char*[]){"None", "Flash24", "EEPROM9", "EEPROM16", "EEPROM24"},
-        .Offset=    offsetof(GamecardConfig, SRAMChipType),
-        .UDefVal=   Gamecard_SRAMChip_None,
+        .Offset=    offsetof(GameCardConfig, SRAMChipType),
+        .UDefVal=   GameCard_SRAMChip_None,
         .UMinVal=   0,
-        .UMaxVal=   Gamecard_SRAMChip_MAX,
+        .UMaxVal=   GameCard_SRAMChip_MAX,
         .Type=      SEARCH_ENUMU8,
     },
     {
         .Name=      "SRAMChipSize",
-        .Offset=    offsetof(GamecardConfig, SRAMChipSize),
+        .Offset=    offsetof(GameCardConfig, SRAMChipSize),
         .UDefVal=   -1, // auto
         .UMinVal=   0,
         .UMaxVal=   24, // standard sram chips dont seem to support > 24 bit address indexing
@@ -135,7 +135,7 @@ static const ConfigEntry GamecardCfgData[] =
     },
     {
         .Name=      "FlashChipID",
-        .Offset=    offsetof(GamecardConfig, FlashChipID),
+        .Offset=    offsetof(GameCardConfig, FlashChipID),
         .UDefVal=   DefaultFlashID,
         .UMinVal=   0x000000,
         .UMaxVal=   0xFFFFFF,
@@ -143,19 +143,19 @@ static const ConfigEntry GamecardCfgData[] =
     },
     {
         .Name=      "Key1FromBios",
-        .Offset=    offsetof(GamecardConfig, FlashChipID),
+        .Offset=    offsetof(GameCardConfig, FlashChipID),
         .BDefVal=   true,
         .Type=      SEARCH_BOOL,
     },
     {
         .Name=      "ManualKey1Path",
-        .Offset=    offsetof(GamecardConfig, ManualKey1Path),
+        .Offset=    offsetof(GameCardConfig, ManualKey1Path),
         .Type=      SEARCH_STRING,
     },
 };
 
-static_assert(sizeof(GamecardCfgData[0].EnumNames)/sizeof(GamecardCfgData[0].EnumNames[0]) == Gamecard_ROMBus_MAX);
-static_assert(sizeof(GamecardCfgData[0].EnumNames)/sizeof(GamecardCfgData[0].EnumNames[0]) == Gamecard_ROMBus_MAX);
+static_assert(sizeof(GameCardCfgData[0].EnumNames)/sizeof(GameCardCfgData[0].EnumNames[0]) == GameCard_ROMBus_MAX);
+static_assert(sizeof(GameCardCfgData[0].EnumNames)/sizeof(GameCardCfgData[0].EnumNames[0]) == GameCard_ROMBus_MAX);
 
 static const ConfigEntry SystemCfgData[] =
 {

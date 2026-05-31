@@ -134,7 +134,7 @@ void DMA7_Enable(struct Console* sys, struct DMA_Channel* channel)
         channel->CurrentMode = DMAStart_VBlank;
         break;
     }
-    case 2: // NTR Gamecard
+    case 2: // NTR Game Card
     {
         channel->CurrentMode = DMAStart_NTRCard;
         // checkme: this probably works.
@@ -143,10 +143,10 @@ void DMA7_Enable(struct Console* sys, struct DMA_Channel* channel)
         break;
     }
     #if 0
-    case 3: // (DMA 0 & 2) WiFi IRQ / (DMA 1 & 3) AGB Cartridge IRQ
+    case 3: // (DMA 0 & 2) WiFi IRQ / (DMA 1 & 3) AGB Game Pak IRQ
     {
         channel->CurrentMode = (channel_id & 0b01) ? DMAStart_AGBPakIRQ : DMAStart_WiFiIRQ;
-        // agb cart dma is probably based on the cart slot irq pin?
+        // agb pak dma is probably based on the pak slot irq pin?
         // wifi irq might not actually be real?
         break;
     }

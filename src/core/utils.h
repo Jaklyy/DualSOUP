@@ -226,7 +226,7 @@ enum LoggingLevels : u64
     LOG_PPU     = (1<<8 ), // PPU.
     LOG_FLASH   = (1<<9 ), // Flash.
     LOG_IO      = (1<<10), // Memory mapped IO.
-    LOG_CARD    = (1<<11), // Gamecard.
+    LOG_CARD    = (1<<11), // Game Card.
     LOG_GX      = (1<<12), // 3D Geometry Engine.
     LOG_RTC     = (1<<13), // Real Time Clock.
     LOG_DMA     = (1<<14), // Direct Memory Access.

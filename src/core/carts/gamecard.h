@@ -14,58 +14,58 @@ enum EncryptMode : u8
 
 typedef enum : u8
 {
-    Gamecard_ROMBus_Standard,
-    //Gamecard_ROMBus_NAND,
-    //Gamecard_ROMBus_FlashcartGeneric,
+    GameCard_ROMBus_Standard,
+    //GameCard_ROMBus_NAND,
+    //GameCard_ROMBus_FlashcardGeneric,
 
-    Gamecard_ROMBus_MAX [[maybe_unused]],
-} Gamecard_ROMBus;
-
-typedef enum : u8
-{
-    Gamecard_SPIBus_None,
-    Gamecard_SPIBus_DirectSRAM,
-    Gamecard_SPIBus_InfraredHLE,
-    //Gamecard_SPIBus_InfraredLLE,
-    //Gamecard_SPIBus_BluetoothHLE,
-    //Gamecard_SPIBus_BluetoothLLE,
-
-    Gamecard_SPIBus_MAX [[maybe_unused]],
-} Gamecard_SPIBus;
+    GameCard_ROMBus_MAX [[maybe_unused]],
+} GameCard_ROMBus;
 
 typedef enum : u8
 {
-    Gamecard_SRAMChip_None,
-    Gamecard_SRAMChip_Flash24BitAddr,
-    Gamecard_SRAMChip_EEPROM9BitAddr,
-    Gamecard_SRAMChip_EEPROM16BitAddr,
-    Gamecard_SRAMChip_EEPROM24BitAddr,
-    //Gamecard_SRAMChip_FRAM9BitAddr,
-    //Gamecard_SRAMChip_FRAM16BitAddr,
-    //Gamecard_SRAMChip_FRAM24BitAddr,
+    GameCard_SPIBus_None,
+    GameCard_SPIBus_DirectSRAM,
+    GameCard_SPIBus_InfraredHLE,
+    //GameCard_SPIBus_InfraredLLE,
+    //GameCard_SPIBus_BluetoothHLE,
+    //GameCard_SPIBus_BluetoothLLE,
 
-    Gamecard_SRAMChip_MAX [[maybe_unused]],
-} Gamecard_SRAMChip;
+    GameCard_SPIBus_MAX [[maybe_unused]],
+} GameCard_SPIBus;
+
+typedef enum : u8
+{
+    GameCard_SRAMChip_None,
+    GameCard_SRAMChip_Flash24BitAddr,
+    GameCard_SRAMChip_EEPROM9BitAddr,
+    GameCard_SRAMChip_EEPROM16BitAddr,
+    GameCard_SRAMChip_EEPROM24BitAddr,
+    //GameCard_SRAMChip_FRAM9BitAddr,
+    //GameCard_SRAMChip_FRAM16BitAddr,
+    //GameCard_SRAMChip_FRAM24BitAddr,
+
+    GameCard_SRAMChip_MAX [[maybe_unused]],
+} GameCard_SRAMChip;
 
 constexpr u32 DefaultChipID  = 0x04030201;
 constexpr u32 DefaultFlashID = 0x030201;
 
 typedef struct
 {
-    Gamecard_ROMBus ROMBusType;
+    GameCard_ROMBus ROMBusType;
     u8 ROMChipSize;
     u8 ROMPaddingByte;
     u32 ROMChipID;
     char* ROMPath;
 
-    Gamecard_SPIBus SPIBusType;
-    Gamecard_SRAMChip SRAMChipType;
+    GameCard_SPIBus SPIBusType;
+    GameCard_SRAMChip SRAMChipType;
     u8 SRAMChipSize;
     u32 FlashChipID;
 
     bool ImportKey1FromNTRBios7;
     char* ManualKey1Path;
-} GamecardConfig;
+} GameCardConfig;
 
 typedef struct
 {
@@ -83,11 +83,11 @@ typedef struct
     void (*SPI_Cleanup)(void*);
     void* SPI;
     u32 Key1[4168/sizeof(u32)];
-} Gamecard;
+} GameCard;
 
 
-bool Gamecard_Init(Gamecard* card, const char* romname, u8* bios7);
-void Gamecard_Cleanup(Gamecard* card);
-u32 Gamecard_ROMDataRead(struct Console* sys, timestamp cur, const bool a9);
-u32 Gamecard_IOReadHandler(struct Console* sys, u32 addr, const bool a9);
-void Gamecard_IOWriteHandler(struct Console* sys, u32 addr, const u32 val, const u32 mask, timestamp cur, const bool a9);
+bool GameCard_Init(GameCard* card, const char* romname, u8* bios7);
+void GameCard_Cleanup(GameCard* card);
+u32 GameCard_ROMDataRead(struct Console* sys, timestamp cur, const bool a9);
+u32 GameCard_IOReadHandler(struct Console* sys, u32 addr, const bool a9);
+void GameCard_IOWriteHandler(struct Console* sys, u32 addr, const u32 val, const u32 mask, timestamp cur, const bool a9);

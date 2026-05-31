@@ -28,8 +28,8 @@ enum IRQs
     IRQ_IPCSync,
     IRQ_IPCFIFOEmpty,
     IRQ_IPCFIFONotEmpty,
-    IRQ_GamecardTransferComplete,
-    IRQ_GamecardIRQMC, // what?
+    IRQ_GameCardTransferComplete,
+    IRQ_GameCardIRQMC, // what?
     IRQ_3DFIFO, // arm9
     IRQ_LidOpen, // arm7
     IRQ_SPI, // arm7

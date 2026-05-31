@@ -792,12 +792,12 @@ u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const AHB_HSIZE size
         break;
 
     case 0x08 ... 0x09: // GBA Game Pak ROM
-        if (timings) LogPrint(LOG_UNIMP|LOG_ARM9, "NTR_AHB9: Unimplemented READ%i: GBAROM\n", (8<<size));
+        if (timings) LogPrint(LOG_UNIMP|LOG_ARM9, "NTR_AHB9: Unimplemented READ%i: GBA Game Pak ROM\n", (8<<size));
         if (!sys->ExtMemCR_Shared.GBAPakAccess) // configured for arm9
         {
             // checkme: what are the odds they kept the prefetcher for some god forsaken reason?
             Timing32(&sys->AHB9); // TODO
-            ret = 0xFFFFFFFF; // TODO: implement gamepak
+            ret = 0xFFFFFFFF; // TODO: implement game pak
         }
         else // unmapped
         {
@@ -811,9 +811,9 @@ u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const AHB_HSIZE size
         if (!sys->ExtMemCR_Shared.GBAPakAccess) // configured for arm9
         {
             if (timings && (size != HSIZE_8)) LogPrint(LOG_ARM9|LOG_ODD, "NTR_AHB9: %i bit read from GBA Game Pak SRAM region, width > 8 bit are weird, probably not correct?\n", (8<<size));
-            if (timings) LogPrint(LOG_UNIMP|LOG_ARM9, "NTR_AHB9: Unimplemented READ%i: GBA SRAM\n", (8<<size));
+            if (timings) LogPrint(LOG_UNIMP|LOG_ARM9, "NTR_AHB9: Unimplemented READ%i: GBA Game Pak SRAM\n", (8<<size));
             Timing32(&sys->AHB9); // TODO
-            ret = (u8)0xFF; // TODO: implement gamepak
+            ret = (u8)0xFF; // TODO: implement game pak
         }
         else // unmapped
         {
@@ -986,14 +986,14 @@ void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
         }
         break;
 
-    case 0x08 ... 0x09: // GBA Cartridge ROM
-        if (timings) LogPrint(LOG_UNIMP|LOG_ARM9, "NTR_AHB9: Unimplemented WRITE%i: GBAROM\n", width);
+    case 0x08 ... 0x09: // GBA Game Pak ROM
+        if (timings) LogPrint(LOG_UNIMP|LOG_ARM9, "NTR_AHB9: Unimplemented WRITE%i: GBA Game Pak ROM\n", width);
         if (timings) Timing32(&sys->AHB9);
         // TODO
         break;
 
-    case 0x0A: // GBA Cartridge RAM
-        if (timings) LogPrint(LOG_UNIMP|LOG_ARM9, "NTR_AHB9: Unimplemented WRITE%i: GBARAM\n", width);
+    case 0x0A: // GBA Game Pak RAM
+        if (timings) LogPrint(LOG_UNIMP|LOG_ARM9, "NTR_AHB9: Unimplemented WRITE%i: GBA Game Pak RAM\n", width);
         if (timings) Timing32(&sys->AHB9);
         // TODO
         break;
@@ -1124,12 +1124,12 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const AHB_HSIZE size
         break;
 
     case 0x080 ... 0x098: // GBA Game Pak ROM
-        if (timings) LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented READ%i: GBAROM\n", (8<<size));
+        if (timings) LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented READ%i: GBA Game Pak ROM\n", (8<<size));
         if (sys->ExtMemCR_Shared.GBAPakAccess) // configured for arm7
         {
             // checkme: what are the odds they kept the prefetcher for some god forsaken reason?
             Timing32(&sys->AHB7); // TODO
-            ret = 0xFFFFFFFF; // TODO: implement gamepak
+            ret = 0xFFFFFFFF; // TODO: implement game pak
         }
         else // unmapped
         {
@@ -1143,9 +1143,9 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const AHB_HSIZE size
         if (sys->ExtMemCR_Shared.GBAPakAccess) // configured for arm7
         {
             if (timings && (size != HSIZE_8)) LogPrint(LOG_ARM7|LOG_ODD, "NTR_AHB7: %i bit read from GBA Game Pak SRAM region, width > 8 bit are weird, probably not correct?\n", (8<<size));
-            if (timings) LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented READ%i: GBA SRAM\n", (8<<size));
+            if (timings) LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented READ%i: GBA Game Pak SRAM\n", (8<<size));
             Timing32(&sys->AHB7); // TODO
-            ret = (u8)0xFF; // TODO: implement gamepak
+            ret = (u8)0xFF; // TODO: implement game pak
         }
         else // unmapped
         {
@@ -1239,13 +1239,13 @@ void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
 
     case 0x080 ... 0x098: // GBA Game Pak ROM
         if (timings) Timing32(&sys->AHB7);
-        LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented WRITE%i: GBAROM\n", width);
+        LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented WRITE%i: GBA Game Pak ROM\n", width);
         // TODO
         break;
 
     case 0x0A0 ... 0x0A8: // GBA Game Pak SRAM
         if (timings) Timing32(&sys->AHB7);
-        LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented WRITE%i: GBARAM\n", width);
+        LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented WRITE%i: GBA Game Pak RAM\n", width);
         // TODO
         break;
 

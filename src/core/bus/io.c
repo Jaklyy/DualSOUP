@@ -302,7 +302,7 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const bool timings)
             return sys->IPCFIFO7.CR.Raw;
 
         case 0x00'01'A0 ... 0x00'01'B8:
-            return Gamecard_IOReadHandler(sys, addr, false);
+            return GameCard_IOReadHandler(sys, addr, false);
 
         case 0x00'01'C0:
             return sys->SPICR.Raw | (sys->SPIOut << 16);
@@ -347,7 +347,7 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const bool timings)
             return IPC_FIFORead(sys, false);
 
         case 0x10'00'10:
-            return Gamecard_ROMDataRead(sys, sys->AHB7.Timestamp, false);
+            return GameCard_ROMDataRead(sys, sys->AHB7.Timestamp, false);
 
 
         default:
@@ -417,7 +417,7 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             break;
 
         case 0x00'01'A0 ... 0x00'01'B8:
-            Gamecard_IOWriteHandler(sys, addr, val, mask, sys->AHB7.Timestamp, false);
+            GameCard_IOWriteHandler(sys, addr, val, mask, sys->AHB7.Timestamp, false);
             break;
 
         case 0x00'01'C0:
@@ -631,7 +631,7 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const bool timings)
             return sys->IPCFIFO9.CR.Raw;
 
         case 0x00'01'A0 ... 0x00'01'B8:
-            return Gamecard_IOReadHandler(sys, addr, true);
+            return GameCard_IOReadHandler(sys, addr, true);
 
         case 0x00'02'04: // External Memory Control
             return sys->ExtMemCR_Shared.Raw | sys->ExtMemCR_9.Raw;
@@ -730,7 +730,7 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const bool timings)
             return IPC_FIFORead(sys, true);
 
         case 0x10'00'10:
-            return Gamecard_ROMDataRead(sys, sys->AHB9.Timestamp, true);
+            return GameCard_ROMDataRead(sys, sys->AHB9.Timestamp, true);
 
         default:
             if (timings) LogPrint(LOG_ARM9 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO9 READ: %08X @ %08X\n", addr, sys->ARM9.ARM.PC);
@@ -856,7 +856,7 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             break;
 
         case 0x00'01'A0 ... 0x00'01'B8:
-            Gamecard_IOWriteHandler(sys, addr, val, mask, sys->AHB9.Timestamp, true);
+            GameCard_IOWriteHandler(sys, addr, val, mask, sys->AHB9.Timestamp, true);
             break;
 
         case 0x00'02'04: // exmemcnt

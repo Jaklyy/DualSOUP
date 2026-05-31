@@ -10,7 +10,7 @@
 
 
 
-bool Gamecard_Init(Gamecard* card, const char* romname, u8* bios7)
+bool GameCard_Init(GameCard* card, const char* romname, u8* bios7)
 {
     FILE* rom;
     if ((rom = fopen(romname, "rb")) == NULL)
@@ -31,13 +31,13 @@ bool Gamecard_Init(Gamecard* card, const char* romname, u8* bios7)
 
     if (chipsize > GiB(2))
     {
-        LogPrint(LOG_ALWAYS, "ERROR: Gamecard ROM too big! Must be <= 2GiB! size: %lu\n", chipsize);
+        LogPrint(LOG_ALWAYS, "ERROR: Game Card ROM too big! Must be <= 2GiB! size: %lu\n", chipsize);
         fclose(rom);
         return false;
     }
     if (chipsize < KiB(4))
     {
-        LogPrint(LOG_ALWAYS, "NOTE: Gamecard ROM too small! padding to 4KiB size: %lu\n", chipsize);
+        LogPrint(LOG_ALWAYS, "NOTE: Game Card ROM too small! padding to 4KiB size: %lu\n", chipsize);
         chipsize = KiB(4);
     }
 
@@ -51,7 +51,7 @@ bool Gamecard_Init(Gamecard* card, const char* romname, u8* bios7)
     card->RomSize = chipsize;
     if ((card->ROM = malloc(chipsize)) == NULL)
     {
-        LogPrint(LOG_ALWAYS, "ERROR: Could not allocate memory for Gamecard ROM.\n");
+        LogPrint(LOG_ALWAYS, "ERROR: Could not allocate memory for Game Card ROM.\n");
         fclose(rom);
         return false;
     }
@@ -64,7 +64,7 @@ bool Gamecard_Init(Gamecard* card, const char* romname, u8* bios7)
 
     if (fread(card->ROM, filesize, 1, rom) == 0)
     {
-        perror("ERROR: Could not read gamecard ROM");
+        perror("ERROR: Could not read Game Card ROM");
         fclose(rom);
         return false;
     }
@@ -183,7 +183,7 @@ bool Gamecard_Init(Gamecard* card, const char* romname, u8* bios7)
         *spi = malloc(sizeof(IRhle));
         if (*spi == NULL)
         {
-            LogPrint(LOG_ALWAYS, "Could not allocate RAM for HLE gamecard IR\n");
+            LogPrint(LOG_ALWAYS, "Could not allocate RAM for HLE Game Card IR\n");
             return false;
         }
         memset(*spi, 0, sizeof(IRhle));
@@ -204,7 +204,7 @@ bool Gamecard_Init(Gamecard* card, const char* romname, u8* bios7)
         *spi = malloc(sizeof(Flash));
         if (*spi == NULL)
         {
-            LogPrint(LOG_ALWAYS, "Could not allocate RAM for gamecard flash\n");
+            LogPrint(LOG_ALWAYS, "Could not allocate RAM for Game Card flash\n");
             return false;
         }
         memset(*spi, 0, sizeof(Flash));
@@ -241,7 +241,7 @@ bool Gamecard_Init(Gamecard* card, const char* romname, u8* bios7)
     *spi = malloc(sizeof(EEPROM));
     if (*spi == NULL)
     {
-        LogPrint(LOG_ALWAYS, "Could not allocate RAM for gamecard eeprom\n");
+        LogPrint(LOG_ALWAYS, "Could not allocate RAM for Game Card eeprom\n");
         return false;
     }
 
@@ -252,7 +252,7 @@ bool Gamecard_Init(Gamecard* card, const char* romname, u8* bios7)
     return true;
 }
 
-void Gamecard_Cleanup(Gamecard* card)
+void GameCard_Cleanup(GameCard* card)
 {
     if (card->SPI != nullptr)
     {
@@ -267,7 +267,7 @@ void Gamecard_Cleanup(Gamecard* card)
 // TODO: reset func?
 
 // this is just ripped from melonds
-void Key1_Encrypt(Gamecard* card, u32* data)
+void Key1_Encrypt(GameCard* card, u32* data)
 {
     u32 y = data[0];
     u32 x = data[1];
@@ -289,7 +289,7 @@ void Key1_Encrypt(Gamecard* card, u32* data)
 }
 
 // this is just ripped from melonds
-void Key1_Decrypt(Gamecard* card, u32* data)
+void Key1_Decrypt(GameCard* card, u32* data)
 {
     u32 y = data[0];
     u32 x = data[1];
@@ -311,7 +311,7 @@ void Key1_Decrypt(Gamecard* card, u32* data)
 }
 
 // this is just ripped from melonds
-void Key1_Apply(Gamecard* card, u32* code, u32 mod)
+void Key1_Apply(GameCard* card, u32* code, u32 mod)
 {
     Key1_Encrypt(card, &code[1]);
     Key1_Encrypt(card, &code[0]);
@@ -331,7 +331,7 @@ void Key1_Apply(Gamecard* card, u32* code, u32 mod)
 }
 
 // this is just ripped from melonds
-void GamecardMisc_InitKey1(Gamecard* card)
+void GameCardMisc_InitKey1(GameCard* card)
 {
     u32 code[3] = {card->ROM[0xC/sizeof(u32)], card->ROM[0xC/sizeof(u32)]>>1 ,card->ROM[0xC/sizeof(u32)]<<1};
     Key1_Apply(card, code, 2);
@@ -339,21 +339,21 @@ void GamecardMisc_InitKey1(Gamecard* card)
     card->Mode = Key1;
 }
 
-u32 GamecardMisc_ROMReadHandler(Gamecard* card)
+u32 GameCardMisc_ROMReadHandler(GameCard* card)
 {
     u32 ret = card->ROM[card->Address/sizeof(u32)];
     card->Address += 4;
     // force it to stay within one 4 KiB area.
     if (!(card->Address & (KiB(4)-1)))
     {
-        if (card->NumWords) LogPrint(LOG_CARD, "Gamecard read wrapping.\n");
+        if (card->NumWords) LogPrint(LOG_CARD, "Game Card read wrapping.\n");
         card->Address -= KiB(4);
     }
 
     return ret;
 }
 
-u32 GamecardMisc_ROMReadSecureAreaHandler(Gamecard* card)
+u32 GameCardMisc_ROMReadSecureAreaHandler(GameCard* card)
 {
     u32 ret = card->ROM[(0x8000+card->Address)/sizeof(u32)];
     card->Address += 4;
@@ -362,7 +362,7 @@ u32 GamecardMisc_ROMReadSecureAreaHandler(Gamecard* card)
     return ret;
 }
 
-u32 GamecardMisc_ReadSecureAreaHandler(Gamecard* card)
+u32 GameCardMisc_ReadSecureAreaHandler(GameCard* card)
 {
     // TODO: what does this actually do???
     u32 ret = card->ROM[card->Address/sizeof(u32)];
@@ -370,12 +370,12 @@ u32 GamecardMisc_ReadSecureAreaHandler(Gamecard* card)
     return ret;
 }
 
-u32 GamecardMisc_UnencIDReadHandler(Gamecard* card)
+u32 GameCardMisc_UnencIDReadHandler(GameCard* card)
 {
     return card->ChipID;
 }
 
-u32 GamecardMisc_UnencHeaderHandler(Gamecard* card)
+u32 GameCardMisc_UnencHeaderHandler(GameCard* card)
 {
     card->Address &= 0xFFF;
     u32 ret = card->ROM[card->Address/sizeof(u32)];
@@ -383,14 +383,14 @@ u32 GamecardMisc_UnencHeaderHandler(Gamecard* card)
     return ret;
 }
 
-u32 GamecardMisc_InvalidCmdHandler([[maybe_unused]] Gamecard* card)
+u32 GameCardMisc_InvalidCmdHandler([[maybe_unused]] GameCard* card)
 {
     return 0xFFFFFFFF; // idk
 }
 
-void* GamecardMisc_ROMCommandHandler(struct Console* sys, const bool a9)
+void* GameCardMisc_ROMCommandHandler(struct Console* sys, const bool a9)
 {
-    Gamecard* card = &sys->Gamecard;
+    GameCard* card = &sys->GameCard;
     u64 cmd = sys->GCCommandPort[a9].Raw;
     switch(card->Mode)
     {
@@ -400,18 +400,18 @@ void* GamecardMisc_ROMCommandHandler(struct Console* sys, const bool a9)
             {
                 case 0x9F:
                     // High Z
-                    return GamecardMisc_InvalidCmdHandler;
+                    return GameCardMisc_InvalidCmdHandler;
                 case 0x00:
                     // header
                     card->Address = (bswap(cmd) >> 24) & ~3;
-                    return GamecardMisc_UnencHeaderHandler;
+                    return GameCardMisc_UnencHeaderHandler;
                 case 0x90:
                     // chip id
-                    return GamecardMisc_UnencIDReadHandler;
+                    return GameCardMisc_UnencIDReadHandler;
                 case 0x3C:
                     // active key 1
-                    GamecardMisc_InitKey1(card);
-                    return GamecardMisc_InvalidCmdHandler; // idk?
+                    GameCardMisc_InitKey1(card);
+                    return GameCardMisc_InvalidCmdHandler; // idk?
             }
             break;
         }
@@ -426,15 +426,15 @@ void* GamecardMisc_ROMCommandHandler(struct Console* sys, const bool a9)
             switch(cmd & 0xF0)
             {
                 case 0x40:
-                    return GamecardMisc_InvalidCmdHandler; // idk?
+                    return GameCardMisc_InvalidCmdHandler; // idk?
                 case 0x10:
-                    return GamecardMisc_UnencIDReadHandler;
+                    return GameCardMisc_UnencIDReadHandler;
                 case 0x20:
                     card->Address = ((bswap(cmd) >> 44) & 0x7) << 12; // checkme: decoding on this seems weird; are the nibbles swapped?
-                    return GamecardMisc_ReadSecureAreaHandler;
+                    return GameCardMisc_ReadSecureAreaHandler;
                 case 0xA0:
                     card->Mode = Key2;
-                    return GamecardMisc_InvalidCmdHandler; // idk?
+                    return GameCardMisc_InvalidCmdHandler; // idk?
             }
             break;
         }
@@ -448,37 +448,37 @@ void* GamecardMisc_ROMCommandHandler(struct Console* sys, const bool a9)
                     // data
                     //printf("%08lX %08X %08X\n", (bswap(cmd) >> 24) & 0xFFFFFFFF, sys->GCROMCR[a9].Raw, sys->GCSPICR[a9].Raw);
                     card->Address = (bswap(cmd) >> 24);
-                    if (card->Address >= card->RomSize) LogPrint(LOG_CARD, "Gamecard address space wrapping: %08X %08X\n", card->Address, card->RomSize);
+                    if (card->Address >= card->RomSize) LogPrint(LOG_CARD, "Game Card address space wrapping: %08X %08X\n", card->Address, card->RomSize);
                     card->Address &= (card->RomSize-4); // subtract 4 as a weird way to handle masking out bottom bits as well.
                     if (card->Address < 0x8000)
                     {
                         // secure area is rerouted to the 512 bytes above it
                         card->Address &= 0x1FF;
-                        LogPrint(LOG_CARD, "Gamecard secure area read.\n");
-                        return GamecardMisc_ROMReadSecureAreaHandler;
+                        LogPrint(LOG_CARD, "Game Card secure area read.\n");
+                        return GameCardMisc_ROMReadSecureAreaHandler;
                     }
-                    else return GamecardMisc_ROMReadHandler;
+                    else return GameCardMisc_ROMReadHandler;
                 }
                 case 0xB8:
                 {
                     // chip id
-                    return GamecardMisc_UnencIDReadHandler;
+                    return GameCardMisc_UnencIDReadHandler;
                 }
                 default:
-                    return GamecardMisc_InvalidCmdHandler;
+                    return GameCardMisc_InvalidCmdHandler;
             }
             break;
         }
     }
-    LogPrint(LOG_CARD|LOG_ODD, "Invalid Gamecard cmd %02X %i ran\n", (u8)cmd & 0xFF, card->Mode);
-    return GamecardMisc_InvalidCmdHandler;
+    LogPrint(LOG_CARD|LOG_ODD, "Invalid Game Card cmd %02X %i ran\n", (u8)cmd & 0xFF, card->Mode);
+    return GameCardMisc_InvalidCmdHandler;
 }
 
-void Gamecard_HandleSchedulingROM(struct Console* sys, timestamp now);
+void GameCard_HandleSchedulingROM(struct Console* sys, timestamp now);
 
 void QueueNextTransfer(struct Console* sys, timestamp cur, const bool a9)
 {
-    Gamecard* card = &sys->Gamecard;
+    GameCard* card = &sys->GameCard;
 
     if (card->NumWords > 0)
     {
@@ -496,7 +496,7 @@ void QueueNextTransfer(struct Console* sys, timestamp cur, const bool a9)
 
         transtime *= ((sys->GCROMCR[a9].ClockDivider) ? 8 : 5);
 
-        Schedule_Event(sys, Gamecard_HandleSchedulingROM, Evt_CardROM, cur+transtime);
+        Schedule_Event(sys, GameCard_HandleSchedulingROM, Evt_CardROM, cur+transtime);
     }
     else
     {
@@ -504,15 +504,15 @@ void QueueNextTransfer(struct Console* sys, timestamp cur, const bool a9)
         {
             sys->GCROMCR[a9].Start = false;
             if (sys->GCSPICR[a9].ROMDataReadyIRQ)
-                Console_ScheduleIRQs(sys, IRQ_GamecardTransferComplete, a9, cur); // todo: delay?
+                Console_ScheduleIRQs(sys, IRQ_GameCardTransferComplete, a9, cur); // todo: delay?
         }
-        Schedule_Event(sys, Gamecard_HandleSchedulingROM, Evt_CardROM, timestamp_max);
+        Schedule_Event(sys, GameCard_HandleSchedulingROM, Evt_CardROM, timestamp_max);
     }
 }
 
-u32 Gamecard_ROMDataRead(struct Console* sys, timestamp cur, const bool a9)
+u32 GameCard_ROMDataRead(struct Console* sys, timestamp cur, const bool a9)
 {
-    Gamecard* card = &sys->Gamecard;
+    GameCard* card = &sys->GameCard;
 
     u32 ret = sys->GCROMData[a9];
 
@@ -533,9 +533,9 @@ u32 Gamecard_ROMDataRead(struct Console* sys, timestamp cur, const bool a9)
     return ret;
 }
 
-void Gamecard_HandleSchedulingROM(struct Console* sys, timestamp now)
+void GameCard_HandleSchedulingROM(struct Console* sys, timestamp now)
 {
-    Gamecard* card = &sys->Gamecard;
+    GameCard* card = &sys->GameCard;
     bool a9 = !sys->ExtMemCR_Shared.NDSCardAccess;
 
     card->NumWords -= 1;
@@ -546,7 +546,7 @@ void Gamecard_HandleSchedulingROM(struct Console* sys, timestamp now)
         {
             card->WordBuffer = data;
             card->Buffered = true;
-            Schedule_Event(sys, Gamecard_HandleSchedulingROM, Evt_CardROM, timestamp_max);
+            Schedule_Event(sys, GameCard_HandleSchedulingROM, Evt_CardROM, timestamp_max);
         }
         else
         {
@@ -561,9 +561,9 @@ void Gamecard_HandleSchedulingROM(struct Console* sys, timestamp now)
     else QueueNextTransfer(sys, now, a9);
 }
 
-void Gamecard_ROMCommandSubmit(struct Console* sys, timestamp cur, const bool a9)
+void GameCard_ROMCommandSubmit(struct Console* sys, timestamp cur, const bool a9)
 {
-    Gamecard* card = &sys->Gamecard;
+    GameCard* card = &sys->GameCard;
     // check if slot is enabled and in ROM mode
     // checkme: should it being in release also prevent rom accesses? one would assume so.
     // TODO: validate all timings. some of them are stolen straight from melonDS, and some are based on some old-ish and low quality research by me.
@@ -576,7 +576,7 @@ void Gamecard_ROMCommandSubmit(struct Console* sys, timestamp cur, const bool a9
                             ? 0
                             : (0x40 << sys->GCROMCR[a9].NumWords)));
 
-    card->ReadHandler = GamecardMisc_ROMCommandHandler(sys, a9);
+    card->ReadHandler = GameCardMisc_ROMCommandHandler(sys, a9);
 
     // calc timings
     timestamp transfertime = 10;
@@ -588,24 +588,24 @@ void Gamecard_ROMCommandSubmit(struct Console* sys, timestamp cur, const bool a9
     transfertime *= ((sys->GCROMCR[a9].ClockDivider) ? 8 : 5);
     transfertime += 3;
 
-    Schedule_Event(sys, Gamecard_HandleSchedulingROM, Evt_CardROM, cur+transfertime);
+    Schedule_Event(sys, GameCard_HandleSchedulingROM, Evt_CardROM, cur+transfertime);
 }
 
-void Gamecard_SPIFinish9(struct Console* sys, [[maybe_unused]] timestamp cur)
+void GameCard_SPIFinish9(struct Console* sys, [[maybe_unused]] timestamp cur)
 {
     sys->GCSPIOut[true] = sys->GCSPIBuf;
     sys->GCSPICR[true].Busy = false;
     Schedule_Event(sys, nullptr, Evt_CardSPI, timestamp_max);
 }
 
-void Gamecard_SPIFinish7(struct Console* sys, [[maybe_unused]] timestamp cur)
+void GameCard_SPIFinish7(struct Console* sys, [[maybe_unused]] timestamp cur)
 {
     sys->GCSPIOut[false] = sys->GCSPIBuf;
     sys->GCSPICR[false].Busy = false;
     Schedule_Event(sys, nullptr, Evt_CardSPI, timestamp_max);
 }
 
-u32 Gamecard_IOReadHandler(struct Console* sys, u32 addr, const bool a9)
+u32 GameCard_IOReadHandler(struct Console* sys, u32 addr, const bool a9)
 {
     addr -= 0x040001A0;
 
@@ -623,7 +623,7 @@ u32 Gamecard_IOReadHandler(struct Console* sys, u32 addr, const bool a9)
     }
 }
 
-void Gamecard_IOWriteHandler(struct Console* sys, u32 addr, const u32 val, const u32 mask, timestamp cur, const bool a9)
+void GameCard_IOWriteHandler(struct Console* sys, u32 addr, const u32 val, const u32 mask, timestamp cur, const bool a9)
 {
     addr -= 0x040001A0;
 
@@ -639,23 +639,23 @@ void Gamecard_IOWriteHandler(struct Console* sys, u32 addr, const u32 val, const
             {
                 if (!sys->GCSPICR[a9].SlotEnable)
                 {
-                    LogPrint(LOG_CARD|LOG_ODD, "Gamecard SPI writes while slot disabled? Val: %08X Mask: %08X\n", val, mask);
+                    LogPrint(LOG_CARD|LOG_ODD, "Game Card SPI writes while slot disabled? Val: %08X Mask: %08X\n", val, mask);
                 }
                 else if (!sys->GCSPICR[a9].CardSPIMode)
                 {
-                    LogPrint(LOG_CARD|LOG_ODD, "Gamecard SPI writes while in ROM mode? Val: %08X Mask: %08X\n", val, mask);
+                    LogPrint(LOG_CARD|LOG_ODD, "Game Card SPI writes while in ROM mode? Val: %08X Mask: %08X\n", val, mask);
                 }
                 else if (sys->GCSPICR[a9].Busy)
                 {
-                    LogPrint(LOG_CARD|LOG_ODD, "Gamecard SPI writes while busy? Val: %08X Mask: %08X\n", val, mask);
+                    LogPrint(LOG_CARD|LOG_ODD, "Game Card SPI writes while busy? Val: %08X Mask: %08X\n", val, mask);
                 }
                 else
                 {
-                    if (sys->Gamecard.SPI == nullptr) sys->GCSPIBuf = 0xFF;
-                    else sys->GCSPIBuf = sys->Gamecard.SPI_CMDSend(sys->Gamecard.SPI, (val>>16)&0xFF, sys->GCSPICR[a9].ChipSelect);
+                    if (sys->GameCard.SPI == nullptr) sys->GCSPIBuf = 0xFF;
+                    else sys->GCSPIBuf = sys->GameCard.SPI_CMDSend(sys->GameCard.SPI, (val>>16)&0xFF, sys->GCSPICR[a9].ChipSelect);
 
                     sys->GCSPICR[a9].Busy = true;
-                    Schedule_Event(sys, (a9 ? Gamecard_SPIFinish9 : Gamecard_SPIFinish7), Evt_CardSPI, cur + (8*(8<<sys->GCSPICR[a9].Baudrate))); // checkme: delay
+                    Schedule_Event(sys, (a9 ? GameCard_SPIFinish9 : GameCard_SPIFinish7), Evt_CardSPI, cur + (8*(8<<sys->GCSPICR[a9].Baudrate))); // checkme: delay
                 }
             }
             break;
@@ -681,8 +681,8 @@ void Gamecard_IOWriteHandler(struct Console* sys, u32 addr, const u32 val, const
                 if (!sys->GCROMCR[a9].Start)
                 {
                     // call command handler
-                    //sys->Gamecard.CommandHandler(sys, sys->GCCommandPort[a9].Raw);
-                    Gamecard_ROMCommandSubmit(sys, cur, a9);
+                    //sys->GameCard.CommandHandler(sys, sys->GCCommandPort[a9].Raw);
+                    GameCard_ROMCommandSubmit(sys, cur, a9);
                 }
                 // can't be cleared
                 sys->GCROMCR[a9].Start = true;
@@ -693,13 +693,13 @@ void Gamecard_IOWriteHandler(struct Console* sys, u32 addr, const u32 val, const
         case 0x08:
         {
             MaskedWrite(sys->GCCommandPort[a9].Lo, val, mask);
-            if (sys->GCROMCR[a9].Start) LogPrint(LOG_CARD|LOG_UNIMP, "Writing gamecard cmd port while busy?\n");
+            if (sys->GCROMCR[a9].Start) LogPrint(LOG_CARD|LOG_UNIMP, "Writing Game Card cmd port while busy?\n");
             break;
         }
         case 0x0C:
         {
             MaskedWrite(sys->GCCommandPort[a9].Hi, val, mask);
-            if (sys->GCROMCR[a9].Start) LogPrint(LOG_CARD|LOG_UNIMP, "Writing gamecard cmd port while busy?\n");
+            if (sys->GCROMCR[a9].Start) LogPrint(LOG_CARD|LOG_UNIMP, "Writing Game Card cmd port while busy?\n");
             break;
         }
         case 0x10:

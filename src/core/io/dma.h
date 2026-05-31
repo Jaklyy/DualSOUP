@@ -37,7 +37,7 @@ union DMA_CR
     struct
     {
         u32 : 27;
-        bool AGBCartIRQ : 1; // agb mode only (how does this actually work...?)
+        bool AGBPakIRQ : 1; // agb mode only (how does this actually work...?)
         u32 StartMode7 : 2;
     };
 };

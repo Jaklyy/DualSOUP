@@ -454,7 +454,7 @@ struct Console
         };
     } GCS2EncrySeeds[2][2][2]; // [internal = 1][cpu][seed]
 
-    Gamecard Gamecard;
+    GameCard GameCard;
 
     RTC RTC;
     u16 RCR;

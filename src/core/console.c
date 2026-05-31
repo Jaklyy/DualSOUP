@@ -120,7 +120,7 @@ struct Console* Console_Init(struct Console* sys, CoreCfg* cfg, void* pad, void*
 #endif
         Flash_Cleanup(&sys->Firmware);
         //nvram = sys->Firmware.RAM;
-        Gamecard_Cleanup(&sys->Gamecard);
+        GameCard_Cleanup(&sys->GameCard);
         int dummy;
 #ifndef SINGLETHREADRASTER
         sys->KillSWRen = true;
@@ -167,7 +167,7 @@ struct Console* Console_Init(struct Console* sys, CoreCfg* cfg, void* pad, void*
     sys->HandleARM9 = CR_Active();
     bool cr7init = CR_Create(&sys->HandleARM7, (void*)ARM7_MainLoop, &sys->ARM7);
 
-    bool gcinit = Gamecard_Init(&sys->Gamecard, cfg->NTR.CardROM, sys->NTRBios7.b8);
+    bool gcinit = GameCard_Init(&sys->GameCard, cfg->NTR.CardROM, sys->NTRBios7.b8);
 
     bool mtxinit = ((sys->FrameBufferMutex[0] = SDL_CreateMutex()) != NULL);
     bool mtxinit3 = ((sys->FrameBufferMutex[1] = SDL_CreateMutex()) != NULL);
@@ -208,7 +208,7 @@ struct Console* Console_Init(struct Console* sys, CoreCfg* cfg, void* pad, void*
         // cleanup ones that actually allocated correctly
         if (cr7init) CR_Free(sys->HandleARM7);
         if (firminit) Flash_Cleanup(&sys->Firmware);
-        if (gcinit) Gamecard_Cleanup(&sys->Gamecard);
+        if (gcinit) GameCard_Cleanup(&sys->GameCard);
         if (mtxinit) SDL_DestroyMutex(sys->FrameBufferMutex[0]);
         if (mtxinit3) SDL_DestroyMutex(sys->FrameBufferMutex[1]);
 #ifdef REALTHREAD
@@ -347,7 +347,7 @@ void Console_DirectBoot(struct Console* sys)
     sys->Bios7Prot = 0x1204;
     sys->PowerCR9.Raw = 0x820F;
 
-    sys->Gamecard.Mode = Key2;
+    sys->GameCard.Mode = Key2;
 
     // set main ram bits to be enabled
     sys->ExtMemCR_Shared.MRSomething1 = true;
@@ -366,17 +366,17 @@ void Console_DirectBoot(struct Console* sys)
     sys->ARM7.ARM.SWI_Bank.R[0] = 0x0380FFC0;
 
     //fseek(rom, 0x20, SEEK_SET);
-    u32 arm9_romoffs = sys->Gamecard.ROM[0x20/4];
-    u32 arm9_entryaddr = sys->Gamecard.ROM[0x24/4];
-    u32 arm9_ramaddr = sys->Gamecard.ROM[0x28/4];
-    u32 arm9_romsize = sys->Gamecard.ROM[0x2C/4];
-    u32 arm7_romoffs = sys->Gamecard.ROM[0x30/4];
-    u32 arm7_entryaddr = sys->Gamecard.ROM[0x34/4];
-    u32 arm7_ramaddr = sys->Gamecard.ROM[0x38/4];
-    u32 arm7_romsize = sys->Gamecard.ROM[0x3C/4];
+    u32 arm9_romoffs = sys->GameCard.ROM[0x20/4];
+    u32 arm9_entryaddr = sys->GameCard.ROM[0x24/4];
+    u32 arm9_ramaddr = sys->GameCard.ROM[0x28/4];
+    u32 arm9_romsize = sys->GameCard.ROM[0x2C/4];
+    u32 arm7_romoffs = sys->GameCard.ROM[0x30/4];
+    u32 arm7_entryaddr = sys->GameCard.ROM[0x34/4];
+    u32 arm7_ramaddr = sys->GameCard.ROM[0x38/4];
+    u32 arm7_romsize = sys->GameCard.ROM[0x3C/4];
 
-    if (((arm9_romoffs + arm9_romsize) > sys->Gamecard.RomSize)
-     || ((arm7_romoffs + arm7_romsize) > sys->Gamecard.RomSize))
+    if (((arm9_romoffs + arm9_romsize) > sys->GameCard.RomSize)
+     || ((arm7_romoffs + arm7_romsize) > sys->GameCard.RomSize))
     {
         LogPrint(LOG_ALWAYS, "ROM CONTAINS INVALID A9/A7 PROGRAMS\n");
         return;
@@ -395,13 +395,13 @@ void Console_DirectBoot(struct Console* sys)
     // load arm9 rom
     for (unsigned i = 0; i < arm9_romsize; i+=4)
     {
-        AHB9_Write(sys, &nop, arm9_ramaddr+i, sys->Gamecard.ROM[(arm9_romoffs+i)/4], u32_max, false, &nopy, false);
+        AHB9_Write(sys, &nop, arm9_ramaddr+i, sys->GameCard.ROM[(arm9_romoffs+i)/4], u32_max, false, &nopy, false);
     }
 
     // load arm7 rom
     for (unsigned i = 0; i < arm7_romsize; i+=4)
     {
-        AHB7_Write(sys, &nop, arm7_ramaddr+i, sys->Gamecard.ROM[(arm7_romoffs+i)/4], u32_max, false, &nopy, false, 0);
+        AHB7_Write(sys, &nop, arm7_ramaddr+i, sys->GameCard.ROM[(arm7_romoffs+i)/4], u32_max, false, &nopy, false, 0);
     }
 
     sys->ARM9.CP15.CR.DTCMEnable = true;
@@ -409,7 +409,7 @@ void Console_DirectBoot(struct Console* sys)
     ARM9_ConfigureDTCM(&sys->ARM9);
 
     // load header
-    memcpy(&sys->MainRAM.b8[0x27FFE00 & (MainRAM_Size-1)], sys->Gamecard.ROM, 0x170);
+    memcpy(&sys->MainRAM.b8[0x27FFE00 & (MainRAM_Size-1)], sys->GameCard.ROM, 0x170);
     // "load" chipid
     sys->MainRAM.b32[(0x27FF800 & (MainRAM_Size-1))/sizeof(u32)] = 0x010101C2;
     sys->MainRAM.b32[(0x27FF804 & (MainRAM_Size-1))/sizeof(u32)] = 0x010101C2;
@@ -417,14 +417,14 @@ void Console_DirectBoot(struct Console* sys)
     sys->MainRAM.b32[(0x27FFC04 & (MainRAM_Size-1))/sizeof(u32)] = 0x010101C2;
 
     // header checksum
-    memcpy(&sys->MainRAM.b8[0x27FF808 & (MainRAM_Size-1)], &sys->Gamecard.ROM[0x15E/4]+2, 2);
+    memcpy(&sys->MainRAM.b8[0x27FF808 & (MainRAM_Size-1)], &sys->GameCard.ROM[0x15E/4]+2, 2);
 
-    memcpy(&sys->MainRAM.b8[0x27FFC08 & (MainRAM_Size-1)], &sys->Gamecard.ROM[0x15E/4]+2, 2);
+    memcpy(&sys->MainRAM.b8[0x27FFC08 & (MainRAM_Size-1)], &sys->GameCard.ROM[0x15E/4]+2, 2);
 
     // secure area checksum
-    memcpy(&sys->MainRAM.b8[0x27FF80A & (MainRAM_Size-1)], &sys->Gamecard.ROM[0x6C/4], 2);
+    memcpy(&sys->MainRAM.b8[0x27FF80A & (MainRAM_Size-1)], &sys->GameCard.ROM[0x6C/4], 2);
 
-    memcpy(&sys->MainRAM.b8[0x27FFC0A & (MainRAM_Size-1)], &sys->Gamecard.ROM[0x6C/4], 2);
+    memcpy(&sys->MainRAM.b8[0x27FFC0A & (MainRAM_Size-1)], &sys->GameCard.ROM[0x6C/4], 2);
 
     // idk
     sys->MainRAM.b16[(0x27FF850 & (MainRAM_Size-1))/sizeof(u16)] = 0x5835;
