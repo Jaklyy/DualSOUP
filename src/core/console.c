@@ -39,7 +39,7 @@ void Console_DebugLog(struct Console* sys)
         FILE* file = fopen("log7.bin", "wb");
         for (int i = 0x02000000; i < 0x08000000; i+=4)
         {
-            u32 buf = AHB7_Read(sys, NULL, i, 0xFFFFFFFF, false, false, &seq, false, 0);
+            u32 buf = AHB7_Read(sys, NULL, i, HSIZE_32, false, false, &seq, false, 0);
             fwrite(&buf, 4, 1, file);
         }
         fclose(file);
@@ -58,7 +58,7 @@ void Console_DebugLog(struct Console* sys)
         FILE* file = fopen("log9.bin", "wb");
         for (int i = 0x02000000; i < 0x08000000; i+=4)
         {
-            u32 buf = AHB9_Read(sys, NULL, i, 0xFFFFFFFF, false, false, &seq, false);
+            u32 buf = AHB9_Read(sys, NULL, i, HSIZE_32, false, false, &seq, false);
             fwrite(&buf, 4, 1, file);
         }
         fclose(file);
@@ -202,7 +202,7 @@ struct Console* Console_Init(struct Console* sys, CoreCfg* cfg, void* pad, void*
 
         if (!gcinit)
         {
-            LogPrint(LOG_ALWAYS, "FATAL: Gamecard failed init.\n");
+            LogPrint(LOG_ALWAYS, "FATAL: Game Card failed init.\n");
         }
 
         // cleanup ones that actually allocated correctly

@@ -11,9 +11,8 @@ void WiFi_Init(struct Console* sys)
     sys->WiFiBB[0x64] = 0xFF;
 }
 
-u32 WiFi_Read(struct Console* sys, timestamp* ts [[maybe_unused]], u32 addr, const u32 mask, const bool timings)
+u32 WiFi_Read(struct Console* sys, timestamp* ts [[maybe_unused]], u32 addr, const AHB_HSIZE size, const bool timings)
 {
-    const unsigned width = stdc_count_ones(mask);
     u32 ret;
 
     if (!sys->PowerCR7.WifiPower // checkme: does this return 0?
@@ -63,7 +62,7 @@ u32 WiFi_Read(struct Console* sys, timestamp* ts [[maybe_unused]], u32 addr, con
             ret = MemoryRead(32, sys->WifiIO, addr, 0x1000); // TODO
             break;
     }
-    if (timings) LogPrint(LOG_UNIMP|LOG_WIFI, "NTR_AHB7: Unimplemented READ%i: WiFi IO %08X %08X %08X\n", width, addr, ret, mask);
+    if (timings) LogPrint(LOG_UNIMP|LOG_WIFI, "NTR_AHB7: Unimplemented READ%i: WiFi IO %08X %08X\n", (8<<size), addr, ret);
     return ret;
 }
 

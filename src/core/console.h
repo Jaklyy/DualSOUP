@@ -30,49 +30,64 @@
 // not sure if these are actually going to be used for anything but they're useful reminders
 // Source: gbatek
 
-constexpr unsigned Base_Clock   = 16'756'991;     // Clock without any extra multipliers applied.
-constexpr unsigned NTRBus_Clock = Base_Clock * 2; // Clock used for the main buses.
-constexpr unsigned NTR7_Clock   = Base_Clock * 2; // ARM7 Clock.
-constexpr unsigned NTR9_Clock   = Base_Clock * 4; // NARM9 Clock.
+constexpr u32 Base_Clock   = 16'756'991;     // Clock without any extra multipliers applied.
+constexpr u32 NTRBus_Clock = Base_Clock * 2; // Clock used for the main buses.
+constexpr u32 NTR7_Clock   = Base_Clock * 2; // ARM7 Clock.
+constexpr u32 NTR9_Clock   = Base_Clock * 4; // NARM9 Clock.
 
 // audio clocks
 // source: gbatek 
 // these numbers seem odd? not sure if these should actually be
-constexpr unsigned SoundMixerFreq = Base_Clock/16; // 1'048'760; // >(1/16); (is this info relevant?)
+constexpr u32 SoundMixerFreq = Base_Clock/16; // 1'048'760; // >(1/16); (is this info relevant?)
                                                                  // note: still haven't for sure verified that this is exact.
-constexpr unsigned SoundMixerOutput = Base_Clock/512; //32'768; // not entirely sure if it uses an output frequency of 32.768 Hz or 32.728 Hz
+constexpr u32 SoundMixerOutput = Base_Clock/512; //32'768; // not entirely sure if it uses an output frequency of 32.768 Hz or 32.728 Hz
                                                                 // it's a difference of roughly 0.1% so idk if it matters, but it bothers me
                                                                 // fun note: you can set this to Base_Clock/16 to get very high quality audio output.
 
 // yoinked from melonDS; should be validated personally.
 // they're written this way in melonDS; I'm not sure why? Probably makes sense with 2d gpu knowledge.
-constexpr unsigned ActiveRender_Cycles = 48+(256*6); // How long the PPUs are actively rendering graphics in a given scanline.
-constexpr unsigned HBlank_Cycles       = 91*6; // length of the HBlank period.
-constexpr unsigned Scanline_Cycles     = HBlank_Cycles + ActiveRender_Cycles; // total length of a scanline in 16 MHz cycles.
-constexpr unsigned Frame_Cycles        = Scanline_Cycles * 263; // total frame length.
+constexpr u16 ActiveRender_Cycles = 48+(256*6); // How long the PPUs are actively rendering graphics in a given scanline.
+constexpr u16 HBlank_Cycles       = 91*6; // length of the HBlank period.
+constexpr u16 Scanline_Cycles     = HBlank_Cycles + ActiveRender_Cycles; // total length of a scanline in 16 MHz cycles.
+constexpr u32 Frame_Cycles        = Scanline_Cycles * 263; // total frame length.
 constexpr double FPS       = 59.8260982881; // how do I represent this losslessly.
 constexpr double Framems   = 16.7151131131; // see above.
 constexpr double VCountus  = 63.5555631677; // length of a scanline in us; see above.
 
 
 
-constexpr unsigned MainRAM_Size     = MiB(4);
-constexpr unsigned SharedWRAM_Size  = KiB(32);
-constexpr unsigned ARM7WRAM_Size    = KiB(64);
-constexpr unsigned NTRBios9_Size    = KiB(4);
-constexpr unsigned NTRBios7_Size    = KiB(16);
-constexpr unsigned VRAM_A_Size      = KiB(128);
-constexpr unsigned VRAM_B_Size      = KiB(128);
-constexpr unsigned VRAM_C_Size      = KiB(128);
-constexpr unsigned VRAM_D_Size      = KiB(128);
-constexpr unsigned VRAM_E_Size      = KiB(64);
-constexpr unsigned VRAM_F_Size      = KiB(16);
-constexpr unsigned VRAM_G_Size      = KiB(16);
-constexpr unsigned VRAM_H_Size      = KiB(32);
-constexpr unsigned VRAM_I_Size      = KiB(16);
-constexpr unsigned Palette_Size     = KiB(2);
-constexpr unsigned OAM_Size         = KiB(2);
-constexpr unsigned WiFiRAM_Size     = KiB(8);
+constexpr size_t MainRAM_Size     = MiB(4);
+constexpr size_t SharedWRAM_Size  = KiB(32);
+constexpr size_t ARM7WRAM_Size    = KiB(64);
+constexpr size_t NTRBios9_Size    = KiB(4);
+constexpr size_t NTRBios7_Size    = KiB(16);
+constexpr size_t VRAM_A_Size      = KiB(128);
+constexpr size_t VRAM_B_Size      = KiB(128);
+constexpr size_t VRAM_C_Size      = KiB(128);
+constexpr size_t VRAM_D_Size      = KiB(128);
+constexpr size_t VRAM_E_Size      = KiB(64);
+constexpr size_t VRAM_F_Size      = KiB(16);
+constexpr size_t VRAM_G_Size      = KiB(16);
+constexpr size_t VRAM_H_Size      = KiB(32);
+constexpr size_t VRAM_I_Size      = KiB(16);
+constexpr size_t Palette_Size     = KiB(2);
+constexpr size_t OAM_Size         = KiB(2);
+constexpr size_t WiFiRAM_Size     = KiB(8);
+
+typedef enum : u8
+{
+    VRAM_A_ID,
+    VRAM_B_ID,
+    VRAM_C_ID,
+    VRAM_D_ID,
+    VRAM_E_ID,
+    VRAM_F_ID,
+    VRAM_G_ID,
+    VRAM_H_ID,
+    VRAM_I_ID,
+
+    VRAM_ID_MAX [[maybe_unused]], 
+} VRAMBankIDs;
 
 union VRAMCR
 {
@@ -501,7 +516,15 @@ struct Console
     // FCRAM
     MEMORY(MainRAM,     MainRAM_Size);
     // WRAM
-    MEMORY(SharedWRAM,  SharedWRAM_Size);
+    union
+    {
+        MEMORY(SharedWRAM,  SharedWRAM_Size);
+        struct
+        {
+            MEMORY(SharedWRAMLo, SharedWRAM_Size/2);
+            MEMORY(SharedWRAMHi, SharedWRAM_Size/2);
+        };
+    };
     MEMORY(ARM7WRAM,    ARM7WRAM_Size);
     // VRAM
     MEMORY(VRAM_A,      VRAM_A_Size);

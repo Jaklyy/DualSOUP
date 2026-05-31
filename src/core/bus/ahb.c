@@ -18,7 +18,7 @@ void Timing32(struct AHB* bus)
     bus->Timestamp += 1;
 }
 
-void BusContention(timestamp* busyts, timestamp* cur, const u8 device)
+void BusContention(timestamp* busyts, timestamp* cur, const NTRAHB_Devices device)
 {
     // check if the device we're accessing is busy
     // sequential accesses shouldn't need to be checked on
@@ -28,7 +28,7 @@ void BusContention(timestamp* busyts, timestamp* cur, const u8 device)
     }
 }
 
-void AddBusContention(timestamp* busyts, const timestamp cur, const u8 device)
+void AddBusContention(timestamp* busyts, const timestamp cur, const NTRAHB_Devices device)
 {
     busyts[device] = cur+1;
 }
@@ -417,7 +417,7 @@ void Bus_MainRAM_ReleaseHold(struct Console* sys, struct AHB* buscur)
     }
 }
 
-u32 Bus_MainRAM_Read(struct Console* sys, struct AHB* buscur, const bool bus9, u32 addr, const u32 mask, const bool atomic, const bool hold, bool* seq, const bool timings)
+u32 Bus_MainRAM_Read(struct Console* sys, struct AHB* buscur, const bool bus9, u32 addr, const AHB_HSIZE size, const bool atomic, const bool hold, bool* seq, const bool timings)
 {
     struct BusMainRAM* busmr = &sys->BusMR;
 
@@ -488,21 +488,24 @@ u32 Bus_MainRAM_Read(struct Console* sys, struct AHB* buscur, const bool bus9, u
         {
             busmr->BurstStartTS = buscur->Timestamp;
 
-            // if the burst starts in the last 6 bytes of a 32 byte chunk then the burst will restart if it crosses the 32 byte boundary
-            busmr->WeirdStartAddr = ((addr & 0x1E) >= 0x1A);
-
-            if (mask == u32_max)
+            if (size >= HSIZE_32) // two fetches
             {
+                // if the burst starts in the last 6 bytes of a 32 byte chunk then the burst will restart if it crosses the 32 byte boundary
+                busmr->WeirdStartAddr = ((addr & 0x1C) >= 0x1A);
+
                 buscur->Timestamp += 6;
             }
             else // 8 / 16
             {
+                // if the burst starts in the last 6 bytes of a 32 byte chunk then the burst will restart if it crosses the 32 byte boundary
+                busmr->WeirdStartAddr = ((addr & 0x1E) >= 0x1A);
+
                 buscur->Timestamp += 5;
             }
         }
         else // sequential
         {
-            if (mask == u32_max)
+            if (size >= HSIZE_32) // two fetches
             {
                 // this takes 2 cycles, but it can appear to take 1 cycle under certain situations,
                 // due to main ram having the ability to prefetch slightly ahead if the burst is held but not immediately read from. (identified with 32 bit dma)
@@ -549,7 +552,13 @@ u32 Bus_MainRAM_Read(struct Console* sys, struct AHB* buscur, const bool bus9, u
         busmr->LastWasHeld = hold;
     }
 
-    return MemoryRead(32, sys->MainRAM, addr, MainRAM_Size);
+    if (size >= HSIZE_32) // two fetches
+        return MemoryRead(32, sys->MainRAM, addr, MainRAM_Size);
+    else // perform single 16 bit read
+    {
+        u32 ret = MemoryRead(16, sys->MainRAM, addr, MainRAM_Size);
+        return ret | (ret << 16); // mirrored on both halves
+    }
 }
 
 void Bus_MainRAM_Write(struct Console* sys, struct AHB* buscur, const bool bus9, u32 addr, const u32 val, const u32 mask, const bool atomic, bool* seq, const bool timings)
@@ -653,10 +662,12 @@ void Bus_MainRAM_Write(struct Console* sys, struct AHB* buscur, const bool bus9,
     MemoryWrite(32, sys->MainRAM, addr, MainRAM_Size, val, mask);
 }
 
-u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, const bool atomic, const bool hold, bool* seq, const bool timings)
+u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const AHB_HSIZE size, const bool atomic, const bool hold, bool* seq, const bool timings)
 {
     // CHECKME: alignment is enforced by the bus on arm7 on gba, does that also apply to arm9?
     // if so, is the alignment properly enforced by all bus devices?
+
+    if (size > HSIZE_32) CrashSpectacularly("ARM9 BUS READ TOO WIDE: %i\n", 8<<size);
 
     if (timings)
     {
@@ -671,15 +682,11 @@ u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
         }
     }
 
-    addr &= ~3; // 4 byte aligned value used to simplify read logic.
-
-    const unsigned width = stdc_count_ones(mask);
     u32 ret;
-
     switch(addr >> 24) // check most signficant byte
     {
     case 0x02: // Main RAM
-        ret = Bus_MainRAM_Read(sys, &sys->AHB9, true, addr, mask, atomic, hold, seq, timings);
+        ret = Bus_MainRAM_Read(sys, &sys->AHB9, true, addr, size, atomic, hold, seq, timings);
         break;
 
     case 0x03: // Shared WRAM
@@ -692,13 +699,13 @@ u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
         switch(sys->WRAMCR)
         {
             case 0:
-                ret = sys->SharedWRAM.b32[((addr & ((SharedWRAM_Size)-1)))/4]; break;
+                ret = MemoryRead(32, sys->SharedWRAM, addr, SharedWRAM_Size); break;
             case 1:
-                ret = sys->SharedWRAM.b32[((addr & ((SharedWRAM_Size/2)-1)) + (SharedWRAM_Size/2))/4]; break;
+                ret = MemoryRead(32, sys->SharedWRAMHi, addr, SharedWRAM_Size/2); break;
             case 2:
-                ret = sys->SharedWRAM.b32[((addr & ((SharedWRAM_Size/2)-1)))/4]; break;
+                ret = MemoryRead(32, sys->SharedWRAMLo, addr, SharedWRAM_Size/2); break;
             case 3:
-                ret = 0; break;
+                ret = 0; break; // unmapped
             default: unreachable();
         }
         break;
@@ -708,7 +715,7 @@ u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
         {
             BusContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_IO9); // checkme: does all of IO have write contention at the same time?
             Timing32(&sys->AHB9); // checkme: does all of IO have the exact same timings?
-            ret = IO9_Read(sys, addr, mask, timings);
+            ret = IO9_Read(sys, addr & ~3 /* masking like this is probably wrong */, timings);
         }
         else ret = 0; // todo: fix this
         break;
@@ -732,7 +739,7 @@ u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
                 BusContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_Palette);
                 Timing32(&sys->AHB9); // this is correct, trust.
             }
-            if (mask == u32_max)
+            if (size >= HSIZE_32)
             {
                 if (timings)
                 {
@@ -740,13 +747,25 @@ u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
                     BusContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_Palette);
                     Timing32(&sys->AHB9); // this is correct, trust.
                 }
+                // should technically be two separate reads
+                // not sure if that actually matters?
+                ret = MemoryRead(32, sys->Palette, addr, Palette_Size);
             }
-            ret = MemoryRead(32, sys->Palette, addr, Palette_Size);
+            else
+            {
+                ret = MemoryRead(16, sys->Palette, addr, Palette_Size);
+                ret |= ret << 16;
+            }
         }
         break;
 
     case 0x06: // VRAM
         // TODO: 2d gpu contention timings
+        // TODO: update VRAM read handling
+        u32 mask;
+        if (size == HSIZE_32) mask = u32_max;
+        if (size == HSIZE_16) mask = ROL32(u16_max, (addr & 2) * 8);
+        if (size == HSIZE_8 ) mask = ROL32(u8_max , (addr & 3) * 8);
         ret = VRAM_ARM9(sys, addr, mask, false, 0, timings);
         break;
 
@@ -772,16 +791,36 @@ u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
         }
         break;
 
-    case 0x08 ... 0x09: // GBA Cartridge ROM
-        if (timings) LogPrint(LOG_UNIMP|LOG_ARM9, "NTR_AHB9: Unimplemented READ%i: GBAROM\n", width);
-        ret = (!sys->ExtMemCR_Shared.GBAPakAccess ? 0xFFFFFFFF : 0); // TODO
-        Timing32(&sys->AHB9);
+    case 0x08 ... 0x09: // GBA Game Pak ROM
+        if (timings) LogPrint(LOG_UNIMP|LOG_ARM9, "NTR_AHB9: Unimplemented READ%i: GBAROM\n", (8<<size));
+        if (!sys->ExtMemCR_Shared.GBAPakAccess) // configured for arm9
+        {
+            // checkme: what are the odds they kept the prefetcher for some god forsaken reason?
+            Timing32(&sys->AHB9); // TODO
+            ret = 0xFFFFFFFF; // TODO: implement gamepak
+        }
+        else // unmapped
+        {
+            Timing32(&sys->AHB9); // checkme: should this use configured waitstates?
+            ret = 0;
+        }
         break;
 
-    case 0x0A: // GBA Cartridge RAM
-        if (timings) LogPrint(LOG_UNIMP|LOG_ARM9, "NTR_AHB9: Unimplemented READ%i: GBARAM\n", width);
-        ret = (!sys->ExtMemCR_Shared.GBAPakAccess ? 0xFFFFFFFF : 0); // TODO
-        Timing32(&sys->AHB9);
+    case 0x0A: // GBA Game Pak SRAM
+        // note: 8 bit bus, only supports byte reads, does not ignore low bits of address for larger accesses.
+        if (!sys->ExtMemCR_Shared.GBAPakAccess) // configured for arm9
+        {
+            if (timings && (size != HSIZE_8)) LogPrint(LOG_ARM9|LOG_ODD, "NTR_AHB9: %i bit read from GBA Game Pak SRAM region, width > 8 bit are weird, probably not correct?\n", (8<<size));
+            if (timings) LogPrint(LOG_UNIMP|LOG_ARM9, "NTR_AHB9: Unimplemented READ%i: GBA SRAM\n", (8<<size));
+            Timing32(&sys->AHB9); // TODO
+            ret = (u8)0xFF; // TODO: implement gamepak
+        }
+        else // unmapped
+        {
+            Timing32(&sys->AHB9); // checkme: should this use configured waitstates?
+            ret = 0; // always returns 0
+        }
+        ret = ret | (ret << 8)| (ret << 16) | (ret << 24); // byte is mirrored across all bus lanes.
         break;
 
     case 0xFF: // NDS BIOS
@@ -801,7 +840,7 @@ u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
         }
 
     default: // Unmapped Device;
-        if (timings) LogPrint(LOG_ODD|LOG_ARM9,"NTR_AHB9: %i bit read from unmapped memory at 0x%08X? Something went wrong?\n", width, addr);
+        if (timings) LogPrint(LOG_ODD|LOG_ARM9,"NTR_AHB9: %i bit read from unmapped memory at 0x%08X? Something went wrong?\n", (8<<size), addr);
         if (timings)
         {
             Timing32(&sys->AHB9);
@@ -919,6 +958,7 @@ void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
         }
         else
         {
+            // TODO: update VRAM write handling
             VRAM_ARM9(sys, addr, mask, true, val, timings);
         }
         break;
@@ -974,8 +1014,9 @@ void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
     }
 }
 
-u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, const bool atomic, const bool hold, bool* seq, const bool timings, const u32 a7pc)
+u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const AHB_HSIZE size, const bool atomic, const bool hold, bool* seq, const bool timings, const u32 a7pc)
 {
+    if (size > HSIZE_32) CrashSpectacularly("ARM7 BUS READ TOO WIDE: %i\n", 8<<size);
     // CHECKME: alignment is enforced by the bus on arm7 on gba, this presumably still applies to arm9.
     // is the alignment properly enforced by all bus devices?
     if (timings)
@@ -990,11 +1031,7 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
         }
     }
 
-    addr &= ~3; // 4 byte aligned value used to simplify read logic.
-
-    const unsigned width = stdc_count_ones(mask);
     u32 ret;
-
     switch(addr >> 20 & 0xFF8) // check most signficant byte (and msb of second byte)
     {
     case 0x000: // ARM7 BIOS
@@ -1007,6 +1044,7 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
                 Timing32(&sys->AHB7);
             }
             // a7 bios reads have protection
+            // TODO: contemplate exact bios protection mechanism
             if ((a7pc >= 0x4000) || ((addr < sys->Bios7Prot) && (a7pc >= sys->Bios7Prot)))
             {
                 ret = 0xFFFFFFFF;
@@ -1021,7 +1059,7 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
         }
 
     default: // Unmapped Device;
-        if (timings) LogPrint(LOG_ODD|LOG_ARM7, "NTR_AHB7: %i bit read from unmapped memory at 0x%08X? Something went wrong?\n", width, addr);
+        if (timings) LogPrint(LOG_ODD|LOG_ARM7, "NTR_AHB7: %i bit read from unmapped memory at 0x%08X? Something went wrong?\n", (8<<size), addr);
         if (timings)
         {
             Timing32(&sys->AHB7);
@@ -1029,9 +1067,8 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
         ret = 0; // always reads 0
         break;
 
-    case 0x020: // Main RAM
-    case 0x028:
-        ret = Bus_MainRAM_Read(sys, &sys->AHB7, false, addr, mask, atomic, hold, seq, timings);
+    case 0x020 ... 0x028: // Main RAM
+        ret = Bus_MainRAM_Read(sys, &sys->AHB7, false, addr, size, atomic, hold, seq, timings);
         break;
 
     case 0x030: // Shared WRAM
@@ -1046,11 +1083,11 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
             case 0:
                 ret = MemoryRead(32, sys->ARM7WRAM, addr, ARM7WRAM_Size); break;
             case 1:
-                ret = sys->SharedWRAM.b32[((addr & ((SharedWRAM_Size/2)-1)))/4]; break;
+                ret = MemoryRead(32, sys->SharedWRAMLo, addr, SharedWRAM_Size/2); break;
             case 2:
-                ret = sys->SharedWRAM.b32[((addr & ((SharedWRAM_Size/2)-1)) + (SharedWRAM_Size/2))/4]; break;
+                ret = MemoryRead(32, sys->SharedWRAMHi, addr, SharedWRAM_Size/2); break;
             case 3:
-                ret = sys->SharedWRAM.b32[((addr & ((SharedWRAM_Size)-1)))/4]; break;
+                ret = MemoryRead(32, sys->SharedWRAM, addr, SharedWRAM_Size); break;
             default: unreachable();
         }
         break;
@@ -1069,30 +1106,53 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
         {
             BusContention(sys->AHBBusyTS, &sys->AHB7.Timestamp, Dev_IO7); // checkme: does all of IO have write contention at the same time?
             Timing32(&sys->AHB7); // checkme: does all of IO have the exact same timings?
-            ret = IO7_Read(sys, addr, mask, timings);
+            ret = IO7_Read(sys, addr & ~3 /* masking like this is probably wrong */, timings);
         }
         else ret = 0; // todo: fix this
         break;
     case 0x048: // WiFi
-        ret = WiFi_Read(sys, ts, addr, mask, timings);
+        ret = WiFi_Read(sys, ts, addr, size, timings);
         break;
 
-    case 0x060: // VRAM
-    case 0x068: // VRAM
+    case 0x060 ... 0x068: // VRAM
+        // TODO: update VRAM read handling
+        u32 mask;
+        if (size == HSIZE_32) mask = u32_max;
+        if (size == HSIZE_16) mask = ROL32(u16_max, (addr & 2) * 8);
+        if (size == HSIZE_8 ) mask = ROL32(u8_max , (addr & 3) * 8);
         ret = VRAM_ARM7(sys, addr, mask, false, 0, timings);
         break;
 
-    case 0x080 ... 0x098: // GBA Cartridge ROM
-        if (timings) LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented READ%i: GBAROM\n", width);
-        if (timings) Timing32(&sys->AHB7);
-        ret = (sys->ExtMemCR_Shared.GBAPakAccess ? 0xFFFFFFFF : 0); // TODO
+    case 0x080 ... 0x098: // GBA Game Pak ROM
+        if (timings) LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented READ%i: GBAROM\n", (8<<size));
+        if (sys->ExtMemCR_Shared.GBAPakAccess) // configured for arm7
+        {
+            // checkme: what are the odds they kept the prefetcher for some god forsaken reason?
+            Timing32(&sys->AHB7); // TODO
+            ret = 0xFFFFFFFF; // TODO: implement gamepak
+        }
+        else // unmapped
+        {
+            Timing32(&sys->AHB7); // checkme: should this use configured waitstates?
+            ret = 0;
+        }
         break;
 
-    case 0x0A0: // GBA Cartridge RAM
-    case 0x0A8: // GBA Cartridge RAM
-        if (timings) LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented READ%i: GBARAM\n", width);
-        if (timings) Timing32(&sys->AHB7);
-        ret = (sys->ExtMemCR_Shared.GBAPakAccess ? 0xFFFFFFFF : 0); // TODO
+    case 0x0A0 ... 0x0A8: // GBA Game Pak SRAM
+        // note: 8 bit bus, only supports byte reads, does not ignore low bits of address for larger accesses.
+        if (sys->ExtMemCR_Shared.GBAPakAccess) // configured for arm7
+        {
+            if (timings && (size != HSIZE_8)) LogPrint(LOG_ARM7|LOG_ODD, "NTR_AHB7: %i bit read from GBA Game Pak SRAM region, width > 8 bit are weird, probably not correct?\n", (8<<size));
+            if (timings) LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented READ%i: GBA SRAM\n", (8<<size));
+            Timing32(&sys->AHB7); // TODO
+            ret = (u8)0xFF; // TODO: implement gamepak
+        }
+        else // unmapped
+        {
+            Timing32(&sys->AHB7); // checkme: should this use configured waitstates?
+            ret = 0; // always returns 0
+        }
+        ret = ret | (ret << 8)| (ret << 16) | (ret << 24); // byte is mirrored across all bus lanes.
         break;
     }
 
@@ -1105,8 +1165,6 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, cons
 
 void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, const u32 mask, const bool atomic, bool* seq, const bool timings, const u32 a7pc)
 {
-    // CHECKME: alignment is enforced by the bus on arm7 on gba, this presumably still applies to arm9.
-    // is the alignment properly enforced by all bus devices?
     if (timings)
     {
         if (sys->AHB7.Timestamp < *ts)
@@ -1128,8 +1186,7 @@ void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
         }
         break;
 
-    case 0x020: // Main RAM
-    case 0x028: // Main RAM
+    case 0x020 ... 0x028: // Main RAM
         Bus_MainRAM_Write(sys, &sys->AHB7, false, addr, val, mask, atomic, seq, timings);
         break;
 
@@ -1175,19 +1232,18 @@ void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
         WiFi_Write(sys, ts, addr, val, mask, timings);
         break;
 
-    case 0x060: // VRAM
-    case 0x068: // VRAM
+    case 0x060 ... 0x068: // VRAM
+        // TODO: update VRAM write handling
         VRAM_ARM7(sys, addr, mask, true, val, timings);
         break;
 
-    case 0x080 ... 0x098: // GBA Cartridge ROM
+    case 0x080 ... 0x098: // GBA Game Pak ROM
         if (timings) Timing32(&sys->AHB7);
         LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented WRITE%i: GBAROM\n", width);
         // TODO
         break;
 
-    case 0x0A0: // GBA Cartridge RAM
-    case 0x0A8: // GBA Cartridge RAM
+    case 0x0A0 ... 0x0A8: // GBA Game Pak SRAM
         if (timings) Timing32(&sys->AHB7);
         LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented WRITE%i: GBARAM\n", width);
         // TODO

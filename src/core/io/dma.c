@@ -205,7 +205,7 @@ void DMA9_Enable(struct Console* sys, struct DMA_Channel* channel)
         channel->CurrentMode = DMAStart_HBlank;
         break;
     }
-    case 5: // NTR Gamecard
+    case 5: // NTR Game Card
     {
         channel->CurrentMode = DMAStart_NTRCard;
         // checkme: this probably works.
@@ -234,7 +234,7 @@ void DMA9_Enable(struct Console* sys, struct DMA_Channel* channel)
         channel->CurrentMode = DMAStart_DisplayFIFO;
         break;
     }
-    case 6: // AGB Gamepak
+    case 6: // AGB Game Pak
     {
         channel->CurrentMode = DMAStart_AGBPakIRQ;
         // TODO: how does this work?
@@ -342,11 +342,11 @@ void DMA_Run(struct Console* sys, const bool a9)
             diff = cnt->ChannelTimestamps[id];
             if (a9)
             {
-                read = AHB9_Read(sys, &cnt->ChannelTimestamps[id], channel->Latched_SrcAddr, rmask, false, true, &rseq, true);
+                read = AHB9_Read(sys, &cnt->ChannelTimestamps[id], channel->Latched_SrcAddr, channel->CR.Width32 ? HSIZE_32 : HSIZE_16, false, true, &rseq, true);
             }
             else
             {
-                read = AHB7_Read(sys, &cnt->ChannelTimestamps[id], channel->Latched_SrcAddr, rmask, false, true, &rseq, true, 0xFFFFFFFF /*checkme?*/);
+                read = AHB7_Read(sys, &cnt->ChannelTimestamps[id], channel->Latched_SrcAddr, channel->CR.Width32 ? HSIZE_32 : HSIZE_16, false, true, &rseq, true, 0xFFFFFFFF /*checkme?*/);
             }
             if (rmask != wmask) // correct this value for 16 bit dma
             {

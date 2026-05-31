@@ -4,30 +4,31 @@
 
 
 
-u32 ARM7_BusRead(struct ARM7TDMI* ARM7, const u32 addr, const u32 mask, bool* seq)
+u32 ARM7_BusRead(struct ARM7TDMI* ARM7, const u32 addr, const AHB_HSIZE size, bool* seq)
 {
     if (!AHB_NegOwnership(ARM7->ARM.Sys, &ARM7->ARM.Timestamp, false, false))
         *seq = false;
-    u32 val = AHB7_Read(ARM7->ARM.Sys, &ARM7->ARM.Timestamp, addr, mask, false, false, seq, true, ARM7->ARM.PC);
+    u32 val = AHB7_Read(ARM7->ARM.Sys, &ARM7->ARM.Timestamp, addr, size, false, false, seq, true, ARM7->ARM.PC);
     *seq = true;
-    return val & mask;
+    return val;
 }
 
 u32 ARM7_DataRead32(struct ARM7TDMI* ARM7, const u32 addr, bool* seq)
 {
-    return ARM7_BusRead(ARM7, addr, u32_max, seq);
+    // nds seems to force align words even for gba sram
+    // this case is known to be unaligned on gba so im suspecting, but unable to outright confirm, a cpu revision difference?
+    return ARM7_BusRead(ARM7, addr & ~3, HSIZE_32, seq);
 }
 
 u32 ARM7_DataRead16(struct ARM7TDMI* ARM7, const u32 addr, bool* seq)
 {
-    u32 mask = ROL32(u16_max, ((addr & 2) * 8));
-    return ARM7_BusRead(ARM7, addr, mask, seq);
+    // nds does not seem to force align even for gba sram
+    return ARM7_BusRead(ARM7, addr, HSIZE_16, seq);
 }
 
 u32 ARM7_DataRead8(struct ARM7TDMI* ARM7, const u32 addr, bool* seq)
 {
-    u32 mask = ROL32(u8_max, ((addr & 3) * 8));
-    return ARM7_BusRead(ARM7, addr, mask, seq);
+    return ARM7_BusRead(ARM7, addr, HSIZE_8, seq);
 }
 
 void ARM7_BusWrite(struct ARM7TDMI* ARM7, const u32 addr, const u32 val, const u32 mask, const bool atomic, bool* seq)
@@ -40,11 +41,13 @@ void ARM7_BusWrite(struct ARM7TDMI* ARM7, const u32 addr, const u32 val, const u
 
 void ARM7_DataWrite32(struct ARM7TDMI* ARM7, const u32 addr, u32 val, const bool atomic, bool* seq)
 {
+    // todo: how is misalignment handled?
     ARM7_BusWrite(ARM7, addr, val, u32_max, atomic, seq);
 }
 
 void ARM7_DataWrite16(struct ARM7TDMI* ARM7, const u32 addr, u32 val, bool* seq)
 {
+    // todo: how is misalignment handled?
     val = ROL32(val, ((addr & 2) * 8));
     u32 mask = ROL32(u16_max, ((addr & 2) * 8));
     ARM7_BusWrite(ARM7, addr, val, mask, false, seq);
@@ -59,7 +62,9 @@ void ARM7_DataWrite8(struct ARM7TDMI* ARM7, const u32 addr, u32 val, const bool 
 
 void ARM7_InstrRead32(struct ARM7TDMI* ARM7, const u32 addr)
 {
-    u32 instr = ARM7_BusRead(ARM7, addr, u32_max, &ARM7->ARM.CodeSeq);
+    // nds seems to force align words even for gba sram
+    // this case is known to be unaligned on gba so im suspecting, but unable to outright confirm, a cpu revision difference?
+    u32 instr = ARM7_BusRead(ARM7, addr & ~3, HSIZE_32, &ARM7->ARM.CodeSeq);
     ARM7->ARM.Instr[2] = (struct ARM_Instr){.Raw = instr,
                                             .Aborted = false, // only used in theory
                                             .CoprocPriv = false}; // this is for an arm9 specific bug
@@ -67,7 +72,7 @@ void ARM7_InstrRead32(struct ARM7TDMI* ARM7, const u32 addr)
 
 void ARM7_InstrRead16(struct ARM7TDMI* ARM7, const u32 addr)
 {
-    u32 instr = ARM7_BusRead(ARM7, addr, u16_max << ((addr & 2)*8), &ARM7->ARM.CodeSeq);
+    u32 instr = ARM7_BusRead(ARM7, addr, HSIZE_16, &ARM7->ARM.CodeSeq);
     instr = (instr >> ((addr & 2)*8)) & 0xFFFF;
     ARM7->ARM.Instr[2] = (struct ARM_Instr){.Raw = instr,
                                             .Aborted = false, // only used in theory

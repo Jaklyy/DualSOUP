@@ -94,7 +94,7 @@ void ARM9_AHBAccess(struct ARM946ES* ARM9, timestamp* ts, const bool atomic, boo
     if (!*seq) *ts += A9BusLatency(*ARM9);
 }
 
-u32 ARM9_AHBRead(struct ARM946ES* ARM9, timestamp* ts, const u32 addr, const u32 mask, const bool atomic, bool* seq)
+u32 ARM9_AHBRead(struct ARM946ES* ARM9, timestamp* ts, const u32 addr, const AHB_HSIZE size, const bool atomic, bool* seq)
 {
     // handle external bus logic
     ARM9_AHBAccess(ARM9, ts, false, seq);
@@ -106,7 +106,7 @@ u32 ARM9_AHBRead(struct ARM946ES* ARM9, timestamp* ts, const u32 addr, const u32
     }
 
     // actually read off of the bus
-    u32 ret = AHB9_Read(ARM9->ARM.Sys, ts, addr, mask, atomic, false, seq, true);
+    u32 ret = AHB9_Read(ARM9->ARM.Sys, ts, addr, size, atomic, false, seq, true);
     ARM9->LastBusTime = *ts;
 
     // convert clock back
@@ -351,7 +351,7 @@ u32 ARM9_ICacheLookup(struct ARM946ES* ARM9, const u32 addr, const bool timings)
     for (unsigned i = 0; i < 8; i++)
     {
         // TODO: Atomic access bug
-        ARM9->ICache.b32[((index | set)<<3) + i] = ARM9_AHBRead(ARM9, &time, actualaddr+(i*4), u32_max, false, &seq);
+        ARM9->ICache.b32[((index | set)<<3) + i] = ARM9_AHBRead(ARM9, &time, actualaddr+(i*4), HSIZE_32, false, &seq);
         seq = true;
         if (i == waittil)
         {
@@ -415,7 +415,7 @@ u32 ARM9_DCacheReadLookup(struct ARM946ES* ARM9, const u32 addr, const bool timi
     for (unsigned i = 0; i < 8; i++)
     {
         // TODO: Atomic access bug
-        ARM9->DCache.b32[((index | set)<<3) + i] = ARM9_AHBRead(ARM9, &time, actualaddr+(i*4), u32_max, false, &seq);
+        ARM9->DCache.b32[((index | set)<<3) + i] = ARM9_AHBRead(ARM9, &time, actualaddr+(i*4), HSIZE_32, false, &seq);
         seq = true;
         if (i == waittil)
         {
@@ -511,7 +511,7 @@ u32 ARM9_InstrRead(struct ARM946ES* ARM9, const u32 addr, const struct ARM9_MPUP
 
     // external bus
     bool seq = false; // instruction accesses are always nonsequential
-    u32 ret = ARM9_AHBRead(ARM9, &ARM9->ARM.Timestamp, addr, u32_max, false, &seq);
+    u32 ret = ARM9_AHBRead(ARM9, &ARM9->ARM.Timestamp, addr, HSIZE_32, false, &seq);
     ARM9_FetchCycles(ARM9, 0); // add dummy cycles to ensure things stay coherent.
     return ret;
 }
@@ -601,7 +601,7 @@ void ARM9_InstrRead16(struct ARM946ES* ARM9, const u32 addr)
                                             .CoprocPriv = false}; // privilege bug shouldn't matter here; thumb does not have coprocessor instructions.
 }
 
-u32 ARM9_DataRead(struct ARM946ES* ARM9, const u32 addr, const u32 mask, bool* seq, bool* dabt)
+u32 ARM9_DataRead(struct ARM946ES* ARM9, const u32 addr, const AHB_HSIZE size, bool* seq, bool* dabt)
 {
     // ldm/stm (and presumably ldrd/strd too) are forcibly split when crossing 4 KiB boundaries to perform a permission look up again.
     // we aren't actually implementing it that way currently but tbf we could?
@@ -639,19 +639,19 @@ u32 ARM9_DataRead(struct ARM946ES* ARM9, const u32 addr, const u32 mask, bool* s
         ARM9->MemTimestamp += 1;
         ARM9->InstrContTS = ARM9->MemTimestamp;
         *seq = true;
-        return MemoryRead(32, ARM9->ITCM, addr, ARM9_ITCMSize) & mask;
+        return MemoryRead(32, ARM9->ITCM, addr, ARM9_ITCMSize);
     }
     else if (ARM9_DTCMTryRead(ARM9, addr))
     {
         ARM9->MemTimestamp += 1;
         *seq = true;
-        return MemoryRead(32, ARM9->DTCM, addr, ARM9_DTCMSize) & mask;
+        return MemoryRead(32, ARM9->DTCM, addr, ARM9_DTCMSize);
     }
     else if (perms.DCache)
     {
         ret = ARM9_DCacheReadLookup(ARM9, addr, timings);
         *seq = true;
-        return ret & mask;
+        return ret;
     }
 
     if (perms.DCache || perms.Buffer)
@@ -667,35 +667,36 @@ u32 ARM9_DataRead(struct ARM946ES* ARM9, const u32 addr, const u32 mask, bool* s
 
     // note: Technically the initial load in SWP(B) is atomic, but I dont think that actually matters in any way?
     // So I dont think we actually need to handle anything here?
-    ret = ARM9_AHBRead(ARM9, &ARM9->MemTimestamp, addr, mask, false, seq);
+    ret = ARM9_AHBRead(ARM9, &ARM9->MemTimestamp, addr, size, false, seq);
 
     *seq = true;
-    return ret & mask;
+    return ret;
 }
 
 u32 ARM9_DataRead32(struct ARM946ES* ARM9, u32 addr, bool* seq, bool* dabt)
 {
-    return ARM9_DataRead(ARM9, addr & ~3, u32_max, seq, dabt);
+    return ARM9_DataRead(ARM9, addr & ~3, HSIZE_32, seq, dabt);
 }
 
 u16 ARM9_DataRead16(struct ARM946ES* ARM9, u32 addr, bool* seq, bool* dabt)
 {
-    u32 mask = ROL32(u16_max, ((addr & 2) * 8));
-    u32 ret = ARM9_DataRead(ARM9, addr & ~3, mask, seq, dabt);
+    u32 ret = ARM9_DataRead(ARM9, addr & ~1, HSIZE_16, seq, dabt);
 
     // note: arm9 ldrh doesn't do a rotate right so we need to special case the correction here.
-    return ROR32(ret, ((addr & 2) * 8)) & 0xFFFF;
+    if (ARM9->CP15.CR.BigEndian)
+        return ROR32(ret, (((addr&2)^2) * 8));
+    else
+        return ROR32(ret, ((addr&2) * 8));
 }
 
 u32 ARM9_DataRead8(struct ARM946ES* ARM9, u32 addr, bool* seq, bool* dabt)
 {
-    u32 mask = ROL32(u8_max, ((addr & 3) * 8));
-    u32 ret = ARM9_DataRead(ARM9, addr & ~3, mask, seq, dabt);
+    u32 ret = ARM9_DataRead(ARM9, addr, HSIZE_8, seq, dabt);
 
     return ret;
 }
 
-void ARM9_DataWrite(struct ARM946ES* ARM9, u32 addr, const u32 val, const u32 mask, const bool atomic, const bool deferrable, bool* seq, bool* dabt)
+void ARM9_DataWrite(struct ARM946ES* ARM9, u32 addr, const u32 val, const u32 ahbmask, const u32 biumask, const bool atomic, const bool deferrable, bool* seq, bool* dabt)
 {
     // ldm/stm (and presumably ldrd/strd too) are forcibly split when crossing 4 KiB boundaries to perform a permission look up again.
     // we aren't actually implementing it that way currently but tbf we could?
@@ -735,7 +736,7 @@ void ARM9_DataWrite(struct ARM946ES* ARM9, u32 addr, const u32 val, const u32 ma
             ARM9->DeferredWrite = true;
             ARM9->DeferredAddr = addr; // this truncates the addr, but that's fine.
             ARM9->DeferredVal = val;
-            ARM9->DeferredMask = mask;
+            ARM9->DeferredMask = biumask;
             *seq = true;
             return;
         }
@@ -744,7 +745,7 @@ void ARM9_DataWrite(struct ARM946ES* ARM9, u32 addr, const u32 val, const u32 ma
             //if (ARM9->MemTimestamp <= ARM9->InstrContTS)
             //    ARM9->MemTimestamp += 1;
 
-            MemoryWrite(32, ARM9->ITCM, addr, ARM9_ITCMSize, val, mask);
+            MemoryWrite(32, ARM9->ITCM, addr, ARM9_ITCMSize, val, biumask);
             //ARM9->MemTimestamp += 1;
             *seq = true;
             return;
@@ -752,14 +753,14 @@ void ARM9_DataWrite(struct ARM946ES* ARM9, u32 addr, const u32 val, const u32 ma
     }
     else if (ARM9_DTCMTryWrite(ARM9, addr))
     {
-        MemoryWrite(32, ARM9->DTCM, addr, ARM9_DTCMSize, val, mask);
+        MemoryWrite(32, ARM9->DTCM, addr, ARM9_DTCMSize, val, biumask);
 
         ARM9->MemTimestamp += 1;
         ARM9->DataContTS = ARM9->MemTimestamp + 1;
         *seq = true;
         return;
     }
-    else if (perms.DCache && ARM9_DCacheWriteLookup(ARM9, addr, val, mask, perms.Buffer))
+    else if (perms.DCache && ARM9_DCacheWriteLookup(ARM9, addr, val, biumask, perms.Buffer))
     {
         *seq = true;
         return;
@@ -768,7 +769,7 @@ void ARM9_DataWrite(struct ARM946ES* ARM9, u32 addr, const u32 val, const u32 ma
     // atomic flag checked for since swp doesn't use the write buffer.
     if ((perms.DCache || perms.Buffer) && !atomic)
     {
-        u32 size = stdc_count_ones(mask);
+        u32 size = stdc_count_ones(ahbmask);
         if (size == 8)
         {
             size = A9WB_8;
@@ -781,7 +782,10 @@ void ARM9_DataWrite(struct ARM946ES* ARM9, u32 addr, const u32 val, const u32 ma
         {
             size = A9WB_32;
         }
-        else CrashSpectacularly("%08X\n", mask);
+        else CrashSpectacularly("arm9 writebuffer mask error: %08X\n", ahbmask);
+        // checkme: how does write buffer work with big endian toggle?
+        // how does it work if you toggle it before it finishes writing?
+        // how does it work if you toggle it while its writing?
 
         ARM9->DataContTS = ARM9->MemTimestamp + 1;
         // if bufferable then we need to write to the write buffer
@@ -792,7 +796,7 @@ void ARM9_DataWrite(struct ARM946ES* ARM9, u32 addr, const u32 val, const u32 ma
     {
         // otherwise we need to drain write buffer
         ARM9_DrainWriteBuffer(ARM9, &ARM9->MemTimestamp);
-        ARM9_AHBWrite(ARM9, &ARM9->MemTimestamp, addr, val, mask, atomic, seq);
+        ARM9_AHBWrite(ARM9, &ARM9->MemTimestamp, addr, val, ahbmask, atomic, seq);
     }
 
     *seq = true;
@@ -800,21 +804,33 @@ void ARM9_DataWrite(struct ARM946ES* ARM9, u32 addr, const u32 val, const u32 ma
 
 void ARM9_DataWrite32(struct ARM946ES* ARM9, u32 addr, u32 val, const bool atomic, const bool deferrable, bool* seq, bool* dabt)
 {
-    ARM9_DataWrite(ARM9, addr, val, u32_max, atomic, deferrable, seq, dabt);
+    ARM9_DataWrite(ARM9, addr, val, u32_max, u32_max, atomic, deferrable, seq, dabt);
 }
 
 void ARM9_DataWrite16(struct ARM946ES* ARM9, u32 addr, u32 val, bool* seq, bool* dabt)
 {
-    val = ROL32(val, ((addr & 2) * 8));
-    u32 mask = ROL32(u16_max, ((addr & 2) * 8));
-    ARM9_DataWrite(ARM9, addr, val, mask, false, true, seq, dabt);
+    val &= 0xFFFF;
+    val |= (val << 16); // arm9 writes are mirrored to unused data lanes; checkme: internally too?
+    u32 ahbmask = ROL32(u16_max, ((addr & 2) * 8)); // ahb ignores big endian toggle
+    u32 biumask;
+    if (ARM9->CP15.CR.BigEndian)
+        biumask = ROL32(u16_max, (((addr & 2)^2) * 8));
+    else
+        biumask = ahbmask;
+    ARM9_DataWrite(ARM9, addr, val, ahbmask, biumask, false, true, seq, dabt);
 }
 
 void ARM9_DataWrite8(struct ARM946ES* ARM9, u32 addr, u32 val, const bool atomic, bool* seq, bool* dabt)
 {
-    val = ROL32(val, ((addr & 3) * 8));
-    u32 mask = ROL32(u8_max, ((addr & 3) * 8));
-    ARM9_DataWrite(ARM9, addr, val, mask, atomic, true, seq, dabt);
+    val &= 0xFF;
+    val |= (val << 8) | (val << 16) | (val << 24); // arm9 writes are mirrored to unused data lanes; checkme: internally too?
+    u32 ahbmask = ROL32(u8_max, ((addr & 3) * 8)); // ahb ignores big endian toggle
+    u32 biumask;
+    if (ARM9->CP15.CR.BigEndian)
+        biumask = ROL32(u8_max, (((addr & 3)^3) * 8));
+    else
+        biumask = ahbmask;
+    ARM9_DataWrite(ARM9, addr, val, ahbmask, biumask, atomic, true, seq, dabt);
 }
 
 void ARM9_DeferredITCMWrite(struct ARM946ES* ARM9)

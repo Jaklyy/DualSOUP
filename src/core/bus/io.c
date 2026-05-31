@@ -15,7 +15,7 @@
 // TODO: Regs im 99% confident about:
 // Timers (edit: its really funny how i wrote this during the period of time that performance was completely crippled by timer dividers not working properly)
 
-u32 IPC_FIFORead(struct Console* sys, [[maybe_unused]] const u32 mask, const bool a9)
+u32 IPC_FIFORead(struct Console* sys, const bool a9)
 {
     struct IPCFIFO* send = ((a9) ? &sys->IPCFIFO7 : &sys->IPCFIFO9);
     struct IPCFIFO* recv = ((a9) ? &sys->IPCFIFO9 : &sys->IPCFIFO7);
@@ -269,7 +269,7 @@ void SPI_Finish(struct Console* sys, timestamp cur)
 }
 
 
-u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask, const bool timings)
+u32 IO7_Read(struct Console* sys, const u32 addr, const bool timings)
 {
     Scheduler_Sync(sys, sys->AHB7.Timestamp, Sync_Normal7);
 
@@ -344,14 +344,14 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask, const bool tim
             return sys->SoundCaptures[1].DstAddr;
 
         case 0x10'00'00:
-            return IPC_FIFORead(sys, mask, false);
+            return IPC_FIFORead(sys, false);
 
         case 0x10'00'10:
             return Gamecard_ROMDataRead(sys, sys->AHB7.Timestamp, false);
 
 
         default:
-            if (timings) LogPrint(LOG_ARM7 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO7 READ: %08X %08X @ %08X\n", addr, mask, sys->ARM7.ARM.PC);
+            if (timings) LogPrint(LOG_ARM7 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO7 READ: %08X @ %08X\n", addr, sys->ARM7.ARM.PC);
             return 0;
     }
 }
@@ -569,7 +569,7 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
     }
 }
 
-u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask, const bool timings)
+u32 IO9_Read(struct Console* sys, const u32 addr, const bool timings)
 {
     Scheduler_Sync(sys, sys->AHB9.Timestamp, Sync_Normal9);
 
@@ -727,13 +727,13 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask, const bool tim
             return sys->PostFlag | (sys->PostFlagA9Bit << 1);
 
         case 0x10'00'00:
-            return IPC_FIFORead(sys, mask, true);
+            return IPC_FIFORead(sys, true);
 
         case 0x10'00'10:
             return Gamecard_ROMDataRead(sys, sys->AHB9.Timestamp, true);
 
         default:
-            if (timings) LogPrint(LOG_ARM9 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO9 READ: %08X %08X @ %08X\n", addr, mask, sys->ARM9.ARM.PC);
+            if (timings) LogPrint(LOG_ARM9 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO9 READ: %08X @ %08X\n", addr, sys->ARM9.ARM.PC);
             return 0;
     }
 }

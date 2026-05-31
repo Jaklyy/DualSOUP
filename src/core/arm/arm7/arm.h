@@ -65,7 +65,6 @@ void ARM7_FlushPipeline(struct ARM7TDMI* ARM7);
 // add execute stage cycles, handle nonsequential code execution.
 void ARM7_ExecuteCycles(struct ARM7TDMI* ARM7, const u32 Execute);
 
-[[nodiscard]] u32 ARM7_BusRead(struct ARM7TDMI* ARM7, const u32 addr, const u32 mask, bool* seq);
 [[nodiscard]] u32 ARM7_DataRead32(struct ARM7TDMI* ARM7, const u32 addr, bool* seq);
 [[nodiscard]] u32 ARM7_DataRead16(struct ARM7TDMI* ARM7, const u32 addr, bool* seq);
 [[nodiscard]] u32 ARM7_DataRead8(struct ARM7TDMI* ARM7, const u32 addr, bool* seq);

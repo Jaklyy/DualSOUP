@@ -185,7 +185,10 @@ void ARM_LoadStore(struct ARM* cpu, const struct ARM_Instr instr_data)
         if (!dabt)
         {
             // rotate result right based on lsb of address.
-            val = ROR32(val, (addr&3) * 8);
+            if (cpu->CPUID == ARM9ID && ARM9Cast->CP15.CR.BigEndian && instr.Byte)
+                val = ROR32(val, ((addr&3)^3) * 8);
+            else 
+                val = ROR32(val, (addr&3) * 8);
 
             if (instr.Byte)
             {
@@ -402,7 +405,7 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
         {
             u32 val = ARM_GetReg(instr.Rd);
             oldts = ARM9Cast->MemTimestamp;
-            ARM9_DataWrite(ARM9Cast, addr, val, u32_max, false, false, &seq, &dabt);
+            ARM9_DataWrite32(ARM9Cast, addr, val, false, false, &seq, &dabt);
             ARM9_FixupLoadStore(ARM9Cast, 2, ARM9Cast->MemTimestamp - oldts);
         }
 
@@ -441,7 +444,7 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
             if ((instr.Writeback || (!instr.PreIndex)) && (instr.Rn != 15 /* checkme */))
                 ARM_SetReg(instr.Rn, wbaddr, false, 0, 0);
 
-            ARM9_DataWrite(ARM9Cast, addr+4, val, u32_max, false, false, &seq, &dabt);
+            ARM9_DataWrite32(ARM9Cast, addr+4, val, false, false, &seq, &dabt);
             ARM9_FixupLoadStore(ARM9Cast, 2, ARM9Cast->MemTimestamp - oldts);
         }
         break;
@@ -470,6 +473,7 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
             // sign extension is weird on ARM7
             if (opcode == 0b111)
                 val = (addr & 1) ? ((s32)(s8)val) : ((s32)(s16)val);
+            else val &= 0xFFFF;
         }
         else
         {
@@ -482,6 +486,7 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
             // sign extend
             if (opcode == 0b111)
                 val = ((s32)(s16)val);
+            else val &= 0xFFFF;
         }
 
         if (!dabt)
@@ -527,7 +532,10 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
             ARM9_FixupLoadStore(ARM9Cast, 1, ARM9Cast->MemTimestamp - oldts);
 
             // rotate result right based on lsb of address.
-            val = ROR32(val, (addr&3) * 8);
+            if (ARM9Cast->CP15.CR.BigEndian)
+                val = ROR32(val, ((addr&3)^3) * 8);
+            else
+                val = ROR32(val, (addr&3) * 8);
 
             // sign extend
             val = (s8)val;
@@ -875,7 +883,10 @@ void ARM_Swap(struct ARM* cpu, const struct ARM_Instr instr_data)
         }
 
         // rotate result right based on lsb of address.
-        load = ROR32(load, (addr&3) * 8);
+        if (cpu->CPUID == ARM9ID && ARM9Cast->CP15.CR.BigEndian && instr.Byte)
+            load = ROR32(load, ((addr&3)^3) * 8);
+        else
+            load = ROR32(load, (addr&3) * 8);
 
         if (instr.Byte)
         {

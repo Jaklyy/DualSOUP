@@ -5,8 +5,9 @@
 struct Console;
 
 // used for modelling write contention
-enum NTRAHB_Devices : u8
+typedef enum : u8
 {
+    Dev_Null, // invalid
     Dev_Bios7, // ARM7 only
     //Dev_MainRAM,
     Dev_WRAM9,
@@ -29,7 +30,7 @@ enum NTRAHB_Devices : u8
     Dev_OAM,
 
     Dev_Max,
-};
+} NTRAHB_Devices;
 
 static_assert(Dev_Max < 32, "BUSYDEVICE BIT MASK TOO SMALL!!!");
 
@@ -49,6 +50,19 @@ struct AHB
     u32 CurOpenBus; // TODO: is this needed?
     bool HoldingMainRAM;
 };
+
+typedef enum : u8
+{
+    HSIZE_8,
+    HSIZE_16,
+    HSIZE_32,
+    // below are defined in protocol, but almost certainly unimplemented on nds:
+    HSIZE_64,
+    HSIZE_128,
+    HSIZE_256,
+    HSIZE_512,
+    HSIZE_1024,
+} AHB_HSIZE;
 
 // MainRAM is a type of FCRAM.
 // gbatek lists the following chips as being used in retail DS models:
@@ -142,17 +156,17 @@ struct BusMainRAM
     } ControlReg;
 };
 
-[[nodiscard]] u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, const bool atomic, const bool hold, bool* seq, const bool timings);
+[[nodiscard]] u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const AHB_HSIZE size, const bool atomic, const bool hold, bool* seq, const bool timings);
 void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, const u32 mask, const bool atomic, bool* seq, const bool timings);
-[[nodiscard]] u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, const bool atomic, const bool hold, bool* seq, const bool timings, const u32 a7pc);
+[[nodiscard]] u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const AHB_HSIZE size, const bool atomic, const bool hold, bool* seq, const bool timings, const u32 a7pc);
 void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, const u32 mask, const bool atomic, bool* seq, const bool timings, const u32 a7pc);
 
-u32 IO7_Read(struct Console* sys, const u32 addr, const u32 mask, const bool timings);
+u32 IO7_Read(struct Console* sys, const u32 addr, const bool timings);
 void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mask, const u32 a7pc);
-u32 IO9_Read(struct Console* sys, const u32 addr, const u32 mask, const bool timings);
+u32 IO9_Read(struct Console* sys, const u32 addr, const bool timings);
 void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mask);
 
-u32 WiFi_Read(struct Console* sys, timestamp* ts, u32 addr, const u32 mask, const bool timings);
+u32 WiFi_Read(struct Console* sys, timestamp* ts, u32 addr, const AHB_HSIZE size, const bool timings);
 void WiFi_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, const u32 mask, const bool timings);
 
 bool AHB_NegOwnership(struct Console* sys, timestamp* cur, const bool atomic, const bool a9);
