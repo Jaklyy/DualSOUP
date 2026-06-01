@@ -20,6 +20,7 @@
 #include "io/tsc.h"
 #include "io/powman.h"
 #include "carts/gamecard.h"
+#include "carts/gamepak.h"
 #include "sram/flash.h"
 #include "video/ppu.h"
 #include "video/3d.h"
@@ -455,6 +456,7 @@ struct Console
     } GCS2EncrySeeds[2][2][2]; // [internal = 1][cpu][seed]
 
     GameCard GameCard;
+    GamePak GamePak;
 
     RTC RTC;
     u16 RCR;

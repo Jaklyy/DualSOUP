@@ -154,9 +154,6 @@ static const ConfigEntry GameCardCfgData[] =
     },
 };
 
-static_assert(sizeof(GameCardCfgData[0].EnumNames)/sizeof(GameCardCfgData[0].EnumNames[0]) == GameCard_ROMBus_MAX);
-static_assert(sizeof(GameCardCfgData[0].EnumNames)/sizeof(GameCardCfgData[0].EnumNames[0]) == GameCard_ROMBus_MAX);
-
 static const ConfigEntry SystemCfgData[] =
 {
     {

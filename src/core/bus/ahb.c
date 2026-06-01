@@ -3,6 +3,7 @@
 #include "../utils.h"
 #include "../io/dma.h"
 #include "../console.h"
+#include "../carts/gamepak.h"
 #include "../video/video.h"
 
 
@@ -792,16 +793,24 @@ u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const AHB_HSIZE size
         break;
 
     case 0x08 ... 0x09: // GBA Game Pak ROM
-        if (timings) LogPrint(LOG_UNIMP|LOG_ARM9, "NTR_AHB9: Unimplemented READ%i: GBA Game Pak ROM\n", (8<<size));
         if (!sys->ExtMemCR_Shared.GBAPakAccess) // configured for arm9
         {
             // checkme: what are the odds they kept the prefetcher for some god forsaken reason?
-            Timing32(&sys->AHB9); // TODO
-            ret = 0xFFFFFFFF; // TODO: implement game pak
+            if (timings) Timing32(&sys->AHB9); // TODO
+            if (size == HSIZE_32)
+            {
+                ret = GamePak_ROMRead(&sys->GamePak, addr & ~3);
+                ret |= GamePak_ROMRead(&sys->GamePak, (addr & ~3) | 2) << 16;
+            }
+            else
+            {
+                ret = GamePak_ROMRead(&sys->GamePak, addr);
+                ret |= ret << 16;
+            }
         }
         else // unmapped
         {
-            Timing32(&sys->AHB9); // checkme: should this use configured waitstates?
+            if (timings) Timing32(&sys->AHB9); // checkme: should this use configured waitstates?
             ret = 0;
         }
         break;
@@ -810,14 +819,13 @@ u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const AHB_HSIZE size
         // note: 8 bit bus, only supports byte reads, does not ignore low bits of address for larger accesses.
         if (!sys->ExtMemCR_Shared.GBAPakAccess) // configured for arm9
         {
-            if (timings && (size != HSIZE_8)) LogPrint(LOG_ARM9|LOG_ODD, "NTR_AHB9: %i bit read from GBA Game Pak SRAM region, width > 8 bit are weird, probably not correct?\n", (8<<size));
-            if (timings) LogPrint(LOG_UNIMP|LOG_ARM9, "NTR_AHB9: Unimplemented READ%i: GBA Game Pak SRAM\n", (8<<size));
-            Timing32(&sys->AHB9); // TODO
-            ret = (u8)0xFF; // TODO: implement game pak
+            if (timings && (size != HSIZE_8)) LogPrint(LOG_ARM9|LOG_ODD|LOG_PAK, "NTR_AHB9: %i bit read from GBA Game Pak SRAM region, width > 8 bit are weird, probably not correct?\n", (8<<size));
+            if (timings) Timing32(&sys->AHB9); // TODO
+            ret = GamePak_SRAMRead(&sys->GamePak, addr);
         }
         else // unmapped
         {
-            Timing32(&sys->AHB9); // checkme: should this use configured waitstates?
+            if (timings) Timing32(&sys->AHB9); // checkme: should this use configured waitstates?
             ret = 0; // always returns 0
         }
         ret = ret | (ret << 8)| (ret << 16) | (ret << 24); // byte is mirrored across all bus lanes.
@@ -987,15 +995,31 @@ void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
         break;
 
     case 0x08 ... 0x09: // GBA Game Pak ROM
-        if (timings) LogPrint(LOG_UNIMP|LOG_ARM9, "NTR_AHB9: Unimplemented WRITE%i: GBA Game Pak ROM\n", width);
-        if (timings) Timing32(&sys->AHB9);
-        // TODO
+        if (!sys->ExtMemCR_Shared.GBAPakAccess) // configured for arm9
+        {
+            if (timings) Timing32(&sys->AHB9);
+            GamePak_ROMWrite(&sys->GamePak, addr, val);
+            if (width == 32) // TODO: how does this actually work?
+                GamePak_ROMWrite(&sys->GamePak, addr+2, val);
+        }
+        else // unmapped
+        {
+            if (timings) Timing32(&sys->AHB9); // checkme: should this use configured waitstates?
+        }
         break;
 
-    case 0x0A: // GBA Game Pak RAM
-        if (timings) LogPrint(LOG_UNIMP|LOG_ARM9, "NTR_AHB9: Unimplemented WRITE%i: GBA Game Pak RAM\n", width);
-        if (timings) Timing32(&sys->AHB9);
-        // TODO
+    case 0x0A: // GBA Game Pak SRAM
+        if (!sys->ExtMemCR_Shared.GBAPakAccess) // configured for arm9
+        {
+            if (timings) Timing32(&sys->AHB9);
+            u32 fixedaddr = addr | (stdc_trailing_zeros(mask) / 8); // NOT ACCURATE: TODO FIX
+            u8 fixedval = ROR32(val, stdc_trailing_zeros(mask));
+            GamePak_SRAMWrite(&sys->GamePak, fixedaddr, fixedval);
+        }
+        else // unmapped
+        {
+            if (timings) Timing32(&sys->AHB9); // checkme: should this use configured waitstates?
+        }
         break;
 
     default: // Unmapped Device;
@@ -1124,16 +1148,24 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const AHB_HSIZE size
         break;
 
     case 0x080 ... 0x098: // GBA Game Pak ROM
-        if (timings) LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented READ%i: GBA Game Pak ROM\n", (8<<size));
         if (sys->ExtMemCR_Shared.GBAPakAccess) // configured for arm7
         {
             // checkme: what are the odds they kept the prefetcher for some god forsaken reason?
-            Timing32(&sys->AHB7); // TODO
-            ret = 0xFFFFFFFF; // TODO: implement game pak
+            if (timings) Timing32(&sys->AHB7); // TODO
+            if (size == HSIZE_32)
+            {
+                ret = GamePak_ROMRead(&sys->GamePak, addr & ~3);
+                ret |= GamePak_ROMRead(&sys->GamePak, (addr & ~3) | 2) << 16;
+            }
+            else
+            {
+                ret = GamePak_ROMRead(&sys->GamePak, addr);
+                ret |= ret << 16;
+            }
         }
         else // unmapped
         {
-            Timing32(&sys->AHB7); // checkme: should this use configured waitstates?
+            if (timings) Timing32(&sys->AHB7); // checkme: should this use configured waitstates?
             ret = 0;
         }
         break;
@@ -1142,14 +1174,13 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const AHB_HSIZE size
         // note: 8 bit bus, only supports byte reads, does not ignore low bits of address for larger accesses.
         if (sys->ExtMemCR_Shared.GBAPakAccess) // configured for arm7
         {
-            if (timings && (size != HSIZE_8)) LogPrint(LOG_ARM7|LOG_ODD, "NTR_AHB7: %i bit read from GBA Game Pak SRAM region, width > 8 bit are weird, probably not correct?\n", (8<<size));
-            if (timings) LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented READ%i: GBA Game Pak SRAM\n", (8<<size));
-            Timing32(&sys->AHB7); // TODO
-            ret = (u8)0xFF; // TODO: implement game pak
+            if (timings && (size != HSIZE_8)) LogPrint(LOG_ARM7|LOG_ODD|LOG_PAK, "NTR_AHB7: %i bit read from GBA Game Pak SRAM region, width > 8 bit are weird, probably not correct?\n", (8<<size));
+            if (timings) Timing32(&sys->AHB7); // TODO
+            ret = GamePak_SRAMRead(&sys->GamePak, addr);
         }
         else // unmapped
         {
-            Timing32(&sys->AHB7); // checkme: should this use configured waitstates?
+            if (timings) Timing32(&sys->AHB7); // checkme: should this use configured waitstates?
             ret = 0; // always returns 0
         }
         ret = ret | (ret << 8)| (ret << 16) | (ret << 24); // byte is mirrored across all bus lanes.
@@ -1238,15 +1269,31 @@ void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
         break;
 
     case 0x080 ... 0x098: // GBA Game Pak ROM
-        if (timings) Timing32(&sys->AHB7);
-        LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented WRITE%i: GBA Game Pak ROM\n", width);
-        // TODO
+        if (sys->ExtMemCR_Shared.GBAPakAccess) // configured for arm7
+        {
+            if (timings) Timing32(&sys->AHB7);
+            GamePak_ROMWrite(&sys->GamePak, addr, val);
+            if (width == 32) // TODO: how does this actually work?
+                GamePak_ROMWrite(&sys->GamePak, addr+2, val >> 16);
+        }
+        else // unmapped
+        {
+            if (timings) Timing32(&sys->AHB7); // checkme: should this use configured waitstates?
+        }
         break;
 
     case 0x0A0 ... 0x0A8: // GBA Game Pak SRAM
-        if (timings) Timing32(&sys->AHB7);
-        LogPrint(LOG_UNIMP|LOG_ARM7, "NTR_AHB7: Unimplemented WRITE%i: GBA Game Pak RAM\n", width);
-        // TODO
+        if (sys->ExtMemCR_Shared.GBAPakAccess) // configured for arm7
+        {
+            if (timings) Timing32(&sys->AHB7);
+            u32 fixedaddr = addr | (stdc_trailing_zeros(mask) / 8); // NOT ACCURATE: TODO FIX
+            u8 fixedval = ROR32(val, stdc_trailing_zeros(mask));
+            GamePak_SRAMWrite(&sys->GamePak, fixedaddr, fixedval);
+        }
+        else // unmapped
+        {
+            if (timings) Timing32(&sys->AHB7); // checkme: should this use configured waitstates?
+        }
         break;
 
     default: // Unmapped Device;

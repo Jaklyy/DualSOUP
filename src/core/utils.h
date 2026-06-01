@@ -233,6 +233,7 @@ enum LoggingLevels : u64
     LOG_WIFI    = (1<<15), // WiFi.
     LOG_TSC     = (1<<16), // Touch Screen Controller.
     LOG_SOUND   = (1<<17), // Sound Processing.
+    LOG_PAK     = (1<<18), // Game Pak.
 };
 
 #define LOG_CPUID (1 << cpu->CPUID)

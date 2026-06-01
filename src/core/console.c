@@ -169,6 +169,8 @@ struct Console* Console_Init(struct Console* sys, CoreCfg* cfg, void* pad, void*
 
     bool gcinit = GameCard_Init(&sys->GameCard, cfg->NTR.CardROM, sys->NTRBios7.b8);
 
+    GamePak_Init(&sys->GamePak);
+
     bool mtxinit = ((sys->FrameBufferMutex[0] = SDL_CreateMutex()) != NULL);
     bool mtxinit3 = ((sys->FrameBufferMutex[1] = SDL_CreateMutex()) != NULL);
 #ifdef REALTHREAD
