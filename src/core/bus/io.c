@@ -351,7 +351,7 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const bool timings)
 
 
         default:
-            if (timings) LogPrint(LOG_ARM7 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO7 READ: %08X @ %08X\n", addr, sys->ARM7.ARM.PC);
+            if (timings) LogPrint(LOG_ARM7 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO7 READ: %08"PRIX32" @ %08"PRIX32"\n", addr, sys->ARM7.ARM.PC);
             return 0;
     }
 }
@@ -564,7 +564,7 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
 
 
         default:
-            LogPrint(LOG_ARM7 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO7 WRITE: %08X %08X %08X @ %08X\n", addr, val, mask, sys->ARM7.ARM.PC);
+            LogPrint(LOG_ARM7 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO7 WRITE: %08"PRIX32" %08"PRIX32" %08"PRIX32" @ %08"PRIX32"\n", addr, val, mask, sys->ARM7.ARM.PC);
             break;
     }
 }
@@ -576,38 +576,15 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const bool timings)
     switch (addr & 0xFF'FF'FC)
     {
         case 0x00'00'00:
-            return sys->PPU_A.DisplayCR.Raw;
+        case 0x00'00'08 ... 0x00'00'54:
+        case 0x00'00'6C:
+            return PPU_IORead(&sys->PPU_A, addr);
 
         case 0x00'00'04:
             return (sys->VCount << 16) | sys->DispStatRO9.Raw |  sys->DispStatRW9.Raw;
 
-        case 0x00'00'08:
-            return sys->PPU_A.BGCR[0].Raw | (sys->PPU_A.BGCR[1].Raw << 16);
-        case 0x00'00'0C:
-            return sys->PPU_A.BGCR[2].Raw | (sys->PPU_A.BGCR[3].Raw << 16);
-
-        case 0x00'00'10:
-            return sys->PPU_A.Xoff[0] | (sys->PPU_A.Yoff[0] << 16);
-        case 0x00'00'14:
-            return sys->PPU_A.Xoff[1] | (sys->PPU_A.Yoff[1] << 16);
-        case 0x00'00'18:
-            return sys->PPU_A.Xoff[2] | (sys->PPU_A.Yoff[2] << 16);
-        case 0x00'00'1C:
-            return sys->PPU_A.Xoff[3] | (sys->PPU_A.Yoff[3] << 16);
-
-        case 0x00'00'48:
-            return sys->PPU_A.Window.Raw[2];
-
-        case 0x00'00'50:
-            return sys->PPU_A.BlendCR.Raw | sys->PPU_A.BlendAlpha[0] << 16 | sys->PPU_A.BlendAlpha[1] << 24;
-        case 0x00'00'54:
-            return sys->PPU_A.BlendBright;
-
         case 0x00'00'60:
             return sys->GX3D.RasterCR.Raw;
-
-        case 0x00'00'6C:
-            return sys->PPU_A.Brightness.Raw;
 
         // DMA
         case 0x00'00'B0 ... 0x00'00'E0-1:
@@ -695,33 +672,8 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const bool timings)
             return GX_IORead(sys, addr);
 
 
-        case 0x00'10'00:
-            return sys->PPU_B.DisplayCR.Raw;
-
-        case 0x00'10'08:
-            return sys->PPU_B.BGCR[0].Raw | (sys->PPU_B.BGCR[1].Raw << 16);
-        case 0x00'10'0C:
-            return sys->PPU_B.BGCR[2].Raw | (sys->PPU_B.BGCR[3].Raw << 16);
-
-        case 0x00'10'10:
-            return sys->PPU_B.Xoff[0] | (sys->PPU_B.Yoff[0] << 16);
-        case 0x00'10'14:
-            return sys->PPU_B.Xoff[1] | (sys->PPU_B.Yoff[1] << 16);
-        case 0x00'10'18:
-            return sys->PPU_B.Xoff[2] | (sys->PPU_B.Yoff[2] << 16);
-        case 0x00'10'1C:
-            return sys->PPU_B.Xoff[3] | (sys->PPU_B.Yoff[3] << 16);
-
-        case 0x00'10'48:
-            return sys->PPU_B.Window.Raw[2];
-
-        case 0x00'10'50:
-            return sys->PPU_B.BlendCR.Raw | sys->PPU_B.BlendAlpha[0] << 16 | sys->PPU_B.BlendAlpha[1] << 24;
-        case 0x00'10'54:
-            return sys->PPU_B.BlendBright;
-
-        case 0x00'10'6C:
-            return sys->PPU_B.Brightness.Raw;
+        case 0x00'10'00 ... 0x00'10'6C:
+            return PPU_IORead(&sys->PPU_B, addr);
 
         case 0x00'03'00:
             return sys->PostFlag | (sys->PostFlagA9Bit << 1);
@@ -733,7 +685,7 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const bool timings)
             return GameCard_ROMDataRead(sys, sys->AHB9.Timestamp, true);
 
         default:
-            if (timings) LogPrint(LOG_ARM9 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO9 READ: %08X @ %08X\n", addr, sys->ARM9.ARM.PC);
+            if (timings) LogPrint(LOG_ARM9 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO9 READ: %08"PRIX32" @ %08"PRIX32"\n", addr, sys->ARM9.ARM.PC);
             return 0;
     }
 }
@@ -745,8 +697,10 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
     switch (addr & 0xFF'FF'FC)
     {
         case 0x00'00'00:
+        case 0x00'00'08 ... 0x00'00'54:
+        case 0x00'00'6C:
             PPU_Sync(sys, sys->AHB9.Timestamp);
-            MaskedWrite(sys->PPU_A.DisplayCR.Raw, val, mask);
+            PPU_IOWrite(&sys->PPU_A, addr, val, mask, sys->PowerCR9.PPUAPower);
             break;
 
         case 0x00'00'04:
@@ -760,61 +714,8 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             }
             break;
 
-        case 0x00'00'08:
-            PPU_Sync(sys, sys->AHB9.Timestamp);
-            MaskedWrite(sys->PPU_A.BGCR[0].Raw, val, mask);
-            MaskedWrite(sys->PPU_A.BGCR[1].Raw, val>>16, mask>>16);
-            break;
-        case 0x00'00'0C:
-            PPU_Sync(sys, sys->AHB9.Timestamp);
-            MaskedWrite(sys->PPU_A.BGCR[2].Raw, val, mask);
-            MaskedWrite(sys->PPU_A.BGCR[3].Raw, val>>16, mask>>16);
-            break;
-
-        case 0x00'00'10:
-            PPU_Sync(sys, sys->AHB9.Timestamp);
-            MaskedWrite(sys->PPU_A.Xoff[0], val, mask&0x1FF);
-            MaskedWrite(sys->PPU_A.Yoff[0], val>>16, (mask>>16)&0x1FF);
-            break;
-        case 0x00'00'14:
-            PPU_Sync(sys, sys->AHB9.Timestamp);
-            MaskedWrite(sys->PPU_A.Xoff[1], val, mask&0x1FF);
-            MaskedWrite(sys->PPU_A.Yoff[1], val>>16, (mask>>16)&0x1FF);
-            break;
-        case 0x00'00'18:
-            PPU_Sync(sys, sys->AHB9.Timestamp);
-            MaskedWrite(sys->PPU_A.Xoff[2], val, mask&0x1FF);
-            MaskedWrite(sys->PPU_A.Yoff[2], val>>16, (mask>>16)&0x1FF);
-            break;
-        case 0x00'00'1C:
-            PPU_Sync(sys, sys->AHB9.Timestamp);
-            MaskedWrite(sys->PPU_A.Xoff[3], val, mask&0x1FF);
-            MaskedWrite(sys->PPU_A.Yoff[3], val>>16, (mask>>16)&0x1FF);
-            break;
-
-        case 0x00'00'40 ... 0x00'00'48:
-            PPU_Sync(sys, sys->AHB9.Timestamp);
-            MaskedWrite(sys->PPU_A.Window.Raw[(addr/4)%4], val, mask);
-            break;
-
-        case 0x00'00'50:
-            PPU_Sync(sys, sys->AHB9.Timestamp);
-            MaskedWrite(sys->PPU_A.BlendCR.Raw, val, mask & 0x3FFF);
-            MaskedWrite(sys->PPU_A.BlendAlpha[0], val>>16, (mask>>16) & 0x1F);
-            MaskedWrite(sys->PPU_A.BlendAlpha[1], val>>24, (mask>>24) & 0x1F);
-            break;
-        case 0x00'00'54:
-            PPU_Sync(sys, sys->AHB9.Timestamp);
-            MaskedWrite(sys->PPU_A.BlendBright, val, mask & 0x1F);
-            break;
-
         case 0x00'00'60:
             MaskedWrite(sys->GX3D.RasterCR.Raw, val, mask & 0x4FFF);
-            break;
-
-        case 0x00'00'6C:
-            PPU_Sync(sys, sys->AHB9.Timestamp);
-            MaskedWrite(sys->PPU_A.Brightness.Raw, val, mask & 0xC01F);
             break;
 
         // DMA
@@ -1004,77 +905,22 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
             MaskedWrite(sys->PowerCR9.Raw, val, mask & 0x820F);
             break;
 
-        case 0x00'03'20 ... 0x00'03'FF:
+        case 0x00'03'20 ... 0x00'03'FC:
             if (!sys->PowerCR9.GPURasterizerPower) break;
             GX_IOWrite(sys, addr, mask, val);
             break;
-        case 0x00'04'00 ... 0x00'07'00:
+        case 0x00'04'00 ... 0x00'06'FC:
             if (!sys->PowerCR9.GPUGeometryPower) break;
             GX_IOWrite(sys, addr, mask, val);
             break;
 
-        case 0x00'10'00:
+        case 0x00'10'00 ... 0x00'10'6C:
             PPU_Sync(sys, sys->AHB9.Timestamp);
-            MaskedWrite(sys->PPU_B.DisplayCR.Raw, val, mask);
+            PPU_IOWrite(&sys->PPU_B, addr, val, mask, sys->PowerCR9.PPUBPower);
             break;
-
-        case 0x00'10'08:
-            PPU_Sync(sys, sys->AHB9.Timestamp);
-            MaskedWrite(sys->PPU_B.BGCR[0].Raw, val, mask);
-            MaskedWrite(sys->PPU_B.BGCR[1].Raw, val>>16, mask>>16);
-            break;
-
-        case 0x00'10'0C:
-            PPU_Sync(sys, sys->AHB9.Timestamp);
-            MaskedWrite(sys->PPU_B.BGCR[2].Raw, val, mask);
-            MaskedWrite(sys->PPU_B.BGCR[3].Raw, val>>16, mask>>16);
-            break;
-
-        case 0x00'10'10:
-            PPU_Sync(sys, sys->AHB9.Timestamp);
-            MaskedWrite(sys->PPU_B.Xoff[0], val, mask&0x1FF);
-            MaskedWrite(sys->PPU_B.Yoff[0], val>>16, (mask>>16)&0x1FF);
-            break;
-        case 0x00'10'14:
-            PPU_Sync(sys, sys->AHB9.Timestamp);
-            MaskedWrite(sys->PPU_B.Xoff[1], val, mask&0x1FF);
-            MaskedWrite(sys->PPU_B.Yoff[1], val>>16, (mask>>16)&0x1FF);
-            break;
-        case 0x00'10'18:
-            PPU_Sync(sys, sys->AHB9.Timestamp);
-            MaskedWrite(sys->PPU_B.Xoff[2], val, mask&0x1FF);
-            MaskedWrite(sys->PPU_B.Yoff[2], val>>16, (mask>>16)&0x1FF);
-            break;
-        case 0x00'10'1C:
-            PPU_Sync(sys, sys->AHB9.Timestamp);
-            MaskedWrite(sys->PPU_B.Xoff[3], val, mask&0x1FF);
-            MaskedWrite(sys->PPU_B.Yoff[3], val>>16, (mask>>16)&0x1FF);
-            break;
-
-        case 0x00'10'40 ... 0x00'10'48:
-            PPU_Sync(sys, sys->AHB9.Timestamp);
-            MaskedWrite(sys->PPU_B.Window.Raw[(addr/4)%4], val, mask);
-            break;
-
-        case 0x00'10'50:
-            PPU_Sync(sys, sys->AHB9.Timestamp);
-            MaskedWrite(sys->PPU_B.BlendCR.Raw, val, mask & 0x3FFF);
-            MaskedWrite(sys->PPU_B.BlendAlpha[0], val>>16, (mask>>16) & 0x1F);
-            MaskedWrite(sys->PPU_B.BlendAlpha[1], val>>24, (mask>>24) & 0x1F);
-            break;
-        case 0x00'10'54:
-            PPU_Sync(sys, sys->AHB9.Timestamp);
-            MaskedWrite(sys->PPU_B.BlendBright, val, mask & 0x1F);
-            break;
-
-        case 0x00'10'6C:
-            PPU_Sync(sys, sys->AHB9.Timestamp);
-            MaskedWrite(sys->PPU_B.Brightness.Raw, val, mask & 0xC01F);
-            break;
-
 
         default:
-            LogPrint(LOG_ARM9 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO9 WRITE: %08X %08X %08X @ %08X\n", addr, val, mask, sys->ARM9.ARM.PC);
+            LogPrint(LOG_ARM9 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO9 WRITE: %08"PRIX32" %08"PRIX32" %08"PRIX32" @ %08"PRIX32"\n", addr, val, mask, sys->ARM9.ARM.PC);
             break;
     }
 }
