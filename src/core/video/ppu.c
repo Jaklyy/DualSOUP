@@ -988,7 +988,7 @@ void PPU_GlobalStep(struct Console* sys, const timestamp now, const u16 vcount)
 int SDLCALL PPUA_MainLoop(void* ptr)
 {
     struct Console* sys = ptr;
-    while (!sys->PPUStart);// thrd_yield();
+    while (!sys->PPUStart) SDL_CPUPauseInstruction();
 
     while (!sys->KillPPUs)
     {
@@ -1006,7 +1006,7 @@ int SDLCALL PPUA_MainLoop(void* ptr)
 int SDLCALL PPUB_MainLoop(void* ptr)
 {
     struct Console* sys = ptr;
-    while (!sys->PPUStart);// thrd_yield();
+    while (!sys->PPUStart) SDL_CPUPauseInstruction();
 
     while (!sys->KillPPUs)
     {

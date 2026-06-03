@@ -8,7 +8,7 @@ u32 PPU_IORead(PPU* ppu, const u32 addr)
 {
     switch(addr & 0x7C)
     {
-    case 0x00:
+    case 0x00: // ppu + lcdc
         return ppu->DisplayCR.Raw;
 
     case 0x08:
@@ -22,7 +22,7 @@ u32 PPU_IORead(PPU* ppu, const u32 addr)
     case 0x50:
         return ppu->BlendCR.Raw | ppu->BlendAlpha[0] << 16 | ppu->BlendAlpha[1] << 24;
 
-    case 0x6C:
+    case 0x6C: // lcdc
         return ppu->Brightness.Raw;
 
     default:
@@ -31,19 +31,17 @@ u32 PPU_IORead(PPU* ppu, const u32 addr)
     }
 }
 
-void PPU_IOWrite(PPU* ppu, const u32 addr, const u32 val, u32 mask, const bool PPUEn)
+void PPU_IOWrite(PPU* ppu, const u32 addr, const u32 val, u32 mask, const bool b, const bool ppuenable)
 {
-    if (!PPUEn && ((addr & 0x7F) >= 0x8) && ((addr & 0x7F) < 0x60))
+    if (!ppuenable && ((addr & 0x7F) >= 0x8) && ((addr & 0x7F) < 0x60))
     {
         LogPrint(LOG_PPU|LOG_ODD|LOG_IO, "Writing PPU Regs while PPU disabled? %08"PRIX32" %08"PRIX32" %08"PRIX32"\n", addr, val, mask);
         return;
     }
     switch(addr & 0x7F)
     {
-    case 0x00:
-        if (addr & 0x1000) // engine B does not implement all control bits
-            mask &= 0xC0B1FFF7;
-        MaskedWrite(ppu->DisplayCR.Raw, val, mask);
+    case 0x00: // ppu and lcdc control reg, so it isn't disabled with the ppu
+        MaskedWrite(ppu->DisplayCR.Raw, val, mask & DispCRWrMasks[b]);
         break;
 
     case 0x08:
@@ -56,37 +54,40 @@ void PPU_IOWrite(PPU* ppu, const u32 addr, const u32 val, u32 mask, const bool P
         break;
 
     case 0x10:
-        MaskedWrite(ppu->Xoff[0], val, mask&0x1FF);
-        MaskedWrite(ppu->Yoff[0], val>>16, (mask>>16)&0x1FF);
+        MaskedWrite(ppu->Xoff[0], val, mask & BGOffsetWrMask);
+        MaskedWrite(ppu->Yoff[0], val>>16, (mask>>16) & BGOffsetWrMask);
         break;
     case 0x14:
-        MaskedWrite(ppu->Xoff[1], val, mask&0x1FF);
-        MaskedWrite(ppu->Yoff[1], val>>16, (mask>>16)&0x1FF);
+        MaskedWrite(ppu->Xoff[1], val, mask & BGOffsetWrMask);
+        MaskedWrite(ppu->Yoff[1], val>>16, (mask>>16) & BGOffsetWrMask);
         break;
     case 0x18:
-        MaskedWrite(ppu->Xoff[2], val, mask&0x1FF);
-        MaskedWrite(ppu->Yoff[2], val>>16, (mask>>16)&0x1FF);
+        MaskedWrite(ppu->Xoff[2], val, mask & BGOffsetWrMask);
+        MaskedWrite(ppu->Yoff[2], val>>16, (mask>>16) & BGOffsetWrMask);
         break;
     case 0x1C:
-        MaskedWrite(ppu->Xoff[3], val, mask&0x1FF);
-        MaskedWrite(ppu->Yoff[3], val>>16, (mask>>16)&0x1FF);
+        MaskedWrite(ppu->Xoff[3], val, mask & BGOffsetWrMask);
+        MaskedWrite(ppu->Yoff[3], val>>16, (mask>>16) & BGOffsetWrMask);
         break;
 
     case 0x40 ... 0x48:
-        MaskedWrite(ppu->Window.Raw[(addr/4)%4], val, mask & 0x3F3F3F3F);
+    {
+        u8 idx = (addr/4) % 4;
+        MaskedWrite(ppu->Window.Raw[idx], val, mask & WinCRWrMasks[idx]);
         break;
+    }
 
     case 0x50:
-        MaskedWrite(ppu->BlendCR.Raw, val, mask & 0x3FFF);
-        MaskedWrite(ppu->BlendAlpha[0], val>>16, (mask>>16) & 0x1F);
-        MaskedWrite(ppu->BlendAlpha[1], val>>24, (mask>>24) & 0x1F);
+        MaskedWrite(ppu->BlendCR.Raw, val, mask & BlendCRWrMask);
+        MaskedWrite(ppu->BlendAlpha[0], val>>16, (mask>>16) & BlendParamWrMask);
+        MaskedWrite(ppu->BlendAlpha[1], val>>24, (mask>>24) & BlendParamWrMask);
         break;
     case 0x54:
-        MaskedWrite(ppu->BlendBright, val, mask & 0x1F);
+        MaskedWrite(ppu->BlendBright, val, mask & BlendParamWrMask);
         break;
 
-    case 0x6C:
-        MaskedWrite(ppu->Brightness.Raw, val, mask & 0xC01F);
+    case 0x6C: // lcdc, not ppu; not disabled by ppu control
+        MaskedWrite(ppu->Brightness.Raw, val, mask & LCDCBrightnessWrMask);
         break;
 
     default:

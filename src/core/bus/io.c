@@ -700,7 +700,7 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
         case 0x00'00'08 ... 0x00'00'54:
         case 0x00'00'6C:
             PPU_Sync(sys, sys->AHB9.Timestamp);
-            PPU_IOWrite(&sys->PPU_A, addr, val, mask, sys->PowerCR9.PPUAPower);
+            PPU_IOWrite(&sys->PPU_A, addr, val, mask, false, sys->PowerCR9.PPUAPower);
             break;
 
         case 0x00'00'04:
@@ -916,7 +916,7 @@ void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
 
         case 0x00'10'00 ... 0x00'10'6C:
             PPU_Sync(sys, sys->AHB9.Timestamp);
-            PPU_IOWrite(&sys->PPU_B, addr, val, mask, sys->PowerCR9.PPUBPower);
+            PPU_IOWrite(&sys->PPU_B, addr, val, mask, true, sys->PowerCR9.PPUBPower);
             break;
 
         default:

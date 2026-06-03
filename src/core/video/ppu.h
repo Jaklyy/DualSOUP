@@ -82,43 +82,8 @@ typedef union
     };
 } SprAttrs2;
 
-typedef union
-{
-    u16 Raw;
-    struct
-    {
-        u16 Factor : 5;
-        u16 : 9;
-        u16 Mode : 2;
-    };
-} Brightness;
-
-typedef union
-{
-    u16 Raw;
-    struct
-    {
-        bool BG0F : 1;
-        bool BG1F : 1;
-        bool BG2F : 1;
-        bool BG3F : 1;
-        bool SprF : 1;
-        bool BDrF : 1;
-        u32 Effect : 2;
-        bool BG0S : 1;
-        bool BG1S : 1;
-        bool BG2S : 1;
-        bool BG3S : 1;
-        bool SprS : 1;
-        bool BDrS : 1;
-    };
-    struct
-    {
-        u32 BlendTop : 6;
-        u32 : 2;
-        u32 BlendBot : 6;
-    };
-} BlendCR;
+constexpr u32 DispCRWrMasks[2] = {0xFFFFFFFF /* PPU/LCDC A */, 0xC0B1FFF7 /* PPU/LCDC B */};
+constexpr u16 BGOffsetWrMask = 0x1FF;
 
 typedef union
 {
@@ -133,6 +98,7 @@ typedef union
         bool EnableBlend : 1;
     };
 } WindowCR;
+constexpr u32 WinCRWrMasks[3] = {0xFFFFFFFF, 0xFFFFFFFF, 0x3F3F3F3F};
 
 typedef enum
 {
@@ -141,6 +107,47 @@ typedef enum
     BLDCR_Bright,
     BLDCR_Dark,
 } BlendMode;
+
+typedef union
+{
+    u16 Raw;
+    struct
+    {
+        bool BG0F : 1;
+        bool BG1F : 1;
+        bool BG2F : 1;
+        bool BG3F : 1;
+        bool SprF : 1;
+        bool BDrF : 1;
+        u16 Effect : 2;
+        bool BG0S : 1;
+        bool BG1S : 1;
+        bool BG2S : 1;
+        bool BG3S : 1;
+        bool SprS : 1;
+        bool BDrS : 1;
+    };
+    struct
+    {
+        u16 BlendTop : 6;
+        u16 : 2;
+        u16 BlendBot : 6;
+    };
+} BlendCR;
+constexpr u16 BlendCRWrMask = 0x3FFF;
+constexpr u8 BlendParamWrMask = 0x1F;
+
+typedef union
+{
+    u16 Raw;
+    struct
+    {
+        u16 Factor : 5;
+        u16 : 9;
+        u16 Mode : 2;
+    };
+} Brightness;
+constexpr u16 LCDCBrightnessWrMask = 0xC01F;
 
 typedef struct
 {
@@ -243,7 +250,7 @@ void PPU_RenderScanline(struct Console* sys, const bool b, const s16 y);
 void PPU_GlobalStep(struct Console* sys, const timestamp now, const u16 vcount);
 
 u32 PPU_IORead(PPU* ppu, const u32 addr);
-void PPU_IOWrite(PPU* ppu, const u32 addr, const u32 val, u32 mask, const bool PPUEn);
+void PPU_IOWrite(PPU* ppu, const u32 addr, const u32 val, u32 mask, const bool b, const bool ppuenable);
 
 int SDLCALL PPUA_MainLoop(void* ptr);
 int SDLCALL PPUB_MainLoop(void* ptr);

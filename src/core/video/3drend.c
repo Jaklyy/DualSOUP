@@ -1154,7 +1154,7 @@ void SWRen_Sync(struct Console* sys, timestamp now)
 {
     if (!sys->SWRenStart) return;
     SWRen_SetTarget(sys, now);
-    while (sys->SWRenTimestamp < now);// thrd_yield();
+    while (sys->SWRenTimestamp < now) SDL_CPUPauseInstruction();
 }
 
 void SWRen_SyncRenderedLines(struct Console* sys, u8 y)
@@ -1164,7 +1164,7 @@ void SWRen_SyncRenderedLines(struct Console* sys, u8 y)
 
 void SWRen_Wait(struct Console* sys, const timestamp now)
 {
-    while (now >= sys->SWRenTarget);// thrd_yield();
+    while (now >= sys->SWRenTarget) SDL_CPUPauseInstruction();
 }
 
 void SWRen_Init(struct Console* sys, const timestamp now)
@@ -1178,7 +1178,7 @@ void SWRen_Init(struct Console* sys, const timestamp now)
 int SDLCALL SWRen_MainLoop(void* ptr)
 {
     struct Console* sys = ptr;
-    while (!sys->SWRenStart);// thrd_yield();
+    while (!sys->SWRenStart) SDL_CPUPauseInstruction();
 
     while (!sys->KillSWRen)
     {

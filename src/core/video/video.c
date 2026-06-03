@@ -27,14 +27,14 @@ void PPU_Sync(struct Console* sys, timestamp now)
 #ifndef SINGLETHREADRASTER
     if (!sys->PPUStart) return;
     PPU_SetTarget(sys, now);
-    while ((sys->PPUATimestamp < now) || (sys->PPUBTimestamp < now));// thrd_yield();
+    while ((sys->PPUATimestamp < now) || (sys->PPUBTimestamp < now)) SDL_CPUPauseInstruction();
 #endif
 }
 
 void PPU_Wait(struct Console* sys, const timestamp now)
 {
 #ifndef SINGLETHREADRASTER
-    while (now >= sys->PPUTarget);// thrd_yield();
+    while (now >= sys->PPUTarget) SDL_CPUPauseInstruction();
 #endif
 }
 
@@ -79,7 +79,7 @@ void LCD_HBlank(struct Console* sys, timestamp now)
             sys->TimeFrac =              (((Frame_Cycles/2) * SDL_GetPerformanceFrequency()) + sys->TimeFrac) % Base_Clock;
 
             double frametimeactual = (double)(SDL_GetPerformanceCounter() - sys->OldTimeActual) * 1000.0 / SDL_GetPerformanceFrequency();
-            while(SDL_GetPerformanceCounter() < target);// thrd_yield();
+            while(SDL_GetPerformanceCounter() < target) SDL_CPUPauseInstruction();
             double frametime = (double)(SDL_GetPerformanceCounter() - sys->OldTimeActual) * 1000.0 / SDL_GetPerformanceFrequency();
 
             if ((SDL_GetPerformanceCounter() - (SDL_GetPerformanceFrequency() / 60)) > target)
