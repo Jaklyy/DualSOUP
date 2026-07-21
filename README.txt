@@ -1,4 +1,4 @@
-Welcome to DualSOUP the spiritual successor to my abandoned emulator VitaminC
+Welcome to ZaydSOUP the spiritual successor to my abandoned emulator VitaminC
 
 Mission Statement:
 Improve preservation of the NDS/DSi/3DS library and their hardware via accurate emulation at ANY cost to usability and performance.

@@ -88,7 +88,7 @@ $(BUILDDIR)$(OBJDIR)/%.cpp.o: %.cpp
 	@echo $<
 	@$(CXX) $(CPPFLAGS) -c $< -o $@
 
-$(BUILDDIR)/DualSOUP: $(OBJS)
+$(BUILDDIR)/ZaydSOUP: $(OBJS)
 	@echo linking...
 	@$(CXX) $(CPPFLAGS) $(CFLAGS) $^ -o $@ -L$(LIBDIRS) $(LIBS)
 

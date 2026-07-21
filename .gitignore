@@ -1,6 +1,6 @@
 build*/
 prof/
-DualSOUP
+ZaydSOUP
 *.bin
 .vscode
 *.exe

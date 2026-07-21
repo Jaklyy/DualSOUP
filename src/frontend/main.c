@@ -105,7 +105,7 @@ int main()
 {
     LogMask = u64_max; // temp
 
-    SDL_SetAppMetadata("DualSOUP", NULL, NULL);
+    SDL_SetAppMetadata("ZaydSOUP", NULL, NULL);
 
     if (!SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1"))
         printf("%s\n", SDL_GetError());
@@ -122,8 +122,8 @@ int main()
 
     atexit(SDL_Quit); // apparently this is a thing i should be doing.
 
-    char* path = SDL_GetPrefPath("DualSOUP", "DualSOUP");
-    constexpr char ininame[] = "DualSOUP.ini";
+    char* path = SDL_GetPrefPath("ZaydSOUP", "ZaydSOUP");
+    constexpr char ininame[] = "ZaydSOUP.ini";
     char* cfgpath = malloc(strlen(path)+sizeof(ininame));
     strcpy(cfgpath, path);
     strcat(cfgpath, ininame);

@@ -19,7 +19,7 @@
 MainGUI MainGUI_Init(MainCfg* mcfg)
 {
     MainGUI mgui = {};
-    if (!SDL_CreateWindowAndRenderer("DualSOUP", 256*2, 192*2*2, SDL_WINDOW_RESIZABLE, &mgui.Win, &mgui.Ren))
+    if (!SDL_CreateWindowAndRenderer("ZaydSOUP", 256*2, 192*2*2, SDL_WINDOW_RESIZABLE, &mgui.Win, &mgui.Ren))
     {
         printf("window/renderer init failure :(\n");
         exit(EXIT_FAILURE);
@@ -279,10 +279,10 @@ bool MainGUI_Loop(struct Console* sys, MainGUI* mgui, MainCfg* mcfg)
     if (active)
     {
         char str[256] = "";
-        snprintf(str, 256, "DualSOUP - %f ms - %f ms", sys->FrameTime, sys->FrameTimeActual);
+        snprintf(str, 256, "ZaydSOUP - %f ms - %f ms", sys->FrameTime, sys->FrameTimeActual);
         SDL_SetWindowTitle(mgui->Win, str);
     }
-    else SDL_SetWindowTitle(mgui->Win, "DualSOUP");
+    else SDL_SetWindowTitle(mgui->Win, "ZaydSOUP");
 
     return active;
 }
