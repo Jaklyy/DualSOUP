@@ -65,7 +65,7 @@ void ARM7_InstrRead32(struct ARM7TDMI* ARM7, const u32 addr)
     // nds seems to force align words even for gba sram
     // this case is known to be unaligned on gba so im suspecting, but unable to outright confirm, a cpu revision difference?
     u32 instr = ARM7_BusRead(ARM7, addr & ~3, HSIZE_32, &ARM7->ARM.CodeSeq);
-    ARM7->ARM.Instr[2] = (struct ARM_Instr){.Raw = instr,
+    ARM7->ARM.Instr[2] = (ARM_Instr){.Raw = instr,
                                             .Aborted = false, // only used in theory
                                             .CoprocPriv = false}; // this is for an arm9 specific bug
 }
@@ -74,7 +74,7 @@ void ARM7_InstrRead16(struct ARM7TDMI* ARM7, const u32 addr)
 {
     u32 instr = ARM7_BusRead(ARM7, addr, HSIZE_16, &ARM7->ARM.CodeSeq);
     instr = (instr >> ((addr & 2)*8)) & 0xFFFF;
-    ARM7->ARM.Instr[2] = (struct ARM_Instr){.Raw = instr,
+    ARM7->ARM.Instr[2] = (ARM_Instr){.Raw = instr,
                                             .Aborted = false, // only used in theory
                                             .CoprocPriv = false}; // this is for an arm9 specific bug
 }

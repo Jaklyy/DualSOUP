@@ -5,14 +5,7 @@
 
 
 
-typedef enum
-{
-    WIDTH32,
-    WIDTH16,
-    WIDTH8,
-} LOADSTORE_WIDTH;
-
-void STR(struct ARM* cpu, const u32 addr, const u8 rd, const LOADSTORE_WIDTH width)
+void STR(struct ARM* cpu, const u32 addr, const u8 rd, const ARM_DataWidth width)
 {
     // arm9 timings are input as 0 since they will be added during the actual fetch
     ARM_ExeCycles(1, 1, 0);
@@ -24,17 +17,17 @@ void STR(struct ARM* cpu, const u32 addr, const u8 rd, const LOADSTORE_WIDTH wid
     bool dabt = false;
     if (cpu->CPUID == ARM7ID)
     {
-        if (width == WIDTH32) ARM7_DataWrite32(ARM7Cast, addr, val, false, &seq);
-        if (width == WIDTH16) ARM7_DataWrite16(ARM7Cast, addr, val, &seq);
-        if (width == WIDTH8 ) ARM7_DataWrite8 (ARM7Cast, addr, val, false, &seq);
+        if (width == ARMDataWidth_32) ARM7_DataWrite32(ARM7Cast, addr, val, false, &seq);
+        if (width == ARMDataWidth_16) ARM7_DataWrite16(ARM7Cast, addr, val, &seq);
+        if (width == ARMDataWidth_8 ) ARM7_DataWrite8 (ARM7Cast, addr, val, false, &seq);
         cpu->CodeSeq = false;
     }
     else
     {
         timestamp oldts = ARM9Cast->MemTimestamp;
-        if (width == WIDTH32) ARM9_DataWrite32(ARM9Cast, addr, val, false, true, &seq, &dabt);
-        if (width == WIDTH16) ARM9_DataWrite16(ARM9Cast, addr, val, &seq, &dabt);
-        if (width == WIDTH8 ) ARM9_DataWrite8 (ARM9Cast, addr, val, false, &seq, &dabt);
+        if (width == ARMDataWidth_32) ARM9_DataWrite32(ARM9Cast, addr, val, false, true, &seq, &dabt);
+        if (width == ARMDataWidth_16) ARM9_DataWrite16(ARM9Cast, addr, val, &seq, &dabt);
+        if (width == ARMDataWidth_8 ) ARM9_DataWrite8 (ARM9Cast, addr, val, false, &seq, &dabt);
         ARM9_FixupLoadStore(ARM9Cast, 1, ARM9Cast->MemTimestamp - oldts);
     }
 
@@ -54,83 +47,88 @@ void LDR(struct ARM* cpu, const u32 addr, const u8 rd, const int width, const bo
     bool seq = false;
     bool dabt = false;
     u32 val;
-    u32 interlock = 0;
     if (cpu->CPUID == ARM7ID)
     {
-        if (width == WIDTH32) val = ARM7_DataRead32(ARM7Cast, addr, &seq);
-        if (width == WIDTH16) val = ARM7_DataRead16(ARM7Cast, addr, &seq);
-        if (width == WIDTH8 ) val = ARM7_DataRead8 (ARM7Cast, addr, &seq);
-
-        // arm7 needs 1 cycle extra after the load.
-        // presumably this is for the same reason that certain loads can have writeback stage interlocks on arm9.
-        cpu->Timestamp += 1;
+        if (width == ARMDataWidth_32) val = ARM7_DataRead32(ARM7Cast, addr, &seq);
+        if (width == ARMDataWidth_16) val = ARM7_DataRead16(ARM7Cast, addr, &seq);
+        if (width == ARMDataWidth_8 ) val = ARM7_DataRead8 (ARM7Cast, addr, &seq);
         cpu->CodeSeq = false;
-
-        // rotate result right based on lsb of address.
-        val = ROR32(val, (addr&3) * 8);
-
-        // sign extension is weird on ARM7 for 16 bit wide loads
-        if (signext)
-            val = (((width == WIDTH8) || (addr & 1)) ? ((s32)(s8)val) : ((s32)(s16)val));
-        else
-        {
-            switch(width)
-            {
-                case WIDTH8: val &= 0xFF; break;
-                case WIDTH16: val &= 0xFFFF; break;
-                default: break;
-            }
-        }
     }
     else
     {
         timestamp oldts = ARM9Cast->MemTimestamp;
-        if (width == WIDTH32) val = ARM9_DataRead32(ARM9Cast, addr, &seq, &dabt);
-        if (width == WIDTH16) val = ARM9_DataRead16(ARM9Cast, addr, &seq, &dabt);
-        if (width == WIDTH8 ) val = ARM9_DataRead8 (ARM9Cast, addr, &seq, &dabt);
-        ARM9_FixupLoadStore(ARM9Cast, 1, ARM9Cast->MemTimestamp - oldts);
-        // TODO: data abort
+        if (width == ARMDataWidth_32) val = ARM9_DataRead32(ARM9Cast, addr, &seq, &dabt);
+        if (width == ARMDataWidth_16) val = ARM9_DataRead16(ARM9Cast, addr, &seq, &dabt);
+        if (width == ARMDataWidth_8 ) val = ARM9_DataRead8 (ARM9Cast, addr, &seq, &dabt);
+    }
+}
 
-        // RORing the result takes an extra cycle
-        // masking out bits also incurs the extra cycle, so it always applies to byte/halfword accesses.
-        interlock = (((width != WIDTH32) || (addr & 3)) ? 2 : 1);
+typedef struct 
+{
+    union
+    {
+        struct ARM7TDMI* ARM7;
+        struct ARM946ES* ARM9;
+    };
+    u32 Addr;
+    ARM_DataWidth Width;
+    bool SignExt;
+    u8 Rd;
+    bool Abt;
+} ARMBusCallback;
 
-        // rotate result right based on lsb of address.
-        // doesn't apply to 16 bit wide loads on arm9
-        if (width != WIDTH16)
+void THUMB7_PostLDRCallback(ARMBusCallback* cb, u32 ret)
+{
+    // arm7 needs 1 cycle extra after the load.
+    // presumably this is for masking + sign extension + register writeback.
+    cb->ARM7->ARM.Timestamp += 1;
+
+    // rotate result right based on lsb of address.
+    ret = ROR32(ret, (cb->Addr&3) * 8);
+
+    // sign extension is weird on ARM7 for 16 bit wide loads
+    if (cb->SignExt)
+        ret = (((cb->Width == ARMDataWidth_8) || (cb->Addr & 1)) ? ((s32)(s8)ret) : ((s32)(s16)ret));
+    else
+    {
+        switch(cb->Width)
         {
-            if (ARM9Cast->CP15.CR.BigEndian && width == WIDTH8)
-                val = ROR32(val, ((addr&3)^3) * 8);
-            else
-                val = ROR32(val, (addr&3) * 8);
-        }
-
-        if (signext)
-            val = ((width == WIDTH8) ? ((s32)(s8)val) : ((s32)(s16)val));
-        else
-        {
-            switch(width)
-            {
-                case WIDTH8: val &= 0xFF; break;
-                case WIDTH16: val &= 0xFFFF; break;
-                default: break;
-            }
+            case ARMDataWidth_8: ret &= 0xFF; break;
+            case ARMDataWidth_16: ret &= 0xFFFF; break;
+            default: break;
         }
     }
 
-    if (!dabt)
-    {
-        // loads can interwork on arm9 when the disable bit is clear.
-        if ((rd == 15) && ARM_CanLoadInterwork)
-        {
-            ARM_SetThumb(cpu, val & 1);
-        }
+    ARM7_SetReg(cb->ARM7, cb->Rd, ret);
+}
 
-        ARM_SetReg(rd, val, false, interlock, interlock+1);
+void THUMB9_PostLDRCallback(ARMBusCallback* cb, u32 ret)
+{
+    if (cb->Abt)
+    {
+        ARM9_DataAbort(cb->ARM9);
     }
     else
     {
-        ARM9_DataAbort(ARM9Cast);
+        // RORing the result takes an extra cycle during the writeback stage
+        // sign/zero extending also incurs the extra cycle, so it always applies to byte/halfword accesses.
+        int interlock;
+        if ((cb->Width != ARMDataWidth_32) || (cb->Addr & 3))
+            interlock = 2;
+        else
+            interlock = 1;
+
+        // rotate result right based on lsb of address.
+        // doesn't apply to 16 bit wide loads on arm9
+        ret = ARM9_RotateExtendUnit(ret, cb->Addr, cb->Width, cb->SignExt, cb->ARM9->CP15.CR.BigEndian);
+
+        // loads can interwork on arm9 when the disable bit is clear.
+        if ((cb->Rd == 15) && !cb->ARM9->CP15.CR.NoLoadTBit)
+        {
+            ARM_SetThumb(&cb->ARM9->ARM, ret & 1);
+        }
+
+        ARM9_SetReg(cb->ARM9, cb->Rd, ret, interlock, interlock+1 /* checkme: can this actually be 3? */);
     }
 }
 
@@ -146,7 +144,7 @@ union THUMB_LoadStoreReg_Decode
     };
 };
 
-void THUMB_LoadStoreReg(struct ARM* cpu, const struct ARM_Instr instr_data)
+void THUMB_LoadStoreReg(struct ARM* cpu, const ARM_Instr instr_data)
 {
     const union THUMB_LoadStoreReg_Decode instr = {.Raw = instr_data.Raw};
 
@@ -155,25 +153,25 @@ void THUMB_LoadStoreReg(struct ARM* cpu, const struct ARM_Instr instr_data)
     switch(instr.Opcode)
     {
     case 0: // str
-        STR(cpu, addr, instr.Rd, WIDTH32); break;
+        STR(cpu, addr, instr.Rd, ARMDataWidth_32); break;
     case 1: // strh
-        STR(cpu, addr, instr.Rd, WIDTH16); break;
+        STR(cpu, addr, instr.Rd, ARMDataWidth_16); break;
     case 2: // strb
-        STR(cpu, addr, instr.Rd, WIDTH8); break;
+        STR(cpu, addr, instr.Rd, ARMDataWidth_8); break;
     case 3: // ldrsb
-        LDR(cpu, addr, instr.Rd, WIDTH8, true); break;
+        LDR(cpu, addr, instr.Rd, ARMDataWidth_8, true); break;
     case 4: // ldr
-        LDR(cpu, addr, instr.Rd, WIDTH32, false); break;
+        LDR(cpu, addr, instr.Rd, ARMDataWidth_32, false); break;
     case 5: // ldrh
-        LDR(cpu, addr, instr.Rd, WIDTH16, false); break;
+        LDR(cpu, addr, instr.Rd, ARMDataWidth_16, false); break;
     case 6: // ldrb
-        LDR(cpu, addr, instr.Rd, WIDTH8, false); break;
+        LDR(cpu, addr, instr.Rd, ARMDataWidth_8, false); break;
     case 7: // ldrsh
-        LDR(cpu, addr, instr.Rd, WIDTH16, true); break;
+        LDR(cpu, addr, instr.Rd, ARMDataWidth_16, true); break;
     }
 }
 
-s8 THUMB9_LoadStoreReg_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
+s8 THUMB9_LoadStoreReg_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data)
 {
     const union THUMB_LoadStoreReg_Decode instr = {.Raw = instr_data.Raw};
     s8 stall = 0;
@@ -198,34 +196,34 @@ union THUMB_LoadStoreImm_Decode
     };
 };
 
-void THUMB_LoadStoreWordImm(struct ARM* cpu, const struct ARM_Instr instr_data)
+void THUMB_LoadStoreWordImm(struct ARM* cpu, const ARM_Instr instr_data)
 {
     const union THUMB_LoadStoreImm_Decode instr = {.Raw = instr_data.Raw};
     u32 addr = ARM_GetReg(instr.Rn) + (instr.Imm5 * 4);
 
-    if (instr.Load) LDR(cpu, addr, instr.Rd, WIDTH32, false);
-    else STR(cpu, addr, instr.Rd, WIDTH32);
+    if (instr.Load) LDR(cpu, addr, instr.Rd, ARMDataWidth_32, false);
+    else STR(cpu, addr, instr.Rd, ARMDataWidth_32);
 }
 
-void THUMB_LoadStoreHalfwordImm(struct ARM* cpu, const struct ARM_Instr instr_data)
+void THUMB_LoadStoreHalfwordImm(struct ARM* cpu, const ARM_Instr instr_data)
 {
     const union THUMB_LoadStoreImm_Decode instr = {.Raw = instr_data.Raw};
     u32 addr = ARM_GetReg(instr.Rn) + (instr.Imm5 * 2);
 
-    if (instr.Load) LDR(cpu, addr, instr.Rd, WIDTH16, false);
-    else STR(cpu, addr, instr.Rd, WIDTH16);
+    if (instr.Load) LDR(cpu, addr, instr.Rd, ARMDataWidth_16, false);
+    else STR(cpu, addr, instr.Rd, ARMDataWidth_16);
 }
 
-void THUMB_LoadStoreByteImm(struct ARM* cpu, const struct ARM_Instr instr_data)
+void THUMB_LoadStoreByteImm(struct ARM* cpu, const ARM_Instr instr_data)
 {
     const union THUMB_LoadStoreImm_Decode instr = {.Raw = instr_data.Raw};
     u32 addr = ARM_GetReg(instr.Rn) + (instr.Imm5);
 
-    if (instr.Load) LDR(cpu, addr, instr.Rd, WIDTH8, false);
-    else STR(cpu, addr, instr.Rd, WIDTH8);
+    if (instr.Load) LDR(cpu, addr, instr.Rd, ARMDataWidth_8, false);
+    else STR(cpu, addr, instr.Rd, ARMDataWidth_8);
 }
 
-s8 THUMB9_LoadStoreImm_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
+s8 THUMB9_LoadStoreImm_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data)
 {
     const union THUMB_LoadStoreImm_Decode instr = {.Raw = instr_data.Raw};
     s8 stall = 0;
@@ -249,7 +247,7 @@ union THUMB_LoadStoreRel_Decode
     };
 };
 
-void THUMB_LoadPCRel(struct ARM* cpu, const struct ARM_Instr instr_data)
+void THUMB_LoadPCRel(struct ARM* cpu, const ARM_Instr instr_data)
 {
     const union THUMB_LoadStoreRel_Decode instr = {.Raw = instr_data.Raw};
 
@@ -257,20 +255,20 @@ void THUMB_LoadPCRel(struct ARM* cpu, const struct ARM_Instr instr_data)
     u32 addr = (ARM_GetReg(15) & ~3) + (instr.Imm8 * 4);
 
     // TODO: check for pc relative store...?
-    LDR(cpu, addr, instr.Rd, WIDTH32, false);
+    LDR(cpu, addr, instr.Rd, ARMDataWidth_32, false);
 }
 
-void THUMB_LoadStoreSPRel(struct ARM* cpu, const struct ARM_Instr instr_data)
+void THUMB_LoadStoreSPRel(struct ARM* cpu, const ARM_Instr instr_data)
 {
     const union THUMB_LoadStoreRel_Decode instr = {.Raw = instr_data.Raw};
 
     u32 addr = ARM_GetReg(13) + (instr.Imm8 * 4);
 
-    if (instr.Load) LDR(cpu, addr, instr.Rd, WIDTH32, false);
-    else STR(cpu, addr, instr.Rd, WIDTH32);
+    if (instr.Load) LDR(cpu, addr, instr.Rd, ARMDataWidth_32, false);
+    else STR(cpu, addr, instr.Rd, ARMDataWidth_32);
 }
 
-s8 THUMB9_LoadStoreSPRel_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
+s8 THUMB9_LoadStoreSPRel_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data)
 {
     const union THUMB_LoadStoreRel_Decode instr = {.Raw = instr_data.Raw};
     s8 stall = 0;
@@ -300,7 +298,7 @@ union THUMB_PushPop_Decode
     };
 };
 
-void THUMB_Push(struct ARM* cpu, const struct ARM_Instr instr_data)
+void THUMB_Push(struct ARM* cpu, const ARM_Instr instr_data)
 {
     const union THUMB_PushPop_Decode instr = {.Raw = instr_data.Raw};
 
@@ -333,6 +331,12 @@ void THUMB_Push(struct ARM* cpu, const struct ARM_Instr instr_data)
     // push is encoded as a decrementing before variant
     u32 wbaddr = (addr -= nregs*4);
 
+    if (cpu->CPUID == ARM7ID)
+    {
+        cpu->CodeSeq = false;
+    }
+
+#if 0
     bool seq = false;
     bool dabt = false;
     while(rlist)
@@ -375,15 +379,56 @@ void THUMB_Push(struct ARM* cpu, const struct ARM_Instr instr_data)
     if (!dabt)
     {
         // note: should technically be done after first iteration for arm7, but sp can't be in rlist so we can cheat
-        ARM_SetReg(13, wbaddr, false, 0, 0);
+        ARM_SetReg(13, wbaddr, 0, 0);
     }
     else
     {
         ARM9_DataAbort(ARM9Cast);
     }
+#endif
 }
 
-s8 THUMB9_Push_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
+typedef struct
+{
+    union
+    {
+        struct ARM946ES* ARM9;
+        struct ARM7TDMI* ARM7;
+    };
+    u32 WBAddr;
+    u16 RList;
+    u8 Rb;
+    bool First;
+} ARMLDMCallback;
+
+void THUMB7_PostPushCallback(ARMLDMCallback* cb)
+{
+    u8 reg = stdc_trailing_zeros((u32)cb->RList);
+    cb->RList &= (~1)<<reg;
+
+    if (cb->First)
+    {
+        ARM7_SetReg(cb->ARM7, 13, cb->WBAddr);
+    }
+}
+
+void THUMB9_PostPushCallback(ARMLDMCallback* cb)
+{
+    u8 reg = stdc_trailing_zeros((u32)cb->RList);
+    cb->RList &= (~1)<<reg;
+    if (stdc_count_ones((u32)cb->RList) == 1) // penultimate access
+    {
+        // set execute to... some timestamp idk
+        // i need to think about address pipelining more i think...
+        ARM9_SetReg(cb->ARM9, 13, cb->WBAddr, 0 , 0);
+    }
+    else if (cb->First && !cb->RList) // single reg case
+    {
+        ARM9_SetReg(cb->ARM9, 13, cb->WBAddr, 0, 0);
+    }
+}
+
+s8 THUMB9_Push_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data)
 {
     const union THUMB_PushPop_Decode instr = {.Raw = instr_data.Raw};
     s8 stall = 0;
@@ -405,7 +450,7 @@ s8 THUMB9_Push_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_da
     return stall;
 }
 
-void THUMB_Pop(struct ARM* cpu, const struct ARM_Instr instr_data)
+void THUMB_Pop(struct ARM* cpu, const ARM_Instr instr_data)
 {
     const union THUMB_PushPop_Decode instr = {.Raw = instr_data.Raw};
 
@@ -513,7 +558,7 @@ void THUMB_Pop(struct ARM* cpu, const struct ARM_Instr instr_data)
     }
 }
 
-s8 THUMB9_Pop_Interlocks(struct ARM946ES* ARM9, [[maybe_unused]] const struct ARM_Instr instr_data)
+s8 THUMB9_Pop_Interlocks(struct ARM946ES* ARM9, [[maybe_unused]] const ARM_Instr instr_data)
 {
     s8 stall = 0;
 
@@ -534,7 +579,7 @@ union THUMB_LoadStoreMultiple_Decode
     };
 };
 
-void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
+void THUMB_LoadStoreMultiple(struct ARM* cpu, const ARM_Instr instr_data)
 {
     const union THUMB_LoadStoreMultiple_Decode instr = {.Raw = instr_data.Raw};
 
@@ -683,7 +728,7 @@ void THUMB_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
     else if (flush) ARM_FlushPipeline;
 }
 
-s8 THUMB9_LoadStoreMultiple_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
+s8 THUMB9_LoadStoreMultiple_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data)
 {
     const union THUMB_LoadStoreMultiple_Decode instr = {.Raw = instr_data.Raw};
     s8 stall = 0;

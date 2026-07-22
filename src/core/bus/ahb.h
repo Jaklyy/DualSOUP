@@ -34,24 +34,31 @@ typedef enum : u8
 
 static_assert(Dev_Max < 32, "BUSYDEVICE BIT MASK TOO SMALL!!!");
 
-enum ARM9_AHBPriorities : u8
+// note: actual IDs unknown
+typedef enum : u16 // bitfield
 {
-    AHB9Prio_DMABase, // 0 == highest priority
-    AHB9Prio_DMA0 = AHB9Prio_DMABase,
-    AHB9Prio_DMA1,
-    AHB9Prio_DMA2,
-    AHB9Prio_DMA3,
-    AHB9Prio_ARM9,
-};
+    MAN9_DMAWRITE,
+    MAN9_DMAREAD,
+    MAN9_NDMAWRITE,
+    MAN9_NDMAREAD,
+    MAN9_ARM9,
+    MAN9_DEFAULT, // bus is idle (might be arm9 instead?)
+} AHB9_HMANAGER;
 
-struct AHB
+// note: actual IDs unknown
+typedef enum : u16 // bitfield
 {
-    timestamp Timestamp; // AHB Timestamp.
-    u32 CurOpenBus; // TODO: is this needed?
-    bool HoldingMainRAM;
-};
+    MAN7_SCAPDMA,
+    MAN7_SNDDMA,
+    MAN7_DMAWRITE,
+    MAN7_DMAREAD,
+    MAN7_NDMAWRITE,
+    MAN7_NDMAREAD,
+    MAN7_ARM7,
+    MAN7_DEFAULT, // bus is idle (might be arm7 instead?)
+} AHB7_HMANAGER;
 
-typedef enum : u8
+typedef enum : u8 // 3 bit
 {
     HSIZE_8,
     HSIZE_16,
@@ -63,6 +70,71 @@ typedef enum : u8
     HSIZE_512,
     HSIZE_1024,
 } AHB_HSIZE;
+
+typedef enum : u8 // 3 bit
+{
+    HBURST_SINGLE,  // len 1;
+    HBURST_INCR,    // len min 1, max: "infinite"; should not cross a 1KiB boundary
+    HBURST_WRAP4,   // len 4;   wraps on crossing (4<<HSIZE) byte boundaries
+    HBURST_INCR4,   // len 4;   should not cross a 1KiB boundary
+    HBURST_WRAP8,   // len 8;   wraps on crossing (8<<HSIZE) byte boundaries
+    HBURST_INCR8,   // len 8;   should not cross a 1KiB boundary
+    HBURST_WRAP16,  // len 16;  wraps on crossing (16<<HSIZE) byte boundaries
+    HBURST_INCR16,  // len 16;  should not cross a 1KiB boundary
+} AHB_HBURST;
+
+typedef enum : u8 // 2 bit
+{
+    HTRANS_IDLE, // no data transfer required
+    HTRANS_BUSY, // burst will continue but 
+    HTRANS_NONSEQ, // first transfer of a burst
+    HTRANS_SEQ, // indicates the burst is sequential and addr is (prev + (1<<HSIZE)) (unless wrapping burst is used); (note sure what happens if the address is incorrect?)
+} AHB_HTRANS;
+
+// okay is single cycle, all others need 2 cycles to signal
+typedef enum : u8 // 2 bit
+{
+    HRESP_OKAY,  // 1 cycle. everything is fine.
+    HRESP_ERROR, // 2 cycle. an error has occurred; manager can cancel remaining burst but is not required to do so.
+    HRESP_RETRY, // 2 cycle. transfer not yet complete; manager should retry transfer. arbiter continues using normal priority scheme.
+    HRESP_SPLIT, // 2 cycle. transfer not yet complete; manager should retry transfer. arbiter should set the awaiting manager to lowest priority until suborinate signals it is ready.
+} AHB_HRESP;
+
+typedef struct
+{
+    bool Data : 1; // instr = 0, data = 1
+    bool Privileged : 1;
+    bool Bufferable : 1;
+    bool Cacheable : 1;
+} AHB_HPROT;
+
+struct AHB
+{
+    timestamp Timestamp; // AHB Timestamp.
+    u32 CurOpenBus; // TODO: is this needed?
+    u8 Pipeline[2]; // granted, addr // CHECKME
+    struct
+    {
+        void* cbdata;
+        void* reqcbfunc;
+        void* fincbfunc;
+    } ReqAckCallback[MAN9_DEFAULT];
+    bool HoldingMainRAM;
+    u16 RequestBitfield;
+};
+
+// ARM7 Bus uses an unknown bus architecture, doesn't seem to be an ahb?
+// notes:
+// likely tri-state (using one set of lanes for both read and write data) (evidence: gba open bus is updated by reads and writes)
+// seems to have fewer (todo: exact amount?) cycles of latency (vs the ahb's 3)
+struct Unk_Bus
+{
+    timestamp Timestamp; // AHB Timestamp.
+    u32 CurOpenBus; // TODO: is this needed outside of gba?
+    u8 Pipeline; // addr // CHECKME
+    bool HoldingMainRAM;
+    u16 RequestBitfield;
+};
 
 // MainRAM is a type of FCRAM.
 // gbatek lists the following chips as being used in retail DS models:

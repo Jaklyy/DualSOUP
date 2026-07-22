@@ -17,7 +17,7 @@ union THUMB_ShiftImm_Decode
     };
 };
 
-void THUMB_ShiftImm(struct ARM* cpu, const struct ARM_Instr instr_data)
+void THUMB_ShiftImm(struct ARM* cpu, const ARM_Instr instr_data)
 {
     const union THUMB_ShiftImm_Decode instr = {.Raw = instr_data.Raw};
 
@@ -53,16 +53,16 @@ void THUMB_ShiftImm(struct ARM* cpu, const struct ARM_Instr instr_data)
     }
 
     ARM_StepPC(cpu, true);
-    ARM_ExeCycles(1, 1, 1);
+    ARM_ExeCycles(1, 1);
 
     cpu->CPSR.Negative = rm_val >> 31;
     cpu->CPSR.Zero = !rm_val;
     cpu->CPSR.Carry = carry_out;
 
-    ARM_SetReg(instr.Rd, rm_val, false, 0, 0);
+    ARM_SetReg(instr.Rd, rm_val);
 }
 
-s8 THUMB9_ShiftImm_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
+s8 THUMB9_ShiftImm_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data)
 {
     const union THUMB_ShiftImm_Decode instr = {.Raw = instr_data.Raw};
     s8 stall = 0;
@@ -90,7 +90,7 @@ union THUMB_AddSub_Decode
     };
 };
 
-void THUMB_AddSub(struct ARM* cpu, const struct ARM_Instr instr_data)
+void THUMB_AddSub(struct ARM* cpu, const ARM_Instr instr_data)
 {
     const union THUMB_AddSub_Decode instr = {.Raw = instr_data.Raw};
 
@@ -110,12 +110,12 @@ void THUMB_AddSub(struct ARM* cpu, const struct ARM_Instr instr_data)
     cpu->CPSR.Flags = flags_out.Raw;
 
     ARM_StepPC(cpu, true);
-    ARM_ExeCycles(1, 1, 1);
+    ARM_ExeCycles(1, 1);
 
-    ARM_SetReg(instr.Rd, alu_out, false, 0, 0);
+    ARM_SetReg(instr.Rd, alu_out);
 }
 
-s8 THUMB9_AddSub_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
+s8 THUMB9_AddSub_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data)
 {
     const union THUMB_AddSub_Decode instr = {.Raw = instr_data.Raw};
     s8 stall = 0;
@@ -140,7 +140,7 @@ union THUMB_DataProcImm8_Decode
     };
 };
 
-void THUMB_MovsImm8(struct ARM* cpu, const struct ARM_Instr instr_data)
+void THUMB_MovsImm8(struct ARM* cpu, const ARM_Instr instr_data)
 {
     const union THUMB_DataProcImm8_Decode instr = {.Raw = instr_data.Raw};
 
@@ -149,12 +149,12 @@ void THUMB_MovsImm8(struct ARM* cpu, const struct ARM_Instr instr_data)
     cpu->CPSR.Zero = !instr.Imm8;
 
     ARM_StepPC(cpu, true);
-    ARM_ExeCycles(1, 1, 1);
+    ARM_ExeCycles(1, 1);
 
-    ARM_SetReg(instr.Rd, instr.Imm8, false, 0, 0);
+    ARM_SetReg(instr.Rd, instr.Imm8);
 }
 
-void THUMB_DataProcImm8(struct ARM* cpu, const struct ARM_Instr instr_data)
+void THUMB_DataProcImm8(struct ARM* cpu, const ARM_Instr instr_data)
 {
     const union THUMB_DataProcImm8_Decode instr = {.Raw = instr_data.Raw};
 
@@ -179,15 +179,15 @@ void THUMB_DataProcImm8(struct ARM* cpu, const struct ARM_Instr instr_data)
     cpu->CPSR.Flags = flags_out.Raw;
 
     ARM_StepPC(cpu, true);
-    ARM_ExeCycles(1, 1, 1);
+    ARM_ExeCycles(1, 1);
 
     if (instr.Opcode != 1) // not CMP
     {
-        ARM_SetReg(instr.Rd, rd_val, false, 0, 0);
+        ARM_SetReg(instr.Rd, rd_val);
     }
 }
 
-s8 THUMB9_DataProcImm8_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
+s8 THUMB9_DataProcImm8_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data)
 {
     const union THUMB_DataProcImm8_Decode instr = {.Raw = instr_data.Raw};
     s8 stall = 0;
@@ -212,7 +212,7 @@ union THUMB_DataProcReg_Decode
     };
 };
 
-void THUMB_DataProcReg(struct ARM* cpu, const struct ARM_Instr instr_data)
+void THUMB_DataProcReg(struct ARM* cpu, const ARM_Instr instr_data)
 {
     const union THUMB_DataProcReg_Decode instr = {.Raw = instr_data.Raw};
 
@@ -289,12 +289,12 @@ void THUMB_DataProcReg(struct ARM* cpu, const struct ARM_Instr instr_data)
         }
         else // ARM9ID
         {
-            ARM9_ExecuteCycles(ARM9Cast, 4, 1);
+            ARM9_ExecuteCycles(ARM9Cast, 4);
         }
     }
     else
     {
-        ARM_ExeCycles(1, 1, 1);
+        ARM_ExeCycles(1, 1);
     }
 
     // all opcodes set flags
@@ -307,11 +307,11 @@ void THUMB_DataProcReg(struct ARM* cpu, const struct ARM_Instr instr_data)
     // not TST, CMP, or CMN
     if (instr.Opcode != 8 && instr.Opcode != 10 && instr.Opcode != 11)
     {
-        ARM_SetReg(instr.Rd, alu_out, false, 0, 0);
+        ARM_SetReg(instr.Rd, alu_out);
     }
 }
 
-s8 THUMB9_DataProcReg_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
+s8 THUMB9_DataProcReg_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data)
 {
     const union THUMB_DataProcReg_Decode instr = {.Raw = instr_data.Raw};
     s8 stall = 0;
@@ -340,7 +340,7 @@ union THUMB_DataProcHiReg_Decode
     };
 };
 
-void THUMB_DataProcHiReg(struct ARM* cpu, const struct ARM_Instr instr_data)
+void THUMB_DataProcHiReg(struct ARM* cpu, const ARM_Instr instr_data)
 {
     const union THUMB_DataProcHiReg_Decode instr = {.Raw = instr_data.Raw};
 
@@ -356,7 +356,7 @@ void THUMB_DataProcHiReg(struct ARM* cpu, const struct ARM_Instr instr_data)
     u32 rm_val = ARM_GetReg(instr.Rm);
 
     ARM_StepPC(cpu, true);
-    ARM_ExeCycles(1, 1, 1);
+    ARM_ExeCycles(1, 1);
 
     u32 alu_out;
     switch(instr.Opcode)
@@ -390,19 +390,19 @@ void THUMB_DataProcHiReg(struct ARM* cpu, const struct ARM_Instr instr_data)
         {
             // pc was stepped earlier so now i need to compensate with minus 4 oops.
             // (actually minus 3 since that gets the same result while also setting the lsb at the same time)
-            ARM_SetReg(14, (ARM_GetReg(15) - 3), false, 0, 0);
+            ARM_SetReg(14, (ARM_GetReg(15) - 3));
         }
-        ARM_SetReg(15, rm_val, false, 0, 0);
+        ARM_SetReg(15, rm_val);
         // we handled all the logic here
         return;
     }
     }
 
     // only reached by ADD and MOV/CPY
-    ARM_SetReg(rd, alu_out, false, 0, 0);
+    ARM_SetReg(rd, alu_out);
 }
 
-s8 THUMB9_DataProcHiReg_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
+s8 THUMB9_DataProcHiReg_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data)
 {
     const union THUMB_DataProcHiReg_Decode instr = {.Raw = instr_data.Raw};
     s8 stall = 0;
@@ -429,7 +429,7 @@ union THUMB_AddPCSPRel_Decode
     };
 };
 
-void THUMB_AddPCSPRel(struct ARM* cpu, const struct ARM_Instr instr_data)
+void THUMB_AddPCSPRel(struct ARM* cpu, const ARM_Instr instr_data)
 {
     const union THUMB_AddPCSPRel_Decode instr = {.Raw = instr_data.Raw};
 
@@ -446,12 +446,12 @@ void THUMB_AddPCSPRel(struct ARM* cpu, const struct ARM_Instr instr_data)
     alu_out += instr.Imm8 * 4;
 
     ARM_StepPC(cpu, true);
-    ARM_ExeCycles(1, 1, 1);
+    ARM_ExeCycles(1, 1);
 
-    ARM_SetReg(instr.Rd, alu_out, false, 0, 0);
+    ARM_SetReg(instr.Rd, alu_out);
 }
 
-s8 THUMB9_AddPCSPRel_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
+s8 THUMB9_AddPCSPRel_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data)
 {
     const union THUMB_AddPCSPRel_Decode instr = {.Raw = instr_data.Raw};
     s8 stall = 0;
@@ -475,7 +475,7 @@ union THUMB_AdjustSP_Decode
     };
 };
 
-void THUMB_AdjustSP(struct ARM* cpu, const struct ARM_Instr instr_data)
+void THUMB_AdjustSP(struct ARM* cpu, const ARM_Instr instr_data)
 {
     const union THUMB_AdjustSP_Decode instr = {.Raw = instr_data.Raw};
 
@@ -485,12 +485,12 @@ void THUMB_AdjustSP(struct ARM* cpu, const struct ARM_Instr instr_data)
     else           alu_out += (instr.Imm7 * 4);
 
     ARM_StepPC(cpu, true);
-    ARM_ExeCycles(1, 1, 1);
+    ARM_ExeCycles(1, 1);
 
-    ARM_SetReg(13, alu_out, false, 0, 0);
+    ARM_SetReg(13, alu_out);
 }
 
-s8 THUMB9_AdjustSP_Interlocks(struct ARM946ES* ARM9, [[maybe_unused]] const struct ARM_Instr instr_data)
+s8 THUMB9_AdjustSP_Interlocks(struct ARM946ES* ARM9, [[maybe_unused]] const ARM_Instr instr_data)
 {
     s8 stall = 0;
     // im not sure if this interlock can actually be triggered but it should work in theory?

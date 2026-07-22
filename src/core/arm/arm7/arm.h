@@ -6,7 +6,8 @@
 
 
 
-// exact model: ARM7TDMI (what revision?)
+// NDS model: ARM7TDMI (unknown revision?) (i'm speculating its Rev 4, but its unconfirmed)
+// GBA model: ARM7TDMI Rev 3A
 
 /*
     name decodes as:
@@ -26,8 +27,8 @@ struct ARM7TDMI
 // ensure casting between the two types works as expected
 static_assert(offsetof(struct ARM7TDMI, ARM) == 0);
 
-extern void (*ARM7_InstructionLUT[0x1000])(struct ARM*, struct ARM_Instr);
-extern void (*THUMB7_InstructionLUT[64])(struct ARM*, struct ARM_Instr);
+extern void (*ARM7_InstructionLUT[0x1000])(struct ARM*, ARM_Instr);
+extern void (*THUMB7_InstructionLUT[64])(struct ARM*, ARM_Instr);
 
 // run to initialize the cpu.
 // assumes everything was zero'd out.
@@ -38,18 +39,18 @@ void ARM7_Init(struct ARM7TDMI* ARM7, struct Console* console);
 void ARM7_MainLoop(struct ARM7TDMI* ARM7);
 
 // special exceptions
-void ARM7_Reset(struct ARM7TDMI* ARM7, const bool delayflush);
+void ARM7_Reset(struct ARM7TDMI* ARM7);
 void ARM7_InterruptRequest(struct ARM7TDMI* ARM7);
 // only used by debug hardware
 void ARM7_FastInterruptRequest(struct ARM7TDMI* ARM7);
 
-void ARM7_RaiseUDF(struct ARM* ARM, const struct ARM_Instr instr_data, const int cycles);
+void ARM7_RaiseUDF(struct ARM* ARM, const ARM_Instr instr_data, const int cycles);
 // executed exceptions
-void ARM7_UndefinedInstruction(struct ARM* ARM, const struct ARM_Instr instr_data);
-void ARM7_SoftwareInterrupt(struct ARM* ARM, const struct ARM_Instr instr_data);
+void ARM7_UndefinedInstruction(struct ARM* ARM, const ARM_Instr instr_data);
+void ARM7_SoftwareInterrupt(struct ARM* ARM, const ARM_Instr instr_data);
 // copies for thumb
-void THUMB7_UndefinedInstruction(struct ARM* ARM, const struct ARM_Instr instr_data);
-void THUMB7_SoftwareInterrupt(struct ARM* ARM, const struct ARM_Instr instr_data);
+void THUMB7_UndefinedInstruction(struct ARM* ARM, const ARM_Instr instr_data);
+void THUMB7_SoftwareInterrupt(struct ARM* ARM, const ARM_Instr instr_data);
 
 [[nodiscard]] union ARM_PSR ARM7_GetSPSR(struct ARM7TDMI* ARM7);
 void ARM7_SetSPSR(struct ARM7TDMI* ARM7, union ARM_PSR psr);
@@ -57,10 +58,9 @@ void ARM7_SetSPSR(struct ARM7TDMI* ARM7, union ARM_PSR psr);
 // read register.
 [[nodiscard]] u32 ARM7_GetReg(struct ARM7TDMI* ARM7, const int reg);
 // write register.
-void ARM7_SetReg(struct ARM7TDMI* ARM7, const int reg, u32 val, const bool delayflush);
+void ARM7_SetReg(struct ARM7TDMI* ARM7, const int reg, u32 val);
 // write program counter (r15).
-void ARM7_SetPC(struct ARM7TDMI* ARM7, u32 val, const bool delayflush);
-void ARM7_FlushPipeline(struct ARM7TDMI* ARM7);
+void ARM7_SetPC(struct ARM7TDMI* ARM7, u32 val);
 
 // add execute stage cycles, handle nonsequential code execution.
 void ARM7_ExecuteCycles(struct ARM7TDMI* ARM7, const u32 Execute);

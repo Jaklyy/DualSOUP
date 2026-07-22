@@ -1,6 +1,7 @@
 build*/
 prof/
 DualSOUP
+*.exe
 *.bin
 .vscode
 *.exe
@@ -8,3 +9,6 @@ DualSOUP
 *.nds
 *.ini
 profile.json.gz
+compile_flags.txt
+compile_commands.json
+.DS_Store

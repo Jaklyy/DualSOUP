@@ -41,7 +41,7 @@ union ARM_DataProc_Decode
     };
 };
 
-void ARM_DataProc(struct ARM* cpu, const struct ARM_Instr instr_data)
+void ARM_DataProc(struct ARM* cpu, const ARM_Instr instr_data)
 {
     const union ARM_DataProc_Decode instr = {.Raw = instr_data.Raw};
 
@@ -61,7 +61,7 @@ void ARM_DataProc(struct ARM* cpu, const struct ARM_Instr instr_data)
 
         shifter_out = ARM_ROR(instr.Imm8, instr.RotateImm*2, &carry_out);
         ARM_StepPC(cpu, false);
-        ARM_ExeCycles(1, 1, 1);
+        ARM_ExeCycles(1, 1);
     }
     else // register
     {
@@ -77,7 +77,7 @@ void ARM_DataProc(struct ARM* cpu, const struct ARM_Instr instr_data)
             // rs is fetched before stepping pc
             rs_val = ARM_GetReg(instr.Rs);
             ARM_StepPC(cpu, false);
-            ARM_ExeCycles(2, 2, 1);
+            ARM_ExeCycles(2, 2);
         }
 
         if ((instr.Opcode & 0b1101) != 0b1101) // NOT mov or mvn
@@ -88,7 +88,7 @@ void ARM_DataProc(struct ARM* cpu, const struct ARM_Instr instr_data)
         if (!(instr.ShiftType & 0x1))
         {
             ARM_StepPC(cpu, false);
-            ARM_ExeCycles(1, 1, 1);
+            ARM_ExeCycles(1, 1);
         }
 
         switch(instr.ShiftType & 7)
@@ -210,7 +210,7 @@ void ARM_DataProc(struct ARM* cpu, const struct ARM_Instr instr_data)
                 // this actually results in r15 being written back (though no masking occurs unlike the actual legacy instructions).
                 // flags are NOT set.
                 // SPSR is NOT restored.
-                ARM_SetReg(instr.Rd, alu_out, false, 0, 0);
+                ARM_SetReg(instr.Rd, alu_out);
             }
             else // ARM7ID && ARM9 normal instrs
             {
@@ -230,11 +230,11 @@ void ARM_DataProc(struct ARM* cpu, const struct ARM_Instr instr_data)
     // tst/teq/cmp/cmn do not writeback to registers
     if ((instr.Opcode & 0b1100) != 0b1000)
     {
-        ARM_SetReg(instr.Rd, alu_out, false, 0, 0);
+        ARM_SetReg(instr.Rd, alu_out);
     }
 }
 
-s8 ARM9_DataProc_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
+s8 ARM9_DataProc_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c)
 {
     const union ARM_DataProc_Decode instr = {.Raw = instr_data.Raw};
 
@@ -242,26 +242,27 @@ s8 ARM9_DataProc_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_
     s8 stall = 0;
     if (instr.Immediate)
     {
-        if ((instr.Opcode & 0b1101) != 0b1101) // NOT mov or mvn
-            ARM9_CheckInterlocks(ARM9, &stall, instr.Rn, 0, false);
+        if (((instr.Opcode & 0b1101) != 0b1101) // NOT mov or mvn
+            && (instr.Rn == reg))
+            return len;
     }
     else
     {
         if (instr.ShiftType & 0x1)
         {
-            ARM9_CheckInterlocks(ARM9, &stall, instr.Rs, 0, false);
-            ARM9_CheckInterlocks(ARM9, &stall, instr.Rm, 1, false);
-            if ((instr.Opcode & 0b1101) != 0b1101) // NOT mov or mvn
-                ARM9_CheckInterlocks(ARM9, &stall, instr.Rn, 1, false);
+            if (instr.Rs == reg) return len;
+            if (instr.Rm == reg) return len - 1;
+            if (((instr.Opcode & 0b1101) != 0b1101) // NOT mov or mvn
+                && (instr.Rn == reg)) return len - 1;
         }
         else
         {
-            ARM9_CheckInterlocks(ARM9, &stall, instr.Rm, 0, false);
-            if ((instr.Opcode & 0b1101) != 0b1101) // NOT mov or mvn
-                ARM9_CheckInterlocks(ARM9, &stall, instr.Rn, 0, false);
+            if (instr.Rm == reg) return len;
+            if (((instr.Opcode & 0b1101) != 0b1101) // NOT mov or mvn
+                && (instr.Rn == reg)) return len;
         }
     }
-    return stall;
+    return 0;
 }
 
 union ARM_Multiply_Decode
@@ -288,7 +289,7 @@ union ARM_Multiply_Decode
 
 // MUL, MLA, SMULL, SMLAL, UMULL, UMLAL
 // should UMAAL be in here too...?
-void ARM_Mul(struct ARM* cpu, const struct ARM_Instr instr_data)
+void ARM_Mul(struct ARM* cpu, const ARM_Instr instr_data)
 {
     const union ARM_Multiply_Decode instr = {.Raw = instr_data.Raw};
 
@@ -351,19 +352,23 @@ void ARM_Mul(struct ARM* cpu, const struct ARM_Instr instr_data)
             cpu->CPSR.Negative = (s64)mul_out < 0;
             cpu->CPSR.Zero = !mul_out;
 
-            ARM9_ExecuteCycles(ARM9Cast, 4 + instr.Long, 1);
+            ARM9_ExecuteCycles(ARM9Cast, 4 + instr.Long);
         }
         else
         {
+            s8 interlock;
+            if ((instr.Rd != 15) && (!instr.SetFlags))
+            {
+                interlock = ARM9_DecodeInterlocks(ARM9Cast, false, instr.Rd, 1, 1);
+            }
             // CHECKME: are these timings correct?
             if (!instr.Long)
             {
-                // 2 cycles effectively
-                ARM9_ExecuteCycles(ARM9Cast, 1, 2);
+                ARM9_ExecuteCycles(ARM9Cast, 2 + interlock);
             }
             else
             {
-                ARM9_ExecuteCycles(ARM9Cast, 3, 1);
+                ARM9_ExecuteCycles(ARM9Cast, 3 + interlock);
             }
         }
     }
@@ -373,7 +378,7 @@ void ARM_Mul(struct ARM* cpu, const struct ARM_Instr instr_data)
     {
         if (instr.Rn != 15) // multiplies fail writeback to pc
         {
-            ARM_SetReg(instr.Rn, mul_out, false, 0, 0);
+            ARM_SetReg(instr.Rn, mul_out);
         }
         // sort of silly way to keep this compatible w/ MUL
         mul_out >>= 32;
@@ -381,25 +386,23 @@ void ARM_Mul(struct ARM* cpu, const struct ARM_Instr instr_data)
 
     if (instr.Rd != 15) // multiplies fail writeback to pc
     {
-        ARM_SetReg(instr.Rd, mul_out, false, !instr.SetFlags, !instr.SetFlags);
+        ARM_SetReg(instr.Rd, mul_out);
     }
 }
 
-s8 ARM9_Mul_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
+s8 ARM9_Mul_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c)
 {
     const union ARM_Multiply_Decode instr = {.Raw = instr_data.Raw};
 
-    s8 stall = 0;
-    ARM9_CheckInterlocks(ARM9, &stall, instr.Rm, 0, false);
-    ARM9_CheckInterlocks(ARM9, &stall, instr.Rs, 0, false);
+    if (instr.Rm == reg) return len;
+    if (instr.Rs == reg) return len;
 
     if (instr.Accumulate)
     {
-        ARM9_CheckInterlocks(ARM9, &stall, instr.Rn, 1, true);
-        if (instr.Long)
-            ARM9_CheckInterlocks(ARM9, &stall, instr.Rd, 1 /*checkme?*/, true);
+        if (instr.Rn == reg) return len_c - 1;
+        if (instr.Long && (instr.Rd == reg)) return len_c - 1; // checkme?
     }
-    return stall;
+    return 0;
 }
 
 // WELCOME TO THE ARMv5+ ONLY CLUB!
@@ -415,7 +418,7 @@ union ARM_CLZ_Decode
     };
 };
 
-void ARM_CLZ(struct ARM* cpu, const struct ARM_Instr instr_data)
+void ARM_CLZ(struct ARM* cpu, const ARM_Instr instr_data)
 {
     const union ARM_CLZ_Decode instr = {.Raw = instr_data.Raw};
 
@@ -424,18 +427,17 @@ void ARM_CLZ(struct ARM* cpu, const struct ARM_Instr instr_data)
 
     ARM_StepPC(cpu, false);
 
-    ARM_ExeCycles(0, 1, 1);
+    ARM_ExeCycles(0, 1);
 
-    ARM_SetReg(instr.Rd, alu_out, false, 0, 0);
+    ARM_SetReg(instr.Rd, alu_out);
 }
 
-s8 ARM9_CLZ_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
+s8 ARM9_CLZ_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c)
 {
     const union ARM_CLZ_Decode instr = {.Raw = instr_data.Raw};
-    s8 stall = 0;
 
-    ARM9_CheckInterlocks(ARM9, &stall, instr.Rm, 0, false);
-    return stall;
+    if (reg == instr.Rm) return len;
+    else return 0;
 }
 
 union ARM_SatMath_Decode
@@ -454,7 +456,7 @@ union ARM_SatMath_Decode
 };
 
 // QADD, QDADD, QSUB, QDSUB
-void ARM_SatMath(struct ARM* cpu, const struct ARM_Instr instr_data)
+void ARM_SatMath(struct ARM* cpu, const ARM_Instr instr_data)
 {
     const union ARM_SatMath_Decode instr = {.Raw = instr_data.Raw};
 
@@ -502,22 +504,23 @@ void ARM_SatMath(struct ARM* cpu, const struct ARM_Instr instr_data)
         cpu->CPSR.QSticky = true;
     }
 
-    ARM_ExeCycles(0, 1, 1);
-
+    s8 interlock;
     if (instr.Rd != 15) // saturating maths dont support pc writeback
     {
-        ARM_SetReg(instr.Rd, alu_out, false, 1, 1);
+        interlock = ARM9_DecodeInterlocks(ARM9Cast, false, instr.Rd, 1, 1);
+        ARM_SetReg(instr.Rd, alu_out);
     }
+    else interlock = 0;
+
+    ARM_ExeCycles(0, 1+interlock);
 }
 
-s8 ARM9_SatMath_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
+s8 ARM9_SatMath_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c)
 {
     const union ARM_SatMath_Decode instr = {.Raw = instr_data.Raw};
-    s8 stall = 0;
 
-    ARM9_CheckInterlocks(ARM9, &stall, instr.Rm, 0, false);
-    ARM9_CheckInterlocks(ARM9, &stall, instr.Rn, 0, false);
-    return stall;
+    if ((instr.Rm == reg) || (instr.Rn == reg)) return len;
+    return 0;
 }
 
 
@@ -539,7 +542,7 @@ union ARM_HalfwordMul_Decode
     };
 };
 
-void ARM_HalfwordMul(struct ARM* cpu, const struct ARM_Instr instr_data)
+void ARM_HalfwordMul(struct ARM* cpu, const ARM_Instr instr_data)
 {
     const union ARM_HalfwordMul_Decode instr = {.Raw = instr_data.Raw};
 
@@ -550,7 +553,6 @@ void ARM_HalfwordMul(struct ARM* cpu, const struct ARM_Instr instr_data)
     s64 mul_out;
     s32 rm_val;
     s32 rs_val;
-    int memlen;
     switch(instr.Opcode)
     {
     case 0: // smla<x><y>
@@ -558,7 +560,6 @@ void ARM_HalfwordMul(struct ARM* cpu, const struct ARM_Instr instr_data)
         oplong = false;
         opword = false;
         opacc = true;
-        memlen = 1;
         break;
     }
     case 1: // smlaw<y> / smulw<y>
@@ -566,7 +567,6 @@ void ARM_HalfwordMul(struct ARM* cpu, const struct ARM_Instr instr_data)
         oplong = false;
         opword = true;
         opacc = !instr.X;
-        memlen = 1;
         break;
     }
     case 2: // smlal<x><y>
@@ -574,7 +574,6 @@ void ARM_HalfwordMul(struct ARM* cpu, const struct ARM_Instr instr_data)
         oplong = true;
         opword = false;
         opacc = true;
-        memlen = 1;
         break;
     }
     case 3: // smul<x><y>
@@ -582,7 +581,6 @@ void ARM_HalfwordMul(struct ARM* cpu, const struct ARM_Instr instr_data)
         oplong = false;
         opword = false;
         opacc = false;
-        memlen = 2;
         break;
     }
     }
@@ -595,7 +593,6 @@ void ARM_HalfwordMul(struct ARM* cpu, const struct ARM_Instr instr_data)
     rs_val = (s32)(s16)(ARM_GetReg(instr.Rs) >> (16*instr.Y));
 
     ARM_StepPC(cpu, false);
-    ARM_ExeCycles(0, 1, memlen);
 
     mul_out = rm_val * rs_val;
 
@@ -627,22 +624,26 @@ void ARM_HalfwordMul(struct ARM* cpu, const struct ARM_Instr instr_data)
         if (instr.Rn != 15) // multiplies fail writeback to pc
         {
             // checkme: interlocks?
-            ARM_SetReg(instr.Rn, mul_out, false, 0, 0);
+            ARM_SetReg(instr.Rn, mul_out);
         }
         // sort of silly way to keep this compatible w/ short muls
         mul_out >>= 32;
     }
 
+    s8 interlock;
     if (instr.Rd != 15) // multiplies fail writeback to pc
     {
-        ARM_SetReg(instr.Rd, mul_out, false, 1, 1);
+        interlock = ARM9_DecodeInterlocks(ARM9Cast, false, instr.Rd, 1, 1);
+        ARM_SetReg(instr.Rd, mul_out);
     }
+    else interlock = 0;
+
+    ARM_ExeCycles(0, 1 + oplong);
 }
 
-s8 ARM9_HalfwordMul_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
+s8 ARM9_HalfwordMul_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c)
 {
     const union ARM_HalfwordMul_Decode instr = {.Raw = instr_data.Raw};
-    s8 stall = 0;
     bool oplong;
     bool opacc;
     switch(instr.Opcode)
@@ -673,11 +674,9 @@ s8 ARM9_HalfwordMul_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr ins
     }
     }
 
-    ARM9_CheckInterlocks(ARM9, &stall, instr.Rm, 0, false);
-    ARM9_CheckInterlocks(ARM9, &stall, instr.Rs, 0, false);
+    if ((instr.Rm == reg) || (instr.Rs == reg)) return len;
     // CHECKME: accumulate interlock timings and port.
-    if (opacc) ARM9_CheckInterlocks(ARM9, &stall, instr.Rn, 1, true);
-    if (oplong) ARM9_CheckInterlocks(ARM9, &stall, instr.Rd, 1, true);
+    if ((opacc && (instr.Rn == reg)) || (oplong && (instr.Rd == reg))) return len_c-1;
 
-    return stall;
+    return 0;
 }

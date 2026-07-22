@@ -28,7 +28,7 @@ union ARM_LoadStore_Decode
     };
 };
 
-void ARM_LoadStore(struct ARM* cpu, const struct ARM_Instr instr_data)
+void ARM_LoadStore(struct ARM* cpu, const ARM_Instr instr_data)
 {
     const union ARM_LoadStore_Decode instr = {.Raw = instr_data.Raw};
 
@@ -104,6 +104,70 @@ void ARM_LoadStore(struct ARM* cpu, const struct ARM_Instr instr_data)
         addr = wbaddr;
     }
 
+    ARM_StepPC(cpu, false);
+
+    if (instr.Load)
+    {
+        if (cpu->CPUID == ARM7ID)
+        {
+            if ((instr.Writeback || !instr.PreIndex))
+            {
+                if (instr.Rn == 15)
+                {
+                    // it's always fun when an "unpredictable" instruction encoding does something that leaves you genuinely flabbergasted.
+                    // the address used for the load is still +8 but the writeback value is +12 for some reason...?
+                    // the loaded value is also not properly written back afterwards for some reason
+                    //      my best guess is that the "Rd writeback cycle" gets overridden by the pipeline refill cycles
+                    //      i'm currently speculating the cpu uses a form of microcode internally, and encoding a list of things to do one each cycle of an instructio
+                    //      and the cycle that should writeback the load gets replaced by the base writeback's pipeline refill cycles due to an "oversight" in decoding (in quotes since this behavior is already out of spec)
+                    //      so this part actually kinda makes sense i think
+                    // this only applies to Rn and not Rm
+                    // and only happens for loads and not stores
+                    // and the two above facts make me so fucking confused because there's no obvious reason why ldr and str would handle base writeback differently???
+                    // maybe it has something to do with address pipelining???????????
+                    // btw this is (probably) not the correct way to emulate this. but the correct way to do this is probably stupid, and this works correctly for this specific edge case at least.
+                    // some insight might be able to be gained via ldm user bank quirks? since i believe those bug out reg reads only on the first cycle of an instruction? or at least that's how it works on gba...?
+                    wbaddr += 4;
+                }
+                ARM_SetReg(instr.Rn, wbaddr);
+            }
+        }
+        else // arm9e-s
+        {
+            // base writeback doesn't work for pc on arm9e-s
+            if ((instr.Writeback || !instr.PreIndex) && (instr.Rn != 15))
+            {
+                ARM_SetReg(instr.Rn, wbaddr);
+            }
+        }
+    }
+    else // store
+    {
+        u32 val = ARM_GetReg(instr.Rd); // Rd is fetched before base writeback
+
+        if (cpu->CPUID == ARM7ID)
+        {
+            // note: for some reason str doesn't get affected by the weird nonsense ldr does on arm7tdmi when using pc as base
+            if ((instr.Writeback || !instr.PreIndex))
+            {
+                ARM_SetReg(instr.Rn, wbaddr);
+            }
+        }
+        else // arm9e-s
+        {
+            // base writeback doesn't work for pc on arm9e-s
+            if ((instr.Writeback || !instr.PreIndex) && (instr.Rn != 15))
+            {
+                ARM_SetReg(instr.Rn, wbaddr);
+            }
+
+            // schedule store
+        }
+    }
+
+// i want to handle this differently
+#if 0
+
     // actually writeback
     if (instr.Writeback || (!instr.PreIndex))
     {
@@ -112,14 +176,7 @@ void ARM_LoadStore(struct ARM* cpu, const struct ARM_Instr instr_data)
             // base writeback to PC
             if (cpu->CPUID == ARM7ID)
             {
-                flush = true;
-                // it's always fun when an "unpredictable" instruction encoding does something that leaves you genuinely flabbergasted.
-                // the actual load is +8
-                // writeback value is +12
-                // the actual load is also not properly written back afterwards for some reason
-                // this is not the correct way to emulate this. but the correct way to do this is probably stupid.
-                // dont ask me why this only applies to Loads....
-                if (instr.Load)
+                flush = true;if (instr.Load)
                     wbaddr += 4;
             }
             else if (cpu->CPUID == ARM9ID)
@@ -130,7 +187,8 @@ void ARM_LoadStore(struct ARM* cpu, const struct ARM_Instr instr_data)
             }
         }
 
-        ARM_SetReg(instr.Rn, wbaddr, true, 0, 0);
+        static_assert(false, "this is broken for str");
+        ARM_SetReg(instr.Rn, wbaddr);
     }
     skipwriteback:
 
@@ -141,8 +199,7 @@ void ARM_LoadStore(struct ARM* cpu, const struct ARM_Instr instr_data)
         cpu->Privileged = false;
     }
 
-    // arm9 timings are input as 0 since they will be added during the actual fetch
-    ARM_ExeCycles(1, 1, 0);
+    ARM_ExeCycles(1, 1);
 
     ARM_StepPC(cpu, false);
 
@@ -237,9 +294,10 @@ void ARM_LoadStore(struct ARM* cpu, const struct ARM_Instr instr_data)
         cpu->Privileged = oldpriv;
         if (flush) ARM_FlushPipeline;
     }
+#endif
 }
 
-s8 ARM9_LoadStore_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
+s8 ARM9_LoadStore_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data)
 {
     const union ARM_LoadStore_Decode instr = {.Raw = instr_data.Raw};
     s8 stall = 0;
@@ -283,7 +341,7 @@ union ARM_LoadStoreMisc_Decode
     };
 };
 
-void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
+void ARM_LoadStoreMisc(struct ARM* cpu, const ARM_Instr instr_data)
 {
     const union ARM_LoadStoreMisc_Decode instr = {.Raw = instr_data.Raw};
 
@@ -565,7 +623,7 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const struct ARM_Instr instr_data)
     else if (flush) ARM_FlushPipeline;
 }
 
-s8 ARM9_LoadStoreMisc_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
+s8 ARM9_LoadStoreMisc_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data)
 {
     const union ARM_LoadStoreMisc_Decode instr = {.Raw = instr_data.Raw};
     s8 stall = 0;
@@ -604,7 +662,7 @@ union ARM_LoadStoreMultiple_Decode
     };
 };
 
-void ARM_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
+void ARM_LoadStoreMultiple(struct ARM* cpu, const ARM_Instr instr_data)
 {
     union ARM_LoadStoreMultiple_Decode instr = {.Raw = instr_data.Raw};
 
@@ -798,7 +856,7 @@ void ARM_LoadStoreMultiple(struct ARM* cpu, const struct ARM_Instr instr_data)
     else if (flush) ARM_FlushPipeline;
 }
 
-s8 ARM9_LoadStoreMultiple_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
+s8 ARM9_LoadStoreMultiple_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data)
 {
     const union ARM_LoadStoreMultiple_Decode instr = {.Raw = instr_data.Raw};
     s8 stall = 0;
@@ -829,7 +887,7 @@ union ARM_Swap_Decode
     };
 };
 
-void ARM_Swap(struct ARM* cpu, const struct ARM_Instr instr_data)
+void ARM_Swap(struct ARM* cpu, const ARM_Instr instr_data)
 {
     const union ARM_Swap_Decode instr = {.Raw = instr_data.Raw};
 
@@ -842,7 +900,7 @@ void ARM_Swap(struct ARM* cpu, const struct ARM_Instr instr_data)
     int interlock = 0;
 
     // arm9 timings are input as 0 since they will be added during the actual fetch
-    ARM_ExeCycles(1, 1, 0);
+    ARM_ExeCycles(1, 1);
 
     ARM_StepPC(cpu, false);
     timestamp oldts = 0;
@@ -906,7 +964,7 @@ void ARM_Swap(struct ARM* cpu, const struct ARM_Instr instr_data)
     }
 }
 
-s8 ARM9_Swap_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
+s8 ARM9_Swap_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data)
 {
     const union ARM_Swap_Decode instr = {.Raw = instr_data.Raw};
     s8 stall = 0;

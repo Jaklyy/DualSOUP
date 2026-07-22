@@ -36,7 +36,7 @@ void ARM7_Reset(struct ARM7TDMI* ARM7, const bool delayflush)
     ARM7_SetPC(ARM7, ARMVector_RST, delayflush);
 }
 
-void ARM7_RaiseUDF(struct ARM* ARM, const struct ARM_Instr instr_data, const int cycles)
+void ARM7_RaiseUDF(struct ARM* ARM, const ARM_Instr instr_data, const int cycles)
 {
     struct ARM7TDMI* ARM7 = (struct ARM7TDMI*)ARM;
 
@@ -62,17 +62,17 @@ void ARM7_RaiseUDF(struct ARM* ARM, const struct ARM_Instr instr_data, const int
     ARM7_SetPC(ARM7, ARMVector_UND, false);
 }
 
-void ARM7_UndefinedInstruction(struct ARM* ARM, const struct ARM_Instr instr_data)
+void ARM7_UndefinedInstruction(struct ARM* ARM, const ARM_Instr instr_data)
 {
     ARM7_RaiseUDF(ARM, instr_data, 1);
 }
 
-void THUMB7_UndefinedInstruction(struct ARM* ARM, const struct ARM_Instr instr_data)
+void THUMB7_UndefinedInstruction(struct ARM* ARM, const ARM_Instr instr_data)
 {
     ARM7_RaiseUDF(ARM, instr_data, 1);
 }
 
-void ARM7_SoftwareInterrupt(struct ARM* ARM, [[maybe_unused]] const struct ARM_Instr instr_data)
+void ARM7_SoftwareInterrupt(struct ARM* ARM, [[maybe_unused]] const ARM_Instr instr_data)
 {
     // TODO: could add a print here for logging software interrupts that gets fired.
     struct ARM7TDMI* ARM7 = (struct ARM7TDMI*)ARM;
@@ -93,7 +93,7 @@ void ARM7_SoftwareInterrupt(struct ARM* ARM, [[maybe_unused]] const struct ARM_I
     ARM7_SetPC(ARM7, ARMVector_SWI, false);
 }
 
-void THUMB7_SoftwareInterrupt(struct ARM* ARM, const struct ARM_Instr instr_data)
+void THUMB7_SoftwareInterrupt(struct ARM* ARM, const ARM_Instr instr_data)
 {
     ARM7_SoftwareInterrupt(ARM, instr_data);
 }

@@ -141,7 +141,7 @@ void ARM9_Reset(struct ARM946ES* ARM9, const bool itcm, const bool hivec, const 
     ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVector_RST, delayflush, 0);
 }
 
-void ARM9_RaiseUDF(struct ARM* ARM, const struct ARM_Instr instr_data, const int execycles, const int memcycles)
+void ARM9_RaiseUDF(struct ARM* ARM, const ARM_Instr instr_data, const int execycles, const int memcycles)
 {
     struct ARM946ES* ARM9 = (struct ARM946ES*)ARM;
     if (cpu->CPSR.Thumb)
@@ -168,17 +168,17 @@ void ARM9_RaiseUDF(struct ARM* ARM, const struct ARM_Instr instr_data, const int
     ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVector_UND, false, 0);
 }
 
-void ARM9_UndefinedInstruction(struct ARM* ARM, const struct ARM_Instr instr_data)
+void ARM9_UndefinedInstruction(struct ARM* ARM, const ARM_Instr instr_data)
 {
     ARM9_RaiseUDF(ARM, instr_data, 1, 1);
 }
 
-void THUMB9_UndefinedInstruction(struct ARM* ARM, const struct ARM_Instr instr_data)
+void THUMB9_UndefinedInstruction(struct ARM* ARM, const ARM_Instr instr_data)
 {
     ARM9_RaiseUDF(ARM, instr_data, 1, 1);
 }
 
-void ARM9_SoftwareInterrupt(struct ARM* ARM, [[maybe_unused]] const struct ARM_Instr instr_data)
+void ARM9_SoftwareInterrupt(struct ARM* ARM, [[maybe_unused]] const ARM_Instr instr_data)
 {
     // TODO: could add a print here for logging software interrupts that gets fired.
     struct ARM946ES* ARM9 = (struct ARM946ES*)ARM;
@@ -199,12 +199,12 @@ void ARM9_SoftwareInterrupt(struct ARM* ARM, [[maybe_unused]] const struct ARM_I
     ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVector_SWI, false, 0);
 }
 
-void THUMB9_SoftwareInterrupt(struct ARM* ARM, const struct ARM_Instr instr_data)
+void THUMB9_SoftwareInterrupt(struct ARM* ARM, const ARM_Instr instr_data)
 {
     ARM9_SoftwareInterrupt(ARM, instr_data);
 }
 
-void ARM9_PrefetchAbort(struct ARM* ARM, const struct ARM_Instr instr_data)
+void ARM9_PrefetchAbort(struct ARM* ARM, const ARM_Instr instr_data)
 {
     struct ARM946ES* ARM9 = (struct ARM946ES*)ARM;
 
@@ -237,7 +237,7 @@ void ARM9_PrefetchAbort(struct ARM* ARM, const struct ARM_Instr instr_data)
     ARM9_SetPC(ARM9, ARM9_GetExceptionBase(ARM9) + ARMVector_PAB, false, 0);
 }
 
-void THUMB9_PrefetchAbort(struct ARM* ARM, const struct ARM_Instr instr_data)
+void THUMB9_PrefetchAbort(struct ARM* ARM, const ARM_Instr instr_data)
 {
     ARM9_PrefetchAbort(ARM, instr_data);
 }

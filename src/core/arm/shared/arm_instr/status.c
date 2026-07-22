@@ -31,7 +31,7 @@ union ARM_StatusReg_Decode
     };
 };
 
-void ARM_MRS(struct ARM* cpu, const struct ARM_Instr instr_data)
+void ARM_MRS(struct ARM* cpu, const ARM_Instr instr_data)
 {
     const union ARM_StatusReg_Decode instr = {.Raw = instr_data.Raw};
 
@@ -39,16 +39,16 @@ void ARM_MRS(struct ARM* cpu, const struct ARM_Instr instr_data)
 
     ARM_StepPC(cpu, false);
     // TODO: double check timings.
-    ARM_ExeCycles(1, 1, 2);
+    ARM_ExeCycles(1, 2);
 
     // r15 writeback doesn't work on arm9
     if ((instr.Rd != 15) || (cpu->CPUID != ARM9ID))
     {
-        ARM_SetReg(instr.Rd, psr, false, 0, 0);
+        ARM_SetReg(instr.Rd, psr);
     }
 }
 
-void ARM_MSR(struct ARM* cpu, const struct ARM_Instr instr_data)
+void ARM_MSR(struct ARM* cpu, const ARM_Instr instr_data)
 {
     const union ARM_StatusReg_Decode instr = {.Raw = instr_data.Raw};
 
@@ -130,18 +130,18 @@ void ARM_MSR(struct ARM* cpu, const struct ARM_Instr instr_data)
         // yes that is actually how it works.
         // no i dont know why it cares about the extension or status bits?
         // CHECKME: ...it might also care about none set actually...?
-        ARM9_ExecuteCycles(ARM9Cast, 3, 1);
+        ARM9_ExecuteCycles(ARM9Cast, 3);
     }
     else
     {
-        ARM_ExeCycles(1, 1, 1);
+        ARM_ExeCycles(1, 1);
     }
 
 
     ((instr.UseSPSR) ? ARM_SetSPSR((union ARM_PSR){.Raw = psr}) : ARM_SetCPSR(cpu, psr));
 }
 
-s8 ARM9_MSR_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
+s8 ARM9_MSR_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data)
 {
     const union ARM_StatusReg_Decode instr = {.Raw = instr_data.Raw};
     s8 stall = 0;

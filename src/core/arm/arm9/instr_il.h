@@ -7,8 +7,8 @@
 
 
 // stubs
-[[nodiscard]] s8 ARM9_None_Interlocks([[maybe_unused]] struct ARM946ES* ARM9, [[maybe_unused]] const struct ARM_Instr instr_data);
-[[nodiscard]] s8 THUMB9_None_Interlocks([[maybe_unused]] struct ARM946ES* ARM9, [[maybe_unused]] const struct ARM_Instr instr_data);
+[[nodiscard]] s8 ARM9_None_Interlocks([[maybe_unused]] struct ARM946ES* ARM9, [[maybe_unused]] const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c);
+[[nodiscard]] s8 THUMB9_None_Interlocks([[maybe_unused]] struct ARM946ES* ARM9, [[maybe_unused]] const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c);
 #define ARM9_UNIMPL_Interlocks ARM9_None_Interlocks
 #define THUMB9_UNIMPL_Interlocks THUMB9_None_Interlocks
 
@@ -17,62 +17,62 @@
 // ARM
 
 // misc
-[[nodiscard]] s8 ARM9_Uncond_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data);
+[[nodiscard]] s8 ARM9_Uncond_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c);
 
 // data processing
-[[nodiscard]] s8 ARM9_DataProc_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data);
-[[nodiscard]] s8 ARM9_Mul_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data);
-[[nodiscard]] s8 ARM9_CLZ_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data); 
-[[nodiscard]] s8 ARM9_SatMath_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data);
-[[nodiscard]] s8 ARM9_HalfwordMul_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data);
+[[nodiscard]] s8 ARM9_DataProc_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c);
+[[nodiscard]] s8 ARM9_Mul_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c);
+[[nodiscard]] s8 ARM9_CLZ_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c); 
+[[nodiscard]] s8 ARM9_SatMath_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c);
+[[nodiscard]] s8 ARM9_HalfwordMul_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c);
 
 // coprocessor
-[[nodiscard]] s8 ARM9_MCR_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data);
-[[nodiscard]] s8 ARM9_MRC_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data);
+[[nodiscard]] s8 ARM9_MCR_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c);
+[[nodiscard]] s8 ARM9_MRC_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c);
 #define ARM9_MRC_Interlocks ARM9_None_Interlocks
-[[nodiscard]] s8 ARM9_LDC_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data);
+[[nodiscard]] s8 ARM9_LDC_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c);
 
 // branch
-[[nodiscard]] s8 ARM9_BranchExchange_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data);
+[[nodiscard]] s8 ARM9_BranchExchange_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c);
 #define ARM9_Branch_Interlocks ARM9_None_Interlocks
 #define ARM9_BLXImm_Interlocks ARM9_None_Interlocks
 
 // status
 #define ARM9_MRS_Interlocks ARM9_None_Interlocks
-s8 ARM9_MSR_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data);
+s8 ARM9_MSR_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c);
 
 // load/store
-s8 ARM9_LoadStore_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data);
-s8 ARM9_LoadStoreMisc_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data);
-s8 ARM9_LoadStoreMultiple_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data);
-s8 ARM9_Swap_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data);
+s8 ARM9_LoadStore_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c);
+s8 ARM9_LoadStoreMisc_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c);
+s8 ARM9_LoadStoreMultiple_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c);
+s8 ARM9_Swap_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c);
 
 
 
 // THUMB
 
 // dataprocessing
-[[nodiscard]] s8 THUMB9_ShiftImm_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data);
-[[nodiscard]] s8 THUMB9_AddSub_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data);
+[[nodiscard]] s8 THUMB9_ShiftImm_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c);
+[[nodiscard]] s8 THUMB9_AddSub_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c);
 #define THUMB9_MovsImm8_Interlocks THUMB9_None_Interlocks
-[[nodiscard]] s8 THUMB9_DataProcImm8_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data);
-[[nodiscard]] s8 THUMB9_DataProcReg_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data);
-[[nodiscard]] s8 THUMB9_DataProcHiReg_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data);
-[[nodiscard]] s8 THUMB9_AddPCSPRel_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data);
-[[nodiscard]] s8 THUMB9_AdjustSP_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data);
+[[nodiscard]] s8 THUMB9_DataProcImm8_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c);
+[[nodiscard]] s8 THUMB9_DataProcReg_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c);
+[[nodiscard]] s8 THUMB9_DataProcHiReg_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c);
+[[nodiscard]] s8 THUMB9_AddPCSPRel_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c);
+[[nodiscard]] s8 THUMB9_AdjustSP_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c);
 
 // branch
 #define THUMB9_BranchCond_Interlocks THUMB9_None_Interlocks
-[[nodiscard]] s8 THUMB9_Branch_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data);
+[[nodiscard]] s8 THUMB9_Branch_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c);
 
 // load/store
-[[nodiscard]] s8 THUMB9_LoadStoreReg_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data);
-[[nodiscard]] s8 THUMB9_LoadStoreImm_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data);
+[[nodiscard]] s8 THUMB9_LoadStoreReg_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c);
+[[nodiscard]] s8 THUMB9_LoadStoreImm_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c);
 #define THUMB9_LoadStoreWordImm_Interlocks THUMB9_LoadStoreImm_Interlocks
 #define THUMB9_LoadStoreHalfwordImm_Interlocks THUMB9_LoadStoreImm_Interlocks
 #define THUMB9_LoadStoreByteImm_Interlocks THUMB9_LoadStoreImm_Interlocks
 #define THUMB9_LoadPCRel_Interlocks THUMB9_None_Interlocks
-[[nodiscard]] s8 THUMB9_LoadStoreSPRel_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data);
-[[nodiscard]] s8 THUMB9_Push_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data);
-[[nodiscard]] s8 THUMB9_Pop_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data);
-[[nodiscard]] s8 THUMB9_LoadStoreMultiple_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data);
+[[nodiscard]] s8 THUMB9_LoadStoreSPRel_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c);
+[[nodiscard]] s8 THUMB9_Push_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c);
+[[nodiscard]] s8 THUMB9_Pop_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c);
+[[nodiscard]] s8 THUMB9_LoadStoreMultiple_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c);

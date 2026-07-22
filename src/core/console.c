@@ -446,15 +446,15 @@ void Console_DirectBoot(struct Console* sys)
     for (int i = 0; i < 0x70; i++)
         sys->MainRAM.b8[((0x27FFC80 + i) & (MainRAM_Size-1))] = sys->Firmware.RAM[usersettings+i];
 
-    ARM9_SetPC(&sys->ARM9, arm9_entryaddr, true, 0);
-    ARM7_SetPC(&sys->ARM7, arm7_entryaddr, true);
+    ARM9_SetPC(&sys->ARM9, arm9_entryaddr, 0);
+    ARM7_SetPC(&sys->ARM7, arm7_entryaddr);
     sys->DirectBoot = true;
 }
 
 void Console_Reset(struct Console* sys)
 {
-    ARM9_Reset(&sys->ARM9, false /*unverified I guess?*/, true, true);
-    ARM7_Reset(&sys->ARM7, true);
+    ARM9_Reset(&sys->ARM9, false /*unverified I guess?*/, true);
+    ARM7_Reset(&sys->ARM7);
 
     // TODO: reset dma?
 }
@@ -595,6 +595,15 @@ void Console_MainLoop(struct Console* sys)
 #ifdef DUMPAUDIO
     sys->log = fopen("audioout.bin", "wb");
 #endif
-    ARM9_MainLoop(&sys->ARM9);
+
+    while(!sys->KillThread)
+    {
+        ARM9_MainLoop(&sys->ARM9);
+        // check dma9
+        ARM7_MainLoop(&sys->ARM7);
+        // check dma7
+        // scheduler
+    }
+
     return;
 }

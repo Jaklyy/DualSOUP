@@ -1,0 +1,57 @@
+branch:
+    7TDMI:
+        1. wait i data, calc b addr, signal nonseq instr
+        2. signal branch addr, lr = pc, signal seq instr
+        3. lr = lr - 4 (???), signal branch addr + L, signal seq instr
+    9E-S:
+        1. signal instr N, wait for prior fetches, 
+
+    if rs
+    {
+        1:
+            fetch shifter regs
+            barrel shifter
+            step pc
+
+        2:
+            fetch alu reg
+            alu op
+
+            if rd pc
+            {
+                set pc alu
+                n instr
+
+                3:
+                    step pc
+                    s instr
+                4:
+                    step pc
+                    s instr
+                    decode next
+            }
+            else
+            {
+                s instr
+            }
+    }
+    else
+    {
+        1:
+            fetch regs
+            barrelshifter
+            step pc
+            alu op
+            reg writeback
+            decode next
+            check interlocks
+            if interlock
+            {
+                2:
+            }
+            s instr
+    }
+
+
+
+

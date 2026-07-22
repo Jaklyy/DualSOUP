@@ -15,7 +15,7 @@ union THUMB_BranchCond_Decode
     };
 };
 
-void THUMB_BranchCond(struct ARM* cpu, const struct ARM_Instr instr_data)
+void THUMB_BranchCond(struct ARM* cpu, const ARM_Instr instr_data)
 {
     const union THUMB_BranchCond_Decode instr = {.Raw = instr_data.Raw};
 
@@ -29,7 +29,7 @@ void THUMB_BranchCond(struct ARM* cpu, const struct ARM_Instr instr_data)
         return ARM_RaiseUDF;
     }
 
-    ARM_ExeCycles(1, 1, 1);
+    ARM_ExeCycles(1, 1);
 
     if (ARM_ConditionLookup(instr.Condition, cpu->CPSR.Flags))
     {
@@ -37,7 +37,7 @@ void THUMB_BranchCond(struct ARM* cpu, const struct ARM_Instr instr_data)
         addr += (s32)instr.ImmS8 * 2;
 
         // dont bother stepping pc since we update it anyway.
-        ARM_SetReg(15, addr, false, 0, 0);
+        ARM_SetReg(15, addr);
     }
     else
     {
@@ -59,7 +59,7 @@ union THUMB_Branch_Decode
     };
 };
 
-void THUMB_Branch(struct ARM* cpu, const struct ARM_Instr instr_data)
+void THUMB_Branch(struct ARM* cpu, const ARM_Instr instr_data)
 {
     const union THUMB_Branch_Decode instr = {.Raw = instr_data.Raw};
 
@@ -94,7 +94,7 @@ void THUMB_Branch(struct ARM* cpu, const struct ARM_Instr instr_data)
     u32 link = ARM_GetReg(15);
     u32 addr = ((opcode == 0b00) ? link : ARM_GetReg(14));
 
-    ARM_ExeCycles(1, 1, 1);
+    ARM_ExeCycles(1, 1);
 
     // update link register
     if (opcode != 0b00) // NOT branch uncond
@@ -111,7 +111,7 @@ void THUMB_Branch(struct ARM* cpu, const struct ARM_Instr instr_data)
             // this gets the same effect as subtracting 2 and setting the interworking bit
             link -= 1;
         }
-        ARM_SetReg(14, link, false, 0, 0);
+        ARM_SetReg(14, link);
     }
 
     // branch (write to pc)
@@ -126,11 +126,11 @@ void THUMB_Branch(struct ARM* cpu, const struct ARM_Instr instr_data)
             addr &= ~3;
         }
 
-        ARM_SetReg(15, addr, false, 0, 0);
+        ARM_SetReg(15, addr);
     }
 }
 
-s8 THUMB9_Branch_Interlocks(struct ARM946ES* ARM9, const struct ARM_Instr instr_data)
+s8 THUMB9_Branch_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data)
 {
     const union THUMB_Branch_Decode instr = {.Raw = instr_data.Raw};
     s8 stall = 0;

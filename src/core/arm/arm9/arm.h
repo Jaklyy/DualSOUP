@@ -194,7 +194,7 @@ struct ARM9_WriteBuffer
     u8 FIFODrainPtr;
 };
 
-struct ARM9_MPUPerms
+typedef struct
 {
     bool Read : 1;
     bool Write : 1;
@@ -202,7 +202,22 @@ struct ARM9_MPUPerms
     bool ICache : 1;
     bool DCache : 1;
     bool Buffer : 1;
-};
+} ARM9_MPUPerms;
+
+typedef enum : u8
+{
+    A9InstrBus_Abort,
+    A9InstrBus_ITCM,
+    A9InstrBus_ICache,
+    A9InstrBus_BIU,
+} ARM9_InstrBus;
+
+typedef enum : u8
+{
+    A9BusDefer_None,
+    A9BusDefer_Load,
+    A9BusDefer_Store,
+} ARM9_BusDefer;
 
 #ifdef __SSE2__
     #define ARM9_ICacheSetLookup \
@@ -297,11 +312,21 @@ struct ARM9_MPUPerms
 struct ARM946ES
 {
     struct ARM ARM;
-    alignas(32) s8 RegIL[16][2]; // r15 shouldn't be able to interlock(?) but the extra byte should be kept for alignment purposes.
+    //alignas(32) s8 RegIL[16][2]; // r15 shouldn't be able to interlock(?) but the extra byte should be kept for alignment purposes.
     struct ARM9_CacheStream DStream;
     struct ARM9_CacheStream IStream;
     struct ARM9_WriteBuffer WBuffer;
-    u16 LatchedHalfword; // used for thumb upper halfword fetches
+    union
+    {
+        struct
+        {
+            s8 Cur; // test as no interlock via: (& 0x10)
+            s8 Next; // should always be set as: (reg | 0x80)
+        };
+        s16 Raw; // move Next to Cur via (>>= 8) to automatically set as none via sign extension.
+    } RegIL; // should be initialized as -1
+
+    u32 InstrLatch; // used for thumb upper halfword fetches (speculative: 32 bit?)
     bool ITCM_DataAccess; // used for handling deferrence of data accesses to itcm
     bool BoostedClock; /*   Determines whether the ARM9 is running at 4 or 2 times the bus clock.
                         *   Should only apply to the DSi bus.
@@ -315,7 +340,9 @@ struct ARM946ES
     timestamp LastBusTime;
     timestamp DataContTS; // data bus contention timestamp
     timestamp InstrContTS; // instr bus contention timestamp
-    bool DeferredWrite;
+    ARM9_InstrBus InstrBus; // cached
+    // used for handling internal reordering of data accesses to itcm
+    ARM9_BusDefer DeferredType;
     u16 DeferredAddr;
     u32 DeferredVal;
     struct
@@ -358,10 +385,10 @@ struct ARM946ES
         u8 ITCMShift;
         u64 DTCMReadBase;
         u64 DTCMWriteBase;
-        alignas(sizeof(u8)*8) struct ARM9_MPUPerms MPURegionPermsUser[8];
+        alignas(sizeof(u8)*8) ARM9_MPUPerms MPURegionPermsUser[8];
         alignas(sizeof(u32)*8) u32 MPURegionBase[8];
         alignas(sizeof(u32)*8) u32 MPURegionMask[8];
-        alignas(sizeof(u8)*8) struct ARM9_MPUPerms MPURegionPermsPriv[8];
+        alignas(sizeof(u8)*8) ARM9_MPUPerms MPURegionPermsPriv[8];
         u64 DCachePRNG;
         u64 ICachePRNG;
     } CP15; // Coprocessor 15; System Control.
@@ -376,10 +403,10 @@ struct ARM946ES
 // ensure casting between the two types works as expected
 static_assert(offsetof(struct ARM946ES, ARM) == 0);
 
-extern void (*ARM9_InstructionLUT[0x1000])(struct ARM*, struct ARM_Instr);
-extern s8 (*ARM9_InterlockLUT[0x1000])(struct ARM946ES*, struct ARM_Instr);
-extern void (*THUMB9_InstructionLUT[64])(struct ARM*, struct ARM_Instr);
-extern s8 (*THUMB9_InterlockLUT[64])(struct ARM946ES*, struct ARM_Instr);
+extern void (*ARM9_InstructionLUT[0x1000])(struct ARM*, ARM_Instr);
+extern s8 (*ARM9_InterlockLUT[0x1000])(struct ARM946ES*, ARM_Instr, s8, s8, s8);
+extern void (*THUMB9_InstructionLUT[64])(struct ARM*, ARM_Instr);
+extern s8 (*THUMB9_InterlockLUT[64])(struct ARM946ES*, ARM_Instr, s8, s8, s8);
 
 // run to initialize the cpu.
 // assumes everything was zero'd out.
@@ -393,30 +420,29 @@ void ARM9_MainLoop(struct ARM946ES* ARM9);
 void ARM9_Log(struct ARM946ES* ARM9);
 
 // special exceptions.
-void ARM9_Reset(struct ARM946ES* ARM9, const bool itcm, const bool hivec, const bool delayflush);
+void ARM9_Reset(struct ARM946ES* ARM9, const bool itcm, const bool hivec);
 void ARM9_DataAbort(struct ARM946ES* ARM9);
 void ARM9_InterruptRequest(struct ARM946ES* ARM9);
 // only used by debugger hardware.
 void ARM9_FastInterruptRequest(struct ARM946ES* ARM9);
 
-void ARM9_RaiseUDF(struct ARM* ARM, const struct ARM_Instr instr_data, const int execycles, const int memcycles);
+void ARM9_RaiseUDF(struct ARM* ARM, const ARM_Instr instr_data, const int execycles, const int memcycles);
 // executed exceptions.
-void ARM9_UndefinedInstruction(struct ARM* cpu, const struct ARM_Instr instr_data);
-void ARM9_SoftwareInterrupt(struct ARM* ARM, const struct ARM_Instr instr_data);
-void ARM9_PrefetchAbort(struct ARM* ARM, const struct ARM_Instr instr_data);
+void ARM9_UndefinedInstruction(struct ARM* cpu, const ARM_Instr instr_data);
+void ARM9_SoftwareInterrupt(struct ARM* ARM, const ARM_Instr instr_data);
+void ARM9_PrefetchAbort(struct ARM* ARM, const ARM_Instr instr_data);
 // stubs to make the compiler shut up
-void THUMB9_UndefinedInstruction(struct ARM* ARM, const struct ARM_Instr instr_data);
-void THUMB9_SoftwareInterrupt(struct ARM* ARM, const struct ARM_Instr instr_data);
-void THUMB9_PrefetchAbort(struct ARM* ARM, const struct ARM_Instr instr_data);
+void THUMB9_UndefinedInstruction(struct ARM* ARM, const ARM_Instr instr_data);
+void THUMB9_SoftwareInterrupt(struct ARM* ARM, const ARM_Instr instr_data);
+void THUMB9_PrefetchAbort(struct ARM* ARM, const ARM_Instr instr_data);
 
 // read register.
 [[nodiscard]] u32 ARM9_GetReg(struct ARM946ES* ARM9, const int reg);
 // write register.
 // also sets up interlocks.
-void ARM9_SetReg(struct ARM946ES* ARM9, const int reg, u32 val, const bool delayflush, const s8 iloffs, const s8 iloffs_c);
+void ARM9_SetReg(struct ARM946ES* ARM9, const int reg, u32 val);
 // write program counter (r15).
-void ARM9_SetPC(struct ARM946ES* ARM9, u32 addr, const bool delayflush, const s8 iloffs);
-void ARM9_FlushPipeline(struct ARM946ES* ARM9);
+void ARM9_SetPC(struct ARM946ES* ARM9, u32 addr);
 
 [[nodiscard]] union ARM_PSR ARM9_GetSPSR(struct ARM946ES* ARM9);
 // NOTE: this has 0 sanity checking for the inputs.
@@ -424,18 +450,21 @@ void ARM9_SetSPSR(struct ARM946ES* ARM9, union ARM_PSR psr);
 
 // decrement interlock waits.
 void ARM9_UpdateInterlocks(struct ARM946ES* ARM9, const s8 diff);
+s8 ARM9_DecodeInterlocks(struct ARM946ES* ARM9, const bool thumb, const s8 reg, const s8 len, const s8 len_c);
 // cycledelay: time between the instruction beginning and register being fetched; used for interlock handling
 // portc: refers to the port used to read from the register bank, does not allow for forwarding from certain instructions resulting in different interlock conditions
 void ARM9_CheckInterlocks(struct ARM946ES* ARM9, s8* stall, const int reg, const s8 cycledelay, const bool portc);
 // handle fetch stage cycles.
 void ARM9_FetchCycles(struct ARM946ES* ARM9, const int fetch);
-// add execute and memory stage cycles.
-void ARM9_ExecuteCycles(struct ARM946ES* ARM9, const int execute, const int memory);
+// add execute stage cycles.
+void ARM9_ExecuteCycles(struct ARM946ES* ARM9, const int execute);
 // use after a load/store family instruction to fix up the timings
 void ARM9_FixupLoadStore(struct ARM946ES* ARM9, const int execute, s64 memdiff);
 
-void ARM9_InstrRead32(struct ARM946ES* ARM9, u32 addr); // arm
-void ARM9_InstrRead16(struct ARM946ES* ARM9, const u32 addr); // thumb
+// should only be run on nonsequentials or when crossing 4 KiB boundaries.
+void ARM9_UpdateInstrRegion(struct ARM946ES* ARM9);
+// returns true if using fast path (does not need to access ahb)
+bool ARM9_InstrRead(struct ARM946ES* ARM9);
 
 [[nodiscard]] u32 ARM9_DataRead32(struct ARM946ES* ARM9, u32 addr, bool* seq, bool* dabt);
 [[nodiscard]] u16 ARM9_DataRead16(struct ARM946ES* ARM9, u32 addr, bool* seq, bool* dabt);
@@ -443,8 +472,9 @@ void ARM9_InstrRead16(struct ARM946ES* ARM9, const u32 addr); // thumb
 void ARM9_DataWrite32(struct ARM946ES* ARM9, u32 addr, u32 val, const bool atomic, const bool deferrable, bool* seq, bool* dabt);
 void ARM9_DataWrite16(struct ARM946ES* ARM9, u32 addr, u32 val, bool* seq, bool* dabt);
 void ARM9_DataWrite8(struct ARM946ES* ARM9, u32 addr, u32 val, const bool atomic, bool* seq, bool* dabt);
+[[nodiscard]] u32 ARM9_RotateExtendUnit(u32 val, const u32 addr, const ARM_DataWidth size, const bool signext, const bool bigendian);
 
-void ARM9_Uncond(struct ARM* cpu, const struct ARM_Instr instr_data); // idk where to put this tbh
+void ARM9_Uncond(struct ARM* cpu, const ARM_Instr instr_data); // idk where to put this tbh
 
 void ARM9_ConfigureITCM(struct ARM946ES* ARM9);
 void ARM9_ConfigureDTCM(struct ARM946ES* ARM9);

@@ -418,6 +418,7 @@ void Bus_MainRAM_ReleaseHold(struct Console* sys, struct AHB* buscur)
     }
 }
 
+// note: it is apparently possible to read past the point where main ram should wrap without it wrapping in 4MiB mode on 3ds
 u32 Bus_MainRAM_Read(struct Console* sys, struct AHB* buscur, const bool bus9, u32 addr, const AHB_HSIZE size, const bool atomic, const bool hold, bool* seq, const bool timings)
 {
     struct BusMainRAM* busmr = &sys->BusMR;
@@ -1036,6 +1037,15 @@ void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
     {
         *ts = sys->AHB9.Timestamp;
     }
+}
+
+void AHB9_BusNegotiate(struct AHB* AHB9, )
+{
+    u8 grantid = stdc_trailing_zeros(AHB9->RequestBitfield);
+
+    // step pipeline
+
+    // req callback
 }
 
 u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const AHB_HSIZE size, const bool atomic, const bool hold, bool* seq, const bool timings, const u32 a7pc)

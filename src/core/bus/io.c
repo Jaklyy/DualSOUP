@@ -476,8 +476,19 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
                         LogPrint(LOG_ARM7|LOG_ODD, "A7 wrote nothing to HaltCR...?\n");
                         break;
                     case 1: // GBA
+                        // GBA mode notes:
+                        //   DS Lite:
+                        //     bits confirmed to impact gba mode:
+                        //       powman - sound amplifier enable
+                        //       powman - lcd backlight enables
+                        //       a9 powcr - lcd swap
+                        //     dont seem to matter:
+                        //       vram banks A/B enable (not sure about border, but it doesn't seem to prevent the game from displaying at least?)
+                        //       a9 powcr - 2d engine A enable
+                        //       a7 powcr - sound en
+                        //       "a9 extmemcnt - main ram gba mode bit"
                         LogPrint(LOG_ARM7|LOG_UNIMP, "But nobody came...\n\n\n...GBA mode unsupported, sorry!\n");
-                        sys->ARM7.ARM.WaitForInterrupt = true;
+                        sys->ARM7.ARM.WaitForInterrupt = true; // note: seems to just work as wfi on 3ds?
                         break;
                     case 2: // halt
                         if (!Console_CheckARM7Wake(sys)) // checkme: might still halt for a little?

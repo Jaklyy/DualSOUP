@@ -87,37 +87,23 @@ u32 ARM7_GetReg(struct ARM7TDMI* ARM7, const int reg)
     return cpu->R[reg];
 }
 
-#define REFILLPIPE \
-    (cpu->CPSR.Thumb) ? ARM7_InstrRead16(ARM7, cpu->PC) : ARM7_InstrRead32(ARM7, cpu->PC); \
-    ARM7_ExecuteCycles(ARM7, 1); \
-    ARM_StepPC(cpu, (cpu->CPSR.Thumb));
-
-void ARM7_FlushPipeline(struct ARM7TDMI* ARM7)
-{
-    cpu->CodeSeq = false;
-    REFILLPIPE
-    cpu->Instr[1] = cpu->Instr[2];
-    REFILLPIPE
-}
-#undef REFILLPIPE
-
-void ARM7_SetPC(struct ARM7TDMI* ARM7, u32 val, const bool delayflush)
+void ARM7_SetPC(struct ARM7TDMI* ARM7, u32 val)
 {
     // arm7 doesn't seem to implement bit0 of program counter
-    // doesn't enforce alignment in arm mode either.
+    // and doesn't enforce alignment in arm mode.
     val &= ~0x1;
+    if (val & 2 && cpu->CPSR.Thumb) LogPrint(LOG_ARM7|LOG_ODD, "ARM7: Misaligned branch in ARM mode.\n");
     cpu->PC = val;
-
-    if (!delayflush) ARM7_FlushPipeline(ARM7);
+    cpu->Prog = ARMProg_RefillStart;
 }
 
-void ARM7_SetReg(struct ARM7TDMI* ARM7, const int reg, u32 val, const bool delayflush)
+void ARM7_SetReg(struct ARM7TDMI* ARM7, const int reg, u32 val)
 {
     // todo: ldm user mode bus contention?
 
-    if (reg == 15) // PC must be handled specially
+    if (reg == 15) // writes to PC need special handling
     {
-        ARM7_SetPC(ARM7, val, delayflush);
+        ARM7_SetPC(ARM7, val);
     }
     else
     {
@@ -134,20 +120,9 @@ void ARM7_ExecuteCycles(struct ARM7TDMI* ARM7, const u32 execute)
     cpu->CodeSeq = (execute == 1);
 }
 
-
-#define FetchIRQExec(size, x) \
-/* Step 2: Fetch upcoming instruction. */ \
-ARM7_InstrRead##size (ARM7, cpu->PC); \
-/* Step 3: Check if an IRQ should be raised. */ \
-if (!ARM7_CheckInterrupts(ARM7)) \
-{ \
-    /* Step 4: Execute the next instruction. */ \
-    x ; \
-}
-
 [[nodiscard]] bool ARM7_CheckInterrupts(struct ARM7TDMI* ARM7)
 {
-    Scheduler_Sync(cpu->Sys, cpu->Timestamp, Sync_Normal7);
+    //Scheduler_Sync(cpu->Sys, cpu->Timestamp, Sync_Normal7);
 
     // TODO: schedule this instead
     if (cpu->Sys->IME7 && !cpu->CPSR.IRQDisable && (cpu->Sys->IE7 & cpu->Sys->IF7))
@@ -168,34 +143,41 @@ if (!ARM7_CheckInterrupts(ARM7)) \
     else return false;
 }
 
-void ARM7_Step(struct ARM7TDMI* ARM7)
+void ARM7_Fetch(struct ARM7TDMI* ARM7)
 {
     // step the pipeline.
     ARM_PipelineStep(cpu);
 
+    // begin instruction fetch
     if (cpu->CPSR.Thumb)
-    {
-        const struct ARM_Instr instr = cpu->Instr[0];
-        const u16 decode = (instr.Thumb >> 10);
-
-        FetchIRQExec(16, THUMB7_InstructionLUT[decode](cpu, instr))
-    }
+        ARM7_InstrRead16(ARM7, cpu->PC);
     else
+        ARM7_InstrRead32(ARM7, cpu->PC);
+}
+
+void ARM7_Exec(struct ARM7TDMI* ARM7)
+{
+    if (!ARM7_CheckInterrupts(ARM7))
     {
-        const struct ARM_Instr instr = cpu->Instr[0];
-        const u8 condcode = instr.Arm >> 28;
-        const u16 decode = ((instr.Arm >> 16) & 0xFF0) | ((instr.Arm >> 4) & 0xF);
-
-        // first we need to check the condition code (should be part of decoding?)
-        if (ARM_ConditionLookup(condcode, cpu->CPSR.Flags))
+        if (cpu->CPSR.Thumb)
         {
-            FetchIRQExec(32, ARM7_InstructionLUT[decode](cpu, instr))
+            const ARM_Instr instr = cpu->Instr[0];
+            const u16 decode = (instr.Thumb >> 10);
+
+            THUMB7_InstructionLUT[decode](cpu, instr);
         }
-        else // failed the condition check.
+        else
         {
-            ARM7_InstrRead32(ARM7, cpu->PC);
+            const ARM_Instr instr = cpu->Instr[0];
+            const u8 condcode = instr.Arm >> 28;
+            const u16 decode = ((instr.Arm >> 16) & 0xFF0) | ((instr.Arm >> 4) & 0xF);
 
-            if (!ARM7_CheckInterrupts(ARM7))
+            // first we need to check the condition code (should be part of decoding?)
+            if (ARM_ConditionLookup(condcode, cpu->CPSR.Flags))
+            {
+                ARM7_InstructionLUT[decode](cpu, instr);
+            }
+            else // failed the condition check.
             {
                 ARM7_ExecuteCycles(ARM7, 1);
                 ARM_StepPC(cpu, false);
@@ -203,57 +185,55 @@ void ARM7_Step(struct ARM7TDMI* ARM7)
         }
     }
 
-    if (cpu->WaitForInterrupt) // is it more correct to do this at the start of a step? does it even matter?
-    {
-        if (Console_CheckARM7Wake(cpu->Sys))
-        {
-            cpu->CpuSleeping = 0;
-        }
-        else
-        {
-            cpu->DeadAsleep = true;
-        }
-    }
+    cpu->Prog = ARMProg_SleepCheck;
 }
-
-#undef ILCheck
-#undef FetchIRQExecute
 
 void ARM7_MainLoop(struct ARM7TDMI* ARM7)
 {
-    while(!CR_Start);
-    ARM7_FlushPipeline(ARM7);
-    while(!CR_Kill)
+    switch(cpu->Prog)
     {
-        if (!cpu->DeadAsleep)
+        case ARMProg_Sleep:
         {
-            if (cpu->Timestamp < cpu->Sys->MainTarget)
+                // TODO?
+            //if (!Console_CheckARM7Wake(cpu->Sys))
             {
-                if (DMA_GetNext(cpu->Sys, 0, false, false) <= cpu->Timestamp)
+                return;
+            }
+            //cpu->Prog = ARMProg_Fetch;
+            //[[fallthrough]]; // checkme?
+        }
+        case ARMProg_RefillStart:
+        case ARMProg_RefillMid:
+        case ARMProg_Fetch:
+        {
+            cpu->Prog += 1; static_assert((((ARMProg_RefillStart + 1) == ARMProg_RefillMid) && ((ARMProg_RefillMid + 1) == ARMProg_Fetch) && ((ARMProg_Fetch + 1) == ARMProg_Exec)), "ARM PROG NEEDS ADJUSTING HERE");
+
+            ARM7_Fetch(ARM7);
+            break;
+        }
+        case ARMProg_Exec:
+        {
+            ARM7_Exec(ARM7);
+            break;
+        }
+        case ARMProg_BusWait:
+        {
+            break;
+        }
+        case ARMProg_SleepCheck:
+        {
+            if (cpu->CpuSleeping) // is it more correct to do this at the start of a step? does it even matter?
+            {
+                if (Console_CheckARM7Wake(cpu->Sys))
                 {
-                    DMA_Run(cpu->Sys, false);
+                    cpu->CpuSleeping = 0;
                 }
                 else
                 {
-                    ARM7_Step(ARM7);
+                    cpu->Prog = ARMProg_Sleep;
                 }
             }
-            else
-            {
-                cpu->Sys->A7Sync = cpu->Timestamp;
-                Scheduler_Sync(cpu->Sys, cpu->Timestamp, Sync_Normal7);
-            }
-        }
-        else
-        {
-            if (DMA_GetNext(cpu->Sys, 0, false, false) < cpu->Sys->MainTarget)
-            {
-                DMA_Run(cpu->Sys, false);
-            }
-            else
-            {
-                Scheduler_Sync(cpu->Sys, DMA_GetNext(cpu->Sys, 0, false, false), Sync_Sleep7);
-            }
+            break;
         }
     }
 }

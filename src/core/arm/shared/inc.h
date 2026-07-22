@@ -15,10 +15,10 @@
     : ARM9_GetReg(ARM9Cast, (reg)) \
 )
 
-#define ARM_SetReg(reg, val, delayflush, interlock, interlock_c) \
+#define ARM_SetReg(reg, val) \
 ((cpu->CPUID == ARM7ID) \
-    ? ARM7_SetReg(ARM7Cast, (reg), (val), (delayflush)) \
-    : ARM9_SetReg(ARM9Cast, (reg), (val), (delayflush), (interlock), (interlock_c)) \
+    ? ARM7_SetReg(ARM7Cast, (reg), (val)) \
+    : ARM9_SetReg(ARM9Cast, (reg), (val)) \
 )
 
 #define ARM_GetSPSR \
@@ -36,10 +36,10 @@
 #define ARM_RestoreSPSR \
 ARM_SetCPSR(cpu, ARM_GetSPSR.Raw)
 
-#define ARM_ExeCycles(exec7, exec9, mem9) \
+#define ARM_ExeCycles(exec7, exec9) \
 ((cpu->CPUID == ARM7ID) \
     ? ARM7_ExecuteCycles(ARM7Cast, (exec7)) \
-    : ARM9_ExecuteCycles(ARM9Cast, (exec9), (mem9)) \
+    : ARM9_ExecuteCycles(ARM9Cast, (exec9)) \
 )
 
 #define ARM_GetVector \

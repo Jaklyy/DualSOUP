@@ -7,8 +7,8 @@
 
 
 // TODO: making this compile time generated might enable better compiler optimizations?
-void (*ARM7_InstructionLUT[0x1000])(struct ARM*, struct ARM_Instr);
-void (*THUMB7_InstructionLUT[64])(struct ARM*, struct ARM_Instr);
+void (*ARM7_InstructionLUT[0x1000])(struct ARM*, ARM_Instr);
+void (*THUMB7_InstructionLUT[64])(struct ARM*, ARM_Instr);
 
 
 #define CHECK(cmp, mask, ptr) \
@@ -74,7 +74,7 @@ if (PatternMatch((struct Pattern) {0b##cmp, 0b##mask}, decode)) \
     THUMB##ptr(ARM, instr_data); \
 else
 
-void THUMB7_Misc(struct ARM* ARM, const struct ARM_Instr instr_data)
+void THUMB7_Misc(struct ARM* ARM, const ARM_Instr instr_data)
 {
     const u16 decode = (instr_data.Raw >> 3) & 0x1FF;
 

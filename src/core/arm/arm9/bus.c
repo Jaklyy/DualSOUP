@@ -28,7 +28,7 @@ bool ARM9_DTCMTryWrite(const struct ARM946ES* ARM9, const u32 addr)
     return (((u64)addr >> ARM9->CP15.DTCMShift) == ARM9->CP15.DTCMWriteBase);
 }
 
-struct ARM9_MPUPerms ARM9_RegionLookup(const struct ARM946ES* ARM9, const u32 addr, const bool priv)
+ARM9_MPUPerms ARM9_RegionLookup(const struct ARM946ES* ARM9, const u32 addr, const bool priv)
 {
 #ifdef __AVX2__
     __m256i addrs = _mm256_set1_epi32(addr);
@@ -46,7 +46,7 @@ struct ARM9_MPUPerms ARM9_RegionLookup(const struct ARM946ES* ARM9, const u32 ad
             return (priv ? ARM9->CP15.MPURegionPermsPriv[i] : ARM9->CP15.MPURegionPermsUser[i]);
     }
 #endif 
-    return (struct ARM9_MPUPerms) {.Read = false, .Write = false, .Exec = false, .ICache = false, .DCache = false, .Buffer = false};
+    return (ARM9_MPUPerms) {.Read = false, .Write = false, .Exec = false, .ICache = false, .DCache = false, .Buffer = false};
 }
 
 // this function results in the timestamp being aligned with the bus clock
@@ -305,7 +305,7 @@ u64 ARM9_CachePRNG(u64* input)
 	return *input = x;
 }
 
-u32 ARM9_ICacheLookup(struct ARM946ES* ARM9, const u32 addr, const bool timings)
+u32 ARM9_ICacheLookup(struct ARM946ES* ARM9, const u32 addr, u32* instr)
 {
     ARM9_ICacheSetLookup
 
@@ -313,7 +313,7 @@ u32 ARM9_ICacheLookup(struct ARM946ES* ARM9, const u32 addr, const bool timings)
     if (set < ARM9_ICacheAssoc)
     {
         // use set to lookup into icache
-        if (timings)
+        if (true)
         {
             if (ARM9->ARM.Timestamp < ARM9->InstrContTS)
                 ARM9->ARM.Timestamp += 1;
@@ -322,7 +322,8 @@ u32 ARM9_ICacheLookup(struct ARM946ES* ARM9, const u32 addr, const bool timings)
             ARM9->InstrContTS = ARM9->ARM.Timestamp;
         }
 
-        return ARM9->ICache.b32[((index | set)<<3) | ((addr/sizeof(u32)) & 0x7)];
+        *instr = ARM9->ICache.b32[((index | set)<<3) | ((addr/sizeof(u32)) & 0x7)];
+        return true;
     }
 
     // cache line fill time, oh boy.
@@ -340,6 +341,7 @@ u32 ARM9_ICacheLookup(struct ARM946ES* ARM9, const u32 addr, const bool timings)
     ARM9->ITagRAM[index+set].Valid = true;
     ARM9->ITagRAM[index+set].TagBits = (tagcmp >> 1);
 
+    static_assert(false, "REDO CACHE STREAMING\n");
     // begin cache streaming
     ARM9_CatchUpWriteBuffer(ARM9, &ARM9->ARM.Timestamp);
 
@@ -404,6 +406,7 @@ u32 ARM9_DCacheReadLookup(struct ARM946ES* ARM9, const u32 addr, const bool timi
     ARM9->DTagRAM[index|set].Valid = true;
     ARM9->DTagRAM[index|set].TagBits = (tagcmp >> 1);
 
+    static_assert(false, "REDO CACHE STREAMING\n");
     // begin cache streaming
     ARM9_DrainWriteBuffer(ARM9, &ARM9->MemTimestamp);
 
@@ -483,10 +486,10 @@ bool ARM9_ProgressCacheStream(timestamp* ts, struct ARM9_CacheStream* stream, co
     return true;
 }
 
+#if 0
 // CHECKME: need better research on how p. abt, cache streaming, and ahb accesses interact with i.bus contention and data itcm deference
-
 // always 32 bit
-u32 ARM9_InstrRead(struct ARM946ES* ARM9, const u32 addr, const struct ARM9_MPUPerms perms, const bool timings)
+u32 ARM9_InstrRead(struct ARM946ES* ARM9, const u32 addr, const ARM9_MPUPerms perms, const bool timings)
 {
     // itcm
     if (ARM9_ITCMTryRead(ARM9, addr))
@@ -521,7 +524,7 @@ void ARM9_InstrRead32(struct ARM946ES* ARM9, const u32 addr)
 {
     bool timings = !ARM9_ProgressCacheStream(&ARM9->ARM.Timestamp, &ARM9->IStream, ARM9->ARM.CodeSeq);
 
-    const struct ARM9_MPUPerms perms = ARM9_RegionLookup(ARM9, addr, ARM9->ARM.Privileged);
+    const ARM9_MPUPerms perms = ARM9_RegionLookup(ARM9, addr, ARM9->ARM.Privileged);
     // TODO: prefetch abort
     // CHECKME: is this before or after cache streaming is checked for
     if (!perms.Exec)
@@ -529,44 +532,47 @@ void ARM9_InstrRead32(struct ARM946ES* ARM9, const u32 addr)
         ARM9_Log(ARM9);
         ARM9_FetchCycles(ARM9, 1);
 
-        ARM9->ARM.Instr[2] = (struct ARM_Instr){.Raw = 0xE1200070, // encode bkpt as a minor hack to avoid needing dedicated prefetch abort handling.
+        ARM9->ARM.Instr[2] = (ARM_Instr){.Raw = 0xE1200070, // encode bkpt as a minor hack to avoid needing dedicated prefetch abort handling.
                                                 .Aborted = true,
                                                 .CoprocPriv = false}; // privilege bug shouldn't matter here; aborted instrs aren't coprocessor instructions.
     }
     else
     {
-        ARM9->ARM.Instr[2] = (struct ARM_Instr){.Raw = ARM9_InstrRead(ARM9, addr, perms, timings),
+        ARM9->ARM.Instr[2] = (ARM_Instr){.Raw = ARM9_InstrRead(ARM9, addr, perms, timings),
                                                 .Aborted = false,
                                                 .CoprocPriv = ARM9->ARM.Privileged};
     }
 }
 
-// thumb
 void ARM9_InstrRead16(struct ARM946ES* ARM9, const u32 addr)
 {
     u32 instr;
+    // sequential, not word aligned
     if ((addr & 2) && ARM9->ARM.CodeSeq) // note: not 100% sure if this logic is correct but it probably doesn't matter...?
     {
         // CHECKME: can this prefetch abort somehow?
+        // NOTE: the instruction latch is specified as part of the BIU (ARM946E-S AHB interface), but it seems to apply to itcm fetches as well.
 
+        // oddly it seems to also still have contention with data accesses to itcm?
+        // (in fact most things do???)
         if (ARM9->ARM.Timestamp < ARM9->InstrContTS)
             ARM9->ARM.Timestamp += 1;
 
         ARM9_FetchCycles(ARM9, 1);
         ARM9->InstrContTS = ARM9->ARM.Timestamp;
 
-        // use latched halfword
-        instr = ARM9->LatchedHalfword;
+        // use latched instruction data
+        instr = ARM9->InstrLatch >> 16;
     }
-    else
+    else if (((addr & (KiB(4)-1))) && !ARM9->ARM.CodeSeq)
     {
-        const struct ARM9_MPUPerms perms = ARM9_RegionLookup(ARM9, addr, ARM9->ARM.Privileged);
-        // CHECKME: is this before or after cache streaming is checked for
+        const ARM9_MPUPerms perms = ARM9_RegionLookup(ARM9, addr, ARM9->ARM.Privileged);
+        // CHECKME: should prefetch aborts be stalled by cache streaming?
         if (!perms.Exec)
         {
             ARM9_Log(ARM9);
             ARM9_FetchCycles(ARM9, 1);
-            ARM9->ARM.Instr[2] = (struct ARM_Instr){.Raw = 0xBE00, // encode bkpt as a minor hack to avoid needing dedicated prefetch abort handling.
+            ARM9->ARM.Instr[2] = (ARM_Instr){.Raw = 0xBE00, // encode bkpt as a minor hack to avoid needing dedicated prefetch abort handling.
                                                     .Aborted = true,
                                                     .CoprocPriv = false}; // privilege bug shouldn't matter here; aborted instrs aren't coprocessor instructions.
             return;
@@ -587,7 +593,7 @@ void ARM9_InstrRead16(struct ARM946ES* ARM9, const u32 addr)
                 // save other halfword for later
                 // TODO: I think this is wrong for big endian
                 // CHECKME: does latching apply to all access types?
-                ARM9->LatchedHalfword = (instr >> 16);
+                ARM9->InstrLatch = (instr >> 16);
 
                 // NOTE: not sure if clearing the high bits is correct?
                 // it's not currently clear if it's possible to switch from thumb -> arm without a pipeline flush on the ARM946E-S, but exact behavior might matter for handling that.
@@ -596,9 +602,169 @@ void ARM9_InstrRead16(struct ARM946ES* ARM9, const u32 addr)
         }
     }
 
-    ARM9->ARM.Instr[2] = (struct ARM_Instr){.Raw = instr,
+    ARM9->ARM.Instr[2] = (ARM_Instr){.Raw = instr,
                                             .Aborted = false,
                                             .CoprocPriv = false}; // privilege bug shouldn't matter here; thumb does not have coprocessor instructions.
+}
+#endif
+
+void ARM9_InstrFetchAborted(struct ARM946ES* ARM9)
+{
+    ARM9_Log(ARM9);
+    ARM9_FetchCycles(ARM9, 1);
+    // Note: no latching is done here because no instruction fetch was done.
+    if (ARM9->ARM.CPSR.Thumb)
+    {
+        ARM9->ARM.Instr[2] = (ARM_Instr){.Raw = 0xBE00, // encode bkpt as a minor hack to avoid needing dedicated prefetch abort handling.
+                                         .Aborted = true, // flag used for distinguishing bkpt from actual prefetch aborts.
+                                         .CoprocPriv = false}; // privilege bug shouldn't matter here; aborted instrs aren't coprocessor instructions.
+    }
+    else // arm
+    {
+        ARM9->ARM.Instr[2] = (ARM_Instr){.Raw = 0xE1200070, // encode bkpt as a minor hack to avoid needing dedicated prefetch abort handling.
+                                         .Aborted = true, // flag used for distinguishing bkpt from actual prefetch aborts.
+                                         .CoprocPriv = false}; // privilege bug shouldn't matter here; aborted instrs aren't coprocessor instructions.
+    }
+}
+
+/*
+    notes on ITCM: (from arm946e-s reference manual)
+    instr + read = 2 cycles (read stalled)
+    write -> read = 3 cycles (write addr needs to be input in sync with wr data, so read addr is delayed)
+    write -> instr = 3 cycles (write addr needs to be input in syns with wr data, so instr addr is delayed)
+    read -> instr = 3 cycles (read stalled ??? multiplexer???????)
+    instr + write = 2 cycles (instr first)
+*/
+void ARM9_InstrFetchITCM(struct ARM946ES* ARM9)
+{
+    const u32 addr = ARM9->ARM.PC;
+    if (ARM9->ARM.Timestamp < ARM9->InstrContTS)
+        ARM9->ARM.Timestamp += 1;
+
+    ARM9_FetchCycles(ARM9, 1);
+    ARM9->InstrContTS = ARM9->ARM.Timestamp;
+
+    u32 fetch = MemoryRead(32, ARM9->ITCM, addr, ARM9_ITCMSize);
+    ARM9->InstrLatch = fetch;
+    if (ARM9->ARM.CPSR.Thumb && ARM9->CP15.CR.BigEndian)
+    {
+        // the ARM9E-S core loads the high halfword first in big endian mode
+        ARM9->ARM.Instr[2] = (ARM_Instr){.Raw = (fetch >> 16),
+                                         .Aborted = false,
+                                         .CoprocPriv = ARM9->ARM.Privileged};
+    }
+    else
+    {
+        ARM9->ARM.Instr[2] = (ARM_Instr){.Raw = fetch,
+                                         .Aborted = false,
+                                         .CoprocPriv = ARM9->ARM.Privileged};
+    }
+}
+
+bool ARM9_InstrFetchICache(struct ARM946ES* ARM9)
+{
+    const u32 addr = ARM9->ARM.PC;
+    u32 fetch;
+    if (ARM9_ICacheLookup(ARM9, addr, &fetch))
+    {
+        ARM9->InstrLatch = fetch;
+        if (ARM9->ARM.CPSR.Thumb && ARM9->CP15.CR.BigEndian)
+        {
+            // the ARM9E-S core loads the high halfword first in big endian mode
+            ARM9->ARM.Instr[2] = (ARM_Instr){.Raw = (fetch >> 16),
+                                             .Aborted = false,
+                                             .CoprocPriv = ARM9->ARM.Privileged};
+        }
+        else
+        {
+            ARM9->ARM.Instr[2] = (ARM_Instr){.Raw = fetch,
+                                             .Aborted = false,
+                                             .CoprocPriv = ARM9->ARM.Privileged};
+        }
+        return true;
+    }
+    else return false;
+}
+
+void ARM9_InstrFetchBIU(struct ARM946ES* ARM9)
+{
+    const u32 addr = ARM9->ARM.PC;
+
+    static_assert(false, "BUS????\n");
+}
+
+void ARM9_UpdateInstrRegion(struct ARM946ES* ARM9)
+{
+    const u32 addr = ARM9->ARM.PC;
+    const ARM9_MPUPerms perms = ARM9_RegionLookup(ARM9, addr, ARM9->ARM.Privileged);
+
+    if (!perms.Exec)
+    {
+        ARM9->InstrBus = A9InstrBus_Abort;
+    }
+    else if (ARM9_ITCMTryRead(ARM9, addr))
+    {
+        ARM9->InstrBus = A9InstrBus_ITCM;
+    }
+    else if (perms.ICache)
+    {
+        ARM9->InstrBus = A9InstrBus_ICache;
+    }
+    else
+    {
+        ARM9->InstrBus = A9InstrBus_BIU;
+    }
+}
+
+bool ARM9_InstrRead(struct ARM946ES* ARM9)
+{
+    const u32 addr = ARM9->ARM.PC;
+    // supposedly arm9 only checks mpu perms on non-sequentials or when crossing 4KiB boundaries (the min region granularity)
+    // its supposed to forcibly split bursts on 4KiB boundaries as a result.
+    // note: im checking for sequential here
+    if (!(addr & (KiB(4)-1)) && ARM9->ARM.CodeSeq)
+    {
+        ARM9->ARM.CodeSeq = false;
+        ARM9_UpdateInstrRegion(ARM9);
+    }
+
+    // fetch from latched instruction
+    // NOTE: the technical reference manual describes the instruction latching as part of the BIU (ARM946E-S AHB interface)
+    // but it seems to apply to itcm fetches as well, so presumably its done by the ARM9E-S core (or right before its sent to the core?)
+    if ((addr & 2) && !ARM9->ARM.CodeSeq)
+    {
+        if (!ARM9->ARM.CPSR.Thumb) CrashSpectacularly("ARM9: Latched Instruction Fetch in ARM Mode?\n");
+        // oddly it seems to still have contention with data accesses to itcm?
+        // (in fact most things do???)
+        // TODO: explore this more thoroughly and try to understand the why behind this.
+        // make sure there's no weird edge cases involved.
+        if (ARM9->ARM.Timestamp < ARM9->InstrContTS)
+            ARM9->ARM.Timestamp += 1;
+
+        ARM9_FetchCycles(ARM9, 1);
+        ARM9->InstrContTS = ARM9->ARM.Timestamp;
+
+        // use latched instruction data
+        u32 instr = ARM9->InstrLatch;
+        // big endian mode thumb uses the low halfword
+        if (!ARM9->CP15.CR.BigEndian)
+            instr >>= 16;
+
+        ARM9->ARM.Instr[2] = (ARM_Instr){.Raw = instr,
+                                         .Aborted = false,
+                                         .CoprocPriv = ARM9->ARM.Privileged};
+        return true;
+    }
+    else // new fetch will be performed.
+    {
+        switch(ARM9->InstrBus)
+        {
+        case A9InstrBus_Abort: ARM9_InstrFetchAborted(ARM9); return true;
+        case A9InstrBus_ITCM: ARM9_InstrFetchITCM(ARM9); return true;
+        case A9InstrBus_ICache: return ARM9_InstrFetchICache(ARM9);
+        case A9InstrBus_BIU: ARM9_InstrFetchBIU(ARM9); return false;
+        }
+    }
 }
 
 u32 ARM9_DataRead(struct ARM946ES* ARM9, const u32 addr, const AHB_HSIZE size, bool* seq, bool* dabt)
@@ -620,10 +786,10 @@ u32 ARM9_DataRead(struct ARM946ES* ARM9, const u32 addr, const AHB_HSIZE size, b
     if (ARM9->MemTimestamp < ARM9->DataContTS)
         ARM9->MemTimestamp = ARM9->DataContTS;
 
-    const struct ARM9_MPUPerms perms = ARM9_RegionLookup(ARM9, addr, ARM9->ARM.Privileged);
+    const ARM9_MPUPerms perms = ARM9_RegionLookup(ARM9, addr, ARM9->ARM.Privileged);
     if (!perms.Read)
     {
-        ARM9_Log(ARM9);
+        //ARM9_Log(ARM9);
         LogPrint(LOG_ARM9|LOG_EXCEP, "DATA ABORT: READ FROM: %08X\n", addr);
         ARM9->MemTimestamp += 1;
         *dabt = true;
@@ -681,12 +847,49 @@ u32 ARM9_DataRead32(struct ARM946ES* ARM9, u32 addr, bool* seq, bool* dabt)
 u16 ARM9_DataRead16(struct ARM946ES* ARM9, u32 addr, bool* seq, bool* dabt)
 {
     u32 ret = ARM9_DataRead(ARM9, addr & ~1, HSIZE_16, seq, dabt);
+}
 
-    // note: arm9 ldrh doesn't do a rotate right so we need to special case the correction here.
-    if (ARM9->CP15.CR.BigEndian)
-        return ROR32(ret, (((addr&2)^2) * 8));
-    else
-        return ROR32(ret, ((addr&2) * 8));
+u32 ARM9_RotateExtendUnit(u32 val, const u32 addr, const ARM_DataWidth size, const bool signext, const bool bigendian)
+{
+    switch (size)
+    {
+    case ARMDataWidth_8:
+    {
+        u8 rotate = addr & 0x3;
+        if (bigendian) rotate ^= 0x3;
+        val = ROR32(val, (rotate * 8));
+
+        if (signext)
+            val = (s32)(s8)val;
+        else // zero extend
+            val &= 0xFF;
+
+        return val;
+    }
+    case ARMDataWidth_16:
+    {
+        // misaligned halfword loads no longer result in odd byte rotate behavior
+        u8 rotate = addr & 0x2;
+        if (bigendian) rotate ^= 0x2;
+        val = ROR32(val, (rotate * 8));
+
+        if (signext)
+            val = (s32)(s16)val;
+        else // zero extend
+            val &= 0xFFFF;
+
+        return val;
+    }
+    case ARMDataWidth_32:
+    {
+        // for some reason this is architecturally defined behavior?
+        // what were they smoking
+        // behavior does not change with big endian toggle
+        val = ROR32(val, ((addr & 0x3) * 8));
+        return val;
+    }
+    default: unreachable();
+    }
 }
 
 u32 ARM9_DataRead8(struct ARM946ES* ARM9, u32 addr, bool* seq, bool* dabt)
@@ -715,10 +918,10 @@ void ARM9_DataWrite(struct ARM946ES* ARM9, u32 addr, const u32 val, const u32 ah
     //if (ARM9->MemTimestamp < ARM9->DataContTS)
     //    ARM9->MemTimestamp = ARM9->DataContTS;
 
-    const struct ARM9_MPUPerms perms = ARM9_RegionLookup(ARM9, addr, ARM9->ARM.Privileged);
+    const ARM9_MPUPerms perms = ARM9_RegionLookup(ARM9, addr, ARM9->ARM.Privileged);
     if (!perms.Write)
     {
-        ARM9_Log(ARM9);
+        //ARM9_Log(ARM9);
         LogPrint(LOG_ARM9|LOG_EXCEP, "DATA ABORT: WRITE TO: %08X\n", addr);
         ARM9->MemTimestamp += 1;
         *dabt = true;
@@ -729,11 +932,11 @@ void ARM9_DataWrite(struct ARM946ES* ARM9, u32 addr, const u32 val, const u32 ah
     {
         // itcm writes (and presumably reads too but those matter less) are reordered after the arm9 instruction bus goes;
         // this doesn't apply to instructions like ldm/stm since those start sequential burst and the instr read can't begin until later on in the instruction
-        // (internal buses wont interrupt other internal buses)
+        // (internal buses dont seem to interrupt other internal buses?)
         // this does apply to swp interestingly enough.
         if (deferrable)
         {
-            ARM9->DeferredWrite = true;
+            ARM9->DeferredType = A9BusDefer_Store;
             ARM9->DeferredAddr = addr; // this truncates the addr, but that's fine.
             ARM9->DeferredVal = val;
             ARM9->DeferredMask = biumask;
@@ -833,22 +1036,33 @@ void ARM9_DataWrite8(struct ARM946ES* ARM9, u32 addr, u32 val, const bool atomic
     ARM9_DataWrite(ARM9, addr, val, ahbmask, biumask, atomic, true, seq, dabt);
 }
 
-void ARM9_DeferredITCMWrite(struct ARM946ES* ARM9)
+void ARM9_DeferredITCMHandler(struct ARM946ES* ARM9)
 {
-    if (!ARM9->DeferredWrite) return;
-    // CHECKME: Does this cause data bus contention too?
-    MemoryWrite(32, ARM9->ITCM, ARM9->DeferredAddr, ARM9_ITCMSize, ARM9->DeferredVal, ARM9->DeferredMask);
+    switch(ARM9->DeferredType)
+    {
+    case A9BusDefer_None: return;
+    case A9BusDefer_Store:
+    {
+        // CHECKME: Does this cause data bus contention too?
+        MemoryWrite(32, ARM9->ITCM, ARM9->DeferredAddr, ARM9_ITCMSize, ARM9->DeferredVal, ARM9->DeferredMask);
 
-    //timestamp old = ARM9->MemTimestamp;
-    //if (ARM9->MemTimestamp <= ARM9->InstrContTS)
-    //    ARM9->MemTimestamp += 1;
+        //timestamp old = ARM9->MemTimestamp;
+        //if (ARM9->MemTimestamp <= ARM9->InstrContTS)
+        //    ARM9->MemTimestamp += 1;
 
-    //ARM9->MemTimestamp += 1;
+        //ARM9->MemTimestamp += 1;
 
-    ARM9->DeferredWrite = false;
+        ARM9->DeferredType = A9BusDefer_None;
 
-    // these probably need to run again
-    // jakly why did you make the timing logic so convoluted and unintuitive?
-    //ARM9_UpdateInterlocks(ARM9, ARM9->MemTimestamp - old);
-    //ARM9_FetchCycles(ARM9, 0);
+        // these probably need to run again
+        // jakly why did you make the timing logic so convoluted and unintuitive?
+        //ARM9_UpdateInterlocks(ARM9, ARM9->MemTimestamp - old);
+        //ARM9_FetchCycles(ARM9, 0);
+        return;
+    }
+    case A9BusDefer_Load:
+    {
+        return;
+    }
+    }
 }

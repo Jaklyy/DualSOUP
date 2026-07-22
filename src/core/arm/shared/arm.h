@@ -51,11 +51,26 @@ enum ARM_Exception_Vector_Offsets : u8
 };
 
 // proper order of these matters
-enum ARM_PipelineProg : u8
+typedef enum : u8
 {
-    ARMPipe_Fetch,
-    ARMPipe_Exec,
-};
+    ARMProg_Sleep,
+    ARMProg_RefillStart,
+    ARMProg_RefillStartBusy,
+    ARMProg_RefillMid,
+    ARMProg_RefillMidBusy,
+    ARMProg_Fetch,
+    ARMProg_FetchBusy,
+    ARMProg_Exec,
+    ARMProg_MemBusy,
+    ARMProg_SleepCheck,
+} ARMProg;
+
+typedef enum
+{
+    ARMDataWidth_8,
+    ARMDataWidth_16,
+    ARMDataWidth_32,
+} ARM_DataWidth;
 
 union ARM_FlagsOut
 {
@@ -100,7 +115,7 @@ union ARM_PSR
     };
 };
 
-struct ARM_Instr
+typedef struct
 {
     alignas(u64)
     union
@@ -111,7 +126,7 @@ struct ARM_Instr
     };
     bool Aborted; // whether the instruction fetch raised a prefetch abort; used for fixing prefetch aborts during flushless switches to thumb, and distinguishing real aborts w/ bkpt
     bool CoprocPriv; // whether the coprocessor pipeline thinks we have privilege or not.
-};
+} ARM_Instr;
 
 #define ARM_CoprocReg(Op1, CRn, CRm, Op2) (((Op1) << 11) | ((CRn) << 7) | ((CRm) << 3) | (Op2))
 
@@ -179,8 +194,8 @@ struct ARM
     u8 CPUID;
     bool Privileged; // permissions
     bool CodeSeq; // should the next code fetch be sequential
-    bool DeadAsleep;
-    alignas(alignof(struct ARM_Instr)*4) struct ARM_Instr Instr[3]; // prefetch pipeline
+    ARMProg Prog;
+    alignas(alignof(ARM_Instr)*4) ARM_Instr Instr[3]; // prefetch pipeline
     timestamp Timestamp;
     timestamp MinWakeup;
     struct Console* Sys;

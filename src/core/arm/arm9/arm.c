@@ -34,6 +34,11 @@ void ARM9_Init(struct ARM946ES* ARM9, struct Console* sys)
     // 7 indicates no cache streaming in progress
     ARM9->DStream.Prog = 7;
     ARM9->IStream.Prog = 7;
+
+    // set as no interlocks
+    ARM9->RegIL.Raw = -1;
+
+    // TODO: initial values are placeholders
     ARM9->CP15.DCachePRNG = 0x0123456789ABCDEF;
     ARM9->CP15.ICachePRNG = 0xFEDCBA9876543210;
 }
@@ -100,6 +105,7 @@ u32 ARM9_GetReg(struct ARM946ES* ARM9, const int reg)
 // base is memory stage end - 1
 // 
 
+#if 0
 void ARM9_UpdateInterlocks(struct ARM946ES* ARM9, const s8 diff)
 {
     // i spent some time writing simd for this manually but it's so simple auto-simd was just as good.
@@ -109,7 +115,6 @@ void ARM9_UpdateInterlocks(struct ARM946ES* ARM9, const s8 diff)
         if (ARM9->RegIL[i & 0xF][i>>4] < 0) ARM9->RegIL[i & 0xF][i>>4] = 0;
     }
 }
-
 void ARM9_InterlockStall(struct ARM946ES* ARM9, const s8 stall)
 {
 #if 1
@@ -125,54 +130,35 @@ void ARM9_InterlockStall(struct ARM946ES* ARM9, const s8 stall)
     ARM9_UpdateInterlocks(ARM9, stall & ~mask);
 #endif
 }
-
-#define REFILLPIPE \
-    (cpu->CPSR.Thumb) ? ARM9_InstrRead16(ARM9, cpu->PC) : ARM9_InstrRead32(ARM9, cpu->PC); \
-    ARM9_ExecuteCycles(ARM9, 1, 1); \
-    ARM_StepPC(cpu, cpu->CPSR.Thumb);
-
-void ARM9_FlushPipeline(struct ARM946ES* ARM9)
+#endif
+void ARM9_SetPC(struct ARM946ES* ARM9, u32 addr)
 {
-    cpu->CodeSeq = false;
-    REFILLPIPE
-    cpu->Instr[1] = cpu->Instr[2];
-    REFILLPIPE
-}
-#undef REFILLPIPE
-
-void ARM9_SetPC(struct ARM946ES* ARM9, u32 addr, const bool delayflush, const s8 iloffs)
-{
-    // TEMP: debugging
-    //ARM9_DumpMPU(ARM9);
-    //ARM9_Log(ARM9);
-    //if (addr == 0x020C42A8) CrashSpectacularly("OSPANIC\n");
-
-    // arm9 enforces pc alignment properly for once.
+    // arm9 enforces pc alignment properly in arm mode.
     addr &= ~(cpu->CPSR.Thumb ? 0x1 : 0x3);
-    // r15 interlocks must be resolved immediately.
-    // checkme: this should probably be done during pipeline flush logic?
-    ARM9_InterlockStall(ARM9, iloffs);
+
+    // assign potential interlocks here
+    //ARM9->RegIL[15][0] = iloffs;
 
     cpu->PC = addr;
-
-    if (!delayflush) ARM9_FlushPipeline(ARM9);
+    cpu->Prog = ARMProg_RefillStart;
 }
 
-void ARM9_SetReg(struct ARM946ES* ARM9, const int reg, u32 val, const bool delayflush, const s8 iloffs, const s8 iloffs_c)
+void ARM9_SetReg(struct ARM946ES* ARM9, const int reg, u32 val)
 {
     if (reg == 15) // PC must be handled specially
     {
-        ARM9_SetPC(ARM9, val, delayflush, iloffs); // CHECKME: should this be the port C time?
+        ARM9_SetPC(ARM9, val); // CHECKME: should this be the port C time?
     }
     else
     {
         // I pray that nothing makes it any more complex than this.
         cpu->R[reg] = val;
-        ARM9->RegIL[reg][0] = iloffs;
-        ARM9->RegIL[reg][1] = iloffs_c;
+        //ARM9->RegIL[reg][0] = iloffs;
+        //ARM9->RegIL[reg][1] = iloffs_c;
     }
 }
 
+#if 0
 void ARM9_CheckInterlocks(struct ARM946ES* ARM9, s8* stall, const int reg, const s8 cycledelay, const bool portc)
 {
     // the fact this always needs a branch really annoys me.
@@ -188,7 +174,7 @@ void ARM9_CheckInterlocks(struct ARM946ES* ARM9, s8* stall, const int reg, const
     *stall = (mask & ~(mask>>7)) + diff;
 #endif
 }
-
+#endif
 void ARM9_FetchCycles(struct ARM946ES* ARM9, const int fetch)
 {
     cpu->Timestamp += fetch;
@@ -198,8 +184,10 @@ void ARM9_FetchCycles(struct ARM946ES* ARM9, const int fetch)
         cpu->Timestamp = (ARM9->MemTimestamp);
 }
 
-void ARM9_ExecuteCycles(struct ARM946ES* ARM9, const int execute, const int memory)
+void ARM9_ExecuteCycles(struct ARM946ES* ARM9, const int execute)
 {
+    cpu->Timestamp += execute - 1;
+#if 0
     // execute cycles must be minus 1 due to how im handling pipeline overlaps
     cpu->Timestamp += execute - 1;
 
@@ -213,6 +201,7 @@ void ARM9_ExecuteCycles(struct ARM946ES* ARM9, const int execute, const int memo
     ARM9_UpdateInterlocks(ARM9, diff);
 
     cpu->CodeSeq = true;
+#endif
 }
 
 void ARM9_FixupLoadStore(struct ARM946ES* ARM9, const int execute, s64 memdiff)
@@ -222,24 +211,6 @@ void ARM9_FixupLoadStore(struct ARM946ES* ARM9, const int execute, s64 memdiff)
     if (memdiff < s8_min) memdiff = s8_min;
     ARM9_UpdateInterlocks(ARM9, memdiff);
 }
-
-void ARM9_DeferredITCMWrite(struct ARM946ES* ARM9);
-
-#define ILCheck(size, x) \
-    /* Step 1: Handle interlocks. */ \
-    s8 stall = x (ARM9, instr); \
-    ARM9_InterlockStall(ARM9, stall); \
-
-#define FetchIRQExec(size, x) \
-    /* Step 2: Fetch upcoming instruction. */ \
-    ARM9_InstrRead##size (ARM9, cpu->PC); \
-    ARM9_DeferredITCMWrite(ARM9); \
-    /* Step 3: Check if an IRQ should be raised. */ \
-    if (!ARM9_CheckInterrupts(ARM9)) \
-    { \
-        /* Step 4: Execute the next instruction. */ \
-        x ; \
-    }
 
 [[nodiscard]] bool ARM9_CheckInterrupts(struct ARM946ES* ARM9)
 {
@@ -271,76 +242,92 @@ void ARM9_DeferredITCMWrite(struct ARM946ES* ARM9);
     4. irqs are checked
     5. instruction is executed
 */
-void ARM9_Step(struct ARM946ES* ARM9)
+
+void ARM9_DeferredITCMWrite(struct ARM946ES* ARM9);
+
+// interlocks are stalled for before fetching
+// note: this is probably be checked for on the prior decode stage, but i dont think that matters?
+s8 ARM9_DecodeInterlocks(struct ARM946ES* ARM9, const bool thumb, const s8 reg, const s8 len, const s8 len_c)
 {
-    if (cpu->CpuSleeping)
+    s8 stall;
+    if (thumb)
     {
-        if (Console_CheckARM9Wake(cpu->Sys))
-        {
-            cpu->CpuSleeping = 0;
-        }
-        else
-        {
-            // probably slow; but ensures write buffer drains properly.
-            if (ARM9->WBuffer.FIFOFillPtr != 16)
-            {
-                ARM9_CatchUpWriteBuffer(ARM9, &cpu->Timestamp);
-                ARM9_ExecuteCycles(ARM9, 2, 1);
-                return;
-            }
-            else
-            {
-                cpu->DeadAsleep = true;
-                return;
-            }
-        }
-    }
-
-    ARM9_CatchUpWriteBuffer(ARM9, &cpu->Timestamp);
-
-    // step the pipeline.
-    ARM_PipelineStep(cpu);
-
-    if (cpu->CPSR.Thumb)
-    {
-        const struct ARM_Instr instr = cpu->Instr[0];
+        const ARM_Instr instr = cpu->Instr[1];
         const u16 decode = (instr.Thumb >> 10);
-
-        ILCheck(16, THUMB9_InterlockLUT[decode])
-        FetchIRQExec(16, THUMB9_InstructionLUT[decode](cpu, instr))
+        stall = THUMB9_InterlockLUT[decode](ARM9, instr, reg, len, len_c);
+        //ARM9_InterlockStall(ARM9, stall);
     }
     else
     {
-        const struct ARM_Instr instr = cpu->Instr[0];
+        const ARM_Instr instr = cpu->Instr[1];
         const u8 condcode = instr.Arm >> 28;
         const u16 decode = ((instr.Arm >> 16) & 0xFF0) | ((instr.Arm >> 4) & 0xF);
 
-        // TODO: DATA ABORTS?????
-        // first we need to check the condition code (should be part of decoding?)
+        // decode instructions
         if (ARM_ConditionLookup(condcode, cpu->CPSR.Flags))
         {
-            ILCheck(32, ARM9_InterlockLUT[decode])
-            FetchIRQExec(32, ARM9_InstructionLUT[decode](cpu, instr))
+            stall = ARM9_InterlockLUT[decode](ARM9, instr, reg, len, len_c);
+            //ARM9_InterlockStall(ARM9, stall);
         }
-        else if (condcode == ARMCond_NV) // unconditional instructions
+        else if (condcode == ARMCond_NV)
         {
-            ILCheck(32, ARM9_Uncond_Interlocks)
-            FetchIRQExec(32, ARM9_Uncond(cpu, instr))
+            stall = ARM9_Uncond_Interlocks(ARM9, instr, reg, len, len_c);
+            //ARM9_InterlockStall(ARM9, stall);
         }
-        else if (decode == 0x127) // BKPT; needs special handling, condition code is ignored (always passes)
+        else
         {
-            // bkpt doesn't use registers and can't interlock.
-            FetchIRQExec(32, ARM9_PrefetchAbort(cpu, instr))
+            // checkme: i dont think failed condcode instructions stall for interlocks.
+            stall = 0;
         }
-        else // actually an instruction that failed the condition check.
-        {
-            // CHECKME: skipped instructions shouldn't trigger interlocks right?
-            ARM9_InstrRead32(ARM9, cpu->PC);
+    }
+    return stall;
+}
 
-            // this needs a special check because im stupid and reusing this path for pipeline refills
-            if (!ARM9_CheckInterrupts(ARM9))
+bool ARM9_Fetch(struct ARM946ES* ARM9)
+{
+    // begin instruction fetch
+    bool ret = ARM9_InstrRead(ARM9);
+
+    // TODO: itcm data reads may have to be done here?
+    ARM9_DeferredITCMWrite(ARM9);
+    return ret;
+}
+
+void ARM9_Exec(struct ARM946ES* ARM9)
+{
+    if (!ARM9_CheckInterrupts(ARM9))
+    {
+        if (cpu->CPSR.Thumb)
+        {
+            const ARM_Instr instr = cpu->Instr[0];
+            const u16 decode = (instr.Thumb >> 10);
+
+            THUMB9_InstructionLUT[decode](cpu, instr);
+        }
+        else
+        {
+            const ARM_Instr instr = cpu->Instr[0];
+            const u8 condcode = instr.Arm >> 28;
+            const u16 decode = ((instr.Arm >> 16) & 0xFF0) | ((instr.Arm >> 4) & 0xF);
+
+            // TODO: DATA ABORTS?????
+            // first we need to check the condition code (should be part of decoding?)
+            if (ARM_ConditionLookup(condcode, cpu->CPSR.Flags))
             {
-                ARM9_ExecuteCycles(ARM9, 1, 1);
+                ARM9_InstructionLUT[decode](cpu, instr);
+            }
+            else if (condcode == ARMCond_NV) // unconditional instructions
+            {
+                ARM9_Uncond(cpu, instr);
+            }
+            else if (decode == 0x127) // BKPT; needs special handling, condition code is ignored (always passes)
+            {
+                // bkpt doesn't use registers and can't interlock.
+                ARM9_PrefetchAbort(cpu, instr);
+            }
+            else // actually an instruction that failed the condition check.
+            {
+                ARM9_ExecuteCycles(ARM9, 1);
                 ARM_StepPC(cpu, false);
             }
         }
@@ -352,6 +339,147 @@ void ARM9_Step(struct ARM946ES* ARM9)
 
 void ARM9_MainLoop(struct ARM946ES* ARM9)
 {
+    if (biuactive)
+    {
+
+    }
+
+    // largely represents the arm9e-s core
+    switch()
+    {
+    case execute:
+    {
+        // run next instruction
+    }
+    case instronly:
+    {
+        // fetch instr
+        // somehow handle branches here seamlessly?
+        // test interlocks in next instruction? (probably not correct to do this here...?)
+    }
+    case dataonly:
+    {
+        // do data fetch
+        // run callback
+    }
+    case instrthendata:
+    {
+        // fetch instr
+        // somehow handle branches here seamlessly?
+        // test interlocks in next instruction? (probably not correct to do this here...?)
+        // do data fetch
+        // run callback
+    }
+    case datatheninstr:
+    {
+        // fetch instr
+        // somehow handle branches here seamlessly?
+        // test interlocks in next instruction? (probably not correct to do this here...?)
+        // do data fetch
+        // run callback
+    }
+    default: // blocked by biu
+    {
+
+    }
+    }
+#if 0
+    if (cpu->Prog & instr)
+    {
+
+    }
+    else if (& data)
+    {
+
+    }
+    else // instr??
+    {
+
+    }
+#endif
+#if 0
+    switch(cpu->Prog)
+    {
+        case ARMProg_Sleep:
+        {
+            // TODO?
+            /*if (cpu->CpuSleeping)
+            {
+                if (Console_CheckARM9Wake(cpu->Sys))
+                {
+                    cpu->CpuSleeping = 0;
+                }
+                else
+                {
+                    // probably slow; but ensures write buffer drains properly.
+                    if (ARM9->WBuffer.FIFOFillPtr != 16)
+                    {
+                        ARM9_CatchUpWriteBuffer(ARM9, &cpu->Timestamp);
+                        ARM9_ExecuteCycles(ARM9, 2, 1);
+                        return;
+                    }
+                    else
+                    {
+                        cpu->DeadAsleep = true;
+                        return;
+                    }
+                }
+            }
+
+            ARM9_CatchUpWriteBuffer(ARM9, &cpu->Timestamp);*/
+            //if (!Console_CheckARM9Wake(cpu->Sys))
+            {
+                return;
+            }
+            //cpu->Prog = ARMProg_Fetch;
+            //[[fallthrough]]; // checkme?
+        }
+        case ARMProg_RefillStart:
+        {
+            {
+                // TEMP: debugging
+                //ARM9_DumpMPU(ARM9);
+                //ARM9_Log(ARM9);
+                //if (cpu->PC == 0x020C42A8) CrashSpectacularly("OSPANIC\n");
+            }
+            // non-sequential
+            cpu->CodeSeq = false;
+            // handle nonsequential accesses updating the instruction region.
+            ARM9_UpdateInstrRegion(ARM9);
+            [[fallthrough]];
+        }
+        case ARMProg_RefillMid:
+        {
+            ARM_PipelineStep(cpu);
+            // dont handle interlocks here because that's silly (waiting for this to somehow bite me in the ass)
+            cpu->Prog += 1 + ARM9_Fetch(ARM9);
+            static_assert(((ARMProg_RefillStart     + 1) == ARMProg_RefillStartBusy)
+                       && ((ARMProg_RefillStartBusy + 1) == ARMProg_RefillMid)
+                       && ((ARMProg_RefillMid       + 1) == ARMProg_RefillMidBusy)
+                       && ((ARMProg_RefillMidBusy   + 1) == ARMProg_Fetch), "ARM PROG NEEDS ADJUSTING HERE");
+            break;
+        }
+        case ARMProg_Fetch:
+        {
+            ARM_PipelineStep(cpu);
+            //ARM9_DecodeInterlocks(ARM9);
+            cpu->Prog += 1 + ARM9_Fetch(ARM9);
+            static_assert(((ARMProg_Fetch + 1) == ARMProg_FetchBusy), "ARM PROG NEEDS ADJUSTING HERE");
+            break;
+        }
+        case ARMProg_Exec:
+        {
+            ARM9_Exec(ARM9);
+            static_assert(false, "PROG????\n");
+            break;
+        }
+        case ARMProg_SleepCheck:
+        {
+            break;
+        }
+    }
+#endif
+#if 0
     ARM9_FlushPipeline(ARM9);
     while(!cpu->Sys->KillThread)
     {
@@ -385,6 +513,7 @@ void ARM9_MainLoop(struct ARM946ES* ARM9)
             }
         }
     }
+#endif
 }
 
 #undef cpu
