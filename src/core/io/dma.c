@@ -6,24 +6,24 @@
 
 
 
-timestamp DMA_GetNext(struct Console* sys, const timestamp now, const bool sync, const bool a9)
+timestamp DMA_GetNext(Console* sys, const timestamp now, const bool sync, const bool a9)
 {
     if (sync) Scheduler_Sync(sys, now, (a9 ? Sync_Normal9 : Sync_Normal7));
     struct DMA_Controller* cnt = ((a9) ? &sys->DMA9 : &sys->DMA7);
     return cnt->NextTime;
 }
 
-void DMA9_ScheduledRun(struct Console* sys, [[maybe_unused]] timestamp now)
+void DMA9_ScheduledRun(Console* sys, [[maybe_unused]] timestamp now)
 {
     CR_Switch(sys->HandleARM9);
 }
 
-void DMA7_ScheduledRun(struct Console* sys, [[maybe_unused]] timestamp now)
+void DMA7_ScheduledRun(Console* sys, [[maybe_unused]] timestamp now)
 {
     CR_Switch(sys->HandleARM7);
 }
 
-void DMA_Schedule(struct Console* sys, const bool a9)
+void DMA_Schedule(Console* sys, const bool a9)
 {
     struct DMA_Controller* cnt = ((a9) ? &sys->DMA9 : &sys->DMA7);
 
@@ -47,7 +47,7 @@ void DMA_Schedule(struct Console* sys, const bool a9)
     else if (!a9 && sys->Sleep7) DS_CLAMP(sys->A7Sync, >, time)
 }
 
-void StartDMA9(struct Console* sys, timestamp start, u8 mode)
+void StartDMA9(Console* sys, timestamp start, u8 mode)
 {
     bool update = false;
     for (int i = 0; i < 4; i++)
@@ -70,7 +70,7 @@ void StartDMA9(struct Console* sys, timestamp start, u8 mode)
     if (update) DMA_Schedule(sys, true);
 }
 
-void StartDMA7(struct Console* sys, timestamp start, u8 mode)
+void StartDMA7(Console* sys, timestamp start, u8 mode)
 {
     bool update = false;
     for (int i = DMA7_NormalBase; i < DMA7_NormalMax; i++)
@@ -93,7 +93,7 @@ void StartDMA7(struct Console* sys, timestamp start, u8 mode)
     if (update) DMA_Schedule(sys, false);
 }
 
-void StartSoundCapDMA(struct Console* sys, u8 id, timestamp start)
+void StartSoundCapDMA(Console* sys, u8 id, timestamp start)
 {
     if (!sys->DMA7.Channels[id+DMA7_SoundCapBase].CR.Enable) return;
     if (sys->DMA7.ChannelTimestamps[id+DMA7_SoundCapBase] != timestamp_max)
@@ -104,7 +104,7 @@ void StartSoundCapDMA(struct Console* sys, u8 id, timestamp start)
     DMA_Schedule(sys, false);
 }
 
-void StartSoundDMA(struct Console* sys, u8 id, timestamp start, bool matters)
+void StartSoundDMA(Console* sys, u8 id, timestamp start, bool matters)
 {
     if (!sys->DMA7.Channels[id+DMA7_SoundBase].CR.Enable) return;
     if (sys->DMA7.ChannelTimestamps[id+DMA7_SoundBase] != timestamp_max)
@@ -116,7 +116,7 @@ void StartSoundDMA(struct Console* sys, u8 id, timestamp start, bool matters)
     DMA_Schedule(sys, false);
 }
 
-void DMA7_Enable(struct Console* sys, struct DMA_Channel* channel)
+void DMA7_Enable(Console* sys, struct DMA_Channel* channel)
 {
     channel->Latched_SrcAddr = channel->SrcAddr;
     channel->Latched_DstAddr = channel->DstAddr;
@@ -182,7 +182,7 @@ void DMA7_Enable(struct Console* sys, struct DMA_Channel* channel)
     }
 }
 
-void DMA9_Enable(struct Console* sys, struct DMA_Channel* channel)
+void DMA9_Enable(Console* sys, struct DMA_Channel* channel)
 {
     channel->Latched_SrcAddr = channel->SrcAddr;
     channel->Latched_DstAddr = channel->DstAddr;
@@ -273,7 +273,7 @@ void DMA9_Enable(struct Console* sys, struct DMA_Channel* channel)
     }
 }
 
-void DMA_Run(struct Console* sys, const bool a9)
+void DMA_Run(Console* sys, const bool a9)
 {
     struct DMA_Controller* cnt = ((a9) ? &sys->DMA9 : &sys->DMA7);
     u8 id = cnt->NextID;
@@ -480,7 +480,7 @@ u32 DMA_IOReadHandler(struct DMA_Channel* channels, u32 addr)
     }
 }
 
-void DMA9_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 addr, u32 val, u32 mask)
+void DMA9_IOWriteHandler(Console* sys, struct DMA_Channel* channels, u32 addr, u32 val, u32 mask)
 {
     addr &= 0xFF;
     addr -= 0xB0;
@@ -530,7 +530,7 @@ void DMA9_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 
     }
 }
 
-void DMA7_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 addr, u32 val, const u32 mask)
+void DMA7_IOWriteHandler(Console* sys, struct DMA_Channel* channels, u32 addr, u32 val, const u32 mask)
 {
     addr &= 0xFF;
     addr -= 0xB0;

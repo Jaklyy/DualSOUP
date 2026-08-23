@@ -1,5 +1,5 @@
 #pragma once
-#include "../utils.h"
+#include "core/utils.h"
 
 
 
@@ -40,5 +40,5 @@ typedef struct
     u8 CmdLen;
 } Powman;
 
-struct Console;
-u8 PowMan_CMDSend(struct Console* sys, const u8 val, const bool chipsel);
+typedef struct Console Console;
+u8 PowMan_CMDSend(Console* sys, const u8 val, const bool chipsel);

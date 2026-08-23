@@ -3,7 +3,7 @@
 
 
 
-struct Console;
+typedef struct Console Console;
 
 enum EncryptMode : u8
 {
@@ -71,7 +71,7 @@ typedef struct
 {
     u8 Mode;
     bool Buffered;
-    void* (*CmdHandler) (struct Console*, bool);
+    void* (*CmdHandler) (Console*, bool);
     u32 (*ReadHandler) (void*);
     u32 Address;
     s32 NumWords;
@@ -88,6 +88,6 @@ typedef struct
 
 bool GameCard_Init(GameCard* card, const char* romname, u8* bios7);
 void GameCard_Cleanup(GameCard* card);
-u32 GameCard_ROMDataRead(struct Console* sys, timestamp cur, const bool a9);
-u32 GameCard_IOReadHandler(struct Console* sys, u32 addr, const bool a9);
-void GameCard_IOWriteHandler(struct Console* sys, u32 addr, const u32 val, const u32 mask, timestamp cur, const bool a9);
+u32 GameCard_ROMDataRead(Console* sys, timestamp cur, const bool a9);
+u32 GameCard_IOReadHandler(Console* sys, u32 addr, const bool a9);
+void GameCard_IOWriteHandler(Console* sys, u32 addr, const u32 val, const u32 mask, timestamp cur, const bool a9);

@@ -1,32 +1,41 @@
+#include <stdbit.h>
 #include <stddef.h>
 #include "ahb.h"
-#include "../utils.h"
-#include "../io/dma.h"
-#include "../console.h"
-#include "../carts/gamepak.h"
-#include "../video/video.h"
+#include "core/utils.h"
+#include "core/io/dma.h"
+#include "core/console.h"
+#include "core/carts/gamepak.h"
+#include "core/video/video.h"
+#include "core/scheduler.h"
+#include "vram.h"
 
 
 
-
-void Timing16(struct AHB* bus, const u32 mask)
+u32 MakeWriteMask(u32 addr, AHB_HSIZE size)
 {
-    bus->Timestamp += ((mask == u32_max) ? 2 : 1);
+    // TODO: test if one of these approaches is actually meaningfully faster
+#if 0
+    const u32 width = 8<<size;
+    const u32 mask = ROL32(((s64)-0x100000000 >> width), ((addr & 0x3) * 8) + 1);
+    return mask;
+#else
+    switch(size)
+    {
+        case HSIZE_8:  return 0xFF   << (addr & 3) * 8;
+        case HSIZE_16: return 0xFFFF << (addr & 3) * 8;
+        case HSIZE_32: return 0xFFFFFFFF;
+        default: unreachable();
+    }
+#endif
 }
 
-void Timing32(struct AHB* bus)
-{
-    bus->Timestamp += 1;
-}
-
-void BusContention(timestamp* busyts, timestamp* cur, const NTRAHB_Devices device)
+timestamp BusContention(timestamp* busyts, timestamp cur, const NTRAHB_Devices device)
 {
     // check if the device we're accessing is busy
     // sequential accesses shouldn't need to be checked on
-    if (*cur < busyts[device])
-    {
-        *cur = busyts[device];
-    }
+    if (busyts[device] > cur)
+        return busyts[device] - cur;
+    else return 0;
 }
 
 void AddBusContention(timestamp* busyts, const timestamp cur, const NTRAHB_Devices device)
@@ -34,721 +43,422 @@ void AddBusContention(timestamp* busyts, const timestamp cur, const NTRAHB_Devic
     busyts[device] = cur+1;
 }
 
-// dma
-// 4 sub buses (probably not how this is actually handled?)
-// priority lowest id to highest
-// - dma0
-// - dma1
-// - dma2
-// - dma3
-
-// arm9
-// 3 sub buses
-// equal-ish priority
-// - arm9 instruction
-// - arm9 data
-// - arm9 write buffer
-
-bool AHB_NegOwnership(struct Console* sys, timestamp* cur, const bool atomic, const bool a9)
-{
-    struct AHB* bus = (a9) ? &sys->AHB9 : &sys->AHB7;
-
-    // ensure component is caught up to bus
-    if (*cur < bus->Timestamp) *cur = bus->Timestamp;
-
-    // check if anything else is able to run
-    if (!atomic && (*cur >= DMA_GetNext(sys, *cur, true, a9)))
-    {
-        while (*cur >= DMA_GetNext(sys, *cur, true, a9))
-        {
-            DMA_Run(sys, a9);
-        }
-        // catch up component to bus again; otherwise catch bus up to component
-        if (*cur < bus->Timestamp) *cur = bus->Timestamp;
-        else bus->Timestamp = *cur;
-
-        return false;
-    }
-    if (bus->Timestamp < *cur) bus->Timestamp = *cur;
-
-    return true;
-}
-
-#define VRAMRET(x) \
-    any = true; \
-    if (write) \
-    { \
-        if (timings) \
-        { \
-            Timing16(&sys->AHB9, mask);  \
-            AddBusContention(sys->AHBBusyTS, sys->AHB9.Timestamp, Dev_##x ); \
-            PPU_Sync(sys, sys->AHB9.Timestamp); \
-        } \
-        MemoryWrite(32, sys-> x , addr, x##_Size, val, mask); \
-    } \
-    else /* read */ \
-    { \
-        if (timings) \
-        { \
-            BusContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_##x ); \
-            Timing16(&sys->AHB9, mask); \
-        } \
-        ret = MemoryRead(32, sys-> x , addr, x##_Size); \
-    } \
-
-// Thanks to Arisotura for some notes on vram bank mirroring.
-// I never would've guessed that they mirror so weirdly within a given region.
-u32 VRAM_LCD(struct Console* sys, const u32 addr, const u32 mask, const bool write, const u32 val, const bool timings)
-{
-    bool any = false;
-    u32 ret = 0;
-    switch((addr >> 12) & 0xFC)
-    {
-        case 0x00 ... 0x1C:
-            if ((sys->VRAMCR[0].Raw & 0x87) == 0x80)
-            {
-                VRAMRET(VRAM_A)
-            }
-            break;
-
-        case 0x20 ... 0x3C:
-            if ((sys->VRAMCR[1].Raw & 0x87) == 0x80)
-            {
-                VRAMRET(VRAM_B)
-            }
-            break;
-
-        case 0x40 ... 0x5C:
-            if ((sys->VRAMCR[2].Raw & 0x87) == 0x80)
-            {
-                VRAMRET(VRAM_C)
-            }
-            break;
-
-        case 0x60 ... 0x7C:
-            if ((sys->VRAMCR[3].Raw & 0x87) == 0x80)
-            {
-                VRAMRET(VRAM_D)
-            }
-            break;
-
-        case 0x80 ... 0x8C:
-            if ((sys->VRAMCR[4].Raw & 0x87) == 0x80)
-            {
-                VRAMRET(VRAM_E)
-            }
-            break;
-
-        case 0x90:
-            if ((sys->VRAMCR[5].Raw & 0x87) == 0x80)
-            {
-                VRAMRET(VRAM_F)
-            }
-            break;
-
-        case 0x94:
-            if ((sys->VRAMCR[6].Raw & 0x87) == 0x80)
-            {
-                VRAMRET(VRAM_G)
-            }
-            break;
-
-        case 0x98 ... 0x9C:
-            if ((sys->VRAMCR[7].Raw & 0x87) == 0x80)
-            {
-                VRAMRET(VRAM_H)
-            }
-            break;
-
-        case 0xA0:
-            if ((sys->VRAMCR[8].Raw & 0x87) == 0x80)
-            {
-                VRAMRET(VRAM_I)
-            }
-            break;
-
-        default:
-            break;
-    }
-    if (!any && timings)
-    {
-        //LogPrint(LOG_ARM9|LOG_ODD|LOG_VRAM, "UNMAPPED LCD VRAM ACCESS? %08X %08X\n", val, addr);
-        Timing32(&sys->AHB9);
-    }
-    return ret;
-}
-
-#undef VRAMRET
-
-#define VRAMRET(x) \
-    if (base == index) \
-    { \
-        if (write) \
-        { \
-            if (timings) \
-            { \
-                if (!any) Timing16(bus, mask); \
-                AddBusContention(sys->AHBBusyTS, bus->Timestamp, Dev_##x ); \
-                PPU_Sync(sys, sys->AHB9.Timestamp); \
-            } \
-            MemoryWrite(32, sys-> x , addr, x##_Size, val, mask); \
-        } \
-        else /* read */ \
-        { \
-            if (timings) \
-            { \
-                BusContention(sys->AHBBusyTS, &bus->Timestamp, Dev_##x ); \
-            } \
-            ret = MemoryRead(32, sys-> x , addr, x##_Size); \
-        } \
-        any = true; \
-    }
-
-u32 VRAM_BGA(struct Console* sys, const u32 addr, const u32 mask, const bool write, const u32 val, const bool timings)
-{
-    struct AHB* bus = &sys->AHB9;
-    u32 ret = 0;
-    bool any = false;
-    if ((sys->VRAMCR[0].Raw & 0x87) == 0x81)
-    {
-        u32 base = (sys->VRAMCR[0].Offset * 0x20000);
-        u32 index = addr & 0x60000;
-        VRAMRET(VRAM_A)
-    }
-    if ((sys->VRAMCR[1].Raw & 0x87) == 0x81)
-    {
-        u32 base = (sys->VRAMCR[1].Offset * 0x20000);
-        u32 index = addr & 0x60000;
-        VRAMRET(VRAM_B)
-    }
-    if ((sys->VRAMCR[2].Raw & 0x87) == 0x81)
-    {
-        u32 base = (sys->VRAMCR[2].Offset * 0x20000);
-        u32 index = addr & 0x60000;
-        VRAMRET(VRAM_C)
-    }
-    if ((sys->VRAMCR[3].Raw & 0x87) == 0x81)
-    {
-        u32 base = (sys->VRAMCR[3].Offset * 0x20000);
-        u32 index = addr & 0x60000;
-        VRAMRET(VRAM_D)
-    }
-    if ((sys->VRAMCR[4].Raw & 0x87) == 0x81)
-    {
-        u32 base = 0;
-        u32 index = addr & 0x70000;
-        VRAMRET(VRAM_E)
-    }
-    if ((sys->VRAMCR[5].Raw & 0x87) == 0x81)
-    {
-        u32 base = (((sys->VRAMCR[5].Offset & 1) * 0x4000) + ((sys->VRAMCR[5].Offset >> 1) * 0x10000));
-        u32 index = addr & 0x74000;
-        VRAMRET(VRAM_F)
-    }
-    if ((sys->VRAMCR[6].Raw & 0x87) == 0x81)
-    {
-        u32 base = (((sys->VRAMCR[6].Offset & 1) * 0x4000) + ((sys->VRAMCR[6].Offset >> 1) * 0x10000));
-        u32 index = addr & 0x74000;
-        VRAMRET(VRAM_G)
-    }
-    if (any && !write && timings) Timing16(bus, mask);
-    if (!any && timings)
-    {
-        LogPrint(LOG_ARM9|LOG_ODD|LOG_VRAM, "UNMAPPED BG A VRAM ACCESS? %08X %08X\n", val, addr);
-        Timing32(&sys->AHB9);
-    }
-    return ret;
-}
-
-u32 VRAM_OBJA(struct Console* sys, const u32 addr, const u32 mask, const bool write, const u32 val, const bool timings)
-{
-    struct AHB* bus = &sys->AHB9;
-    u32 ret = 0;
-    bool any = false;
-    if ((sys->VRAMCR[0].Raw & 0x87) == 0x82)
-    {
-        u32 base = (sys->VRAMCR[0].Offset * 0x20000);
-        u32 index = addr & 0x20000;
-        VRAMRET(VRAM_A)
-    }
-    if ((sys->VRAMCR[1].Raw & 0x87) == 0x82)
-    {
-        u32 base = (sys->VRAMCR[1].Offset * 0x20000);
-        u32 index = addr & 0x20000;
-        VRAMRET(VRAM_B)
-    }
-    if ((sys->VRAMCR[4].Raw & 0x87) == 0x82)
-    {
-        u32 base = 0;
-        u32 index = addr & 0x30000;
-        VRAMRET(VRAM_E)
-    }
-    if ((sys->VRAMCR[5].Raw & 0x87) == 0x82)
-    {
-        u32 base = (((sys->VRAMCR[5].Offset & 1) * 0x4000) + ((sys->VRAMCR[5].Offset >> 1) * 0x10000));
-        u32 index = addr & 0x34000;
-        VRAMRET(VRAM_F)
-    }
-    if ((sys->VRAMCR[6].Raw & 0x87) == 0x82)
-    {
-        u32 base = (((sys->VRAMCR[6].Offset & 1) * 0x4000) + ((sys->VRAMCR[6].Offset >> 1) * 0x10000));
-        u32 index = addr & 0x34000;
-        VRAMRET(VRAM_G)
-    }
-    if (any && !write && timings) Timing16(bus, mask);
-    if (!any && timings)
-    {
-        LogPrint(LOG_ARM9|LOG_ODD|LOG_VRAM, "UNMAPPED OBJ A VRAM ACCESS? %08X %08X\n", val, addr);
-        Timing32(&sys->AHB9);
-    }
-    return ret;
-}
-
-u32 VRAM_BGB(struct Console* sys, const u32 addr, const u32 mask, const bool write, const u32 val, const bool timings)
-{
-    struct AHB* bus = &sys->AHB9;
-    u32 ret = 0;
-    bool any = false;
-    if ((sys->VRAMCR[2].Raw & 0x87) == 0x84)
-    {
-        u32 base = 0;
-        u32 index = 0;
-        VRAMRET(VRAM_C)
-    }
-    if ((sys->VRAMCR[7].Raw & 0x87) == 0x81)
-    {
-        u32 base = 0;
-        u32 index = addr & 0x8000;
-        VRAMRET(VRAM_H)
-    }
-    if ((sys->VRAMCR[8].Raw & 0x87) == 0x81)
-    {
-        u32 base = 0x8000;
-        u32 index = addr & 0x8000;
-        VRAMRET(VRAM_I)
-    }
-    if (any && !write && timings) Timing16(bus, mask);
-    if (!any && timings)
-    {
-        LogPrint(LOG_ARM9|LOG_ODD|LOG_VRAM, "UNMAPPED BG B VRAM ACCESS? %08X %08X\n", val, addr);
-        Timing32(&sys->AHB9);
-    }
-    return ret;
-}
-
-u32 VRAM_OBJB(struct Console* sys, const u32 addr, const u32 mask, const bool write, const u32 val, const bool timings)
-{
-    struct AHB* bus = &sys->AHB9;
-    u32 ret = 0;
-    bool any = false;
-    if ((sys->VRAMCR[3].Raw & 0x87) == 0x84)
-    {
-        u32 base = 0;
-        u32 index = 0;
-        VRAMRET(VRAM_D)
-    }
-    if ((sys->VRAMCR[8].Raw & 0x87) == 0x82)
-    {
-        u32 base = 0;
-        u32 index = 0;
-        VRAMRET(VRAM_I)
-    }
-    if (any && !write && timings) Timing16(bus, mask);
-    if (!any && timings)
-    {
-        LogPrint(LOG_ARM9|LOG_ODD|LOG_VRAM, "UNMAPPED OBJ B VRAM ACCESS? %08X %08X\n", val, addr);
-        Timing32(&sys->AHB9);
-    }
-    return ret;
-}
-
-u32 VRAM_ARM7(struct Console* sys, const u32 addr, const u32 mask, const bool write, const u32 val, const bool timings)
-{
-    struct AHB* bus = &sys->AHB7;
-    u32 ret = 0;
-    bool any = false;
-    if (timings) Scheduler_Sync(sys, sys->AHB7.Timestamp, Sync_Normal7);
-    if ((sys->VRAMCR[2].Raw & 0x87) == 0x82)
-    {
-        u32 base = (sys->VRAMCR[2].Offset * 0x20000);
-        u32 index = addr & 0x20000;
-        VRAMRET(VRAM_C)
-    }
-    if ((sys->VRAMCR[3].Raw & 0x87) == 0x82)
-    {
-        u32 base = (sys->VRAMCR[3].Offset * 0x20000);
-        u32 index = addr & 0x20000;
-        VRAMRET(VRAM_D)
-    }
-    if (any && !write && timings) Timing16(bus, mask);
-    if (!any && timings)
-    {
-        //LogPrint(LOG_ARM9|LOG_ODD|LOG_VRAM, "UNMAPPED ARM7 VRAM ACCESS? %08X %08X\n", val, addr);
-        Timing32(&sys->AHB7);
-    }
-    return ret;
-}
-
-#undef VRAMRET
-
-u32 VRAM_ARM9(struct Console* sys, const u32 addr, const u32 mask, const bool write, const u32 val, const bool timings)
-{
-    switch((addr >> 20) & 0xE)
-    {
-        case 0:  return VRAM_BGA(sys, addr, mask, write, val, timings);
-        case 2:  return VRAM_BGB(sys, addr, mask, write, val, timings);
-        case 4:  return VRAM_OBJA(sys, addr, mask, write, val, timings);
-        case 6:  return VRAM_OBJB(sys, addr, mask, write, val, timings);
-        default: return VRAM_LCD(sys, addr, mask, write, val, timings);
-    }
-}
-
-
-
 
 // Welcome to my special little hell. :D
-void Bus_MainRAM_ReleaseHold(struct Console* sys, struct AHB* buscur)
+void MainRAM_Request(Console* sys, void* req, timestamp now, const bool a9)
 {
-    struct BusMainRAM* busmr = &sys->BusMR;
-    if (busmr->LastWasHeld)
+    BusMainRAM* mr = &sys->BusMR;
+
+    if (a9)
     {
-        busmr->LastWasHeld = false;
-        busmr->LastAccessTS = buscur->Timestamp+3;
-        busmr->BusyTS = buscur->Timestamp + 3;
+        mr->IsReq9 = true;
+        mr->Req9 = *(AHB_Req*)req;
     }
+    else
+    {
+        mr->IsReq7 = true;
+        mr->Req7 = *(UnkBus_Req*)req;
+    }
+
+    DS_CLAMP(now, <, mr->LastFetchTs)
+    NeoSched_AddEvent(sys, now, Evt_MainRAM);
 }
 
-// note: it is apparently possible to read past the point where main ram should wrap without it wrapping in 4MiB mode on 3ds
-u32 Bus_MainRAM_Read(struct Console* sys, struct AHB* buscur, const bool bus9, u32 addr, const AHB_HSIZE size, const bool atomic, const bool hold, bool* seq, const bool timings)
+bool MainRAM_KillBurst(Console* sys, const timestamp now)
 {
-    struct BusMainRAM* busmr = &sys->BusMR;
+    BusMainRAM* mr = &sys->BusMR;
 
-    if (timings)
+    if (mr->BurstActive)
     {
-        // main ram cannot handle a read and write burst at the same time.
-        if (*seq && !busmr->LastWasRead) *seq = false;
-        busmr->LastWasRead = true;
+        timestamp time;
+        // stop main ram burst if still running
+        if (mr->PrevWrite) time = NTRClock_CvtFrom33(5); // stores: 5 cycle cooldown period
+        else               time = NTRClock_CvtFrom33(3); // loads:  3 cycle cooldown period
 
-        if (!*seq) Bus_MainRAM_ReleaseHold(sys, buscur);
+        if (mr->IsReq9 || mr->IsReq7)
+            NeoSched_AddEvent(sys, now + time, Evt_MainRAM);
+        mr->BurstLimitTs = timestamp_max;
+        mr->LastFetchTs = now + time;
+        mr->BurstActive = false;
+        mr->CurReq = MainRAM_None;
+        return true;
+    }
+    return false; // burst was already terminated
+}
 
-        // there are two known conditions where a burst will be forcibly restarted:
-        // if a burst lasts longer than 241 cycles
-        // if a burst that started in the last 6 bytes of a 32 byte chunk crosses the 32 byte boundary
-        // CHECKME: does this cause the arm9/arm7 bus owner to have to renegotiate permissions?
-        // CHECKME: does the burst restart immediately or when the owner next attempts an access? (this matters for dma)
-        if (*seq && (((buscur->Timestamp - busmr->BurstStartTS) > 241) || (busmr->WeirdStartAddr && ((addr & 0x1E) == 0))))
+void MainRAM_Run(Console* sys, const timestamp now)
+{
+    BusMainRAM* mr = &sys->BusMR;
+    MainRAM_Buses grant = MainRAM_None;
+
+    if (now > mr->BurstLimitTs) { MainRAM_KillBurst(sys, now); return; }
+
+    if (mr->Locked != MainRAM_None) // main ram interface respects atomic lock signals
+    {
+        // make sure there's an actual req happening first, just in case; CHECKME: is this check useful?
+        if (mr->Locked == MainRAM_A9)
         {
-            // TODO: incur cooldown properly?
-            *seq = false;
+            if (mr->IsReq9) grant = MainRAM_A9;
+            else LogPrint(LOG_ARM9|LOG_FCRAM, "ARM9 Atomic access to fcram but no req?\n");
         }
-
-        // if main ram is still busy the accessing bus needs to wait until it's available to begin a new burst to it
-        if (!*seq && (buscur->Timestamp < busmr->BusyTS))
+        else // arm7
         {
-            buscur->Timestamp = busmr->BusyTS;
+            if (mr->IsReq7) grant = MainRAM_A7;
+            else LogPrint(LOG_ARM7|LOG_FCRAM, "ARM7 Atomic access to fcram but no req?\n");
         }
+    }
+    else if (sys->ExtMemCR_Shared.MRA7Priority)
+    {
+        // check arm7 req first
+        if      (mr->IsReq7) grant = MainRAM_A7;
+        else if (mr->IsReq9) grant = MainRAM_A9;
+    }
+    else
+    {
+        // check arm9 req first
+        if      (mr->IsReq9) grant = MainRAM_A9;
+        else if (mr->IsReq7) grant = MainRAM_A7;
+    }
 
-        // if there is even the slightest chance that the other bus can access main ram before us we need to catch it up.
-        // Note: Main RAM respects atomic accesses.
-        // CHECKME: i think this logic works?????
-        while(true)
+    u32 addr;
+    AHB_HSIZE size;
+    bool nseq;
+    bool write;
+    bool lock;
+    u32 wrval;
+    if (grant == MainRAM_None) { MainRAM_KillBurst(sys, now); return; }
+    else if (grant == MainRAM_A9)
+    {
+        AHB_Req* r = &mr->Req9;
+        size = r->Size;
+        addr = r->Addr;
+        nseq = r->Type == HTRANS_NONSEQ;
+        write = r->Write;
+        lock = r->Lock;
+        if (write) wrval = r->WriteVal;
+    }
+    else
+    {
+        UnkBus_Req* r = &mr->Req7;
+        size = r->Size;
+        addr = r->Addr;
+        nseq = !r->Seq;
+        write = r->Write;
+        lock = r->Lock;
+        if (write) wrval = r->WriteVal;
+    }
+    addr = (addr >> size) << size; // make sure addr is aligned for word fetches
+    if (write && (addr & 2)) wrval >>= 16;
+
+    if (write != mr->PrevWrite) nseq = true; // split burst if switching from read to write
+    mr->PrevWrite = write;
+    if (grant != mr->CurReq) nseq = true; // split burst if switching which bus has grant
+    mr->CurReq = grant;
+    if (now > mr->BurstLimitTs) nseq = true; // TODO: this should probably be regardless of an access occuring
+
+    // this is presumably enforced by the SoC main ram interface?
+    // so im not sure if it actually uses the address signaled on the bus, or if it latches it internally somehow?
+    // this may or may not actually matter?
+    if (mr->WeirdStart && !nseq && !(addr & 0x1E)) nseq = true;
+
+    if (nseq && MainRAM_KillBurst(sys, now)) return;
+
+    if (lock) mr->Locked = grant;
+    else mr->Locked = false;
+
+#define MRStepAddr mr->AddrLatch = (mr->AddrLatch + 1) & mr->AddrLatchMask;
+
+    if (nseq)
+    {
+        mr->AddrLatch = (addr & mr->AddrSubmMask) >> 1;
+        mr->WeirdStart = ((addr & 0x1E) >= 0x1A);
+        mr->BurstLimitTs = now + NTRClock_CvtFrom33(241);
+    }
+    else MRStepAddr
+
+    timestamp time;
+
+    u32 read;
+    if (write)
+    {
+        read = 0;
+        if (size == HSIZE_8)
         {
-            if (atomic) break;
-
-            if (bus9)
+            if (!nseq) CrashSpectacularly("SEQUENTIAL 8 BIT MAIN RAM WRITE????????????\n");
+            MaskedWrite(sys->MainRAM.b16[mr->AddrLatch], wrval, 0xFF << ((addr & 1)*8));
+            time = NTRClock_CvtFrom33(4); // takes longer for some reason
+            MainRAM_KillBurst(sys, now + NTRClock_CvtFrom33(3)); // CHECKME: it takes less time for it to cooldown, so i assume it does it early somehow??
+        }
+        else
+        {
+            sys->MainRAM.b16[mr->AddrLatch] = wrval & 0xFFFF;
+            if (size == HSIZE_32)
             {
-                // arm 9 cannot have priority changed during the loop so it doesn't need to handle priority changes
-                if (sys->ExtMemCR_Shared.MRPriority)
+                MRStepAddr
+                sys->MainRAM.b16[mr->AddrLatch] = wrval >> 16;
+                time = NTRClock_CvtFrom33(4);
+            }
+            else time = NTRClock_CvtFrom33(3);
+        }
+    }
+    else // read
+    {
+        read = sys->MainRAM.b16[mr->AddrLatch];
+        if (size < HSIZE_32)
+        {
+            time = (nseq) ? NTRClock_CvtFrom33(5) : NTRClock_CvtFrom33(1);
+            read |= read << 16; // mirror onto both halves of word
+        }
+        else // 32 bit; do another fetch for high bytes
+        {
+            time = ((nseq)  ? NTRClock_CvtFrom33(6)
+                            : ((now == mr->LastFetchTs) // questionably emulate read prefetching
+                                ? NTRClock_CvtFrom33(2)
+                                : NTRClock_CvtFrom33(1)));
+            MRStepAddr
+            read |= sys->MainRAM.b16[mr->AddrLatch] << 16;
+        }
+    }
+
+    mr->LastFetchTs = now + time;
+
+    if (grant == MainRAM_A9)
+    {
+        mr->IsReq9 = false;
+        AHB9_TransferPostSetup(sys, read, sys->Sched.Times[Evt_AHB9], time + (now - sys->Sched.Times[Evt_AHB9]));
+    }
+    else
+    {
+        mr->IsReq7 = false;
+        static_assert(false, "oh god i have to do the entire arm7 bus implementation still...\n");
+    }
+
+    if (size != HSIZE_8) // this special casing is stupid but i dont wanna fix it
+        NeoSched_AddEvent(sys, mr->BurstLimitTs, Evt_MainRAM); // schedule an event to enforce burst limit
+}
+#undef MRStepAddr
+
+void AHB9_VRAM(Console* sys, u32 addr, const AHB_Req* req, const timestamp now)
+{
+    const struct
+    {
+        u16* bank;
+        size_t size;
+    } vram[VRAMID_MAX] =
+    {
+        {sys->VRAM_A.b16, VRAM_A_Size},
+        {sys->VRAM_B.b16, VRAM_B_Size},
+        {sys->VRAM_C.b16, VRAM_C_Size},
+        {sys->VRAM_D.b16, VRAM_D_Size},
+        {sys->VRAM_E.b16, VRAM_E_Size},
+        {sys->VRAM_F.b16, VRAM_F_Size},
+        {sys->VRAM_G.b16, VRAM_G_Size},
+        {sys->VRAM_H.b16, VRAM_H_Size},
+        {sys->VRAM_I.b16, VRAM_I_Size}
+    };
+
+    u16 list;
+    u32 rdata;
+    timestamp time;
+    switch((addr >> 20) & 0xE)
+    {
+        case 0:  list = VRAM_BGA (sys, addr); break;
+        case 2:  list = VRAM_BGB (sys, addr); break;
+        case 4:  list = VRAM_OBJA(sys, addr); break;
+        case 6:  list = VRAM_OBJB(sys, addr); break;
+        default: list = VRAM_LCD (sys, addr); break;
+    }
+
+    if (!list)
+    {
+        // nobody's home
+        time = NTRClock_CvtFrom33(1);
+        rdata = 0;
+    }
+    else if (stdc_count_ones(list) <= 1)
+    {
+        u8 id = stdc_trailing_zeros(list);
+        u16* bank = vram[id].bank;
+        size_t size = vram[id].size;
+        // 1 region, use simpler logic
+        // TODO: just use lut for this case?
+        if (req->Write)
+        {
+            rdata = 0;
+            u32 wrdata = req->WriteVal;
+            // TODO: PPU contention
+            time = NTRClock_CvtFrom33(1);
+            PPU_Sync(sys, now+time); // TODO: DO THIS BETTER
+            if (req->Size < HSIZE_32)
+            {
+                wrdata = ROR32(wrdata, (addr & 2) * 8);
+                if (req->Size == HSIZE_8)
                 {
-                    Scheduler_Sync(sys, buscur->Timestamp, Sync_MainRAM9);
+                    MaskedWrite(bank[(addr & (size-1))/2], wrdata, 0xFF << ((addr&1)*8));
                 }
-                else
-                {
-                    Scheduler_Sync(sys, buscur->Timestamp, Sync_Normal9);
-                }
+                bank[addr & (size-1)/2] = wrdata;
             }
             else
             {
-                // arm 7 uses a special function that can handle priority changing during the sync loop.
-                Scheduler_Sync(sys, buscur->Timestamp, Sync_MainRAM7);
+                addr &= ~3;
+                bank[(addr & (size-1))/2] = wrdata;
+                time += NTRClock_CvtFrom33(1);
+                PPU_Sync(sys, now+time); // TODO: DO THIS BETTER
+                bank[((addr+2) & (size-1))/2] = wrdata >> 16;
             }
-
-            // if main ram is still busy the accessing bus needs to wait until it's available to begin a new burst to it
-            if ((busmr->LastWasARM9 != bus9) && (buscur->Timestamp < busmr->BusyTS))
-            {
-                *seq = false;
-                buscur->Timestamp = busmr->BusyTS;
-            }
-            else break;
+            AddBusContention(sys->AHBBusyTS, now, Dev_VRAM_A + id);
         }
-
-        busmr->LastWasARM9 = bus9;
-
-        // ok we actually have confirmed bus permission now!!! yipee!!!
-
-        if (!*seq) // nonsequential
+        else
         {
-            busmr->BurstStartTS = buscur->Timestamp;
-
-            if (size >= HSIZE_32) // two fetches
+            // TODO: PPU contention
+            time = NTRClock_CvtFrom33(1) + BusContention(sys->AHBBusyTS, now, Dev_VRAM_A + id);
+            if (req->Size < HSIZE_32)
             {
-                // if the burst starts in the last 6 bytes of a 32 byte chunk then the burst will restart if it crosses the 32 byte boundary
-                busmr->WeirdStartAddr = ((addr & 0x1C) >= 0x1A);
-
-                buscur->Timestamp += 6;
-            }
-            else // 8 / 16
-            {
-                // if the burst starts in the last 6 bytes of a 32 byte chunk then the burst will restart if it crosses the 32 byte boundary
-                busmr->WeirdStartAddr = ((addr & 0x1E) >= 0x1A);
-
-                buscur->Timestamp += 5;
-            }
-        }
-        else // sequential
-        {
-            if (size >= HSIZE_32) // two fetches
-            {
-                // this takes 2 cycles, but it can appear to take 1 cycle under certain situations,
-                // due to main ram having the ability to prefetch slightly ahead if the burst is held but not immediately read from. (identified with 32 bit dma)
-                if (hold)
-                {
-                    if (buscur->Timestamp < (busmr->LastAccessTS + 2))
-                    {
-                        buscur->Timestamp = (busmr->LastAccessTS + 2);
-                    }
-                    else
-                    {
-                        buscur->Timestamp += 1;
-                    }
-                }
-                else
-                {
-                    buscur->Timestamp += 2;
-                }
-
-            }
-            else // 8 / 16
-            {
-                if (hold)
-                {
-                    // i dont quite understand this but it's real.
-                    if (buscur->Timestamp < (busmr->LastAccessTS + 2))
-                    {
-                        buscur->Timestamp = (busmr->LastAccessTS + 2);
-                    }
-                    else
-                    {
-                        buscur->Timestamp += 1;
-                    }
-                }
-                else
-                {
-                    buscur->Timestamp += 1;
-                }
-            }
-        }
-
-        if (hold) busmr->LastAccessTS = buscur->Timestamp+(!*seq);
-        busmr->BusyTS = buscur->Timestamp + 3;
-        busmr->LastWasHeld = hold;
-    }
-
-    if (size >= HSIZE_32) // two fetches
-        return MemoryRead(32, sys->MainRAM, addr, MainRAM_Size);
-    else // perform single 16 bit read
-    {
-        u32 ret = MemoryRead(16, sys->MainRAM, addr, MainRAM_Size);
-        return ret | (ret << 16); // mirrored on both halves
-    }
-}
-
-void Bus_MainRAM_Write(struct Console* sys, struct AHB* buscur, const bool bus9, u32 addr, const u32 val, const u32 mask, const bool atomic, bool* seq, const bool timings)
-{
-    struct BusMainRAM* busmr = &sys->BusMR;
-
-    if (timings)
-    {
-        // main ram cannot handle a read and write burst at the same time.
-        if (*seq && busmr->LastWasRead) *seq = false;
-        busmr->LastWasRead = false;
-
-        Bus_MainRAM_ReleaseHold(sys, buscur);
-
-        // there are two known conditions where a burst will be forcibly restarted:
-        // if a burst lasts longer than 241 cycles
-        // if a burst that started in the last 6 bytes of a 32 byte chunk crosses the 32 byte boundary
-        // CHECKME: does this cause the arm9/arm7 bus owner to have to renegotiate permissions?
-        // CHECKME: does the burst restart immediately or when the owner next attempts an access? (this matters for dma)
-        // CHECKME: confirm writes too?
-        if (*seq && (((buscur->Timestamp - busmr->BurstStartTS) > 241) || (busmr->WeirdStartAddr && ((addr & 0x1E) == 0))))
-        {
-            // TODO: incur cooldown properly?
-            *seq = false;
-        }
-
-        // if main ram is still busy the accessing bus needs to wait until it's available to begin a new burst to it
-        if (!*seq && (buscur->Timestamp < busmr->BusyTS))
-        {
-            buscur->Timestamp = busmr->BusyTS;
-        }
-
-        // if there is even the slightest chance that the other bus can access main ram before us we need to catch it up.
-        // Note: Main RAM respects atomic accesses.
-        // CHECKME: i think this logic works?????
-        while(true)
-        {
-            if (atomic) break;
-
-            if (bus9)
-            {
-                // arm 9 cannot have priority changed during the loop so it doesn't need to handle priority changes
-                if (sys->ExtMemCR_Shared.MRPriority)
-                {
-                    Scheduler_Sync(sys, buscur->Timestamp, Sync_MainRAM9);
-                }
-                else
-                {
-                    Scheduler_Sync(sys, buscur->Timestamp, Sync_Normal9);
-                }
+                rdata = bank[(addr & (size-1))/2];
+                rdata |= rdata << 16;
             }
             else
             {
-                // arm 7 uses a special function that can handle priority changing during the sync loop.
-                Scheduler_Sync(sys, buscur->Timestamp, Sync_MainRAM7);
-            }
-
-            // if main ram is still busy the accessing bus needs to wait until it's available to begin a new burst to it
-            if ((busmr->LastWasARM9 != bus9) && (buscur->Timestamp < busmr->BusyTS))
-            {
-                *seq = false;
-                buscur->Timestamp = busmr->BusyTS;
-            }
-            else break;
-        }
-
-        busmr->LastWasARM9 = bus9;
-
-        // ok we actually have confirmed bus permission now!!! yipee!!!
-
-        if (!*seq) // nonsequential
-        {
-            busmr->BurstStartTS = buscur->Timestamp;
-
-            // if the burst starts in the last 6 bytes of a 32 byte chunk then the burst will restart if it crosses the 32 byte boundary
-            busmr->WeirdStartAddr = ((addr & 0x1E) >= 0x1A);
-
-            if (stdc_count_ones(mask) == 16)
-            {
-                buscur->Timestamp += 3;
-            }
-            else // 8 / 32
-            {
-                buscur->Timestamp += 4;
+                addr &= ~3;
+                rdata = bank[(addr & (size-1))/2];
+                time += NTRClock_CvtFrom33(1);
+                rdata |= bank[((addr+2) & (size-1))/2] << 16;
             }
         }
-        else // sequential
-        {
-            if (stdc_count_ones(mask) == 32)
-            {
-                buscur->Timestamp += 2;
-            }
-            else // 8 / 16
-            {
-                buscur->Timestamp += 1;
-            }
-        }
-        busmr->BusyTS = buscur->Timestamp + ((stdc_count_ones(mask) == 8) ? 4 : 5);
     }
+    else // overlap; slow handler
+    {
+        u16 list2 = list;
+        u16 contlist = 0;
+        // find which ones have contention
+        while (list2)
+        {
+            u8 id = stdc_trailing_zeros(list2);
+            if (BusContention(sys->AHBBusyTS, now, Dev_VRAM_A + id))
+                contlist |= 1<<id;
 
-    MemoryWrite(32, sys->MainRAM, addr, MainRAM_Size, val, mask);
+            list2 &= (~1)<<id;
+        }
+        list2 = list;
+        // now interate through handling reads/writes
+        // TODO: This is probably all wrong and going to need a rewrite to fix a lot of shit. especially writes and ppu interaction
+        if (req->Write)
+        {
+            rdata = 0;
+            const u32 wrdata = req->WriteVal;
+            time = NTRClock_CvtFrom33((req->Size < HSIZE_32) ? 1 : 2); // dumb
+            PPU_Sync(sys, now+time); // no!
+            while (list2)
+            {
+                u32 tmpwrdata = wrdata;
+                u8 id = stdc_trailing_zeros(list2);
+                u16* bank = vram[id].bank;
+                size_t size = vram[id].size;
+                if (req->Size < HSIZE_32)
+                {
+                    tmpwrdata = ROR32(tmpwrdata, (addr & 2) * 8);
+                    if (req->Size == HSIZE_8)
+                    {
+                        MaskedWrite(bank[(addr & (size-1))/2], tmpwrdata, 0xFF << ((addr&1)*8));
+                    }
+                    bank[addr & (size-1)/2] = tmpwrdata;
+                }
+                else
+                {
+                    addr &= ~3;
+                    bank[(addr & (size-1))/2] = tmpwrdata;
+                    bank[((addr+2) & (size-1))/2] = tmpwrdata >> 16;
+                }
+                AddBusContention(sys->AHBBusyTS, now, Dev_VRAM_A + id); // TODO: busy ones might resolve their writes before unbusy ones...?
+                list2 &= (~1)<<id;
+            }
+        }
+        else
+        {
+            time = NTRClock_CvtFrom33((req->Size < HSIZE_32) ? 1 : 2); // dumb
+            if (contlist)
+            {
+                time += 1; // TODO: this is handled differently than other contention causes; fix that.
+                list2 &= contlist; // yes, this is correct(ish)
+            }
+            rdata = 0;
+            while (list2)
+            {
+                u8 id = stdc_trailing_zeros(list2);
+                u16* bank = vram[id].bank;
+                size_t size = vram[id].size;
+                if (req->Size < HSIZE_32)
+                {
+                    rdata |= bank[(addr & (size-1))/2];
+                    rdata |= rdata << 16;
+                }
+                else
+                {
+                    addr &= ~3;
+                    rdata |= bank[(addr & (size-1))/2];
+                    rdata |= bank[((addr+2) & (size-1))/2] << 16;
+                }
+                list2 &= (~1)<<id;
+            }
+        }
+    }
+    AHB9_TransferPostSetup(sys, rdata, now, time);
 }
 
-u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const AHB_HSIZE size, const bool atomic, const bool hold, bool* seq, const bool timings)
+void AHB9_Read(Console* sys, AHB_Req* req, const timestamp now)
 {
-    // CHECKME: alignment is enforced by the bus on arm7 on gba, does that also apply to arm9?
-    // if so, is the alignment properly enforced by all bus devices?
+    const u32 addr = req->Addr;
+    const AHB_HSIZE size = req->Size;
+    const u32 width = 8<<size;
+    // checkme: are there any devices on the bus with weird handling of addr misalignment or weird access widths?
 
-    if (size > HSIZE_32) CrashSpectacularly("ARM9 BUS READ TOO WIDE: %i\n", 8<<size);
-
-    if (timings)
-    {
-        if (sys->AHB9.Timestamp < *ts)
-            sys->AHB9.Timestamp = *ts;
-
-
-        if (sys->AHB9.HoldingMainRAM)
-        {
-            sys->AHB9.HoldingMainRAM = false;
-            if (((addr>>24) != 0x02) || !hold) Bus_MainRAM_ReleaseHold(sys, &sys->AHB9);
-        }
-    }
+    if (size > HSIZE_32) CrashSpectacularly("ARM9 AHB READ TOO WIDE: %"PRIu32"\n", width);
 
     u32 ret;
+    timestamp time;
     switch(addr >> 24) // check most signficant byte
     {
     case 0x02: // Main RAM
-        ret = Bus_MainRAM_Read(sys, &sys->AHB9, true, addr, size, atomic, hold, seq, timings);
-        break;
+        return MainRAM_Request(sys, req, now, true); // defer completion of req to main ram handler
 
     case 0x03: // Shared WRAM
         // NOTE: it seems to still have write contention even if unmapped?
-        if (timings)
-        {
-            BusContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_WRAM9);
-            Timing32(&sys->AHB9);
-        }
+        // Speculation: like still writing the wram interface? and that's just swallowing the read/write?
+        time = NTRClock_CvtFrom33(1) + BusContention(sys->AHBBusyTS, now, Dev_WRAM9);
         switch(sys->WRAMCR)
         {
-            case 0:
-                ret = MemoryRead(32, sys->SharedWRAM, addr, SharedWRAM_Size); break;
-            case 1:
-                ret = MemoryRead(32, sys->SharedWRAMHi, addr, SharedWRAM_Size/2); break;
-            case 2:
-                ret = MemoryRead(32, sys->SharedWRAMLo, addr, SharedWRAM_Size/2); break;
-            case 3:
-                ret = 0; break; // unmapped
+            case 0: ret = MemoryRead(32, sys->SharedWRAM, addr, SharedWRAM_Size); break;
+            case 1: ret = MemoryRead(32, sys->SharedWRAMHi, addr, SharedWRAM_Size/2); break;
+            case 2: ret = MemoryRead(32, sys->SharedWRAMLo, addr, SharedWRAM_Size/2); break;
+            case 3: ret = 0; break; // unmapped
             default: unreachable();
         }
         break;
 
     case 0x04: // Memory Mapped IO
-        if (timings)
-        {
-            BusContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_IO9); // checkme: does all of IO have write contention at the same time?
-            Timing32(&sys->AHB9); // checkme: does all of IO have the exact same timings?
-            ret = IO9_Read(sys, addr & ~3 /* masking like this is probably wrong */, timings);
-        }
-        else ret = 0; // todo: fix this
+        // checkme: does all of IO have write contention at the same time?
+        // checkme: does all of IO have the exact same timings?
+        static_assert(false, "this needs a lot of work to improve\n");
+        //time = 1 + BusContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_IO9);
+        //ret = IO9_Read(sys, addr & ~3 /* masking like this is probably wrong */, timings);
         break;
 
     case 0x05: // 2D GPU Palette
         // TODO: 2d gpu contention timings
         if (!((addr & 0x400) ? sys->PowerCR9.PPUBPower : sys->PowerCR9.PPUAPower))
         {
-            if (timings) LogPrint(LOG_ARM9|LOG_ODD, "DISABLED PALETTE READ?\n");
-            if (timings)
-            {
-                Timing32(&sys->AHB9);
-            }
+            LogPrint(LOG_ARM9|LOG_ODD, "DISABLED PALETTE READ?\n");
+            time = NTRClock_CvtFrom33(1);
             ret = 0;
         }
         else
         {
-            if (timings)
-            {
-                PPU_Sync(sys, sys->AHB9.Timestamp);
-                BusContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_Palette);
-                Timing32(&sys->AHB9); // this is correct, trust.
-            }
+            PPU_Sync(sys, now); // TODO: rework this shit
+            time = NTRClock_CvtFrom33(1) + BusContention(sys->AHBBusyTS, now, Dev_Palette);
             if (size >= HSIZE_32)
             {
-                if (timings)
-                {
-                    PPU_Sync(sys, sys->AHB9.Timestamp);
-                    BusContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_Palette);
-                    Timing32(&sys->AHB9); // this is correct, trust.
-                }
+                PPU_Sync(sys, now + time);
+                time += NTRClock_CvtFrom33(1) + BusContention(sys->AHBBusyTS, now + time, Dev_Palette);
                 // should technically be two separate reads
                 // not sure if that actually matters?
                 ret = MemoryRead(32, sys->Palette, addr, Palette_Size);
@@ -756,48 +466,34 @@ u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const AHB_HSIZE size
             else
             {
                 ret = MemoryRead(16, sys->Palette, addr, Palette_Size);
-                ret |= ret << 16;
+                ret |= ret << 16; // fetch is mirrored in both halves
             }
         }
         break;
 
     case 0x06: // VRAM
-        // TODO: 2d gpu contention timings
-        // TODO: update VRAM read handling
-        u32 mask;
-        if (size == HSIZE_32) mask = u32_max;
-        if (size == HSIZE_16) mask = ROL32(u16_max, (addr & 2) * 8);
-        if (size == HSIZE_8 ) mask = ROL32(u8_max , (addr & 3) * 8);
-        ret = VRAM_ARM9(sys, addr, mask, false, 0, timings);
-        break;
+        return AHB9_VRAM(sys, addr, req, now);
 
     case 0x07: // 2D GPU OAM
         // TODO: 2d gpu contention timings
         if (!((addr & 0x400) ? sys->PowerCR9.PPUBPower : sys->PowerCR9.PPUAPower))
         {
-            if (timings) LogPrint(LOG_ARM9|LOG_ODD, "DISABLED OAM READ?\n");
-            if (timings)
-            {
-                Timing32(&sys->AHB9);
-            }
+            LogPrint(LOG_ARM9|LOG_ODD, "DISABLED OAM READ?\n");
+            time = NTRClock_CvtFrom33(1);
             ret = 0;
         }
         else
         {
-            if (timings)
-            {
-                BusContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_Palette);
-                Timing32(&sys->AHB9);
-            }
+            time = NTRClock_CvtFrom33(1) + BusContention(sys->AHBBusyTS, now, Dev_Palette);
             ret = MemoryRead(32, sys->OAM, addr, OAM_Size);
         }
         break;
 
     case 0x08 ... 0x09: // GBA Game Pak ROM
-        if (!sys->ExtMemCR_Shared.GBAPakAccess) // configured for arm9
+        if (!sys->ExtMemCR_Shared.GBAPakA7Access) // configured for arm9
         {
             // checkme: what are the odds they kept the prefetcher for some god forsaken reason?
-            if (timings) Timing32(&sys->AHB9); // TODO
+            time = NTRClock_CvtFrom33(1); // TODO
             if (size == HSIZE_32)
             {
                 ret = GamePak_ROMRead(&sys->GamePak, addr & ~3);
@@ -811,35 +507,32 @@ u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const AHB_HSIZE size
         }
         else // unmapped
         {
-            if (timings) Timing32(&sys->AHB9); // checkme: should this use configured waitstates?
+            time = NTRClock_CvtFrom33(1); // checkme: should this use configured waitstates?
             ret = 0;
         }
         break;
 
     case 0x0A: // GBA Game Pak SRAM
         // note: 8 bit bus, only supports byte reads, does not ignore low bits of address for larger accesses.
-        if (!sys->ExtMemCR_Shared.GBAPakAccess) // configured for arm9
+        if (!sys->ExtMemCR_Shared.GBAPakA7Access) // configured for arm9
         {
-            if (timings && (size != HSIZE_8)) LogPrint(LOG_ARM9|LOG_ODD|LOG_PAK, "NTR_AHB9: %i bit read from GBA Game Pak SRAM region, width > 8 bit are weird, probably not correct?\n", (8<<size));
-            if (timings) Timing32(&sys->AHB9); // TODO
+            if (size != HSIZE_8) LogPrint(LOG_ARM9|LOG_ODD|LOG_PAK, "NTR_AHB9: %"PRIu32" bit read from GBA Game Pak SRAM region, width > 8 bit are weird, probably not correct?\n", width);
+            time = NTRClock_CvtFrom33(1); // TODO
             ret = GamePak_SRAMRead(&sys->GamePak, addr);
         }
         else // unmapped
         {
-            if (timings) Timing32(&sys->AHB9); // checkme: should this use configured waitstates?
+            time = NTRClock_CvtFrom33(1); // checkme: should this use configured waitstates?
             ret = 0; // always returns 0
         }
-        ret = ret | (ret << 8)| (ret << 16) | (ret << 24); // byte is mirrored across all bus lanes.
+        ret = ret | (ret << 8) | (ret << 16) | (ret << 24); // byte is mirrored across all bus lanes.
         break;
 
     case 0xFF: // NDS BIOS
         if ((addr & 0xFFFFF000) == 0xFFFF0000)
         {
             // bios does not have contention, interestingly enough.
-            if (timings)
-            {
-                Timing32(&sys->AHB9);
-            }
+            time = NTRClock_CvtFrom33(1);
             ret = MemoryRead(32, sys->NTRBios9, addr, NTRBios9_Size);
             break;
         }
@@ -849,126 +542,98 @@ u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const AHB_HSIZE size
         }
 
     default: // Unmapped Device;
-        if (timings) LogPrint(LOG_ODD|LOG_ARM9,"NTR_AHB9: %i bit read from unmapped memory at 0x%08X? Something went wrong?\n", (8<<size), addr);
-        if (timings)
-        {
-            Timing32(&sys->AHB9);
-        }
+        LogPrint(LOG_ODD|LOG_ARM9,"NTR_AHB9: %"PRIu32" bit read from unmapped memory at 0x%08"PRIX32"? Something went wrong?\n", width, addr);
+        time = NTRClock_CvtFrom33(1);
         ret = 0; // always reads 0
         break;
     }
 
-    if (timings)
-    {
-        *ts = sys->AHB9.Timestamp;
-    }
-    return ret;
+    AHB9_TransferPostSetup(sys, ret, now, time);
 }
 
-void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, const u32 mask, const bool atomic, bool* seq, const bool timings)
+void AHB9_Write(Console* sys, AHB_Req* req, const timestamp now)
 {
-    // CHECKME: alignment is enforced by the bus on arm7 on gba, does that also apply to arm9?
-    // if so, is the alignment properly enforced by all bus devices?
+    const u32 addr = req->Addr;
+    const AHB_HSIZE size = req->Size;
+    const u32 width = 8<<size;
+    const u32 mask = MakeWriteMask(addr, size);
+    const u32 val = req->WriteVal;
+    // checkme: are there any devices on the bus with weird handling of addr misalignment or weird access widths?
 
-    if (timings)
-    {
-        if (sys->AHB9.Timestamp < *ts)
-            sys->AHB9.Timestamp = *ts;
-    }
+    if (size > HSIZE_32) CrashSpectacularly("ARM9 BUS READ TOO WIDE: %"PRIu32"\n", width);
 
-    addr &= ~3; // 4 byte aligned value used to simplify read logic.
-
-    const unsigned width = stdc_count_ones(mask);
-
+    timestamp time;
     switch(addr >> 24) // check most signficant byte
     {
     case 0x02: // Main RAM
-        Bus_MainRAM_Write(sys, &sys->AHB9, true, addr, val, mask, atomic, seq, timings);
-        break;
+        MainRAM_Request(sys, req, now, true);
+        return; // defer completion of req to main ram handler
 
     case 0x03: // Shared WRAM
         // NOTE: it seems to still have write contention even if unmapped?
-        if (timings)
-        {
-            Timing32(&sys->AHB9);
-            AddBusContention(sys->AHBBusyTS, sys->AHB9.Timestamp, Dev_WRAM9);
-        }
+        time = NTRClock_CvtFrom33(1);
+        AddBusContention(sys->AHBBusyTS, now+time, Dev_WRAM9);
         switch(sys->WRAMCR)
         {
-            case 0:
-                MaskedWrite(sys->SharedWRAM.b32[((addr & ((SharedWRAM_Size)-1)))/4], val, mask); break;
-            case 1:
-                MaskedWrite(sys->SharedWRAM.b32[((addr & ((SharedWRAM_Size/2)-1)) + (SharedWRAM_Size/2))/4], val, mask); break;
-            case 2:
-                MaskedWrite(sys->SharedWRAM.b32[((addr & ((SharedWRAM_Size/2)-1)))/4], val, mask); break;
-            case 3:
-                break;
+            case 0: MemoryWrite(32, sys->SharedWRAM, addr, SharedWRAM_Size, val, mask); break;
+            case 1: MemoryWrite(32, sys->SharedWRAMHi, addr, SharedWRAM_Size/2, val, mask); break;
+            case 2: MemoryWrite(32, sys->SharedWRAMLo, addr, SharedWRAM_Size/2, val, mask); break;
+            case 3: break;
             default: unreachable();
         }
         break;
 
     case 0x04: // Memory Mapped IO
-        if (timings)
-        {
-            Timing32(&sys->AHB9); // checkme: does all of IO have the exact same timings?
-            AddBusContention(sys->AHBBusyTS, sys->AHB9.Timestamp, Dev_IO9);
-        }
-        IO9_Write(sys, addr, val, mask);
+        //time = NTRClock_CvtFrom33(1);
+        //AddBusContention(sys->AHBBusyTS, now+time, Dev_WRAM9);
+        static_assert(false, "redesign\n");
+        //IO9_Write(sys, addr, val, mask);
         break;
 
     case 0x05: // 2D GPU Palette
         // TODO: 2d gpu contention timings
-        if (!((addr & 0x400) ? sys->PowerCR9.PPUBPower : sys->PowerCR9.PPUAPower) || (width == 8))
+        if (!((addr & 0x400) ? sys->PowerCR9.PPUBPower : sys->PowerCR9.PPUAPower) || (size == HSIZE_8))
         {
-            if (timings) (width == 8) ? LogPrint(LOG_ARM9|LOG_ODD, "8 BIT PALETTE WRITE?\n") : LogPrint(LOG_ARM9|LOG_ODD, "DISABLED PALETTE WRITE?\n");
-            if (timings)
-            {
-                // CHECKME: contention for bytes?
-                Timing32(&sys->AHB9);
-            }
+            if (size == HSIZE_8) LogPrint(LOG_ARM9|LOG_ODD, "8 BIT PALETTE WRITE?\n");
+            else                 LogPrint(LOG_ARM9|LOG_ODD, "DISABLED PALETTE WRITE?\n");
+            time = NTRClock_CvtFrom33(1);
+            // CHECKME: contention for bytes?
         }
         else
         {
             if (mask & 0x0000FFFF)
             {
-                if (timings)
-                {
-                    Timing32(&sys->AHB9);
-                    PPU_Sync(sys, sys->AHB9.Timestamp);
-                    BusContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_Palette);
-                    AddBusContention(sys->AHBBusyTS, sys->AHB9.Timestamp, Dev_Palette);
-                }
-                MemoryWrite(32, sys->Palette, addr, Palette_Size, val, mask&0x0000FFFF);
+                time = NTRClock_CvtFrom33(1);
+                PPU_Sync(sys, now+time);
+                //BusContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_Palette);
+                //AddBusContention(sys->AHBBusyTS, sys->AHB9.Timestamp, Dev_Palette);
+
+                MemoryWrite(32, sys->Palette, addr, Palette_Size, val, mask & 0x0000FFFF);
             }
             if (mask & 0xFFFF0000)
             {
-                if (timings)
-                {
-                    Timing32(&sys->AHB9);
-                    PPU_Sync(sys, sys->AHB9.Timestamp);
-                    BusContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_Palette);
-                    AddBusContention(sys->AHBBusyTS, sys->AHB9.Timestamp, Dev_Palette);
-                }
-                MemoryWrite(32, sys->Palette, addr, Palette_Size, val, mask&0xFFFF0000);
+                time = NTRClock_CvtFrom33(1);
+                PPU_Sync(sys, now+time);
+                //BusContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_Palette);
+                //AddBusContention(sys->AHBBusyTS, sys->AHB9.Timestamp, Dev_Palette);
+
+                MemoryWrite(32, sys->Palette, addr, Palette_Size, val, mask & 0xFFFF0000);
             }
         }
         break;
 
     case 0x06: // VRAM
         // TODO: 2d gpu contention timings
-        if (width == 8)
+        if (size == HSIZE_8)
         {
-            if (timings) LogPrint(LOG_ARM9|LOG_ODD, "ARM9: 8 BIT VRAM WRITE?\n");
-            if (timings)
-            {
-                // CHECKME: contention for bytes?
-                Timing32(&sys->AHB9);
-            }
+            LogPrint(LOG_ARM9|LOG_ODD, "ARM9: 8 BIT VRAM WRITE?\n");
+            time = NTRClock_CvtFrom33(1);
+            // CHECKME: contention for bytes?
         }
         else
         {
             // TODO: update VRAM write handling
-            VRAM_ARM9(sys, addr, mask, true, val, timings);
+            VRAM_ARM9(sys, addr, mask, true, val, true);
         }
         break;
 
@@ -976,83 +641,211 @@ void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, con
         // TODO: 2d gpu contention timings
         if (!((addr & 0x400) ? sys->PowerCR9.PPUBPower : sys->PowerCR9.PPUAPower) || (width == 8))
         {
-            if (timings) (width == 8) ? LogPrint(LOG_ARM9|LOG_ODD, "8 BIT OAM WRITE?\n") : LogPrint(LOG_ARM9|LOG_ODD, "DISABLED OAM WRITE?\n");
-            if (timings)
-            {
-                // CHECKME: contention for bytes?
-                Timing32(&sys->AHB9);
-            }
+            // for some reason oam doesn't support byte writes
+            // CHECKME: does it support halfwords?
+            if (size == HSIZE_8) LogPrint(LOG_ARM9|LOG_ODD, "8 BIT OAM WRITE?\n");
+            else                 LogPrint(LOG_ARM9|LOG_ODD, "DISABLED OAM WRITE?\n");
+            time = NTRClock_CvtFrom33(1);
+            // CHECKME: contention for bytes?
         }
         else
         {
-            if (timings)
-            {
-                Timing32(&sys->AHB9);
-                AddBusContention(sys->AHBBusyTS, sys->AHB9.Timestamp, Dev_OAM);
-                PPU_Sync(sys, sys->AHB9.Timestamp);
-            }
+            time = NTRClock_CvtFrom33(1);
+            PPU_Sync(sys, now+time);
+            AddBusContention(sys->AHBBusyTS, now+time, Dev_OAM);
             MemoryWrite(32, sys->OAM, addr, OAM_Size, val, mask);
         }
         break;
 
     case 0x08 ... 0x09: // GBA Game Pak ROM
-        if (!sys->ExtMemCR_Shared.GBAPakAccess) // configured for arm9
+        if (!sys->ExtMemCR_Shared.GBAPakA7Access) // configured for arm9
         {
-            if (timings) Timing32(&sys->AHB9);
+            time = NTRClock_CvtFrom33(1); // TODO
             GamePak_ROMWrite(&sys->GamePak, addr, val);
-            if (width == 32) // TODO: how does this actually work?
+            if (size == HSIZE_32) // TODO: how does this actually work?
                 GamePak_ROMWrite(&sys->GamePak, addr+2, val);
         }
         else // unmapped
         {
-            if (timings) Timing32(&sys->AHB9); // checkme: should this use configured waitstates?
+            time = NTRClock_CvtFrom33(1); // checkme: should this use configured waitstates?
         }
         break;
 
     case 0x0A: // GBA Game Pak SRAM
-        if (!sys->ExtMemCR_Shared.GBAPakAccess) // configured for arm9
+        if (!sys->ExtMemCR_Shared.GBAPakA7Access) // configured for arm9
         {
-            if (timings) Timing32(&sys->AHB9);
-            u32 fixedaddr = addr | (stdc_trailing_zeros(mask) / 8); // NOT ACCURATE: TODO FIX
-            u8 fixedval = ROR32(val, stdc_trailing_zeros(mask));
-            GamePak_SRAMWrite(&sys->GamePak, fixedaddr, fixedval);
+            time = NTRClock_CvtFrom33(1); // TODO
+            GamePak_SRAMWrite(&sys->GamePak, addr, ROR32(val, 8*addr)); // CHECKME
         }
         else // unmapped
         {
-            if (timings) Timing32(&sys->AHB9); // checkme: should this use configured waitstates?
+            time = NTRClock_CvtFrom33(1); // checkme: should this use configured waitstates?
         }
         break;
 
     default: // Unmapped Device;
-        if (timings)
-        {
-            LogPrint(LOG_ODD|LOG_ARM9,"NTR_AHB9: %i bit write to unmapped memory at 0x%08X? Something went wrong?\n", width, addr);
-            Timing32(&sys->AHB9);
-        }
-        // always reads 0
+        LogPrint(LOG_ODD|LOG_ARM9,"NTR_AHB9: %"PRIu32" bit write to unmapped memory at 0x%08"PRIX32"? Something went wrong?\n", width, addr);
+        time = NTRClock_CvtFrom33(1);
         break;
     }
 
-    if (timings)
-    {
-        *ts = sys->AHB9.Timestamp;
-    }
+    AHB9_TransferPostSetup(sys, 0, now, time);
 }
 
-void AHB9_BusNegotiate(struct AHB* AHB9, )
+void AHB9_Idle(Console* sys, const timestamp now)
 {
-    u8 grantid = stdc_trailing_zeros(AHB9->RequestBitfield);
+    // no access performed; signal to kill bursts
+    if (sys->BusMR.CurReq == MainRAM_A9)
+        MainRAM_KillBurst(sys, now);
 
-    // step pipeline
+    // TODO: kill gba rom/ram chipsel
+}
 
+void AHB9_Busy(Console* sys, const timestamp now)
+{
+    if (sys->BusMR.CurReq == MainRAM_A9)
+        MainRAM_KillBurst(sys, now);
+}
+
+void AHB9_BusReq(Console* sys, AHB_Req* req, timestamp now)
+{
+    AHB* ahb = &sys->AHB9;
+
+    ahb->RequestBitfield |= (1<<(req->Manager));
+    ahb->Reqs[req->Manager] = *req;
+
+    if (!ahb->LockSched) NeoSched_AddEventIfEarlier(sys, now, Evt_AHB9);
+}
+
+void AHB9_TransferPostSetup(Console* sys, u32 rdata, timestamp prev, timestamp len)
+{
+    AHB* ahb = &sys->AHB9;
+    ahb->ReadData = rdata;
+    ahb->PrevTs = prev;
+    ahb->FetchLen = len;
+    NeoSched_AddEvent(sys, prev+len, Evt_AHB9);
+}
+
+void AHB9_TransferPost(Console* sys)
+{
+    AHB* ahb = &sys->AHB9;
+    u32 rdata = ahb->ReadData;
+    timestamp prev = ahb->PrevTs;
+    timestamp len = ahb->FetchLen;
+    // ahb pipeline steps once every HREADY
+
+    // apply waitstate delays
+    if (len > NTRClock_CvtFrom33(1))
+    {
+        for (s32 i = 0; i < 4; i++)
+        {
+            ahb->PipelineExitTime[i] += (len-NTRClock_CvtFrom33(1));
+        }
+    }
+
+    // arbitrate new reqs
+    if (ahb->RequestBitfield)
+    {
+        AHB9_HMANAGER manager;
+        // handle locked transfers
+        if (ahb->HLock == MAN9_MAX)
+        {
+            manager = stdc_trailing_zeros(ahb->RequestBitfield);
+        }
+        else
+        {
+            // locked, manager stays the original
+            manager = ahb->HLock;
+            // make sure it's actually trying to do a transfer
+            if (!(ahb->RequestBitfield & (1<<manager))) goto nvm;
+        }
+
+        // put entry into fifo
+        ahb->PipelineFIFO[ahb->FIFOFillPtr] = ahb->Reqs[manager];
+        ahb->PipelineExitTime[ahb->FIFOFillPtr] = prev+len + NTRClock_CvtFrom33(3 /* checkme */);
+
+        ahb->RequestBitfield &= ~(1<<manager); // clear req list
+        // update lock flag
+        ahb->HLock = ((ahb->PipelineFIFO[ahb->FIFOFillPtr].Lock) ? manager : MAN9_MAX);
+
+        // step fill ptr
+        ahb->FIFOFillPtr = (ahb->FIFOFillPtr + 1) % countof(ahb->PipelineFIFO);
+        ahb->FIFOEmpty = false;
+    }
+    nvm:
+
+    // schedule next event
+    const timestamp fin = prev + len;
+    timestamp new;
+    // check if something needs arbitration arbitrated
+    if (ahb->HLock ? (ahb->RequestBitfield & (1<<ahb->HLock)) : ahb->RequestBitfield)
+    {
+        // step pipeline 1 cycle
+        new = fin + NTRClock_CvtFrom33(1);
+    }
+    else if (!ahb->FIFOEmpty)
+    {
+        // if something is in the pipeline wait for it
+        new = ahb->PipelineExitTime[ahb->FIFODrainPtr];
+    }
+    else
+    {
+        // nothing to do; ahb go nini
+        goto noresched;
+    }
+    NeoSched_AddEvent(sys, new, Evt_AHB9);
+    noresched:
+    ahb->LockSched = false;
+
+    static_assert(false, "ADD CALLBACKS\n");
     // req callback
 }
 
-u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const AHB_HSIZE size, const bool atomic, const bool hold, bool* seq, const bool timings, const u32 a7pc)
+void AHB9_BusRun(Console* sys, timestamp now)
 {
-    if (size > HSIZE_32) CrashSpectacularly("ARM7 BUS READ TOO WIDE: %i\n", 8<<size);
-    // CHECKME: alignment is enforced by the bus on arm7 on gba, this presumably still applies to arm9.
-    // is the alignment properly enforced by all bus devices?
+    AHB* ahb = &sys->AHB9;
+
+
+    if (ahb->LockSched)
+    {
+        AHB9_TransferPost(sys);
+    }
+    else ahb->LockSched = true;
+
+    // step pipeline
+    if (!ahb->FIFOEmpty)
+    {
+        AHB_Req* req = &ahb->PipelineFIFO[ahb->FIFODrainPtr];
+        if ((ahb->PipelineExitTime[ahb->FIFODrainPtr] <= now))
+        {
+            ahb->FIFODrainPtr = (ahb->FIFODrainPtr + 1) % countof(ahb->PipelineFIFO);
+
+            if (ahb->FIFODrainPtr == ahb->FIFOFillPtr)
+                ahb->FIFOEmpty = true;
+
+            if (req->Type >= HTRANS_NONSEQ)
+            {
+                // its time; begin transfer!
+                if (req->Write) AHB9_Write(sys, req, now);
+                else            AHB9_Read(sys, req, now);
+            }
+            else
+            {
+                // explicit idle/busy transfer; 1 cycle
+                static_assert(false, "idle and busy transfers likely do different things for some regions\n");
+            }
+        }
+        else {} // not time yet; assume 1 cycle idle transfer
+    }
+    else {} // nothing running; assume 1 cycle idle transfer
+
+    AHB9_TransferPostSetup(sys, 0, now, NTRClock_CvtFrom33(1));
+}
+
+u32 AHB7_Read(Console* sys, timestamp* ts, u32 addr, const AHB_HSIZE size, const bool atomic, const bool hold, bool* seq, const bool timings, const u32 a7pc)
+{
+    if (size > HSIZE_32) CrashSpectacularly("ARM7 BUS READ TOO WIDE: %"PRIu32"\n", 8<<size);
+    // checkme: are there any devices on the bus with weird handling of addr misalignment or weird access widths?
     if (timings)
     {
         if (sys->AHB7.Timestamp < *ts)
@@ -1204,8 +997,9 @@ u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const AHB_HSIZE size
     return ret;
 }
 
-void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, const u32 mask, const bool atomic, bool* seq, const bool timings, const u32 a7pc)
+void AHB7_Write(Console* sys, timestamp* ts, u32 addr, const u32 val, const u32 mask, const bool atomic, bool* seq, const bool timings, const u32 a7pc)
 {
+    // checkme: are there any devices on the bus with weird handling of addr misalignment or weird access widths?
     if (timings)
     {
         if (sys->AHB7.Timestamp < *ts)

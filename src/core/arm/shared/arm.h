@@ -5,8 +5,10 @@
 
 
 
+typedef struct Console Console;
+
 // lsb is technically a negation of the pass/fail
-enum ARM_Condition_Codes : u8
+typedef enum : u8
 {
     ARMCond_EQ,
     ARMCond_NE,
@@ -25,30 +27,30 @@ enum ARM_Condition_Codes : u8
     ARMCond_AL,
     ARMCond_NV, // legacy; applies to armv4te and earlier
     ARMCond_UN = ARMCond_NV, // applies to armv5 onward
-};
+} ARM_Condition_Codes;
 
-enum ARM_Modes : u8
+typedef enum : u8
 {
     ARMMode_USR = 0x0,
     ARMMode_FIQ = 0x1,
     ARMMode_IRQ = 0x2,
-    ARMMode_SWI = 0x3, ARMMode_SVC = 0x3,
+    /*ARMMode_SWI = 0x3,*/ ARMMode_SVC = 0x3,
     ARMMode_ABT = 0x7,
     ARMMode_UND = 0xB,
     ARMMode_SYS = 0xF,
-};
+} ARM_Modes;
 
-enum ARM_Exception_Vector_Offsets : u8
+typedef enum : u8
 {
     ARMVector_RST = 0x00, // Reset
     ARMVector_UND = 0x04, // Undefined Instruction
-    ARMVector_SWI = 0x08, ARMVector_SVC = 0x08, // Software Interrupt / Supervisor Call
+    /*ARMVector_SWI = 0x08,*/ ARMVector_SVC = 0x08, // Software Interrupt / Supervisor Call
     ARMVector_PAB = 0x0C, // Prefetch Abort (instruction)
     ARMVector_DAB = 0x10, // Data Abort (data)
     ARMVector_ADR = 0x14, // Address Exception (legacy 26 bit addressing thing, only here for funsies)
     ARMVector_IRQ = 0x18, // Interrupt Request
     ARMVector_FIQ = 0x1C, // Fast Interrupt Request
-};
+} ARM_Exception_Vector_Offsets;
 
 // proper order of these matters
 typedef enum : u8
@@ -72,7 +74,7 @@ typedef enum
     ARMDataWidth_32,
 } ARM_DataWidth;
 
-union ARM_FlagsOut
+typedef union
 {
     u8 Raw : 4;
     struct
@@ -82,9 +84,9 @@ union ARM_FlagsOut
         bool Zero : 1;
         bool Negative : 1;
     };
-};
+} ARM_FlagsOut;
 
-union ARM_PSR
+typedef union
 {
     u32 Raw;
     struct
@@ -113,7 +115,7 @@ union ARM_PSR
         u32 : 23;
         u32 Flags : 4;
     };
-};
+} ARM_PSR;
 
 typedef struct
 {
@@ -130,7 +132,7 @@ typedef struct
 
 #define ARM_CoprocReg(Op1, CRn, CRm, Op2) (((Op1) << 11) | ((CRn) << 7) | ((CRm) << 3) | (Op2))
 
-struct ARM
+typedef struct
 {
     alignas(HOST_CACHEALIGN)
     union
@@ -165,31 +167,31 @@ struct ARM
             //bool DeadAsleep; // when absolutely nothing needs to be ticked for a given cpu
         };
     };
-    union ARM_PSR CPSR;
+    ARM_PSR CPSR;
     struct
     {
         u32 R[7];
-        union ARM_PSR SPSR;
+        ARM_PSR SPSR;
     } FIQ_Bank;
     struct
     {
         u32 R[2];
-        union ARM_PSR SPSR;
+        ARM_PSR SPSR;
     } IRQ_Bank;
     struct
     {
         u32 R[2];
-        union ARM_PSR SPSR;
-    } SWI_Bank;
+        ARM_PSR SPSR;
+    } SVC_Bank;
     struct
     {
         u32 R[2];
-        union ARM_PSR SPSR;
+        ARM_PSR SPSR;
     } ABT_Bank;
     struct
     {
         u32 R[2];
-        union ARM_PSR SPSR;
+        ARM_PSR SPSR;
     } UND_Bank;
     u8 CPUID;
     bool Privileged; // permissions
@@ -198,16 +200,16 @@ struct ARM
     alignas(alignof(ARM_Instr)*4) ARM_Instr Instr[3]; // prefetch pipeline
     timestamp Timestamp;
     timestamp MinWakeup;
-    struct Console* Sys;
-};
+    Console* Sys;
+} ARM;
 
-void ARM_Init(struct ARM* cpu, struct Console* sys, const u8 CPUID);
+void ARM_Init(ARM* cpu, Console* sys, const u8 CPUID);
 [[nodiscard]] bool ARM_ConditionLookup(const u8 condition, const u8 flags);
-void ARM_StepPC(struct ARM* cpu, const bool thumb);
-void ARM_BankSwap(struct ARM* cpu, const u8 newmode);
-void ARM_UpdatePerms(struct ARM* cpu, const u8 mode);
-void ARM_SetMode(struct ARM* cpu, const u8 mode);
-void ARM_SetCPSR(struct ARM* cpu, const u32 val);
-void ARM_SetThumb(struct ARM* cpu, const bool thumb);
-void ARM_PipelineStep(struct ARM* cpu);
-void ARM_PipelineFlush(struct ARM* cpu);
+void ARM_StepPC(ARM* cpu, const bool thumb);
+void ARM_BankSwap(ARM* cpu, const u8 newmode);
+void ARM_UpdatePerms(ARM* cpu, const u8 mode);
+void ARM_SetMode(ARM* cpu, const u8 mode);
+void ARM_SetCPSR(ARM* cpu, const u32 val);
+void ARM_SetThumb(ARM* cpu, const bool thumb);
+void ARM_PipelineStep(ARM* cpu);
+void ARM_PipelineFlush(ARM* cpu);

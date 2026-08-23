@@ -228,7 +228,7 @@ void RTC_CommandHandler(RTC* rtc)
     }
 }
 
-void RTC_IOWriteHandler(struct Console* sys, const u16 val, const u16 mask)
+void RTC_IOWriteHandler(Console* sys, const u16 val, const u16 mask)
 {
     // checkme: how do byte writes work actually?
     RTC* rtc = &sys->RTC;

@@ -5,7 +5,7 @@
 
 
 
-void GX_UpdateIRQ(struct Console* sys, const timestamp time)
+void GX_UpdateIRQ(Console* sys, const timestamp time)
 {
     GX3D* gx = &sys->GX3D;
 
@@ -41,9 +41,9 @@ void GX_UpdateIRQ(struct Console* sys, const timestamp time)
     }
 }
 
-void GX_RunFIFO(struct Console* sys, const timestamp until);
+void GX_RunFIFO(Console* sys, const timestamp until);
 
-bool GXFIFO_Fill(struct Console* sys, const u8 cmd, const u32 param)
+bool GXFIFO_Fill(Console* sys, const u8 cmd, const u32 param)
 {
     GX3D* gx = &sys->GX3D;
 
@@ -75,7 +75,7 @@ bool GXFIFO_Fill(struct Console* sys, const u8 cmd, const u32 param)
     return true;
 }
 
-bool GXPipe_Fill(struct Console* sys)
+bool GXPipe_Fill(Console* sys)
 {
     GX3D* gx = &sys->GX3D;
 
@@ -113,7 +113,7 @@ bool GXPipe_Fill(struct Console* sys)
     return true;
 }
 
-bool GXPipe_Drain(struct Console* sys)
+bool GXPipe_Drain(Console* sys)
 {
     GX3D* gx = &sys->GX3D;
     //timestamp* ts = &sys->AHB9.Timestamp;
@@ -134,7 +134,7 @@ bool GXPipe_Drain(struct Console* sys)
     return true;
 }
 
-bool GX_FetchParams(struct Console* sys)
+bool GX_FetchParams(Console* sys)
 {
     GX3D* gx = &sys->GX3D;
 
@@ -149,7 +149,7 @@ bool GX_FetchParams(struct Console* sys)
 }
 
 
-bool GXFIFO_Unpack(struct Console* sys)
+bool GXFIFO_Unpack(Console* sys)
 {
     GX3D* gx = &sys->GX3D;
 
@@ -195,7 +195,7 @@ bool GXFIFO_Unpack(struct Console* sys)
     return false;
 }
 
-void GX_RunFIFO(struct Console* sys, const timestamp until)
+void GX_RunFIFO(Console* sys, const timestamp until)
 {
     GX3D* gx = &sys->GX3D;
 
@@ -217,7 +217,7 @@ void GX_RunFIFO(struct Console* sys, const timestamp until)
     gx->Timestamp = until;
 }
 
-void GXFIFO_PackedSubmit(struct Console* sys, const u32 val)
+void GXFIFO_PackedSubmit(Console* sys, const u32 val)
 {
     GX3D* gx = &sys->GX3D;
     timestamp* ts = &sys->AHB9.Timestamp;
@@ -254,7 +254,7 @@ void GXFIFO_PackedSubmit(struct Console* sys, const u32 val)
     }
 }
 
-void GXFIFO_PortSubmit(struct Console* sys, const u32 addr, const u32 val)
+void GXFIFO_PortSubmit(Console* sys, const u32 addr, const u32 val)
 {
     GX3D* gx = &sys->GX3D;
     timestamp* ts = &sys->AHB9.Timestamp;
@@ -274,7 +274,7 @@ void GXFIFO_PortSubmit(struct Console* sys, const u32 addr, const u32 val)
     }
 }
 
-void GX_IOWrite(struct Console* sys, const u32 addr, const u32 mask, const u32 val)
+void GX_IOWrite(Console* sys, const u32 addr, const u32 mask, const u32 val)
 {
     GX3D* gx = &sys->GX3D;
 
@@ -346,7 +346,7 @@ void GX_IOWrite(struct Console* sys, const u32 addr, const u32 mask, const u32 v
     }
 }
 
-u32 GX_IORead(struct Console* sys, const u32 addr)
+u32 GX_IORead(Console* sys, const u32 addr)
 {
     GX3D* gx = &sys->GX3D;
 

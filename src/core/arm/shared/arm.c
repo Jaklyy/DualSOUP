@@ -5,7 +5,7 @@
 
 
 
-void ARM_Init(struct ARM* cpu, struct Console* sys, const u8 CPUID)
+void ARM_Init(ARM* cpu, Console* sys, const u8 CPUID)
 {
     // set mode id
     cpu->CPUID = CPUID;
@@ -48,12 +48,12 @@ bool ARM_ConditionLookup(const u8 condition, const u8 flags)
     return CondLUT[condition] & (1<<flags);
 }
 
-void ARM_StepPC(struct ARM* cpu, const bool thumb)
+void ARM_StepPC(ARM* cpu, const bool thumb)
 {
     cpu->PC += (thumb ? 2 : 4);
 }
 
-void ARM_BankSwap(struct ARM* cpu, const u8 newmode)
+void ARM_BankSwap(ARM* cpu, const u8 newmode)
 {
     u8 oldmode = cpu->CPSR.Mode;
     if (oldmode == newmode) return; // this is probably faster but idk
@@ -98,32 +98,32 @@ void ARM_BankSwap(struct ARM* cpu, const u8 newmode)
     }
 }
 
-void ARM_UpdatePerms(struct ARM* cpu, const u8 mode)
+void ARM_UpdatePerms(ARM* cpu, const u8 mode)
 {
     cpu->Privileged = mode != ARMMode_USR;
 }
 
-void ARM_SetMode(struct ARM* cpu, const u8 mode)
+void ARM_SetMode(ARM* cpu, const u8 mode)
 {
     ARM_BankSwap(cpu, mode);
     ARM_UpdatePerms(cpu, mode);
     cpu->CPSR.Mode = mode;
 }
 
-void ARM_SetCPSR(struct ARM* cpu, const u32 val)
+void ARM_SetCPSR(ARM* cpu, const u32 val)
 {
-    const union ARM_PSR newcpsr = {.Raw = val};
+    const ARM_PSR newcpsr = {.Raw = val};
     ARM_SetMode(cpu, newcpsr.Mode);
     cpu->CPSR = newcpsr;
 }
 
-void ARM_SetThumb(struct ARM* cpu, const bool thumb)
+void ARM_SetThumb(ARM* cpu, const bool thumb)
 {
     cpu->CPSR.Thumb = thumb;
 }
 
 //#include <immintrin.h>
-void ARM_PipelineStep(struct ARM* cpu)
+void ARM_PipelineStep(ARM* cpu)
 {
     // step pipeline forward.
     cpu->Instr[0] = cpu->Instr[1];

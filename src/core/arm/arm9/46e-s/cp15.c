@@ -1,16 +1,16 @@
-#include "../../utils.h"
-#include "arm.h"
+#include "core/utils.h"
+#include "../arm.h"
 
 
 
 
-void ARM9_DumpMPU(const struct ARM946ES* ARM9)
+void ARM9_DumpMPU(const ARM946ES* ARM9)
 {
     for (int i = 0; i < 8; i++)
         LogPrint(LOG_ARM9, "MPU%i: %08X %08X %02X %02X\n", i, ARM9->CP15.MPURegionBase[i], ARM9->CP15.MPURegionMask[i], *(u8*)&ARM9->CP15.MPURegionPermsUser[i], *(u8*)&ARM9->CP15.MPURegionPermsPriv[i]);
 }
 
-void ARM9_ConfigureITCM(struct ARM946ES* ARM9)
+void ARM9_ConfigureITCM(ARM946ES* ARM9)
 {
     u32 size = ARM9->CP15.ITCMCR.Size + 9;
     if (size < 12) size = 12; // 4KiB min
@@ -19,7 +19,7 @@ void ARM9_ConfigureITCM(struct ARM946ES* ARM9)
     ARM9->CP15.ITCMShift = size;
 }
 
-void ARM9_ConfigureDTCM(struct ARM946ES* ARM9)
+void ARM9_ConfigureDTCM(ARM946ES* ARM9)
 {
     bool enabled = ARM9->CP15.CR.DTCMEnable;
     bool writeonly = ARM9->CP15.CR.DTCMLoadMode;
@@ -52,7 +52,7 @@ void ARM9_ConfigureDTCM(struct ARM946ES* ARM9)
     }
 }
 
-void ARM9_ConfigureMPURegionSize(struct ARM946ES* ARM9, const u8 rgn)
+void ARM9_ConfigureMPURegionSize(ARM946ES* ARM9, const u8 rgn)
 {
     if (!ARM9->CP15.CR.MPUEnable) return;
     if (!ARM9->CP15.MPURegionCR[rgn].Enable)
@@ -72,7 +72,7 @@ void ARM9_ConfigureMPURegionSize(struct ARM946ES* ARM9, const u8 rgn)
     ARM9->CP15.MPURegionBase[rgn] = (ARM9->CP15.MPURegionCR[rgn].Raw >> size) << size;
 }
 
-void ARM9_ConfigureMPURegionPerms(struct ARM946ES* ARM9)
+void ARM9_ConfigureMPURegionPerms(ARM946ES* ARM9)
 {
     for (int rgn = 0; rgn < 8; rgn++)
     {
@@ -159,163 +159,10 @@ void ARM9_ConfigureMPURegionPerms(struct ARM946ES* ARM9)
     }
 }
 
-extern bool ARM9_ProgressCacheStream(timestamp* ts, struct ARM9_CacheStream* stream, const bool seq);
-
-// CHECKME: does flushing cache clean the tag ram and/or cache line entirely?
-
-void ICache_FlushAddr(struct ARM946ES* ARM9, u32 addr)
-{
-    // TODO: TIMINGS
-    // TODO: IMPROVE CACHE STREAMING HANDLING
-    ARM9_ProgressCacheStream(&ARM9->ARM.Timestamp, &ARM9->IStream, false);
-    ARM9_ICacheSetLookup
-    if (set < ARM9_ICacheAssoc)
-    {
-        ARM9->ITagRAM[index+set].Valid = false;
-    }
-}
-
-void ICache_FlushAll(struct ARM946ES* ARM9)
-{
-    // TODO: TIMINGS
-    // TODO: IMPROVE CACHE STREAMING HANDLING
-    ARM9_ProgressCacheStream(&ARM9->ARM.Timestamp, &ARM9->IStream, false);
-    for (unsigned i = 0; i < (sizeof(ARM9->ITagRAM)/sizeof(ARM9->ITagRAM[0])); i++)
-        ARM9->ITagRAM[i].Valid = false;
-}
-
-extern u32 ARM9_ICacheLookup(struct ARM946ES* ARM9, const u32 addr, const bool timings);
-
-void ICache_Prefetch(struct ARM946ES* ARM9, const u32 addr)
-{
-    // TODO: TIMINGS
-    // TODO: IMPROVE CACHE STREAMING HANDLING
-    ARM9_ProgressCacheStream(&ARM9->ARM.Timestamp, &ARM9->IStream, false);
-    ARM9_ICacheLookup(ARM9, addr, true /* checkme */);
-    ARM9_ProgressCacheStream(&ARM9->ARM.Timestamp, &ARM9->IStream, false);
-}
-
-void DCache_FlushAddr(struct ARM946ES* ARM9, u32 addr)
-{
-    // TODO: TIMINGS
-    // TODO: IMPROVE CACHE STREAMING HANDLING
-    ARM9_ProgressCacheStream(&ARM9->MemTimestamp, &ARM9->DStream, false);
-    ARM9_DCacheSetLookup
-    if (set < ARM9_DCacheAssoc)
-    {
-        ARM9->DTagRAM[index+set].Valid = false;
-    }
-}
-
-void DCache_FlushAll(struct ARM946ES* ARM9)
-{
-    // TODO: TIMINGS
-    // TODO: IMPROVE CACHE STREAMING HANDLING
-    ARM9_ProgressCacheStream(&ARM9->MemTimestamp, &ARM9->DStream, false);
-    for (unsigned i = 0; i < (sizeof(ARM9->DTagRAM)/sizeof(ARM9->DTagRAM[0])); i++)
-        ARM9->DTagRAM[i].Valid = false;
-}
-
-void DCache_CleanLine(struct ARM946ES* ARM9, const u32 idxset)
-{
-    bool seq = false;
-    u32 addr = (ARM9->DTagRAM[idxset].TagBits << 10) | (idxset >> 2 << 5);
-    if (ARM9->DTagRAM[idxset].DirtyLo)
-    {
-        ARM9_FillWriteBuffer(ARM9, &ARM9->MemTimestamp, addr, A9WB_Addr);
-        seq = true;
-        for (int i = 0; i < 4; i++)
-        {
-            ARM9_FillWriteBuffer(ARM9, &ARM9->MemTimestamp, ARM9->DCache.b32[(idxset<<3)+i], A9WB_32);
-        }
-    }
-    if (ARM9->DTagRAM[idxset].DirtyHi)
-    {
-        if (!seq)
-            ARM9_FillWriteBuffer(ARM9, &ARM9->MemTimestamp, addr+(4*sizeof(u32)), A9WB_Addr);
-        for (int i = 4; i < 8; i++)
-        {
-            ARM9_FillWriteBuffer(ARM9, &ARM9->MemTimestamp, ARM9->DCache.b32[(idxset<<3)+i], A9WB_32);
-        }
-    }
-    ARM9->DTagRAM[idxset].DirtyLo = false;
-    ARM9->DTagRAM[idxset].DirtyHi = false;
-}
-
-void DCache_CleanFlushLine(struct ARM946ES* ARM9, const u32 idxset)
-{
-    // TODO: TIMINGS
-    // TODO: IMPROVE CACHE STREAMING HANDLING
-
-    // CHECKME: does this errata emulation all check out?
-    if (ARM9->DTagRAM[idxset].DirtyLo || ARM9->DTagRAM[idxset].DirtyHi)
-    {
-        DCache_CleanLine(ARM9, idxset);
-        ARM9->DTagRAM[idxset].Valid = false;
-    }
-    else if (ARM9->WBuffer.FIFOFillPtr != ARM9->WBuffer.FIFODrainPtr)
-    {
-        ARM9->DTagRAM[idxset].Valid = false;
-    }
-    else
-    {
-        // when the write buffer is full and the line is already clean the line will not properly be marked invalid
-        LogPrint(LOG_ARM9|LOG_BUG, "ARM9 ERRATA TRIGGERED: DCACHE CLEAN+FLUSH FAILED TO FLUSH CLEAN LINE DUE TO FULL WRITE BUFFER!\n");
-    }
-}
-
-void DCache_CleanIdxSet(struct ARM946ES* ARM9, const u32 val)
-{
-    // TODO: TIMINGS
-    // TODO: IMPROVE CACHE STREAMING HANDLING
-    ARM9_ProgressCacheStream(&ARM9->MemTimestamp, &ARM9->DStream, false);
-
-    u32 idxset = (val >> 30) | (((val >> 5) & 0x1F) << 2);
-
-    DCache_CleanLine(ARM9, idxset);
-}
-
-void DCache_CleanFlushIdxSet(struct ARM946ES* ARM9, const u32 val)
-{
-    // TODO: TIMINGS
-    // TODO: IMPROVE CACHE STREAMING HANDLING
-    ARM9_ProgressCacheStream(&ARM9->MemTimestamp, &ARM9->DStream, false);
-
-    u32 idxset = (val >> 30) | (((val >> 5) & 0x1F) << 2);
-
-    DCache_CleanFlushLine(ARM9, idxset);
-}
-
-void DCache_CleanAddr(struct ARM946ES* ARM9, const u32 addr)
-{
-    // TODO: TIMINGS
-    // TODO: IMPROVE CACHE STREAMING HANDLING
-    ARM9_ProgressCacheStream(&ARM9->MemTimestamp, &ARM9->DStream, false);
-    ARM9_DCacheSetLookup
-
-    if (set < ARM9_DCacheAssoc)
-    {
-        DCache_CleanLine(ARM9, index | set);
-    }
-}
-
-void DCache_CleanFlushAddr(struct ARM946ES* ARM9, const u32 addr)
-{
-    // TODO: TIMINGS
-    // TODO: IMPROVE CACHE STREAMING HANDLING
-    ARM9_ProgressCacheStream(&ARM9->MemTimestamp, &ARM9->DStream, false);
-    ARM9_DCacheSetLookup
-
-    if (set < ARM9_DCacheAssoc)
-    {
-        DCache_CleanFlushLine(ARM9, index | set);
-    }
-}
 
 
 
-
-void ARM9_MCR_15(struct ARM946ES* ARM9, const u16 cmd, const u32 val)
+void ARM9_MCR_15(ARM946ES* ARM9, const u16 cmd, const u32 val)
 {
     // try to make sure the compiler knows only 14 bits are used here.
     //if (cmd >= (1<<14)) unreachable();
@@ -355,7 +202,7 @@ void ARM9_MCR_15(struct ARM946ES* ARM9, const u16 cmd, const u32 val)
             ARM9->CP15.MPURegionMask[7] = 0;
         }
         // CHECKME: this is untested
-        ARM9_ExecuteCycles(ARM9, 2, 1);
+        ARM9_ExecuteCycles(ARM9, 2);
         break;
     }
 
@@ -363,19 +210,19 @@ void ARM9_MCR_15(struct ARM946ES* ARM9, const u16 cmd, const u32 val)
         ARM9->CP15.DCacheConfig = val;
         ARM9_ConfigureMPURegionPerms(ARM9);
         // CHECKME: this is untested
-        ARM9_ExecuteCycles(ARM9, 2, 1);
+        ARM9_ExecuteCycles(ARM9, 2);
         break;
     case ARM_CoprocReg(0, 2, 0, 1): // icache
         ARM9->CP15.ICacheConfig = val;
         ARM9_ConfigureMPURegionPerms(ARM9);
         // CHECKME: this is untested
-        ARM9_ExecuteCycles(ARM9, 2, 1);
+        ARM9_ExecuteCycles(ARM9, 2);
         break;
     case ARM_CoprocReg(0, 3, 0, 0): // wbuffer
         ARM9->CP15.WriteBufferConfig = val;
         ARM9_ConfigureMPURegionPerms(ARM9);
         // CHECKME: this is untested
-        ARM9_ExecuteCycles(ARM9, 2, 1);
+        ARM9_ExecuteCycles(ARM9, 2);
         break;
 
     case ARM_CoprocReg(0, 5, 0, 0): // legacy data perms
@@ -386,7 +233,7 @@ void ARM9_MCR_15(struct ARM946ES* ARM9, const u16 cmd, const u32 val)
         }
         ARM9_ConfigureMPURegionPerms(ARM9);
         // CHECKME: this is untested
-        ARM9_ExecuteCycles(ARM9, 2, 1);
+        ARM9_ExecuteCycles(ARM9, 2);
         break;
 
     case ARM_CoprocReg(0, 5, 0, 1): // legacy instr perms
@@ -397,21 +244,21 @@ void ARM9_MCR_15(struct ARM946ES* ARM9, const u16 cmd, const u32 val)
         }
         ARM9_ConfigureMPURegionPerms(ARM9);
         // CHECKME: this is untested
-        ARM9_ExecuteCycles(ARM9, 2, 1);
+        ARM9_ExecuteCycles(ARM9, 2);
         break;
 
     case ARM_CoprocReg(0, 5, 0, 2): // data perms
         ARM9->CP15.DataPermsReg = val;
         ARM9_ConfigureMPURegionPerms(ARM9);
         // CHECKME: this is untested
-        ARM9_ExecuteCycles(ARM9, 2, 1);
+        ARM9_ExecuteCycles(ARM9, 2);
         break;
 
     case ARM_CoprocReg(0, 5, 0, 3): // instr perms
         ARM9->CP15.InstrPermsReg = val;
         ARM9_ConfigureMPURegionPerms(ARM9);
         // CHECKME: this is untested
-        ARM9_ExecuteCycles(ARM9, 2, 1);
+        ARM9_ExecuteCycles(ARM9, 2);
         break;
 
     // Regions: op2 == 1 is not valid for some reason?
@@ -427,7 +274,7 @@ void ARM9_MCR_15(struct ARM946ES* ARM9, const u16 cmd, const u32 val)
         ARM9->CP15.MPURegionCR[rgn].Raw = val & 0xFFFFF03F; // CHECKME: mask
         ARM9_ConfigureMPURegionSize(ARM9, rgn);
         // CHECKME: this is untested
-        ARM9_ExecuteCycles(ARM9, 2, 1);
+        ARM9_ExecuteCycles(ARM9, 2);
         break;
 
 
@@ -472,14 +319,14 @@ void ARM9_MCR_15(struct ARM946ES* ARM9, const u16 cmd, const u32 val)
         ARM9->CP15.DTCMCR.Raw = val & 0xFFFFF03E;
         ARM9_ConfigureDTCM(ARM9);
         // CHECKME: this needs more testing
-        ARM9_ExecuteCycles(ARM9, 2, 1);
+        ARM9_ExecuteCycles(ARM9, 2);
         break;
 
     case ARM_CoprocReg(0, 9, 1, 1): // itcm reg
         ARM9->CP15.ITCMCR.Raw = val & 0x3E;
         ARM9_ConfigureITCM(ARM9);
         // CHECKME: this needs more testing
-        ARM9_ExecuteCycles(ARM9, 2, 1);
+        ARM9_ExecuteCycles(ARM9, 2);
         break;
 
     case ARM_CoprocReg(0, 13, 0, 1): // pid
@@ -521,13 +368,13 @@ void ARM9_MCR_15(struct ARM946ES* ARM9, const u16 cmd, const u32 val)
     {
         LogPrint(LOG_ARM9 | LOG_UNIMP, "ARM9 - UNIMPLEMENTED MCR CMD: %04hX %08X %08X @ %08X\n", cmd, val, ARM9->ARM.Instr[0].Raw, ARM9->ARM.PC);
         // CHECKME: this is a placeholder basically.
-        ARM9_ExecuteCycles(ARM9, 2, 1);
+        ARM9_ExecuteCycles(ARM9, 2);
         break;
     }
     }
 }
 
-u32 ARM9_MRC_15(struct ARM946ES* ARM9, const u16 cmd)
+u32 ARM9_MRC_15(ARM946ES* ARM9, const u16 cmd)
 {
     // try to make sure the compiler knows only 14 bits are used here.
     //if (cmd >= (1<<14)) unreachable();

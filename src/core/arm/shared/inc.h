@@ -6,8 +6,8 @@
 
 
 
-#define ARM9Cast ((struct ARM946ES*)cpu)
-#define ARM7Cast ((struct ARM7TDMI*)cpu)
+#define ARM9Cast ((ARM946ES*)cpu)
+#define ARM7Cast ((ARM7TDMI*)cpu)
 
 #define ARM_GetReg(reg) \
 ((cpu->CPUID == ARM7ID) \

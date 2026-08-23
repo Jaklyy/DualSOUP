@@ -5,7 +5,7 @@
 
 
 
-void STR(struct ARM* cpu, const u32 addr, const u8 rd, const ARM_DataWidth width)
+void STR(ARM* cpu, const u32 addr, const u8 rd, const ARM_DataWidth width)
 {
     // arm9 timings are input as 0 since they will be added during the actual fetch
     ARM_ExeCycles(1, 1, 0);
@@ -37,7 +37,7 @@ void STR(struct ARM* cpu, const u32 addr, const u8 rd, const ARM_DataWidth width
     }
 }
 
-void LDR(struct ARM* cpu, const u32 addr, const u8 rd, const int width, const bool signext)
+void LDR(ARM* cpu, const u32 addr, const u8 rd, const int width, const bool signext)
 {
     // arm9 timings are input as 0 since they will be added during the actual fetch
     ARM_ExeCycles(1, 1, 0);
@@ -67,8 +67,8 @@ typedef struct
 {
     union
     {
-        struct ARM7TDMI* ARM7;
-        struct ARM946ES* ARM9;
+        ARM7TDMI* ARM7;
+        ARM946ES* ARM9;
     };
     u32 Addr;
     ARM_DataWidth Width;
@@ -144,7 +144,7 @@ union THUMB_LoadStoreReg_Decode
     };
 };
 
-void THUMB_LoadStoreReg(struct ARM* cpu, const ARM_Instr instr_data)
+void THUMB_LoadStoreReg(ARM* cpu, const ARM_Instr instr_data)
 {
     const union THUMB_LoadStoreReg_Decode instr = {.Raw = instr_data.Raw};
 
@@ -171,7 +171,7 @@ void THUMB_LoadStoreReg(struct ARM* cpu, const ARM_Instr instr_data)
     }
 }
 
-s8 THUMB9_LoadStoreReg_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data)
+s8 THUMB9_LoadStoreReg_Interlocks(ARM946ES* ARM9, const ARM_Instr instr_data)
 {
     const union THUMB_LoadStoreReg_Decode instr = {.Raw = instr_data.Raw};
     s8 stall = 0;
@@ -196,7 +196,7 @@ union THUMB_LoadStoreImm_Decode
     };
 };
 
-void THUMB_LoadStoreWordImm(struct ARM* cpu, const ARM_Instr instr_data)
+void THUMB_LoadStoreWordImm(ARM* cpu, const ARM_Instr instr_data)
 {
     const union THUMB_LoadStoreImm_Decode instr = {.Raw = instr_data.Raw};
     u32 addr = ARM_GetReg(instr.Rn) + (instr.Imm5 * 4);
@@ -205,7 +205,7 @@ void THUMB_LoadStoreWordImm(struct ARM* cpu, const ARM_Instr instr_data)
     else STR(cpu, addr, instr.Rd, ARMDataWidth_32);
 }
 
-void THUMB_LoadStoreHalfwordImm(struct ARM* cpu, const ARM_Instr instr_data)
+void THUMB_LoadStoreHalfwordImm(ARM* cpu, const ARM_Instr instr_data)
 {
     const union THUMB_LoadStoreImm_Decode instr = {.Raw = instr_data.Raw};
     u32 addr = ARM_GetReg(instr.Rn) + (instr.Imm5 * 2);
@@ -214,7 +214,7 @@ void THUMB_LoadStoreHalfwordImm(struct ARM* cpu, const ARM_Instr instr_data)
     else STR(cpu, addr, instr.Rd, ARMDataWidth_16);
 }
 
-void THUMB_LoadStoreByteImm(struct ARM* cpu, const ARM_Instr instr_data)
+void THUMB_LoadStoreByteImm(ARM* cpu, const ARM_Instr instr_data)
 {
     const union THUMB_LoadStoreImm_Decode instr = {.Raw = instr_data.Raw};
     u32 addr = ARM_GetReg(instr.Rn) + (instr.Imm5);
@@ -223,7 +223,7 @@ void THUMB_LoadStoreByteImm(struct ARM* cpu, const ARM_Instr instr_data)
     else STR(cpu, addr, instr.Rd, ARMDataWidth_8);
 }
 
-s8 THUMB9_LoadStoreImm_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data)
+s8 THUMB9_LoadStoreImm_Interlocks(ARM946ES* ARM9, const ARM_Instr instr_data)
 {
     const union THUMB_LoadStoreImm_Decode instr = {.Raw = instr_data.Raw};
     s8 stall = 0;
@@ -247,7 +247,7 @@ union THUMB_LoadStoreRel_Decode
     };
 };
 
-void THUMB_LoadPCRel(struct ARM* cpu, const ARM_Instr instr_data)
+void THUMB_LoadPCRel(ARM* cpu, const ARM_Instr instr_data)
 {
     const union THUMB_LoadStoreRel_Decode instr = {.Raw = instr_data.Raw};
 
@@ -258,7 +258,7 @@ void THUMB_LoadPCRel(struct ARM* cpu, const ARM_Instr instr_data)
     LDR(cpu, addr, instr.Rd, ARMDataWidth_32, false);
 }
 
-void THUMB_LoadStoreSPRel(struct ARM* cpu, const ARM_Instr instr_data)
+void THUMB_LoadStoreSPRel(ARM* cpu, const ARM_Instr instr_data)
 {
     const union THUMB_LoadStoreRel_Decode instr = {.Raw = instr_data.Raw};
 
@@ -268,7 +268,7 @@ void THUMB_LoadStoreSPRel(struct ARM* cpu, const ARM_Instr instr_data)
     else STR(cpu, addr, instr.Rd, ARMDataWidth_32);
 }
 
-s8 THUMB9_LoadStoreSPRel_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data)
+s8 THUMB9_LoadStoreSPRel_Interlocks(ARM946ES* ARM9, const ARM_Instr instr_data)
 {
     const union THUMB_LoadStoreRel_Decode instr = {.Raw = instr_data.Raw};
     s8 stall = 0;
@@ -282,7 +282,7 @@ s8 THUMB9_LoadStoreSPRel_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr
 }
 
 // we need this here to handle ldm/stm jank
-void ARM9_InterlockStall(struct ARM946ES* ARM9, const s8 stall);
+void ARM9_InterlockStall(ARM946ES* ARM9, const s8 stall);
 
 union THUMB_PushPop_Decode
 {
@@ -298,7 +298,7 @@ union THUMB_PushPop_Decode
     };
 };
 
-void THUMB_Push(struct ARM* cpu, const ARM_Instr instr_data)
+void THUMB_Push(ARM* cpu, const ARM_Instr instr_data)
 {
     const union THUMB_PushPop_Decode instr = {.Raw = instr_data.Raw};
 
@@ -392,8 +392,8 @@ typedef struct
 {
     union
     {
-        struct ARM946ES* ARM9;
-        struct ARM7TDMI* ARM7;
+        ARM946ES* ARM9;
+        ARM7TDMI* ARM7;
     };
     u32 WBAddr;
     u16 RList;
@@ -428,7 +428,7 @@ void THUMB9_PostPushCallback(ARMLDMCallback* cb)
     }
 }
 
-s8 THUMB9_Push_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data)
+s8 THUMB9_Push_Interlocks(ARM946ES* ARM9, const ARM_Instr instr_data)
 {
     const union THUMB_PushPop_Decode instr = {.Raw = instr_data.Raw};
     s8 stall = 0;
@@ -450,7 +450,7 @@ s8 THUMB9_Push_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data)
     return stall;
 }
 
-void THUMB_Pop(struct ARM* cpu, const ARM_Instr instr_data)
+void THUMB_Pop(ARM* cpu, const ARM_Instr instr_data)
 {
     const union THUMB_PushPop_Decode instr = {.Raw = instr_data.Raw};
 
@@ -558,7 +558,7 @@ void THUMB_Pop(struct ARM* cpu, const ARM_Instr instr_data)
     }
 }
 
-s8 THUMB9_Pop_Interlocks(struct ARM946ES* ARM9, [[maybe_unused]] const ARM_Instr instr_data)
+s8 THUMB9_Pop_Interlocks(ARM946ES* ARM9, [[maybe_unused]] const ARM_Instr instr_data)
 {
     s8 stall = 0;
 
@@ -579,7 +579,7 @@ union THUMB_LoadStoreMultiple_Decode
     };
 };
 
-void THUMB_LoadStoreMultiple(struct ARM* cpu, const ARM_Instr instr_data)
+void THUMB_LoadStoreMultiple(ARM* cpu, const ARM_Instr instr_data)
 {
     const union THUMB_LoadStoreMultiple_Decode instr = {.Raw = instr_data.Raw};
 
@@ -728,7 +728,7 @@ void THUMB_LoadStoreMultiple(struct ARM* cpu, const ARM_Instr instr_data)
     else if (flush) ARM_FlushPipeline;
 }
 
-s8 THUMB9_LoadStoreMultiple_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data)
+s8 THUMB9_LoadStoreMultiple_Interlocks(ARM946ES* ARM9, const ARM_Instr instr_data)
 {
     const union THUMB_LoadStoreMultiple_Decode instr = {.Raw = instr_data.Raw};
     s8 stall = 0;

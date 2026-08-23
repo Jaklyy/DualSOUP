@@ -496,14 +496,14 @@ typedef struct
     bool SBuf[2][2][256]; // stencil buffer
 } GX3D;
 
-struct Console;
+typedef struct Console Console;
 
-void GX_UpdateClip(struct Console* sys);
-bool GX_FetchParams(struct Console* sys);
-bool GX_RunCommand(struct Console* sys, const timestamp now);
-void GX_Swap(struct Console* sys, const timestamp now);
-void GX_RunFIFO(struct Console* sys, const timestamp until);
-void SWRen_RasterizerFrame(struct Console* sys);
+void GX_UpdateClip(Console* sys);
+bool GX_FetchParams(Console* sys);
+bool GX_RunCommand(Console* sys, const timestamp now);
+void GX_Swap(Console* sys, const timestamp now);
+void GX_RunFIFO(Console* sys, const timestamp until);
+void SWRen_RasterizerFrame(Console* sys);
 
-void GX_IOWrite(struct Console* sys, const u32 addr, const u32 mask, const u32 val);
-u32 GX_IORead(struct Console* sys, const u32 addr);
+void GX_IOWrite(Console* sys, const u32 addr, const u32 mask, const u32 val);
+u32 GX_IORead(Console* sys, const u32 addr);

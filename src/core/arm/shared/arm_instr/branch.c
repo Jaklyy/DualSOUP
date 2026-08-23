@@ -19,7 +19,7 @@ union ARM_BranchImm_Decode
     };
 };
 
-void ARM_Branch(struct ARM* cpu, const ARM_Instr instr_data)
+void ARM_Branch(ARM* cpu, const ARM_Instr instr_data)
 {
     const union ARM_BranchImm_Decode instr = {.Raw = instr_data.Raw};
 
@@ -35,7 +35,7 @@ void ARM_Branch(struct ARM* cpu, const ARM_Instr instr_data)
 }
 
 // ARMv5
-void ARM_BLXImm(struct ARM* cpu, const ARM_Instr instr_data)
+void ARM_BLXImm(ARM* cpu, const ARM_Instr instr_data)
 {
     const union ARM_BranchImm_Decode instr = {.Raw = instr_data.Raw};
 
@@ -67,7 +67,7 @@ union ARM_BranchExchange_Decode
 };
 
 // TODO: apparently on the ARM7TDMI these are implemented as some sort of unholy MSR?
-void ARM_BranchExchange(struct ARM* cpu, const ARM_Instr instr_data)
+void ARM_BranchExchange(ARM* cpu, const ARM_Instr instr_data)
 {
     const union ARM_BranchExchange_Decode instr = {.Raw = instr_data.Raw};
 
@@ -85,7 +85,7 @@ void ARM_BranchExchange(struct ARM* cpu, const ARM_Instr instr_data)
     ARM_SetReg(15, addr);
 }
 
-s8 ARM9_BranchExchange_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data)
+s8 ARM9_BranchExchange_Interlocks(ARM946ES* ARM9, const ARM_Instr instr_data)
 {
     const union ARM_BranchExchange_Decode instr = {.Raw = instr_data.Raw};
     s8 stall = 0;

@@ -6,10 +6,10 @@
 
 
 
-#define cpu ((struct ARM*)ARM7)
+#define cpu ((ARM*)ARM7)
 
 // TEMP: debugging
-void ARM7_Log(struct ARM7TDMI* ARM7)
+void ARM7_Log(ARM7TDMI* ARM7)
 {
     LogPrint(LOG_ARM7, "DUMPING ARM7 STATE:\n");
     for (int i = 0; i < 16; i++)
@@ -24,12 +24,12 @@ void ARM7_Log(struct ARM7TDMI* ARM7)
     LogPrint(LOG_ARM7, "%08X\n", cpu->Sys->Timers7[3].CR.Raw);
 }
 
-void ARM7_Init(struct ARM7TDMI* ARM7, struct Console* sys)
+void ARM7_Init(ARM7TDMI* ARM7, Console* sys)
 {
     ARM_Init(cpu, sys, ARM7ID);
 }
 
-union ARM_PSR ARM7_GetSPSR(struct ARM7TDMI* ARM7)
+union ARM_PSR ARM7_GetSPSR(ARM7TDMI* ARM7)
 {
     // TODO: THIS IS WRONG FOR ARM7
     switch(cpu->CPSR.Mode)
@@ -51,7 +51,7 @@ union ARM_PSR ARM7_GetSPSR(struct ARM7TDMI* ARM7)
     }
 }
 
-void ARM7_SetSPSR(struct ARM7TDMI* ARM7, union ARM_PSR psr)
+void ARM7_SetSPSR(ARM7TDMI* ARM7, union ARM_PSR psr)
 {
     // TODO: THIS IS WRONG FOR ARM7
     switch(cpu->CPSR.Mode)
@@ -80,14 +80,14 @@ void ARM7_SetSPSR(struct ARM7TDMI* ARM7, union ARM_PSR psr)
     return;
 }
 
-u32 ARM7_GetReg(struct ARM7TDMI* ARM7, const int reg)
+u32 ARM7_GetReg(ARM7TDMI* ARM7, const int reg)
 {
     // todo: ldm user mode bus contention?
 
     return cpu->R[reg];
 }
 
-void ARM7_SetPC(struct ARM7TDMI* ARM7, u32 val)
+void ARM7_SetPC(ARM7TDMI* ARM7, u32 val)
 {
     // arm7 doesn't seem to implement bit0 of program counter
     // and doesn't enforce alignment in arm mode.
@@ -97,7 +97,7 @@ void ARM7_SetPC(struct ARM7TDMI* ARM7, u32 val)
     cpu->Prog = ARMProg_RefillStart;
 }
 
-void ARM7_SetReg(struct ARM7TDMI* ARM7, const int reg, u32 val)
+void ARM7_SetReg(ARM7TDMI* ARM7, const int reg, u32 val)
 {
     // todo: ldm user mode bus contention?
 
@@ -111,7 +111,7 @@ void ARM7_SetReg(struct ARM7TDMI* ARM7, const int reg, u32 val)
     }
 }
 
-void ARM7_ExecuteCycles(struct ARM7TDMI* ARM7, const u32 execute)
+void ARM7_ExecuteCycles(ARM7TDMI* ARM7, const u32 execute)
 {
     // must be minus 1 to model pipeline overlaps
     cpu->Timestamp += execute - 1;
@@ -120,7 +120,7 @@ void ARM7_ExecuteCycles(struct ARM7TDMI* ARM7, const u32 execute)
     cpu->CodeSeq = (execute == 1);
 }
 
-[[nodiscard]] bool ARM7_CheckInterrupts(struct ARM7TDMI* ARM7)
+[[nodiscard]] bool ARM7_CheckInterrupts(ARM7TDMI* ARM7)
 {
     //Scheduler_Sync(cpu->Sys, cpu->Timestamp, Sync_Normal7);
 
@@ -143,7 +143,7 @@ void ARM7_ExecuteCycles(struct ARM7TDMI* ARM7, const u32 execute)
     else return false;
 }
 
-void ARM7_Fetch(struct ARM7TDMI* ARM7)
+void ARM7_Fetch(ARM7TDMI* ARM7)
 {
     // step the pipeline.
     ARM_PipelineStep(cpu);
@@ -155,7 +155,7 @@ void ARM7_Fetch(struct ARM7TDMI* ARM7)
         ARM7_InstrRead32(ARM7, cpu->PC);
 }
 
-void ARM7_Exec(struct ARM7TDMI* ARM7)
+void ARM7_Exec(ARM7TDMI* ARM7)
 {
     if (!ARM7_CheckInterrupts(ARM7))
     {
@@ -188,7 +188,7 @@ void ARM7_Exec(struct ARM7TDMI* ARM7)
     cpu->Prog = ARMProg_SleepCheck;
 }
 
-void ARM7_MainLoop(struct ARM7TDMI* ARM7)
+void ARM7_MainLoop(ARM7TDMI* ARM7)
 {
     switch(cpu->Prog)
     {

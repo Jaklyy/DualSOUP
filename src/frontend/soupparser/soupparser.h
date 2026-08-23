@@ -227,7 +227,7 @@ static const ConfigEntry SystemCfgData[] =
 };
 
 constexpr ImVec2 GUI_DisplayOffsetDefaults[] = {{0.0, 0.0}, {0.0, 192.0}, {256.0, 0.0}, {256.0, 192.0}};
-static_assert((sizeof(GUI_DisplayOffsetDefaults) / sizeof(GUI_DisplayOffsetDefaults[0])) >= GUI_MaxDisplaysPerWindow);
+static_assert(countof(GUI_DisplayOffsetDefaults) >= GUI_MaxDisplaysPerWindow);
 
 #define PERDISPLAYSETTINGS(winnum, dispnum) \
     { \

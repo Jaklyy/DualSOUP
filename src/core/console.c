@@ -18,7 +18,7 @@
 
 
 
-void Console_DebugLog(struct Console* sys)
+void Console_DebugLog(Console* sys)
 {
     if (!SDL_GetGamepadButton(sys->Pad, SDL_GAMEPAD_BUTTON_LEFT_STICK)) return;
 
@@ -93,14 +93,14 @@ bool Console_ReadFile(u8* buf, const char* path, const size_t num, const char* n
 
 // TODO: this function probably shouldn't manage memory on its own?
 // TODO: this function is a complete mess. it NEEDS to be restructured heavily at some point.
-struct Console* Console_Init(struct Console* sys, CoreCfg* cfg, void* pad, void* aud)
+Console* Console_Init(Console* sys, CoreCfg* cfg, void* pad, void* aud)
 {
     u8* nvram = nullptr;
     if (sys == nullptr)
     {
         // allocate
         // use SDL function for this because windows SUCKS
-        sys = SDL_aligned_alloc(alignof(struct Console), sizeof(struct Console));
+        sys = SDL_aligned_alloc(alignof(Console), sizeof(Console));
 
         if (sys == NULL)
         {
@@ -243,11 +243,18 @@ struct Console* Console_Init(struct Console* sys, CoreCfg* cfg, void* pad, void*
 
     // init variables
 
-    ARM9_Init(&sys->ARM9, sys);
-    ARM7_Init(&sys->ARM7, sys);
+    A946_Init(&sys->ARM9, sys);
+    A7TDMI_Init(&sys->ARM7, sys);
+
+    //for (int i = 0; i < Evt_Max; i++)
+    //    sys->Sched.EventTimes[i] = timestamp_max;
 
     for (int i = 0; i < Evt_Max; i++)
-        sys->Sched.EventTimes[i] = timestamp_max;
+    {
+        sys->Sched.Times[i] = timestamp_max;
+        sys->Sched.Next[i] = Evt_Invalid;
+        sys->Sched.Prev[i] = Evt_Invalid;
+    }
 
     for (int i = 0; i < IRQ_Max; i++)
         sys->IRQSched9[i] = timestamp_max;
@@ -255,7 +262,7 @@ struct Console* Console_Init(struct Console* sys, CoreCfg* cfg, void* pad, void*
     for (int i = 0; i < IRQ_Max; i++)
         sys->IRQSched7[i] = timestamp_max;
 
-    for (unsigned i = 0; i < (sizeof(sys->DMA9.ChannelTimestamps) / sizeof(sys->DMA9.ChannelTimestamps[0])); i++)
+    for (unsigned i = 0; i < countof(sys->DMA9.ChannelTimestamps); i++)
     {
         sys->DMA9.ChannelTimestamps[i] = timestamp_max;
         sys->DMA7.ChannelTimestamps[i] = timestamp_max;
@@ -341,7 +348,7 @@ struct Console* Console_Init(struct Console* sys, CoreCfg* cfg, void* pad, void*
     return sys;
 }
 
-void Console_DirectBoot(struct Console* sys)
+void Console_DirectBoot(Console* sys)
 {
     // wram should probably be enabled...?
     sys->WRAMCR = 3;
@@ -354,12 +361,12 @@ void Console_DirectBoot(struct Console* sys)
     // set main ram bits to be enabled
     sys->ExtMemCR_Shared.MRSomething1 = true;
     sys->ExtMemCR_Shared.MRSomething2 = true;
-    sys->ExtMemCR_Shared.MRPriority = true; // ARM7
-    sys->ExtMemCR_Shared.GBAPakAccess = true;
-    sys->ExtMemCR_Shared.NDSCardAccess = true;
+    sys->ExtMemCR_Shared.MRA7Priority = true; // ARM7
+    sys->ExtMemCR_Shared.GBAPakA7Access = true;
+    sys->ExtMemCR_Shared.NDSCardA7Access = true;
 
-    ARM_SetMode((struct ARM*)&sys->ARM9, ARMMode_SYS);
-    ARM_SetMode((struct ARM*)&sys->ARM7, ARMMode_SYS);
+    ARM_SetMode((ARM*)&sys->ARM9, ARMMode_SYS);
+    ARM_SetMode((ARM*)&sys->ARM7, ARMMode_SYS);
     sys->ARM9.ARM.SP = 0x03002F7C;
     sys->ARM9.ARM.IRQ_Bank.R[0] = 0x03003F80;
     sys->ARM9.ARM.SWI_Bank.R[0] = 0x03003FC0;
@@ -397,18 +404,18 @@ void Console_DirectBoot(struct Console* sys)
     // load arm9 rom
     for (unsigned i = 0; i < arm9_romsize; i+=4)
     {
-        AHB9_Write(sys, &nop, arm9_ramaddr+i, sys->GameCard.ROM[(arm9_romoffs+i)/4], u32_max, false, &nopy, false);
+        //AHB9_Write(sys, &nop, arm9_ramaddr+i, sys->GameCard.ROM[(arm9_romoffs+i)/4], u32_max, false, &nopy, false);
     }
 
     // load arm7 rom
     for (unsigned i = 0; i < arm7_romsize; i+=4)
     {
-        AHB7_Write(sys, &nop, arm7_ramaddr+i, sys->GameCard.ROM[(arm7_romoffs+i)/4], u32_max, false, &nopy, false, 0);
+        //AHB7_Write(sys, &nop, arm7_ramaddr+i, sys->GameCard.ROM[(arm7_romoffs+i)/4], u32_max, false, &nopy, false, 0);
     }
 
     sys->ARM9.CP15.CR.DTCMEnable = true;
     sys->ARM9.CP15.DTCMCR.Raw = 0x0300000A;
-    ARM9_ConfigureDTCM(&sys->ARM9);
+    A946_ConfigureDTCM(&sys->ARM9);
 
     // load header
     memcpy(&sys->MainRAM.b8[0x27FFE00 & (MainRAM_Size-1)], sys->GameCard.ROM, 0x170);
@@ -446,30 +453,30 @@ void Console_DirectBoot(struct Console* sys)
     for (int i = 0; i < 0x70; i++)
         sys->MainRAM.b8[((0x27FFC80 + i) & (MainRAM_Size-1))] = sys->Firmware.RAM[usersettings+i];
 
-    ARM9_SetPC(&sys->ARM9, arm9_entryaddr, 0);
+    A9ES_SetPC(&sys->ARM9, arm9_entryaddr);
     ARM7_SetPC(&sys->ARM7, arm7_entryaddr);
     sys->DirectBoot = true;
 }
 
-void Console_Reset(struct Console* sys)
+void Console_Reset(Console* sys)
 {
-    ARM9_Reset(&sys->ARM9, false /*unverified I guess?*/, true);
+    A946_Reset(&sys->ARM9, false /*unverified I guess?*/, true);
     ARM7_Reset(&sys->ARM7);
 
     // TODO: reset dma?
 }
 
-bool Console_CheckARM9Wake(struct Console* sys)
+bool Console_CheckARM9Wake(Console* sys)
 {
     return (sys->IME9 && (sys->IE9 & sys->IF9));
 }
 
-bool Console_CheckARM7Wake(struct Console* sys)
+bool Console_CheckARM7Wake(Console* sys)
 {
     return (sys->IE7 & sys->IF7);
 }
 
-void IF9_Update(struct Console* sys, timestamp now)
+void IF9_Update(Console* sys, timestamp now)
 {
     timestamp time = sys->Sched.EventTimes[Evt_IF9Update];
     timestamp next = timestamp_max;
@@ -503,7 +510,7 @@ void IF9_Update(struct Console* sys, timestamp now)
     Schedule_Event(sys, IF9_Update, Evt_IF9Update, next);
 }
 
-void IF7_Update(struct Console* sys, timestamp now)
+void IF7_Update(Console* sys, timestamp now)
 {
     timestamp time = sys->Sched.EventTimes[Evt_IF7Update];
     timestamp next = timestamp_max;
@@ -536,7 +543,7 @@ void IF7_Update(struct Console* sys, timestamp now)
     Schedule_Event(sys, IF7_Update, Evt_IF7Update, next);
 }
 
-void Console_ScheduleIRQs(struct Console* sys, const u8 irq, const bool a9, timestamp time)
+void Console_ScheduleIRQs(Console* sys, const u8 irq, const bool a9, timestamp time)
 {
     timestamp* irqs;
     if (a9)
@@ -564,7 +571,7 @@ void Console_ScheduleIRQs(struct Console* sys, const u8 irq, const bool a9, time
         Schedule_Event(sys, IF7_Update, Evt_IF7Update, next);
 }
 
-void Console_ScheduleHeldIRQs(struct Console* sys, const u8 irq, const bool a9, timestamp time)
+void Console_ScheduleHeldIRQs(Console* sys, const u8 irq, const bool a9, timestamp time)
 {
     if (a9) sys->IF9HoldQueue |= 1<<irq;
     else    sys->IF7HoldQueue |= 1<<irq;
@@ -572,7 +579,7 @@ void Console_ScheduleHeldIRQs(struct Console* sys, const u8 irq, const bool a9, 
     Console_ScheduleIRQs(sys, irq, a9, time);
 }
 
-void Console_ClearHeldIRQs(struct Console* sys, const u8 irq, const bool a9)
+void Console_ClearHeldIRQs(Console* sys, const u8 irq, const bool a9)
 {
     if (a9)
     {
@@ -587,7 +594,7 @@ void Console_ClearHeldIRQs(struct Console* sys, const u8 irq, const bool a9)
     Console_ScheduleIRQs(sys, irq, a9, timestamp_max); // what was this line supposed to do...? (i think its supposed to prevent spurious irqs???)
 }
 
-void Console_MainLoop(struct Console* sys)
+void Console_MainLoop(Console* sys)
 {
     CR_Start = true;
     sys->TimeFrac = 0;
@@ -598,11 +605,7 @@ void Console_MainLoop(struct Console* sys)
 
     while(!sys->KillThread)
     {
-        ARM9_MainLoop(&sys->ARM9);
-        // check dma9
-        ARM7_MainLoop(&sys->ARM7);
-        // check dma7
-        // scheduler
+        NeoSched_RunEvent(sys);
     }
 
     return;

@@ -6,22 +6,22 @@
 
 
 
-extern void Timer_Run(struct Console* sys, struct Timer* timers, const timestamp until, bool a9, const bool dontresched);
+extern void Timer_Run(Console* sys, struct Timer* timers, const timestamp until, bool a9, const bool dontresched);
 
-extern void Timer9_UpdateCRs(struct Console* sys, timestamp now);
-extern void Timer7_UpdateCRs(struct Console* sys, timestamp now);
+extern void Timer9_UpdateCRs(Console* sys, timestamp now);
+extern void Timer7_UpdateCRs(Console* sys, timestamp now);
 
-void Timer_SchedRun9(struct Console* sys, timestamp now)
+void Timer_SchedRun9(Console* sys, timestamp now)
 {
     Timer_Run(sys, sys->Timers9, now, true, false);
 }
 
-void Timer_SchedRun7(struct Console* sys, timestamp now)
+void Timer_SchedRun7(Console* sys, timestamp now)
 {
     Timer_Run(sys, sys->Timers7, now, false, false);
 }
 
-void Timer_CalcNextIRQ(struct Console* sys, timestamp now, bool a9)
+void Timer_CalcNextIRQ(Console* sys, timestamp now, bool a9)
 {
     struct Timer* timers = ((a9) ? sys->Timers9 : sys->Timers7);
     timestamp timerrem[20];
@@ -73,7 +73,7 @@ void Timer_CalcNextIRQ(struct Console* sys, timestamp now, bool a9)
     else    Schedule_Event(sys, Timer_SchedRun7, Evt_Timer7, next);
 }
 
-bool Timer_AddTicks(struct Console* sys, struct Timer* timers, const int timernum, timestamp ticks, bool a9)
+bool Timer_AddTicks(Console* sys, struct Timer* timers, const int timernum, timestamp ticks, bool a9)
 {
     struct Timer* timer = &timers[timernum];
 
@@ -117,7 +117,7 @@ bool Timer_AddTicks(struct Console* sys, struct Timer* timers, const int timernu
     }
 }
 
-void Timer_Run(struct Console* sys, struct Timer* timers, const timestamp until, bool a9, const bool dontresched)
+void Timer_Run(Console* sys, struct Timer* timers, const timestamp until, bool a9, const bool dontresched)
 {
     // probably not strictly required to always run all 4 timers.
     // but doing so keeps the logic simple.
@@ -138,7 +138,7 @@ void Timer_Run(struct Console* sys, struct Timer* timers, const timestamp until,
     if (!dontresched) Timer_CalcNextIRQ(sys, until, a9);
 }
 
-void Timer_UpdateCRs(struct Console* sys, timestamp now, bool a9)
+void Timer_UpdateCRs(Console* sys, timestamp now, bool a9)
 {
     struct Timer* timers = (a9 ? sys->Timers9 : sys->Timers7);
     Timer_Run(sys, timers, now, a9, true);
@@ -197,17 +197,17 @@ void Timer_UpdateCRs(struct Console* sys, timestamp now, bool a9)
     Timer_CalcNextIRQ(sys, now, a9);
 }
 
-void Timer9_UpdateCRs(struct Console* sys, timestamp now)
+void Timer9_UpdateCRs(Console* sys, timestamp now)
 {
     Timer_UpdateCRs(sys, now, true);
 }
 
-void Timer7_UpdateCRs(struct Console* sys, timestamp now)
+void Timer7_UpdateCRs(Console* sys, timestamp now)
 {
     Timer_UpdateCRs(sys, now, false);
 }
 
-void Timer_IOWriteHandler(struct Console* sys, const timestamp curts, const u32 addr, const u32 val, const u32 mask, const bool a9)
+void Timer_IOWriteHandler(Console* sys, const timestamp curts, const u32 addr, const u32 val, const u32 mask, const bool a9)
 {
     unsigned timerno = ((addr & 0xF) / 4) % 4;
     struct Timer* timer = &(a9 ? sys->Timers9 : sys->Timers7)[timerno];
@@ -221,7 +221,7 @@ void Timer_IOWriteHandler(struct Console* sys, const timestamp curts, const u32 
     else    Schedule_Event(sys, Timer7_UpdateCRs, Evt_Timer7, curts+1);
 }
 
-u32 Timer_IOReadHandler(struct Console* sys, const timestamp curts, const u32 addr, const bool a9)
+u32 Timer_IOReadHandler(Console* sys, const timestamp curts, const u32 addr, const bool a9)
 {
     unsigned timerno = ((addr & 0xF) / 4) % 4;
     struct Timer* timer = &(a9 ? sys->Timers9 : sys->Timers7)[timerno];

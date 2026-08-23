@@ -4,14 +4,14 @@
 
 
 
-void WiFi_Init(struct Console* sys)
+void WiFi_Init(Console* sys)
 {
     sys->WiFiBB[0x00] = 0x6D;
     sys->WiFiBB[0x5D] = 0x01;
     sys->WiFiBB[0x64] = 0xFF;
 }
 
-u32 WiFi_Read(struct Console* sys, timestamp* ts [[maybe_unused]], u32 addr, const AHB_HSIZE size, const bool timings)
+u32 WiFi_Read(Console* sys, timestamp* ts [[maybe_unused]], u32 addr, const AHB_HSIZE size, const bool timings)
 {
     u32 ret;
 
@@ -66,7 +66,7 @@ u32 WiFi_Read(struct Console* sys, timestamp* ts [[maybe_unused]], u32 addr, con
     return ret;
 }
 
-void WiFi_Write(struct Console* sys, timestamp* ts [[maybe_unused]], u32 addr, const u32 val, const u32 mask, const bool timings)
+void WiFi_Write(Console* sys, timestamp* ts [[maybe_unused]], u32 addr, const u32 val, const u32 mask, const bool timings)
 {
     const unsigned width = stdc_count_ones(mask);
 

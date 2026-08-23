@@ -90,15 +90,15 @@ struct DMA_Controller
     u8 NextID;
 };
 
-struct Console;
+typedef struct Console Console;
 
-void DMA_Schedule(struct Console* sys, const bool a9);
-void DMA_Run(struct Console* sys, const bool a9);
-void DMA7_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 addr, u32 val, const u32 mask);
-void DMA9_IOWriteHandler(struct Console* sys, struct DMA_Channel* channels, u32 addr, u32 val, u32 mask);
+void DMA_Schedule(Console* sys, const bool a9);
+void DMA_Run(Console* sys, const bool a9);
+void DMA7_IOWriteHandler(Console* sys, struct DMA_Channel* channels, u32 addr, u32 val, const u32 mask);
+void DMA9_IOWriteHandler(Console* sys, struct DMA_Channel* channels, u32 addr, u32 val, u32 mask);
 u32 DMA_IOReadHandler(struct DMA_Channel* channels, u32 addr);
-void StartDMA9(struct Console* sys, timestamp start, u8 mode);
-void StartDMA7(struct Console* sys, timestamp start, u8 mode);
-void StartSoundCapDMA(struct Console* sys, u8 id, timestamp start);
-void StartSoundDMA(struct Console* sys, u8 id, timestamp start, bool matters);
-timestamp DMA_GetNext(struct Console* sys, const timestamp now, const bool sync, const bool a9);
+void StartDMA9(Console* sys, timestamp start, u8 mode);
+void StartDMA7(Console* sys, timestamp start, u8 mode);
+void StartSoundCapDMA(Console* sys, u8 id, timestamp start);
+void StartSoundDMA(Console* sys, u8 id, timestamp start, bool matters);
+timestamp DMA_GetNext(Console* sys, const timestamp now, const bool sync, const bool a9);

@@ -11,7 +11,7 @@
 
 
 
-void PPU_SetTarget(struct Console* sys, const timestamp now)
+void PPU_SetTarget(Console* sys, const timestamp now)
 {
 #ifndef SINGLETHREADRASTER
     if (sys->PPUTarget < now)
@@ -22,7 +22,7 @@ void PPU_SetTarget(struct Console* sys, const timestamp now)
 #endif
 }
 
-void PPU_Sync(struct Console* sys, timestamp now)
+void PPU_Sync(Console* sys, timestamp now)
 {
 #ifndef SINGLETHREADRASTER
     if (!sys->PPUStart) return;
@@ -31,14 +31,14 @@ void PPU_Sync(struct Console* sys, timestamp now)
 #endif
 }
 
-void PPU_Wait(struct Console* sys, const timestamp now)
+void PPU_Wait(Console* sys, const timestamp now)
 {
 #ifndef SINGLETHREADRASTER
     while (now >= sys->PPUTarget) SDL_CPUPauseInstruction();
 #endif
 }
 
-void PPU_Init(struct Console* sys, const timestamp now)
+void PPU_Init(Console* sys, const timestamp now)
 {
 #ifndef SINGLETHREADRASTER
     if (sys->PPUStart) return;
@@ -49,7 +49,7 @@ void PPU_Init(struct Console* sys, const timestamp now)
 #endif
 }
 
-void LCD_HBlank(struct Console* sys, timestamp now)
+void LCD_HBlank(Console* sys, timestamp now)
 {
     // set hblank flag
     sys->DispStatRO9.HBlank = true;
@@ -107,7 +107,7 @@ void LCD_HBlank(struct Console* sys, timestamp now)
     Schedule_Event(sys, LCD_Scanline, Evt_Scanline, now + HBlank_Cycles);
 }
 
-void LCD_Scanline(struct Console* sys, timestamp now)
+void LCD_Scanline(Console* sys, timestamp now)
 {
     sys->VCount++;
     sys->VCount &= 0x1FF;

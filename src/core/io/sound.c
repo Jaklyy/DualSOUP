@@ -15,7 +15,7 @@ s32 AudioMixer_Pan(s32 sample, u8 pan, const bool left)
     return ((s64)sample * pan) >> 10;
 }
 
-void AudioMixer_Run(struct Console* sys, timestamp now)
+void AudioMixer_Run(Console* sys, timestamp now)
 {
     //if ((now/MixerDivide) <= sys->MixerLastRun) return;
     //sys->MixerLastRun = now/MixerDivide;
@@ -43,7 +43,7 @@ void AudioMixer_Run(struct Console* sys, timestamp now)
     }
 }
 
-void AudioMixer_Sample(struct Console* sys, timestamp now)
+void AudioMixer_Sample(Console* sys, timestamp now)
 {
     AudioMixer_Run(sys, now);
 
@@ -106,7 +106,7 @@ void AudioMixer_Sample(struct Console* sys, timestamp now)
     sys->AudioFrac = 0;//(u64)(NTRBus_Clock + sys->AudioFrac) % SoundMixerOutput;
 }
 
-void SoundFIFO_Fill(struct Console* sys, const u32 val, const u8 id)
+void SoundFIFO_Fill(Console* sys, const u32 val, const u8 id)
 {
     SoundChannel* channel = &sys->SoundChannels[id];
     MemoryWrite(32, channel->FIFO, channel->FIFO_FillPtr, sizeof(channel->FIFO), val, 0xFFFFFFFF);
@@ -116,7 +116,7 @@ void SoundFIFO_Fill(struct Console* sys, const u32 val, const u8 id)
     channel->FIFO_Bytes+=4;
 }
 
-u32 SoundFIFO_Drain(struct Console* sys, SoundChannel* channel, u8 numbytes, const u8 id, const timestamp now)
+u32 SoundFIFO_Drain(Console* sys, SoundChannel* channel, u8 numbytes, const u8 id, const timestamp now)
 {
     if (channel->FIFO_Bytes < numbytes) // fifo empty
     {
@@ -142,9 +142,9 @@ u32 SoundFIFO_Drain(struct Console* sys, SoundChannel* channel, u8 numbytes, con
     return ret;
 }
 
-extern void Timer7_UpdateCRs(struct Console* sys, timestamp now);
-extern void SoundChannel_Disable(struct Console* sys, const u8 id);
-void SoundFIFO_Sample(struct Console* sys, const u8 id, const timestamp now)
+extern void Timer7_UpdateCRs(Console* sys, timestamp now);
+extern void SoundChannel_Disable(Console* sys, const u8 id);
+void SoundFIFO_Sample(Console* sys, const u8 id, const timestamp now)
 {
     SoundChannel* channel = &sys->SoundChannels[id];
 
@@ -363,7 +363,7 @@ void SoundFIFO_Sample(struct Console* sys, const u8 id, const timestamp now)
 }
 
 
-void SoundChannel_Disable(struct Console* sys, const u8 id)
+void SoundChannel_Disable(Console* sys, const u8 id)
 {
     // disable dma
     sys->DMA7.Channels[id+DMA7_SoundBase].CR.Repeat = false;
@@ -373,7 +373,7 @@ void SoundChannel_Disable(struct Console* sys, const u8 id)
     sys->SoundChannels[id].CR.Enable = false;
 }
 
-void SoundChannel_KillAll(struct Console* sys, const timestamp now)
+void SoundChannel_KillAll(Console* sys, const timestamp now)
 {
     for (int i = 0; i < 16; i++)
     {
@@ -389,7 +389,7 @@ void SoundChannel_KillAll(struct Console* sys, const timestamp now)
     Schedule_Event(sys, Timer7_UpdateCRs, Evt_Timer7, now+1);
 }
 
-void SoundChannel_Start(struct Console* sys, SoundChannel* channel, const u8 id, const timestamp now)
+void SoundChannel_Start(Console* sys, SoundChannel* channel, const u8 id, const timestamp now)
 {
     if (channel->CR.Format != AudioFormat_PSGNoise) // checkme
     {
@@ -464,7 +464,7 @@ void SoundChannel_Start(struct Console* sys, SoundChannel* channel, const u8 id,
     StartSoundDMA(sys, id, now+1, true);
 }
 
-void SoundChannel_TryStartAll(struct Console* sys, const timestamp now)
+void SoundChannel_TryStartAll(Console* sys, const timestamp now)
 {
     for (int i = 0; i < 16; i++)
     {
@@ -475,7 +475,7 @@ void SoundChannel_TryStartAll(struct Console* sys, const timestamp now)
     }
 }
 
-u32 SoundChannel_IORead(struct Console* sys, const u32 addr)
+u32 SoundChannel_IORead(Console* sys, const u32 addr)
 {
     if ((addr & 0xF) != 0) return 0; // checkme: supposedly only each channel's control reg can be read?
     u8 id = ((addr >> 4) & 0xF);
@@ -484,7 +484,7 @@ u32 SoundChannel_IORead(struct Console* sys, const u32 addr)
     return channel->CR.Raw;
 }
 
-void SoundChannel_IOWrite(struct Console* sys, const u32 addr, const u32 val, const u32 mask, const timestamp now)
+void SoundChannel_IOWrite(Console* sys, const u32 addr, const u32 val, const u32 mask, const timestamp now)
 {
     if (!sys->PowerCR7.AudioPower) return; // read only
     u8 id = ((addr >> 4) & 0xF);
@@ -541,7 +541,7 @@ void SoundChannel_IOWrite(struct Console* sys, const u32 addr, const u32 val, co
     }
 }
 
-void SoundCapture_CRWrite(struct Console* sys, const u8 val, const timestamp now, const u8 id)
+void SoundCapture_CRWrite(Console* sys, const u8 val, const timestamp now, const u8 id)
 {
     SoundCapture* cap = &sys->SoundCaptures[id];
     bool olden = cap->CR.Enable;

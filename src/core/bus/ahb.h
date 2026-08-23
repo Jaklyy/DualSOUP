@@ -2,7 +2,7 @@
 #include "../utils.h"
 
 
-struct Console;
+typedef struct Console Console;
 
 // used for modelling write contention
 typedef enum : u8
@@ -35,28 +35,52 @@ typedef enum : u8
 static_assert(Dev_Max < 32, "BUSYDEVICE BIT MASK TOO SMALL!!!");
 
 // note: actual IDs unknown
-typedef enum : u16 // bitfield
+typedef enum : u8 // bitfield
 {
-    MAN9_DMAWRITE,
-    MAN9_DMAREAD,
-    MAN9_NDMAWRITE,
-    MAN9_NDMAREAD,
+    MAN9_DMA0,
+    MAN9_DMA1,
+    MAN9_DMA2,
+    MAN9_DMA3,
+    //MAN9_NDMA0,
+    //MAN9_NDMA1,
+    //MAN9_NDMA2,
+    //MAN9_NDMA3,
     MAN9_ARM9,
-    MAN9_DEFAULT, // bus is idle (might be arm9 instead?)
+    MAN9_MAX, // bus is idle (might be arm9 instead?)
 } AHB9_HMANAGER;
 
 // note: actual IDs unknown
-typedef enum : u16 // bitfield
+typedef enum : u8 // bitfield
 {
-    MAN7_SCAPDMA,
-    MAN7_SNDDMA,
-    MAN7_DMAWRITE,
-    MAN7_DMAREAD,
-    MAN7_NDMAWRITE,
-    MAN7_NDMAREAD,
+    MAN7_SCAPDMA0,
+    MAN7_SCAPDMA1,
+    MAN7_SNDDMA0,
+    MAN7_SNDDMA1,
+    MAN7_SNDDMA2,
+    MAN7_SNDDMA3,
+    MAN7_SNDDMA4,
+    MAN7_SNDDMA5,
+    MAN7_SNDDMA6,
+    MAN7_SNDDMA7,
+    MAN7_SNDDMA8,
+    MAN7_SNDDMA9,
+    MAN7_SNDDMAA,
+    MAN7_SNDDMAB,
+    MAN7_SNDDMAC,
+    MAN7_SNDDMAD,
+    MAN7_SNDDMAE,
+    MAN7_SNDDMAF,
+    MAN7_DMA0,
+    MAN7_DMA1,
+    MAN7_DMA2,
+    MAN7_DMA3,
+    //MAN7_NDMA0,
+    //MAN7_NDMA1,
+    //MAN7_NDMA2,
+    //MAN7_NDMA3,
     MAN7_ARM7,
-    MAN7_DEFAULT, // bus is idle (might be arm7 instead?)
-} AHB7_HMANAGER;
+    MAN7_MAX, // bus is idle (might be arm7 instead?)
+} BUS7_MANAGER;
 
 typedef enum : u8 // 3 bit
 {
@@ -88,7 +112,7 @@ typedef enum : u8 // 2 bit
     HTRANS_IDLE, // no data transfer required
     HTRANS_BUSY, // burst will continue but 
     HTRANS_NONSEQ, // first transfer of a burst
-    HTRANS_SEQ, // indicates the burst is sequential and addr is (prev + (1<<HSIZE)) (unless wrapping burst is used); (note sure what happens if the address is incorrect?)
+    HTRANS_SEQ, // indicates the burst is sequential and addr is (prev + (1<<HSIZE)) (unless wrapping burst is used); (not sure what happens if the address is incorrect?)
 } AHB_HTRANS;
 
 // okay is single cycle, all others need 2 cycles to signal
@@ -108,33 +132,77 @@ typedef struct
     bool Cacheable : 1;
 } AHB_HPROT;
 
-struct AHB
+typedef struct
 {
-    timestamp Timestamp; // AHB Timestamp.
-    u32 CurOpenBus; // TODO: is this needed?
-    u8 Pipeline[2]; // granted, addr // CHECKME
-    struct
-    {
-        void* cbdata;
-        void* reqcbfunc;
-        void* fincbfunc;
-    } ReqAckCallback[MAN9_DEFAULT];
-    bool HoldingMainRAM;
+    //timestamp Time; // when request occurs
+    u32 Addr; // address bus value
+    u32 WriteVal; // write bus value
+    //u32 writemask; // lanes to update write bus with (unk if anything doesn't update all lanes?)
+    bool Write; // is operation a write
+    bool Lock; // part of locked sequence
+    AHB9_HMANAGER Manager;
+    AHB_HPROT Prot; // protection flags
+    AHB_HSIZE Size; // access width
+    AHB_HTRANS Type; // access type
+    // TODO: callback somehow
+} AHB_Req;
+
+typedef struct
+{
+    //u32 CurOpenBus; // TODO: is this needed? (if it is, then it'd be separate for both read and write, unlike arm7 side)
+    timestamp LastFetchTs;
+    AHB_Req PipelineFIFO[4]; // granted, addr // CHECKME
+    u8 FIFOFillPtr;
+    u8 FIFODrainPtr;
+    bool FIFOEmpty;
+    bool LockSched;
+    timestamp PipelineExitTime[4];
+    AHB_Req Reqs[MAN9_MAX];
+    AHB9_HMANAGER HLock; // which manager is locking the bus
     u16 RequestBitfield;
-};
+    // post data:
+    timestamp PrevTs;
+    timestamp FetchLen;
+    u32 ReadData;
+    bool IsPostFetch;
+} AHB;
+
+typedef struct
+{
+    //timestamp Time; // when request occurs
+    u32 Addr; // address bus value
+    u32 WriteVal; // write value
+    //u32 writemask; // lanes to update data bus with (unk if anything doesn't update all lanes?)
+    bool Write; // is operation a write
+    bool Lock; // part of locked sequence
+    BUS7_MANAGER Manager;
+    //AHB_HPROT Prot; // protection flags
+    bool DataAccess;
+    AHB_HSIZE Size; // access width
+    bool Seq; // access type
+} UnkBus_Req;
 
 // ARM7 Bus uses an unknown bus architecture, doesn't seem to be an ahb?
 // notes:
 // likely tri-state (using one set of lanes for both read and write data) (evidence: gba open bus is updated by reads and writes)
 // seems to have fewer (todo: exact amount?) cycles of latency (vs the ahb's 3)
-struct Unk_Bus
+// likely unchanged from gba, most differences seem to be a result of the components hooked up to it having different behavior
+typedef struct
 {
-    timestamp Timestamp; // AHB Timestamp.
     u32 CurOpenBus; // TODO: is this needed outside of gba?
-    u8 Pipeline; // addr // CHECKME
-    bool HoldingMainRAM;
-    u16 RequestBitfield;
-};
+    u8 PipelineFIFO[2]; // addr // CHECKME
+    u8 FIFOPtr;
+    bool LockSched;
+    timestamp PipelineExitTime[2];
+    u32 RequestBitfield;
+} Bus7;
+
+typedef enum : u8
+{
+    MainRAM_None,
+    MainRAM_A9,
+    MainRAM_A7,
+} MainRAM_Buses;
 
 // MainRAM is a type of FCRAM.
 // gbatek lists the following chips as being used in retail DS models:
@@ -144,38 +212,22 @@ struct Unk_Bus
 // not 100% clear what mechanic the nds uses to support 8 bit writes?
 // 8bit reads presumably use some special logic or rely on the fact that our specific ARM processors
 // seem to always perform a rotate right and bit masking operation on byte reads
-struct BusMainRAM
+typedef struct
 {
-    timestamp BurstStartTS; // when the current burst began; used for enforcing the burst length limit
-    timestamp BusyTS; // when a new burst can begin; used for the determining when a new burst can next start
-    timestamp LastAccessTS; // when the last access ended; used for main ram prefetching, and sequential access handling
-    bool WeirdStartAddr; // used for handling a quirk where main ram bursts will restart with certain start pos alignments
-    bool LastWasRead; // if the last access was a read; used for some jank with mainram -> mainram dma ig
-    bool LastWasARM9; // used for which cpu was the last to go
-    bool LastWasHeld; // if the last access was being held on to
-
-    // pointers to timestamps for each bus that can access main ram.
-    // if main ram is not in danger then that side should point to when they next awaken
-    // if main ram is in active danger then this should point to that side's Bus Timestamp.
-
-    /*
-    Danger Timestamp should be:
-
-    when all components asleep:
-        expected wake up time
-
-    when one component is awake:
-
-
-    ARM9 is comprised of:
-    ARM9InstrTime
-    ARM9DataTime
-    ARM9WriteTime
-    Bus9Timestamp
-    */
-
-    //timestamp* ARM9ThreatTimestamp;
-    //timestamp* ARM7ThreatTimestamp;
+    AHB_Req Req9;
+    UnkBus_Req Req7;
+    timestamp BurstLimitTs;
+    timestamp LastFetchTs;
+    u32 AddrLatch; // fcram chip internally latched address
+    u32 AddrSubmMask; // mask when sending address to fcram chip
+    u32 AddrLatchMask; // mask when stepping latched addr internally
+    bool WeirdStart; // burst start address was within the last 3 halfwords of a 16 halfword boundary; forces an NS cycle when crossing the 16 halfword boundary
+    bool PrevWrite;
+    bool IsReq9;
+    bool IsReq7;
+    bool BurstActive;
+    MainRAM_Buses CurReq;
+    MainRAM_Buses Locked;
     // Internal control reg for the FCRAM chip on the NDS.
     // NTR/USG ARM9 BIOS has init code for mainRAM @ offset 0x180.
     // Should be initialized using halfword r/w to the most significant halfword of mainRAM.
@@ -226,22 +278,30 @@ struct BusMainRAM
             u32 PartialSize : 2;
         };
     } ControlReg;
-};
+} BusMainRAM;
 
-[[nodiscard]] u32 AHB9_Read(struct Console* sys, timestamp* ts, u32 addr, const AHB_HSIZE size, const bool atomic, const bool hold, bool* seq, const bool timings);
-void AHB9_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, const u32 mask, const bool atomic, bool* seq, const bool timings);
-[[nodiscard]] u32 AHB7_Read(struct Console* sys, timestamp* ts, u32 addr, const AHB_HSIZE size, const bool atomic, const bool hold, bool* seq, const bool timings, const u32 a7pc);
-void AHB7_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, const u32 mask, const bool atomic, bool* seq, const bool timings, const u32 a7pc);
-
-u32 IO7_Read(struct Console* sys, const u32 addr, const bool timings);
-void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mask, const u32 a7pc);
-u32 IO9_Read(struct Console* sys, const u32 addr, const bool timings);
-void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mask);
-
-u32 WiFi_Read(struct Console* sys, timestamp* ts, u32 addr, const AHB_HSIZE size, const bool timings);
-void WiFi_Write(struct Console* sys, timestamp* ts, u32 addr, const u32 val, const u32 mask, const bool timings);
-
-bool AHB_NegOwnership(struct Console* sys, timestamp* cur, const bool atomic, const bool a9);
-void Bus_MainRAM_ReleaseHold(struct Console* sys, struct AHB* buscur);
+// shared handlers
 void AddBusContention(timestamp* busyts, const timestamp cur, const NTRAHB_Devices device);
-void Timing32(struct AHB* bus);
+
+// main ram handlers
+void MainRAM_Request(Console* sys, void* req, timestamp now, const bool a9);
+void MainRAM_Run(Console* sys, const timestamp now);
+
+u32 IO9_Read(Console* sys, const u32 addr, const bool timings);
+void IO9_Write(Console* sys, const u32 addr, const u32 val, const u32 mask);
+
+void AHB9_BusReq(Console* sys, AHB_Req* req, timestamp now);
+void AHB9_BusRun(Console* sys, timestamp now);
+void AHB9_TransferPostSetup(Console* sys, u32 rdata, timestamp prev, timestamp len);
+
+// arm7 side bus implementations
+[[nodiscard]] u32 AHB7_Read(Console* sys, timestamp* ts, u32 addr, const AHB_HSIZE size, const bool atomic, const bool hold, bool* seq, const bool timings, const u32 a7pc);
+void AHB7_Write(Console* sys, timestamp* ts, u32 addr, const u32 val, const u32 mask, const bool atomic, bool* seq, const bool timings, const u32 a7pc);
+u32 IO7_Read(Console* sys, const u32 addr, const bool timings);
+void IO7_Write(Console* sys, const u32 addr, const u32 val, const u32 mask, const u32 a7pc);
+
+u32 WiFi_Read(Console* sys, timestamp* ts, u32 addr, const AHB_HSIZE size, const bool timings);
+void WiFi_Write(Console* sys, timestamp* ts, u32 addr, const u32 val, const u32 mask, const bool timings);
+
+bool AHB_NegOwnership(Console* sys, timestamp* cur, const bool atomic, const bool a9);
+void Bus_MainRAM_ReleaseHold(Console* sys, AHB* buscur);

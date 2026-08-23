@@ -55,6 +55,6 @@ typedef struct
     u64 SecondsSince0;
 } RTC;
 
-struct Console;
-void RTC_IOWriteHandler(struct Console* sys, const u16 val, const u16 mask);
+typedef struct Console Console;
+void RTC_IOWriteHandler(Console* sys, const u16 val, const u16 mask);
 void RTC_Init(RTC* rtc);

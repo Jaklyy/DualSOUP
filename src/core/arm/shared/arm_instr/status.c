@@ -31,7 +31,7 @@ union ARM_StatusReg_Decode
     };
 };
 
-void ARM_MRS(struct ARM* cpu, const ARM_Instr instr_data)
+void ARM_MRS(ARM* cpu, const ARM_Instr instr_data)
 {
     const union ARM_StatusReg_Decode instr = {.Raw = instr_data.Raw};
 
@@ -48,7 +48,7 @@ void ARM_MRS(struct ARM* cpu, const ARM_Instr instr_data)
     }
 }
 
-void ARM_MSR(struct ARM* cpu, const ARM_Instr instr_data)
+void ARM_MSR(ARM* cpu, const ARM_Instr instr_data)
 {
     const union ARM_StatusReg_Decode instr = {.Raw = instr_data.Raw};
 
@@ -141,7 +141,7 @@ void ARM_MSR(struct ARM* cpu, const ARM_Instr instr_data)
     ((instr.UseSPSR) ? ARM_SetSPSR((union ARM_PSR){.Raw = psr}) : ARM_SetCPSR(cpu, psr));
 }
 
-s8 ARM9_MSR_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data)
+s8 ARM9_MSR_Interlocks(ARM946ES* ARM9, const ARM_Instr instr_data)
 {
     const union ARM_StatusReg_Decode instr = {.Raw = instr_data.Raw};
     s8 stall = 0;

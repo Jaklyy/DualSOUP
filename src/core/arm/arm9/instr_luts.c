@@ -8,10 +8,10 @@
 
 
 // TODO: making this compile time generated might enable better compiler optimizations?
-void (*ARM9_InstructionLUT[0x1000])(struct ARM*, ARM_Instr);
-s8 (*ARM9_InterlockLUT[0x1000])(struct ARM946ES*, ARM_Instr, const s8, const s8, const s8);
-void (*THUMB9_InstructionLUT[64])(struct ARM*, ARM_Instr);
-s8 (*THUMB9_InterlockLUT[64])(struct ARM946ES*, ARM_Instr, const s8, const s8, const s8);
+void (*A9ES_InstructionLUT[0x1000])(ARM*, ARM_Instr);
+s8 (*A9ES_InterlockLUT[0x1000])(ARM946ES*, ARM_Instr, const s8, const s8, const s8);
+void (*T9ES_InstructionLUT[64])(ARM*, ARM_Instr);
+s8 (*T9ES_InterlockLUT[64])(ARM946ES*, ARM_Instr, const s8, const s8, const s8);
 
 
 // these should all be sorted in order of likelyhood of usage:
@@ -22,32 +22,32 @@ s8 (*THUMB9_InterlockLUT[64])(struct ARM946ES*, ARM_Instr, const s8, const s8, c
 
 #define CHECK(cmp, mask, ptr) \
 if (PatternMatch((struct Pattern) {0b##cmp, 0b##mask}, instr_data.Raw)) \
-    ARM##ptr(cpu, instr_data); \
+    ptr(cpu, instr_data); \
 else
 
-void ARM9_Uncond(struct ARM* cpu, const ARM_Instr instr_data)
+void A9ES_Uncond(ARM* cpu, const ARM_Instr instr_data)
 {
-    CHECK(1111'1010'0000'0000'0000'0000'0000'0000, 1111'1110'0000'0000'0000'0000'0000'0000, _BLXImm) // BLX IMM
-    CHECK(1111'0101'0101'0000'1111'0000'0000'0000, 1111'1101'0111'0000'1111'0000'0000'0000, _UNIMPL) // PLD
-    CHECK(1111'1110'0000'0000'0000'0000'0001'0000, 1111'1111'0001'0000'0000'0000'0001'0000, _MCR2)
-    CHECK(1111'1110'0001'0000'0000'0000'0001'0000, 1111'1111'0001'0000'0000'0000'0001'0000, _MRC2)
-    CHECK(1111'1110'0000'0000'0000'0000'0000'0000, 1111'1111'0000'0000'0000'0000'0001'0000, _UNIMPL) // CDP2
-    CHECK(1111'1100'0001'0000'0000'0000'0000'0000, 1111'1110'0001'0000'0000'0000'0000'0000, _UNIMPL) // LDC2
-    CHECK(1111'1100'0000'0000'0000'0000'0000'0000, 1111'1110'0001'0000'0000'0000'0000'0000, _UNIMPL) // STC2
-    CHECK(1111'1100'0100'0000'0000'0000'0000'0000, 1111'1111'1111'0000'0000'0000'0000'0000, _UNIMPL) // MCRR2
-    CHECK(1111'1100'0101'0000'0000'0000'0000'0000, 1111'1111'1111'0000'0000'0000'0000'0000, _UNIMPL) // MRRC2
-    CHECK(1111'0001'0010'0000'0000'0000'0111'0000, 1111'1111'1111'0000'0000'0000'1111'0000, 9_PrefetchAbort) // special BKPT handling
-    ARM9_UndefinedInstruction(cpu, instr_data); // checkme?
+    CHECK(1111'1010'0000'0000'0000'0000'0000'0000, 1111'1110'0000'0000'0000'0000'0000'0000, ARM_BLXImm) // BLX IMM
+    CHECK(1111'0101'0101'0000'1111'0000'0000'0000, 1111'1101'0111'0000'1111'0000'0000'0000, ARM_UNIMPL) // PLD
+    CHECK(1111'1110'0000'0000'0000'0000'0001'0000, 1111'1111'0001'0000'0000'0000'0001'0000, ARM_MCR2)
+    CHECK(1111'1110'0001'0000'0000'0000'0001'0000, 1111'1111'0001'0000'0000'0000'0001'0000, ARM_MRC2)
+    CHECK(1111'1110'0000'0000'0000'0000'0000'0000, 1111'1111'0000'0000'0000'0000'0001'0000, ARM_UNIMPL) // CDP2
+    CHECK(1111'1100'0001'0000'0000'0000'0000'0000, 1111'1110'0001'0000'0000'0000'0000'0000, ARM_UNIMPL) // LDC2
+    CHECK(1111'1100'0000'0000'0000'0000'0000'0000, 1111'1110'0001'0000'0000'0000'0000'0000, ARM_UNIMPL) // STC2
+    CHECK(1111'1100'0100'0000'0000'0000'0000'0000, 1111'1111'1111'0000'0000'0000'0000'0000, ARM_UNIMPL) // MCRR2
+    CHECK(1111'1100'0101'0000'0000'0000'0000'0000, 1111'1111'1111'0000'0000'0000'0000'0000, ARM_UNIMPL) // MRRC2
+    CHECK(1111'0001'0010'0000'0000'0000'0111'0000, 1111'1111'1111'0000'0000'0000'1111'0000, A9ES_PrefetchAbort) // special BKPT handling
+    A9ES_UndefinedInstruction(cpu, instr_data); // checkme?
 }
 
 #undef CHECK
 
 #define CHECK(cmp, mask, ptr) \
 if (PatternMatch((struct Pattern) {0b##cmp, 0b##mask}, instr_data.Raw)) \
-    return ARM9_##ptr##_Interlocks(ARM9, instr_data, reg, len, len_c); \
+    return A9ES_##ptr##_Interlocks(ARM9, instr_data, reg, len, len_c); \
 else
 
-s8 ARM9_Uncond_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, s8 reg, s8 len, s8 len_c)
+s8 ARM9_Uncond_Interlocks(ARM946ES* ARM9, const ARM_Instr instr_data, s8 reg, s8 len, s8 len_c)
 {
     CHECK(1111'1010'0000'0000'0000'0000'0000'0000, 1111'1110'0000'0000'0000'0000'0000'0000, None) // BLX IMM
     CHECK(1111'0101'0101'0000'1111'0000'0000'0000, 1111'1101'0111'0000'1111'0000'0000'0000, UNIMPL) // PLD
@@ -59,7 +59,7 @@ s8 ARM9_Uncond_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, s8 
     CHECK(1111'1100'0000'0000'0000'0000'0000'0000, 1111'1110'0001'0000'0000'0000'0000'0000, UNIMPL) // STC2
     CHECK(1111'1100'0100'0000'0000'0000'0000'0000, 1111'1111'1111'0000'0000'0000'0000'0000, UNIMPL) // MCRR2
     CHECK(1111'1100'0101'0000'0000'0000'0000'0000, 1111'1111'1111'0000'0000'0000'0000'0000, UNIMPL) // MRRC2
-    return ARM9_None_Interlocks(ARM9, instr_data, reg, len, len_c); // UDF / BKPT
+    return A9ES_None_Interlocks(ARM9, instr_data, reg, len, len_c); // UDF / BKPT
 }
 
 #undef CHECK
@@ -67,20 +67,20 @@ s8 ARM9_Uncond_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, s8 
 #define CHECK(cmp, mask, ptr) \
 if (PatternMatch((struct Pattern) {0b##cmp, 0b##mask}, i)) \
 { \
-    ARM9_InstructionLUT[i] = ARM_##ptr ; \
-    ARM9_InterlockLUT[i] = ARM9_##ptr##_Interlocks; \
+    A9ES_InstructionLUT[i] = ARM_##ptr ; \
+    A9ES_InterlockLUT[i] = A9ES_##ptr##_Interlocks; \
 } \
 else
 
 #define CHECK9(cmp, mask, ptr) \
 if (PatternMatch((struct Pattern) {0b##cmp, 0b##mask}, i)) \
 { \
-    ARM9_InstructionLUT[i] = ARM9_##ptr ; \
-    ARM9_InterlockLUT[i] = ARM9_None_Interlocks; \
+    A9ES_InstructionLUT[i] = A9ES_##ptr ; \
+    A9ES_InterlockLUT[i] = A9ES_None_Interlocks; \
 } \
 else
 
-void ARM9_InitInstrLUT()
+void A9ES_InitInstrLUT()
 {
     for (u16 i = 0; i <= 0xFFF; i++)
     {
@@ -121,7 +121,7 @@ void ARM9_InitInstrLUT()
         CHECK (1000'0000'0000, 1110'0000'0000, LoadStoreMultiple) // ldm/stm
         // branch
         CHECK (1010'0000'0000, 1110'0000'0000, Branch) // b/bl
-        CHECK9(1111'0000'0000, 1111'0000'0000, SoftwareInterrupt)
+        CHECK9(1111'0000'0000, 1111'0000'0000, SupervisorCall)
 
         CHECK9(0000'0000'0000, 0000'0000'0000, UndefinedInstruction)
         unreachable();
@@ -136,7 +136,7 @@ if (PatternMatch((struct Pattern) {0b##cmp, 0b##mask}, decode)) \
     THUMB##ptr(ARM, instr_data); \
 else
 
-void THUMB9_Misc(struct ARM* ARM, const ARM_Instr instr_data)
+void THUMB9_Misc(ARM* ARM, const ARM_Instr instr_data)
 {
     const u16 decode = (instr_data.Raw >> 3) & 0x1FF;
 
@@ -156,7 +156,7 @@ if (PatternMatch((struct Pattern) {0b##cmp, 0b##mask}, decode)) \
     return THUMB9_##ptr##_Interlocks(ARM9, instr_data, reg, len, len_c); \
 else
 
-s8 THUMB9_Misc_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c)
+s8 THUMB9_Misc_Interlocks(ARM946ES* ARM9, const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c)
 {
     const u16 decode = (instr_data.Raw >> 3) & 0x1FF;
 

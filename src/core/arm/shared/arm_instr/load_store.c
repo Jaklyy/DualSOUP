@@ -1,6 +1,7 @@
 #include "../../../utils.h"
 #include "../arm.h"
 #include "../inc.h"
+#include "core/arm/arm9/arm.h"
 
 
 
@@ -28,7 +29,7 @@ union ARM_LoadStore_Decode
     };
 };
 
-void ARM_LoadStore(struct ARM* cpu, const ARM_Instr instr_data)
+void ARM_LoadStore(ARM* cpu, const ARM_Instr instr_data)
 {
     const union ARM_LoadStore_Decode instr = {.Raw = instr_data.Raw};
 
@@ -106,6 +107,7 @@ void ARM_LoadStore(struct ARM* cpu, const ARM_Instr instr_data)
 
     ARM_StepPC(cpu, false);
 
+    bool priv = ((instr.Writeback && (!instr.PreIndex)) ? false : cpu->Privileged);
     if (instr.Load)
     {
         if (cpu->CPUID == ARM7ID)
@@ -131,6 +133,8 @@ void ARM_LoadStore(struct ARM* cpu, const ARM_Instr instr_data)
                 }
                 ARM_SetReg(instr.Rn, wbaddr);
             }
+
+            // schedule load
         }
         else // arm9e-s
         {
@@ -139,6 +143,12 @@ void ARM_LoadStore(struct ARM* cpu, const ARM_Instr instr_data)
             {
                 ARM_SetReg(instr.Rn, wbaddr);
             }
+
+            // test rd interlocks; has to be done now so we can know if an instruction can occur in sync with the load. (this might not actually matter? it is more similar to hw so...)
+            bool il2 = (instr.Byte || (addr & 3));
+            s8 ilen = ARM9_DecodeInterlocks(ARM9Cast, false, instr.Rd, 1+il2, 2);
+            
+            // schedule load
         }
     }
     else // store
@@ -152,6 +162,8 @@ void ARM_LoadStore(struct ARM* cpu, const ARM_Instr instr_data)
             {
                 ARM_SetReg(instr.Rn, wbaddr);
             }
+
+            // schedule store
         }
         else // arm9e-s
         {
@@ -297,24 +309,31 @@ void ARM_LoadStore(struct ARM* cpu, const ARM_Instr instr_data)
 #endif
 }
 
-s8 ARM9_LoadStore_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data)
+void ARM9_LoadSingle_Post(ARM946ES* ARM9, const bool abort, const u8 base, const u32 origbase, const u8 rd, u32 ret, const u32 addr, const ARM_DataWidth size, const bool signext)
+{
+    if (abort)
+    {
+        ARM9_SetReg(ARM9, base, origbase);
+        // checkme: interlock?
+    }
+    else
+    {
+        bool il = ARM9_RotateExtendUnit(&ret, addr, size, signext, ARM9->CP15.CR.BigEndian);
+        ARM9_SetReg(ARM9, rd, ret);
+
+        ARM9_DecodeInterlocks(ARM9, false, rd, 1+il, 2);
+        if (il) ARM9ES_SetTwoCycleInterlock(ARM9, rd);
+    }
+}
+
+s8 ARM9_LoadStore_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c)
 {
     const union ARM_LoadStore_Decode instr = {.Raw = instr_data.Raw};
-    s8 stall = 0;
 
-    ARM9_CheckInterlocks(ARM9, &stall, instr.Rn, 0, false);
-    // scaled reg
-    if (instr.Register)
-    {
-        // checkme: delay & port
-        ARM9_CheckInterlocks(ARM9, &stall, instr.Rm, 0, false);
-    }
-    // str
-    if (!instr.Load)
-    {
-        ARM9_CheckInterlocks(ARM9, &stall, instr.Rd, 1, true);
-    }
-    return stall;
+    if (instr.Rn == reg) return len;
+    if (instr.Register && (instr.Rm == reg)) return len;
+    if (!instr.Load && (instr.Rd == reg)) return len_c-1;
+    return 0;
 }
 
 union ARM_LoadStoreMisc_Decode
@@ -341,7 +360,7 @@ union ARM_LoadStoreMisc_Decode
     };
 };
 
-void ARM_LoadStoreMisc(struct ARM* cpu, const ARM_Instr instr_data)
+void ARM_LoadStoreMisc(ARM* cpu, const ARM_Instr instr_data)
 {
     const union ARM_LoadStoreMisc_Decode instr = {.Raw = instr_data.Raw};
 
@@ -623,7 +642,7 @@ void ARM_LoadStoreMisc(struct ARM* cpu, const ARM_Instr instr_data)
     else if (flush) ARM_FlushPipeline;
 }
 
-s8 ARM9_LoadStoreMisc_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data)
+s8 ARM9_LoadStoreMisc_Interlocks(ARM946ES* ARM9, const ARM_Instr instr_data)
 {
     const union ARM_LoadStoreMisc_Decode instr = {.Raw = instr_data.Raw};
     s8 stall = 0;
@@ -644,7 +663,7 @@ s8 ARM9_LoadStoreMisc_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_da
 }
 
 // we need this here to handle ldm/stm jank
-void ARM9_InterlockStall(struct ARM946ES* ARM9, const s8 stall);
+void ARM9_InterlockStall(ARM946ES* ARM9, const s8 stall);
 
 union ARM_LoadStoreMultiple_Decode
 {
@@ -662,7 +681,7 @@ union ARM_LoadStoreMultiple_Decode
     };
 };
 
-void ARM_LoadStoreMultiple(struct ARM* cpu, const ARM_Instr instr_data)
+void ARM_LoadStoreMultiple(ARM* cpu, const ARM_Instr instr_data)
 {
     union ARM_LoadStoreMultiple_Decode instr = {.Raw = instr_data.Raw};
 
@@ -856,7 +875,7 @@ void ARM_LoadStoreMultiple(struct ARM* cpu, const ARM_Instr instr_data)
     else if (flush) ARM_FlushPipeline;
 }
 
-s8 ARM9_LoadStoreMultiple_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data)
+s8 ARM9_LoadStoreMultiple_Interlocks(ARM946ES* ARM9, const ARM_Instr instr_data)
 {
     const union ARM_LoadStoreMultiple_Decode instr = {.Raw = instr_data.Raw};
     s8 stall = 0;
@@ -887,7 +906,7 @@ union ARM_Swap_Decode
     };
 };
 
-void ARM_Swap(struct ARM* cpu, const ARM_Instr instr_data)
+void ARM_Swap(ARM* cpu, const ARM_Instr instr_data)
 {
     const union ARM_Swap_Decode instr = {.Raw = instr_data.Raw};
 
@@ -964,7 +983,7 @@ void ARM_Swap(struct ARM* cpu, const ARM_Instr instr_data)
     }
 }
 
-s8 ARM9_Swap_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data)
+s8 ARM9_Swap_Interlocks(ARM946ES* ARM9, const ARM_Instr instr_data)
 {
     const union ARM_Swap_Decode instr = {.Raw = instr_data.Raw};
     s8 stall = 0;

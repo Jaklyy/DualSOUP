@@ -24,10 +24,10 @@ union ARM_MCR_MRC_Decode
     };
 };
 
-void ARM9_MCR_15(struct ARM946ES* ARM9, const u16 cmd, const u32 val);
-u32 ARM9_MRC_15(struct ARM946ES* ARM9, const u16 cmd);
+void ARM9_MCR_15(ARM946ES* ARM9, const u16 cmd, const u32 val);
+u32 ARM9_MRC_15(ARM946ES* ARM9, const u16 cmd);
 
-void ARM_MCR(struct ARM* cpu, const ARM_Instr instr_data)
+void ARM_MCR(ARM* cpu, const ARM_Instr instr_data)
 {
     const union ARM_MCR_MRC_Decode instr = {.Raw = instr_data.Raw};
 
@@ -95,18 +95,18 @@ void ARM_MCR(struct ARM* cpu, const ARM_Instr instr_data)
     }
 }
 
-s8 ARM9_MCR_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data)
+s8 ARM9_MCR_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len [[maybe_unused]], const s8 len_c)
 {
     const union ARM_MCR_MRC_Decode instr = {.Raw = instr_data.Raw};
-    s8 stall = 0;
     // ARM9E-S docs specify it as needing data during it's decode stage...?
-    // i dont think that's true here...?
+    // i dont think that's true...? (does it mean coprocessor decode stage?)
     // i think it's literally just an STR but to a coprocessor instead of memory.
-    ARM9_CheckInterlocks(ARM9, &stall, instr.Rd, 1, true);
-    return stall;
+
+    if (instr.Rd == reg) return len_c-1;
+    else return 0;
 }
 
-void ARM_MRC(struct ARM* cpu, const ARM_Instr instr_data)
+void ARM_MRC(ARM* cpu, const ARM_Instr instr_data)
 {
     const union ARM_MCR_MRC_Decode instr = {.Raw = instr_data.Raw};
     ARM_StepPC(cpu, false);
@@ -155,13 +155,14 @@ void ARM_MRC(struct ARM* cpu, const ARM_Instr instr_data)
                 {
                     // flag update: takes longer due to needing to wait for the CPSR flag write.
                     // speculation: this seems to be one of the few cases where the decode stage actually matters for timings and effectively triggers an interlock.
-                    // CHECKME: this is semantically wrong i think?
                     ARM9_ExecuteCycles(ARM9Cast, 3);
                 }
                 else
                 {
+                    // should be based off of ldr but it doesn't cause extra delay for reads via port C...?
+                    s8 interlock = ARM9_DecodeInterlocks(ARM9Cast, false, instr.Rd, 1, 1);
                     // CHECKME: memory 2?
-                    ARM9_ExecuteCycles(ARM9Cast, 2);
+                    ARM9_ExecuteCycles(ARM9Cast, 2+interlock);
                 }
             }
             else
@@ -200,8 +201,6 @@ void ARM_MRC(struct ARM* cpu, const ARM_Instr instr_data)
     }
     else
     {
-        // should be based off of ldr but it's not using port C...?
-        static_assert(false, "HANDLE INTERLOCKS\n");
         ARM_SetReg(instr.Rd, val);
     }
 }
@@ -223,7 +222,7 @@ union ARM_LDC_Decode
     };
 };
 
-void ARM_LDC(struct ARM* cpu, const ARM_Instr instr_data)
+void ARM_LDC(ARM* cpu, const ARM_Instr instr_data)
 {
     union ARM_LDC_Decode instr = {.Raw = instr_data.Raw};
 
@@ -240,7 +239,7 @@ void ARM_LDC(struct ARM* cpu, const ARM_Instr instr_data)
     }
 }
 
-s8 ARM9_LDC_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data)
+s8 ARM9_LDC_Interlocks(ARM946ES* ARM9, const ARM_Instr instr_data)
 {
     union ARM_LDC_Decode instr = {.Raw = instr_data.Raw};
     s8 stall = 0;
@@ -254,13 +253,13 @@ s8 ARM9_LDC_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data)
 // note: all of these instructions use the same interlock behavior as their standard counterparts
 
 
-void ARM_MCR2(struct ARM* cpu, const ARM_Instr instr_data)
+void ARM_MCR2(ARM* cpu, const ARM_Instr instr_data)
 {
     // ARM9 CP15 treats MCR2 the same as MCR
     ARM_MCR(cpu, instr_data);
 }
 
-void ARM_MRC2(struct ARM* cpu, const ARM_Instr instr_data)
+void ARM_MRC2(ARM* cpu, const ARM_Instr instr_data)
 {
     // ARM9 CP15 treats MRC2 the same as MRC
     ARM_MRC(cpu, instr_data);

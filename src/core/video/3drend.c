@@ -5,7 +5,7 @@
 
 
 
-u16 VRAM_3DTexel(struct Console* sys, u32 addr)
+u16 VRAM_3DTexel(Console* sys, u32 addr)
 {
     addr &= (KiB(512)-1);
     u16 ret = 0;
@@ -32,7 +32,7 @@ u16 VRAM_3DTexel(struct Console* sys, u32 addr)
     return ret;
 }
 
-u16 VRAM_3DPal(struct Console* sys, u32 addr)
+u16 VRAM_3DPal(Console* sys, u32 addr)
 {
     //addr &= (KiB(512)-1); does this have any wrapping?
     u16 ret = 0;
@@ -403,7 +403,7 @@ Colors SWRen_RGB555to666(Colors color)
     return color;
 }
 
-Colors SWRen_DecodeTextures(struct Console* sys, Polygon* poly, s16 s, s16 t, u8* texalpha)
+Colors SWRen_DecodeTextures(Console* sys, Polygon* poly, s16 s, s16 t, u8* texalpha)
 {
     // discard fractional component
     s >>= 4;
@@ -652,7 +652,7 @@ Colors SWRen_DecodeTextures(struct Console* sys, Polygon* poly, s16 s, s16 t, u8
     }
 }
 
-Colors SWRen_BlendColors(struct Console* sys, Polygon* poly, Colors vcolor, s16 s, s16 t, u8* outalpha)
+Colors SWRen_BlendColors(Console* sys, Polygon* poly, Colors vcolor, s16 s, s16 t, u8* outalpha)
 {
     GX3D* gx = &sys->GX3D;
     vcolor.RGB >>= 3;
@@ -776,7 +776,7 @@ bool SWRen_DepthTest(const GX3D* gx, const bool equaldt, const u16 x, const u8 y
     }
 }
 
-void SWRen_RasterizePixel(struct Console* sys, Polygon* poly, u16 x, u8 y, s32 z, Colors color, s16 s, s16 t, AttrBuf attr, const bool fill)
+void SWRen_RasterizePixel(Console* sys, Polygon* poly, u16 x, u8 y, s32 z, Colors color, s16 s, s16 t, AttrBuf attr, const bool fill)
 {
     GX3D* gx = &sys->GX3D;
     const bool stencil = (poly->Attrs.PolyID == 0) && (poly->Attrs.Mode == 3);
@@ -828,7 +828,7 @@ void SWRen_RasterizePixel(struct Console* sys, Polygon* poly, u16 x, u8 y, s32 z
     }
 }
 
-void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
+void SWRen_RasterizePoly(Console* sys, Polygon* poly, const u8 y)
 {
     GX3D* gx = &sys->GX3D;
     if ((y == poly->Bot) && (y != poly->Top)) return; // checkme: timings?
@@ -998,7 +998,7 @@ void SWRen_RasterizePoly(struct Console* sys, Polygon* poly, const u8 y)
     }
 }
 
-void SWRen_RasterizeScanline(struct Console* sys, u8 y)
+void SWRen_RasterizeScanline(Console* sys, u8 y)
 {
     GX3D* gx = &sys->GX3D;
     for (int i = 0; i < gx->RenderPolyCount; i++)
@@ -1123,7 +1123,7 @@ void SWRen_PostProcessScanline(GX3D* gx, u8 y)
     }
 }
 
-void SWRen_RasterizerFrame(struct Console* sys)
+void SWRen_RasterizerFrame(Console* sys)
 {
     if (!sys->PowerCR9.GPURasterizerPower)
     {
@@ -1144,30 +1144,30 @@ void SWRen_RasterizerFrame(struct Console* sys)
     sys->RenderedLines = 192;
 }
 
-void SWRen_SetTarget(struct Console* sys, const timestamp now)
+void SWRen_SetTarget(Console* sys, const timestamp now)
 {
     if (sys->SWRenTarget < now)
         sys->SWRenTarget = now;
 }
 
-void SWRen_Sync(struct Console* sys, timestamp now)
+void SWRen_Sync(Console* sys, timestamp now)
 {
     if (!sys->SWRenStart) return;
     SWRen_SetTarget(sys, now);
     while (sys->SWRenTimestamp < now) SDL_CPUPauseInstruction();
 }
 
-void SWRen_SyncRenderedLines(struct Console* sys, u8 y)
+void SWRen_SyncRenderedLines(Console* sys, u8 y)
 {
     while (sys->RenderedLines < y);
 }
 
-void SWRen_Wait(struct Console* sys, const timestamp now)
+void SWRen_Wait(Console* sys, const timestamp now)
 {
     while (now >= sys->SWRenTarget) SDL_CPUPauseInstruction();
 }
 
-void SWRen_Init(struct Console* sys, const timestamp now)
+void SWRen_Init(Console* sys, const timestamp now)
 {
     if (sys->SWRenStart) return;
     sys->SWRenTarget = now;
@@ -1177,7 +1177,7 @@ void SWRen_Init(struct Console* sys, const timestamp now)
 
 int SDLCALL SWRen_MainLoop(void* ptr)
 {
-    struct Console* sys = ptr;
+    Console* sys = ptr;
     while (!sys->SWRenStart) SDL_CPUPauseInstruction();
 
     while (!sys->KillSWRen)

@@ -29,21 +29,35 @@
 
 // system clocks
 // not sure if these are actually going to be used for anything but they're useful reminders
-// Source: gbatek
+// Source: gbatek, pandocs.
 
-constexpr u32 Base_Clock   = 16'756'991;     // Clock without any extra multipliers applied.
-constexpr u32 NTRBus_Clock = Base_Clock * 2; // Clock used for the main buses.
-constexpr u32 NTR7_Clock   = Base_Clock * 2; // ARM7 Clock.
-constexpr u32 NTR9_Clock   = Base_Clock * 4; // NARM9 Clock.
+// game boy
+constexpr u32 DMG_SysClock      = 4'194'304;         // 4.1943 MHz; Clock used by the Game Boy.
+constexpr u32 CGB_SysClock      = DMG_SysClock * 2;  // 8.3886 MHz; Clock used by the Game Boy Color.
+constexpr u32 AGB_SysClock      = CGB_SysClock * 2;  // 16.777 MHz; Clock used by the Game Boy Advance.
+
+// ds
+constexpr u32 NTR_BaseClock     = 16'756'991;        // 16.757 MHz; Clock used by NTR models (and onward) without any extra multipliers applied; used as the clock for everything(?) in gba compat mode.
+constexpr u32 NTR_SysClock      = NTR_BaseClock * 2; // 33.514 MHz; Clock used as a base for NDS in NDS mode; used for most components.
+constexpr u32 NTR9_Clock        = NTR_SysClock * 2;  // 67.028 MHz; ARM9 processor clock.
+constexpr u32 TWL9_Clock        = NTR9_Clock * 2;    // 134.06 MHz; ARM9 processor clock on DSi models.
+constexpr u32 CTR_SysClock      = NTR_BaseClock * 4; // 67.028 MHz; Citation needed (i think this is the arm9 bus clock on 3ds in 3ds mode at least?)
+constexpr u32 CTR9_Clock        = CTR_SysClock * 2;  // 134.06 MHz; Clock used for arm9 and dsp on 3ds in 3ds mode.
+constexpr u32 CTR11_Clock       = CTR_SysClock * 4;  // 268.11 MHz; Clock used for ARM11 in 3ds mode.
+constexpr u32 KTR11_UnusedClock = CTR11_Clock * 2;   // 536.22 MHz; Unused clock for ARM11 on n3ds.
+constexpr u32 KTR11_Clock       = CTR11_Clock * 3;   // 804.34 MHz; Used clock for ARM11 on n3ds.
+
+// soup
+constexpr u32 Sched_Clock       = NTR9_Clock;       // 67.028 MHz; Clock everything is converted to for scheduling purposes
 
 // audio clocks
 // source: gbatek 
 // these numbers seem odd? not sure if these should actually be
-constexpr u32 SoundMixerFreq = Base_Clock/16; // 1'048'760; // >(1/16); (is this info relevant?)
-                                                                 // note: still haven't for sure verified that this is exact.
-constexpr u32 SoundMixerOutput = Base_Clock/512; //32'768; // not entirely sure if it uses an output frequency of 32.768 Hz or 32.728 Hz
-                                                                // it's a difference of roughly 0.1% so idk if it matters, but it bothers me
-                                                                // fun note: you can set this to Base_Clock/16 to get very high quality audio output.
+constexpr u32 SoundMixerFreq = NTR_BaseClock/16; // 1'048'760; // >(1/16); (is this info relevant?)
+                                                               // note: still haven't for sure verified that this is exact.
+constexpr u32 SoundMixerOutput = NTR_BaseClock/512; // 32'768; // not entirely sure if it uses an output frequency of 32.768 Hz or 32.728 Hz
+                                                               // it's a difference of roughly 0.1% so idk if it matters, but it bothers me
+                                                               // fun note: you can set this to Base_Clock/16 to get very high quality audio output.
 
 // yoinked from melonDS; should be validated personally.
 // they're written this way in melonDS; I'm not sure why? Probably makes sense with 2d gpu knowledge.
@@ -56,7 +70,12 @@ constexpr double Framems   = 16.7151131131; // see above.
 constexpr double VCountus  = 63.5555631677; // length of a scanline in us; see above.
 
 
+// GBA
+constexpr size_t EWRAM_Size       = KiB(256);
+constexpr size_t IWRAM_Size       = KiB(32);
+constexpr size_t AGBBios_Size     = KiB(16);
 
+// NDS
 constexpr size_t MainRAM_Size     = MiB(4);
 constexpr size_t SharedWRAM_Size  = KiB(32);
 constexpr size_t ARM7WRAM_Size    = KiB(64);
@@ -77,17 +96,17 @@ constexpr size_t WiFiRAM_Size     = KiB(8);
 
 typedef enum : u8
 {
-    VRAM_A_ID,
-    VRAM_B_ID,
-    VRAM_C_ID,
-    VRAM_D_ID,
-    VRAM_E_ID,
-    VRAM_F_ID,
-    VRAM_G_ID,
-    VRAM_H_ID,
-    VRAM_I_ID,
+    VRAMID_A,
+    VRAMID_B,
+    VRAMID_C,
+    VRAMID_D,
+    VRAMID_E,
+    VRAMID_F,
+    VRAMID_G,
+    VRAMID_H,
+    VRAMID_I,
 
-    VRAM_ID_MAX [[maybe_unused]], 
+    VRAMID_MAX [[maybe_unused]], 
 } VRAMBankIDs;
 
 union VRAMCR
@@ -127,17 +146,17 @@ struct IPCFIFO
     u32 FIFO[16];
 };
 
-struct Console
+typedef struct Console
 {
-    struct ARM946ES ARM9;
-    struct ARM7TDMI ARM7;
+    ARM946ES ARM9;
+    ARM7TDMI ARM7;
 
     struct DMA_Controller DMA9;
     struct DMA_Controller DMA7;
 
-    struct AHB AHB9;
-    struct AHB AHB7;
-    struct BusMainRAM BusMR;
+    AHB AHB9;
+    Bus7 Bus7;
+    BusMainRAM BusMR;
     timestamp AHBBusyTS[Dev_Max];
 
     coroutine HandleARM9;
@@ -151,7 +170,7 @@ struct Console
     bool MR9;
     bool MR7;
 
-    struct Scheduler Sched;
+    NeoSched Sched;
 
     alignas(HOST_CACHEALIGN) timestamp IRQSched9[IRQ_Max];
 
@@ -272,15 +291,15 @@ struct Console
         struct
         {
             u16 : 7;
-            bool GBAPakAccess : 1; // enabled = arm7
+            bool GBAPakA7Access : 1; // enabled = arm7
             u16 : 1;
-            bool NDSCard2Access: 1; // DSI ONLY
+            bool NDSCard2A7Access: 1; // DSI ONLY
             u16 : 1;
-            bool NDSCardAccess : 1; // enabled = arm7
+            bool NDSCardA7Access : 1; // enabled = arm7
             u16 : 1;
             bool MRSomething1 : 1; // idk
             bool MRSomething2 : 1; // idk either
-            bool MRPriority : 1; // enabled = arm7 priority
+            bool MRA7Priority : 1; // enabled = arm7 priority
         };
     } ExtMemCR_Shared;
 
@@ -516,36 +535,45 @@ struct Console
 
     alignas(HOST_CACHEALIGN)
     // FCRAM
-    MEMORY(MainRAM,     MainRAM_Size);
+    MEMORY(MainRAM, MainRAM_Size);
     // WRAM
     union
     {
-        MEMORY(SharedWRAM,  SharedWRAM_Size);
+        MEMORY(IWRAM,      IWRAM_Size); // gba (checkme: is this mapped to swram or a7wram on nds models? it uses the same mapping as swram on 3ds at least)
+        MEMORY(SharedWRAM, SharedWRAM_Size);
         struct
         {
             MEMORY(SharedWRAMLo, SharedWRAM_Size/2);
             MEMORY(SharedWRAMHi, SharedWRAM_Size/2);
         };
     };
-    MEMORY(ARM7WRAM,    ARM7WRAM_Size);
+    MEMORY(ARM7WRAM, ARM7WRAM_Size); // nds
     // VRAM
-    MEMORY(VRAM_A,      VRAM_A_Size);
-    MEMORY(VRAM_B,      VRAM_B_Size);
-    MEMORY(VRAM_C,      VRAM_C_Size);
-    MEMORY(VRAM_D,      VRAM_D_Size);
-    MEMORY(VRAM_E,      VRAM_E_Size);
-    MEMORY(VRAM_F,      VRAM_F_Size);
-    MEMORY(VRAM_G,      VRAM_G_Size);
-    MEMORY(VRAM_H,      VRAM_H_Size);
-    MEMORY(VRAM_I,      VRAM_I_Size);
+    MEMORY(VRAM_A, VRAM_A_Size);
+    MEMORY(VRAM_B, VRAM_B_Size);
+    union
+    {
+        MEMORY(EWRAM, EWRAM_Size); // gba
+        struct
+        {
+            MEMORY(VRAM_C, VRAM_C_Size);
+            MEMORY(VRAM_D, VRAM_D_Size);
+        }; // nds
+    };
+    MEMORY(VRAM_E, VRAM_E_Size);
+    MEMORY(VRAM_F, VRAM_F_Size);
+    MEMORY(VRAM_G, VRAM_G_Size);
+    MEMORY(VRAM_H, VRAM_H_Size);
+    MEMORY(VRAM_I, VRAM_I_Size);
     // Video Misc
-    MEMORY(Palette,     Palette_Size);
-    MEMORY(OAM,         OAM_Size);
+    MEMORY(Palette, Palette_Size);
+    MEMORY(OAM,     OAM_Size);
     // BIOS
-    MEMORY(NTRBios9,    NTRBios9_Size);
-    MEMORY(NTRBios7,    NTRBios7_Size);
-    MEMORY(WiFiRAM,    WiFiRAM_Size);
-    MEMORY(WifiIO, 0x1000);
+    MEMORY(NTRBios9, NTRBios9_Size);
+    MEMORY(NTRBios7, NTRBios7_Size);
+    MEMORY(AGBBios,  AGBBios_Size);
+    MEMORY(WiFiRAM, WiFiRAM_Size);
+    MEMORY(WifiIO, 0x1000); // TEMP
 
     alignas(HOST_CACHEALIGN) // ppu a sync area
     volatile timestamp PPUATimestamp;
@@ -582,24 +610,24 @@ struct Console
     volatile bool KillThread;
     u64 dummy; // for debugging i guess
     FILE* log;
-};
+} Console;
 
 // initialize a console to a clean state.
 // if a nullptr is passed then it will allocate and initialize a console from scratch.
 // otherwise it will re-initialize an already allocated struct.
 // returns success or failure.
-struct Console* Console_Init(struct Console* sys, CoreCfg* cfg, void* pad, void* aud);
+Console* Console_Init(Console* sys, CoreCfg* cfg, void* pad, void* aud);
 // emulate a hardware reset.
-void Console_Reset(struct Console* sys);
+void Console_Reset(Console* sys);
 // actually run the emulation.
-void Console_MainLoop(struct Console* sys);
+void Console_MainLoop(Console* sys);
 
-void Console_DirectBoot(struct Console* sys);
+void Console_DirectBoot(Console* sys);
 
-void Console_DebugLog(struct Console* sys);
+void Console_DebugLog(Console* sys);
 
-void Console_ScheduleIRQs(struct Console* sys, const u8 irq, const bool a9, timestamp time);
-void Console_ScheduleHeldIRQs(struct Console* sys, const u8 irq, const bool a9, timestamp time);
-void Console_ClearHeldIRQs(struct Console* sys, const u8 irq, const bool a9);
-bool Console_CheckARM9Wake(struct Console* sys);
-bool Console_CheckARM7Wake(struct Console* sys);
+void Console_ScheduleIRQs(Console* sys, const u8 irq, const bool a9, timestamp time);
+void Console_ScheduleHeldIRQs(Console* sys, const u8 irq, const bool a9, timestamp time);
+void Console_ClearHeldIRQs(Console* sys, const u8 irq, const bool a9);
+bool Console_CheckARM9Wake(Console* sys);
+bool Console_CheckARM7Wake(Console* sys);

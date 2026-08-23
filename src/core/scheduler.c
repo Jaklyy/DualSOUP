@@ -4,9 +4,114 @@
 #include <stdckdint.h>
 
 
+inline timestamp NTRClock_CvtFrom16(timestamp ts)
+{
+    return ts * (Sched_Clock / NTR_BaseClock);
+}
+
+inline timestamp NTRClock_CvtFrom33(timestamp ts)
+{
+    return ts * (Sched_Clock / NTR_SysClock);
+}
+
+inline timestamp NTRClock_CvtFrom67(timestamp ts)
+{
+    return ts * (Sched_Clock / NTR9_Clock);
+}
+
+inline timestamp NTRClock_67Align33(timestamp ts)
+{
+    constexpr timestamp adjust = (NTR9_Clock / NTR_SysClock)-1;
+    return NTRClock_CvtFrom67((ts + adjust) & ~adjust);
+}
 
 
-void Scheduler_UpdateTargets(struct Console* sys)
+void NeoSched_RemoveEvent(NeoSched* sched, Scheduler_Events id)
+{
+    if (sched->Prev[id] != Evt_Invalid) // event was scheduled, unsechedule it
+    {
+        sched->Next[sched->Prev[id]] = sched->Next[id];
+        sched->Prev[sched->Next[id]] = sched->Prev[id];
+
+        sched->Next[id] = Evt_Invalid;
+        sched->Prev[id] = Evt_Invalid;
+    }
+}
+
+timestamp NeoSched_GetTime(NeoSched* sched, Scheduler_Events id)
+{
+    if (sched->Prev[id] != Evt_Invalid) // event is scheduled
+    {
+        return sched->Times[id];
+    }
+    else
+    {
+        return timestamp_max; // idk
+    }
+}
+
+bool NeoSched_CheckEventScheduled(Console* sys, Scheduler_Events id)
+{
+    return sys->Sched.Prev[id] != Evt_Invalid;
+}
+
+void NeoSched_AddEvent(Console* sys, timestamp time, Scheduler_Events id)
+{
+    NeoSched* sched = &sys->Sched;
+    Scheduler_Events prev = Evt_Null;
+    Scheduler_Events next = Evt_Null;
+
+    NeoSched_RemoveEvent(sched, id);
+
+    while ((time < sched->Times[sched->Next[next]]) // find next and previous events
+        || ((time == sched->Times[sched->Next[next]]) && (id > sched->Next[next] /* determine priority? */))) // break ties
+    {
+        prev = next;
+        next = sched->Next[next];
+    }
+
+    // insert event into adjacent
+    sched->Prev[next] = id;
+    sched->Next[prev] = id;
+
+    sched->Prev[id] = prev;
+    sched->Next[id] = next;
+    sched->Times[id] = time;
+}
+
+void NeoSched_AddEventIfEarlier(Console* sys, timestamp time, Scheduler_Events id)
+{
+    if (time < NeoSched_GetTime(&sys->Sched, id))
+    {
+        NeoSched_AddEvent(sys, time, id);
+    }
+}
+
+void NeoSched_RunEvent(Console* sys)
+{
+    NeoSched* sched = &sys->Sched;
+    Scheduler_Events evt = sched->Next[Evt_Null];
+    timestamp now = sched->Times[evt];
+
+    NeoSched_RemoveEvent(sched, evt);
+
+    switch(evt)
+    {
+    case Evt_Null:
+    case Evt_Max:
+    case Evt_Invalid:
+    //default:
+        CrashSpectacularly("FATAL: INVALID SCHEDULER EVENT: %"PRIu8"\n", evt);
+
+    case Evt_ARM9:      A946_MainLoop(&sys->ARM9); break;
+    case Evt_ARM9BIU:   AHB9_BusRun(sys, now); break;
+    case Evt_ARM7:      ARM7_MainLoop(&sys->ARM7); break;
+    case Evt_MainRAM:   MainRAM_Run(sys, now); break;
+    }
+}
+
+#if 0
+void Scheduler_UpdateTargets(Console* sys)
 {
     timestamp next = timestamp_max;
     for (int i = 0; i < Evt_Max; i++)
@@ -19,7 +124,7 @@ void Scheduler_UpdateTargets(struct Console* sys)
     sys->MainTarget = next;
 }
 
-void Scheduler_Run(struct Console* sys)
+void Scheduler_Run(Console* sys)
 {
 #ifdef REALTHREAD
     mtx_lock(&sys->Sched.SchedulerMtx);
@@ -46,7 +151,7 @@ void Scheduler_Run(struct Console* sys)
 #endif
 }
 
-void Schedule_Event(struct Console* sys, void (*callback) (struct Console*, timestamp), u8 event, timestamp time)
+void Schedule_Event(Console* sys, void (*callback) (Console*, timestamp), u8 event, timestamp time)
 {
 #ifdef REALTHREAD
     mtx_lock(&sys->Sched.SchedulerMtx);
@@ -65,7 +170,7 @@ void Schedule_Event(struct Console* sys, void (*callback) (struct Console*, time
 #define A7GO ((sys->A7Sync < sys->MainTarget) && ((sys->MR7 && !sys->ExtMemCR_Shared.MRPriority) ? (sys->A7Sync < sys->A9Sync) : (sys->A7Sync <= sys->A9Sync)))
 #define SYSGO ((sys->A9Sync >= sys->MainTarget) && (sys->A7Sync >= sys->MainTarget))
 // if this isn't always inlined the compiler wont optimize out the SyncMode stuff properly.
-forceinline void Scheduler_Sync(struct Console* sys, timestamp now, const SyncMode mode)
+forceinline void Scheduler_Sync(Console* sys, timestamp now, const SyncMode mode)
 {
     if (mode >= Sync_9)
     {
@@ -113,7 +218,7 @@ forceinline void Scheduler_Sync(struct Console* sys, timestamp now, const SyncMo
 #undef A7GO
 #undef SYSGO
 
-void Scheduler_StallForEvent(struct Console* sys, timestamp* time, const u8 event, const bool a9)
+void Scheduler_StallForEvent(Console* sys, timestamp* time, const u8 event, const bool a9)
 {
     // make sure the event is actually scheduled
     if (sys->Sched.EventTimes[event] == timestamp_max) return;
@@ -123,3 +228,4 @@ void Scheduler_StallForEvent(struct Console* sys, timestamp* time, const u8 even
 
     Scheduler_Sync(sys, *time, (a9 ? Sync_Normal9 : Sync_Normal7));
 }
+#endif

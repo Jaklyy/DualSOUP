@@ -5,7 +5,7 @@
     #include <string.h>
 #endif
 #include <stddef.h>
-#include "../../utils.h"
+#include "core/utils.h"
 #include "../shared/arm.h"
 
 
@@ -29,56 +29,56 @@
 
 // TCM constants:
 // Physical sizes
-constexpr unsigned ARM9_DTCMSize = KiB(16);
-constexpr unsigned ARM9_ITCMSize = KiB(32);
+constexpr u32 A946_DTCMSize = KiB(16);
+constexpr u32 A946_ITCMSize = KiB(32);
 // Sizes used by the CP15 registers.
-constexpr unsigned ARM9_CP15DTCMSize = ((ARM9_DTCMSize > 0) ? (CTZ_CONSTEXPR(ARM9_DTCMSize / KiB(1)) + 1) : 0);
-constexpr unsigned ARM9_CP15ITCMSize = ((ARM9_ITCMSize > 0) ? (CTZ_CONSTEXPR(ARM9_ITCMSize / KiB(1)) + 1) : 0);
-constexpr u32 ARM9_TCMSizeReg = (ARM9_CP15DTCMSize << 18) // DTCM Size
-                              | ((ARM9_DTCMSize == 0) << 14) // DTCM Absent
-                              | (ARM9_CP15ITCMSize << 6) // ITCM Size
-                              | ((ARM9_DTCMSize == 0) << 2); // "ITCM" Absent | ARM946E-S errata: This actually reports the DTCM status...
+constexpr u32 A946_CP15DTCMSize = ((A946_DTCMSize > 0) ? (CTZ_CONSTEXPR(A946_DTCMSize / KiB(1)) + 1) : 0);
+constexpr u32 A946_CP15ITCMSize = ((A946_ITCMSize > 0) ? (CTZ_CONSTEXPR(A946_ITCMSize / KiB(1)) + 1) : 0);
+constexpr u32 A946_TCMSizeReg = (A946_CP15DTCMSize << 18) // DTCM Size
+                              | ((A946_DTCMSize == 0) << 14) // DTCM Absent
+                              | (A946_CP15ITCMSize << 6) // ITCM Size
+                              | ((A946_DTCMSize == 0) << 2); // "ITCM" Absent | ARM946E-S errata: This actually reports the DTCM status...
 
 // Data cache constants:
-constexpr unsigned ARM9_DCacheLineLength = 8; // words per line
-constexpr unsigned ARM9_DCacheAssoc = 4; // Cache associativity; aka: lines per set
-constexpr unsigned ARM9_DCacheSize = KiB(4);
-constexpr unsigned ARM9_DCacheIndices = ARM9_DCacheSize / ARM9_DCacheAssoc / ARM9_DCacheLineLength / 4; // 32
-constexpr unsigned ARM9_DTagNum = ARM9_DCacheIndices * ARM9_DCacheAssoc; // 128 tags
+constexpr u32 A946_DCacheLineLength = 8; // words per line
+constexpr u32 A946_DCacheAssoc = 4; // Cache associativity; aka: lines per set
+constexpr u32 A946_DCacheSize = KiB(4);
+constexpr u32 A946_DCacheIndices = A946_DCacheSize / A946_DCacheAssoc / A946_DCacheLineLength / 4; // 32
+constexpr u32 A946_DTagNum = A946_DCacheIndices * A946_DCacheAssoc; // 128 tags
 
 // Instruction cache constants:
-constexpr unsigned ARM9_ICacheLineLength = 8; // words per line
-constexpr unsigned ARM9_ICacheAssoc = 4; // Cache associativity; aka: lines per set
-constexpr unsigned ARM9_ICacheSize = KiB(8);
-constexpr unsigned ARM9_ICacheIndices = ARM9_ICacheSize / ARM9_ICacheAssoc / ARM9_ICacheLineLength / 4; // 64
-constexpr unsigned ARM9_ITagNum = ARM9_ICacheIndices * ARM9_ICacheAssoc; // 256 tags
+constexpr u32 A946_ICacheLineLength = 8; // words per line
+constexpr u32 A946_ICacheAssoc = 4; // Cache associativity; aka: lines per set
+constexpr u32 A946_ICacheSize = KiB(8);
+constexpr u32 A946_ICacheIndices = A946_ICacheSize / A946_ICacheAssoc / A946_ICacheLineLength / 4; // 64
+constexpr u32 A946_ITagNum = A946_ICacheIndices * A946_ICacheAssoc; // 256 tags
 
 // i dont think other values are supported?
-static_assert(ARM9_DCacheLineLength == 8);
-static_assert(ARM9_ICacheLineLength == 8);
+static_assert(A946_DCacheLineLength == 8);
+static_assert(A946_ICacheLineLength == 8);
 // if i ever get bored maybe i'll support direct mapped caches
 // not sure if these support values other than 4 or 1?
-static_assert(ARM9_DCacheAssoc == 4);
-static_assert(ARM9_ICacheAssoc == 4);
+static_assert(A946_DCacheAssoc == 4);
+static_assert(A946_ICacheAssoc == 4);
 // keeping logic simple means these must be a power of 2.
 // sizes of 1KiB, 2KiB and >1MiB dont seem to be supported officially but I dont think there's any obvious reason up to 16MiB couldn't work?
-static_assert((POPCNT_CONSTEXPR(ARM9_DTCMSize) <= 1) || (ARM9_DTCMSize > 16));
-static_assert((POPCNT_CONSTEXPR(ARM9_ITCMSize) <= 1) || (ARM9_ITCMSize > 16));
-static_assert((POPCNT_CONSTEXPR(ARM9_DCacheSize) <= 1) || (ARM9_DCacheSize > 16));
-static_assert((POPCNT_CONSTEXPR(ARM9_ICacheSize) <= 1) || (ARM9_ICacheSize > 16));
+static_assert((POPCNT_CONSTEXPR(A946_DTCMSize) <= 1) || (A946_DTCMSize > 16));
+static_assert((POPCNT_CONSTEXPR(A946_ITCMSize) <= 1) || (A946_ITCMSize > 16));
+static_assert((POPCNT_CONSTEXPR(A946_DCacheSize) <= 1) || (A946_DCacheSize > 16));
+static_assert((POPCNT_CONSTEXPR(A946_ICacheSize) <= 1) || (A946_ICacheSize > 16));
 
-constexpr u32 ARM9_CacheTypeReg = (7 << 25) // Cache Type: (apparently in our case indicates: "cache-clean-step operation", "cache-flush-step operation", and "lock-down facilities".)
+constexpr u32 A946_CacheTypeReg = (7 << 25) // Cache Type: (apparently in our case indicates: "cache-clean-step operation", "cache-flush-step operation", and "lock-down facilities".)
                                 | (1 << 24) // 1 = Harvard (Separate i/d caches) | 0 = Unified (One shared cache) | ARM946E-S only supports Harvard architecture(?)
-                                | (((ARM9_DCacheSize > 0) ? (CTZ_CONSTEXPR(ARM9_DCacheSize / KiB(1)) + 1) : 0) << 18) // dcache size
-                                | (((ARM9_DCacheSize > 0) ? CTZ_CONSTEXPR(ARM9_DCacheAssoc) : 0) << 15) // dcache Assoc
-                                | ((ARM9_DCacheSize == 0) << 14) // dcache absent
+                                | (((A946_DCacheSize > 0) ? (CTZ_CONSTEXPR(A946_DCacheSize / KiB(1)) + 1) : 0) << 18) // dcache size
+                                | (((A946_DCacheSize > 0) ? CTZ_CONSTEXPR(A946_DCacheAssoc) : 0) << 15) // dcache Assoc
+                                | ((A946_DCacheSize == 0) << 14) // dcache absent
                                 | (2 << 12) // dcache line length (TODO: what does this mean exactly??)
-                                | (((ARM9_ICacheSize > 0) ? (CTZ_CONSTEXPR(ARM9_ICacheSize / KiB(1)) + 1) : 0) << 6) // icache size
-                                | (((ARM9_ICacheSize > 0) ? CTZ_CONSTEXPR(ARM9_ICacheAssoc) : 0) << 3) // icache Assoc
-                                | ((ARM9_ICacheSize == 0) << 2) // icache absent
+                                | (((A946_ICacheSize > 0) ? (CTZ_CONSTEXPR(A946_ICacheSize / KiB(1)) + 1) : 0) << 6) // icache size
+                                | (((A946_ICacheSize > 0) ? CTZ_CONSTEXPR(A946_ICacheAssoc) : 0) << 3) // icache Assoc
+                                | ((A946_ICacheSize == 0) << 2) // icache absent
                                 | (2 << 0); // icache line length (TODO: what does this mean exactly??)
 
-constexpr u32 ARM9_IDCodeReg = (0x41 << 24) // implementor code (0x41 == ARM)
+constexpr u32 A946_IDCodeReg = (0x41 << 24) // implementor code (0x41 == ARM)
                              | (0x0 << 20) // variant (reserved...?)
                              | (0x5 << 16) // ARMv5TE
                              | (0x946 << 4) // brown, yelloy, and skyblue, don't tell me you already forgot?
@@ -86,33 +86,33 @@ constexpr u32 ARM9_IDCodeReg = (0x41 << 24) // implementor code (0x41 == ARM)
 
 // most bits in a cache tag are "fixed" (and presumably not real)
 // so we can simplify their representations to optimize them for faster cache lookups.
-union ARM9_ICacheTagsInternal
+typedef union
 {
     u32 Raw;
     struct
     {
         bool Valid : 1;
-        u32 TagBits : 32 - (CTZ_CONSTEXPR(ARM9_ICacheIndices) + CTZ_CONSTEXPR(ARM9_ICacheAssoc) + CTZ_CONSTEXPR(ARM9_ICacheLineLength));
+        u32 TagBits : 32 - (CTZ_CONSTEXPR(A946_ICacheIndices) + CTZ_CONSTEXPR(A946_ICacheAssoc) + CTZ_CONSTEXPR(A946_ICacheLineLength));
     };
-};
+} A946_ICacheTagsInternal;
 
 // format used by the CPU for tag read/write commands.
-union ARM9_ICacheTagsExternal
+typedef union
 {
     u32 Raw;
     struct
     {
-        u32 Set : CTZ_CONSTEXPR(ARM9_ICacheAssoc);
+        u32 Set : CTZ_CONSTEXPR(A946_ICacheAssoc);
         u32 AlwaysClear : 2; // Dirty tags do not exist for ICache
         bool Valid : 1;
-        u32 Index : CTZ_CONSTEXPR(ARM9_ICacheIndices);
-        u32 TagBits : 32 - (CTZ_CONSTEXPR(ARM9_ICacheIndices) + CTZ_CONSTEXPR(ARM9_ICacheAssoc) + CTZ_CONSTEXPR(ARM9_ICacheLineLength));
+        u32 Index : CTZ_CONSTEXPR(A946_ICacheIndices);
+        u32 TagBits : 32 - (CTZ_CONSTEXPR(A946_ICacheIndices) + CTZ_CONSTEXPR(A946_ICacheAssoc) + CTZ_CONSTEXPR(A946_ICacheLineLength));
     };
-};
+} A946_ICacheTagsExternal;
 
 // most bits in a cache tag are "fixed" (and presumably not real)
 // so we can simplify their representations to optimize them for faster cache lookups.
-union ARM9_DCacheTagsInternal
+typedef union
 {
     u32 Raw;
     struct
@@ -120,26 +120,26 @@ union ARM9_DCacheTagsInternal
         bool DirtyLo : 1; // Lower half of cache line is dirty
         bool DirtyHi : 1; // Upper half of cache line is dirty
         bool Valid : 1;
-        u32 TagBits : 32 - (CTZ_CONSTEXPR(ARM9_DCacheIndices) + CTZ_CONSTEXPR(ARM9_DCacheAssoc) + CTZ_CONSTEXPR(ARM9_DCacheLineLength));
+        u32 TagBits : 32 - (CTZ_CONSTEXPR(A946_DCacheIndices) + CTZ_CONSTEXPR(A946_DCacheAssoc) + CTZ_CONSTEXPR(A946_DCacheLineLength));
     };
-};
+} A946_DCacheTagsInternal;
 
 // format used by the CPU for tag read/write commands.
-union ARM9_DCacheTagsExternal
+typedef union
 {
     u32 Raw;
     struct
     {
-        u32 Set : CTZ_CONSTEXPR(ARM9_DCacheAssoc);
+        u32 Set : CTZ_CONSTEXPR(A946_DCacheAssoc);
         bool DirtyLo : 1; // Lower half of cache line is dirty
         bool DirtyHi : 1; // Upper half of cache line is dirty
         bool Valid : 1;
-        u32 Index : CTZ_CONSTEXPR(ARM9_DCacheIndices);
-        u32 TagBits : 32 - (CTZ_CONSTEXPR(ARM9_DCacheIndices) + CTZ_CONSTEXPR(ARM9_DCacheAssoc) + CTZ_CONSTEXPR(ARM9_DCacheLineLength));
+        u32 Index : CTZ_CONSTEXPR(A946_DCacheIndices);
+        u32 TagBits : 32 - (CTZ_CONSTEXPR(A946_DCacheIndices) + CTZ_CONSTEXPR(A946_DCacheAssoc) + CTZ_CONSTEXPR(A946_DCacheLineLength));
     };
-};
+} A946_DCacheTagsExternal;
 
-union ARM9_CacheLockdownCR
+typedef union
 {
     u32 Raw;
     struct
@@ -148,9 +148,9 @@ union ARM9_CacheLockdownCR
         u32 : 29;
         bool LoadBit : 1;
     };
-};
+} A946_CacheLockdownCR;
 
-union ARM9_RegionCR
+typedef union
 {
     u32 Raw;
     struct
@@ -160,39 +160,58 @@ union ARM9_RegionCR
         u32 : 6;
         u32 BaseAddr : 20;
     };
-};
+} A946_RegionCR;
 
-struct ARM9_CacheStream
+typedef enum : u8
 {
-    timestamp Times[7];
-    u8 Prog; // 7 (or greater) means done
-};
+    A946WB_8,
+    A946WB_16,
+    A946WB_32,
+    A946WB_Addr,
+} A946_WBufferFlags;
 
-enum ARM9_WriteBufferFlags : u8
+typedef struct
 {
-    A9WB_8,
-    A9WB_16,
-    A9WB_Addr,
-    A9WB_32,
-};
-
-struct ARM9_WriteBuffer
-{
-    timestamp NextStep;
     alignas(u64)
-    struct
-    {
-        u32 Data;
-        u8 Flags;
-    } FIFOEntry[17]; // 16 is for latched
-    u32 CurAddr;
-    u32 NextAddr;
-    bool Latched;
-    bool AddrLatched;
-    bool BufferSeq;
-    u8 FIFOFillPtr; // 16 means empty
+    u32 Data;
+    A946_WBufferFlags Flags;
+} A946_WBufferFIFO;
+
+typedef struct
+{
+    A946_WBufferFIFO FIFOEntry[16];
+    u32 Addr;
+    u8 FIFOFillPtr;
     u8 FIFODrainPtr;
-};
+    bool Empty;
+} A946_WBuffer; // Write Buffer
+
+typedef enum : u8
+{
+    A946BIU_DataNone,
+    A946BIU_DataCache,
+} A946_BIUDType;
+
+typedef enum : u8
+{
+    A946BIU_InstrNone,
+    A946BIU_InstrCache,
+    A946BIU_InstrSingle,
+} A946_BIUIType;
+
+typedef struct
+{
+    A946_WBuffer WBuffer;
+    u32 WriteVal[16]; // stm can do up to 16 values at a time
+    u32 DataAddr;
+    u32 InstrAddr;
+    A946_BIUDType DataType;
+    u8 DataMax;
+    u8 DataCur;
+    A946_BIUIType InstrType;
+    u8 InstrCur;
+    u8 InstrMax;
+} A946_BIU; // Bus Interface Unit
 
 typedef struct
 {
@@ -202,7 +221,7 @@ typedef struct
     bool ICache : 1;
     bool DCache : 1;
     bool Buffer : 1;
-} ARM9_MPUPerms;
+} A946_MPUPerms;
 
 typedef enum : u8
 {
@@ -210,17 +229,17 @@ typedef enum : u8
     A9InstrBus_ITCM,
     A9InstrBus_ICache,
     A9InstrBus_BIU,
-} ARM9_InstrBus;
+} A946_InstrBus;
 
 typedef enum : u8
 {
     A9BusDefer_None,
     A9BusDefer_Load,
     A9BusDefer_Store,
-} ARM9_BusDefer;
+} A946_BusDefer;
 
 #ifdef __SSE2__
-    #define ARM9_ICacheSetLookup \
+    #define A946_ICacheSetLookup \
         /* TODO: consider unhardcoding this shit */ \
         /* isolate index */ \
         u32 index = (addr & 0x000007E0) >> 3; \
@@ -229,12 +248,12 @@ typedef enum : u8
         u32 tagcmp = (addr >> 10) | 1; \
         \
         /* lookup valid set */ \
-        __m128i tags; memcpy(&tags, &ARM9->ITagRAM[index].Raw, sizeof(tags)); \
+        __m128i tags; memcpy(&tags, &a946->ITagRAM[index].Raw, sizeof(tags)); \
         __m128i cmp = _mm_set1_epi32(tagcmp); \
         cmp = _mm_cmpeq_epi32(tags, cmp); \
         u8 set = stdc_trailing_zeros((u32)_mm_movemask_ps(_mm_castsi128_ps(cmp)));
 
-    #define ARM9_DCacheSetLookup \
+    #define A946_DCacheSetLookup \
         /* TODO: consider unhardcoding this shit */ \
         /* isolate index */ \
         u32 index = (addr & 0x000003E0) >> 3; \
@@ -243,14 +262,14 @@ typedef enum : u8
         u32 tagcmp = (addr >> 9) | 1; \
         \
         /* lookup valid set */ \
-        __m128i tags; memcpy(&tags, &ARM9->DTagRAM[index].Raw, sizeof(tags)); \
+        __m128i tags; memcpy(&tags, &a946->DTagRAM[index].Raw, sizeof(tags)); \
         __m128i cmp = _mm_set1_epi32(tagcmp); \
         /* note: we need to shift out the dirty flags before comparing */ \
         tags = _mm_srli_epi32(tags, 2); \
         cmp = _mm_cmpeq_epi32(tags, cmp); \
         u8 set = stdc_trailing_zeros((u32)_mm_movemask_ps(_mm_castsi128_ps(cmp)));
 #else
-    #define ARM9_ICacheSetLookup \
+    #define A946_ICacheSetLookup \
         /* TODO: consider unhardcoding this shit */ \
         /* isolate index */ \
         u32 index = (addr & 0x000007E0) >> 3; \
@@ -259,17 +278,17 @@ typedef enum : u8
         u32 tagcmp = (addr >> 10) | 1; \
         \
         /* lookup valid set */ \
-        u8 set = ARM9_ICacheAssoc; \
-        for (unsigned i = 0; i < ARM9_ICacheAssoc; i++) \
+        u8 set = A946_ICacheAssoc; \
+        for (unsigned i = 0; i < A946_ICacheAssoc; i++) \
         { \
-            if (ARM9->ITagRAM[index+i].Raw == tagcmp) \
+            if (a946->ITagRAM[index+i].Raw == tagcmp) \
             { \
                 set = i; \
                 break; \
             } \
         }
 
-    #define ARM9_DCacheSetLookup \
+    #define A946_DCacheSetLookup \
         /* TODO: consider unhardcoding this shit */ \
         /* isolate index */ \
         u32 index = (addr & 0x000003E0) >> 3; \
@@ -278,11 +297,11 @@ typedef enum : u8
         u32 tagcmp = (addr >> 9) | 1; \
         \
         /* lookup valid set */ \
-        u8 set = ARM9_DCacheAssoc; \
-        for (unsigned i = 0; i < ARM9_DCacheAssoc; i++) \
+        u8 set = A946_DCacheAssoc; \
+        for (unsigned i = 0; i < A946_DCacheAssoc; i++) \
         { \
             /* note: we need to shift out the dirty flags before comparing */ \
-            if ((ARM9->DTagRAM[index+i].Raw >> 2) == tagcmp) \
+            if ((a946->DTagRAM[index+i].Raw >> 2) == tagcmp) \
             { \
                 set = i; \
                 break; \
@@ -295,7 +314,7 @@ typedef enum : u8
 #define A9ClockRound(a9) ((a9).BoostedClock ? 3 : 1)
 
 /*
-    arm9 invalid modes:
+    arm9e-s invalid modes:
     mode: 0x4, 0x5, 0x6
     SPSR -> ABT SPSR
     r8-14: USR BANK
@@ -309,25 +328,38 @@ typedef enum : u8
     r8-r14: USR BANK
 */
 
-struct ARM946ES
+typedef enum : u8
 {
-    struct ARM ARM;
-    //alignas(32) s8 RegIL[16][2]; // r15 shouldn't be able to interlock(?) but the extra byte should be kept for alignment purposes.
-    struct ARM9_CacheStream DStream;
-    struct ARM9_CacheStream IStream;
-    struct ARM9_WriteBuffer WBuffer;
+    A946_BusNone,
+    A946_BusDone,
+    A946_BusGo,
+    A946_BusBusy,
+} A946_InternalBusFlags;
+
+typedef struct
+{
+    ARM ARM;
+    A946_BIU BIU;
     union
     {
         struct
         {
-            s8 Cur; // test as no interlock via: (& 0x10)
+            s8 Cur; // test as no interlock via: !(& 0x10)
             s8 Next; // should always be set as: (reg | 0x80)
         };
         s16 Raw; // move Next to Cur via (>>= 8) to automatically set as none via sign extension.
     } RegIL; // should be initialized as -1
+    A946_InternalBusFlags IBus;
+    A946_InternalBusFlags DBus;
+    s8 IStreamWait;
+    s8 DStreamWait;
+    u16 IStreamIndex;
+    u16 DStreamIndex;
+    s8 WriteBufferWait;
 
     u32 InstrLatch; // used for thumb upper halfword fetches (speculative: 32 bit?)
-    bool ITCM_DataAccess; // used for handling deferrence of data accesses to itcm
+    bool ITCMMultiplexData; // is itcm multiplexer set to data?
+#if 0
     bool BoostedClock; /*   Determines whether the ARM9 is running at 4 or 2 times the bus clock.
                         *   Should only apply to the DSi bus.
                         *   true  = 4x
@@ -335,16 +367,12 @@ struct ARM946ES
                         *   Checkme: Is it faster to do this branchless?
                         *   Checkme: Can 3DS get an 8x or 1x clock multiplier with some jank?
                         */
+#endif
     u32 DeferredMask;
-    timestamp MemTimestamp; // used for memory stage and data bus tracking
-    timestamp LastBusTime;
-    timestamp DataContTS; // data bus contention timestamp
-    timestamp InstrContTS; // instr bus contention timestamp
-    ARM9_InstrBus InstrBus; // cached
-    // used for handling internal reordering of data accesses to itcm
-    ARM9_BusDefer DeferredType;
-    u16 DeferredAddr;
-    u32 DeferredVal;
+    timestamp InstrTS;
+    timestamp DataTS;
+    timestamp DataWrStall;
+    A946_InstrBus InstrBus; // cached
     struct
     {
         union
@@ -373,118 +401,109 @@ struct ARM946ES
         u8 WriteBufferConfig; // "This register only applies to data accesses." WHAT DOES THAT EVEN MEAN?????
         u32 DataPermsReg;
         u32 InstrPermsReg;
-        union ARM9_RegionCR MPURegionCR[8];
-        union ARM9_CacheLockdownCR DCacheLockdownCR;
-        union ARM9_CacheLockdownCR ICacheLockdownCR;
-        union ARM9_RegionCR DTCMCR;
-        union ARM9_RegionCR ITCMCR;
-        u32 TraceProcIdReg; // Trace Process Identifer Register; NOTE: this is output externally on ARM9 pins.
+        A946_RegionCR MPURegionCR[8];
+        A946_CacheLockdownCR DCacheLockdownCR;
+        A946_CacheLockdownCR ICacheLockdownCR;
+        A946_RegionCR DTCMCR;
+        A946_RegionCR ITCMCR;
+        u32 TraceProcIdReg; // Trace Process Identifer Register; NOTE: this is output externally on ARM946E-S pins.
         // TODO: Add BIST regs.
         u8 TraceProcCR; // Trace Process Control Reg;
         u8 DTCMShift;
         u8 ITCMShift;
         u64 DTCMReadBase;
         u64 DTCMWriteBase;
-        alignas(sizeof(u8)*8) ARM9_MPUPerms MPURegionPermsUser[8];
+        alignas(sizeof(A946_MPUPerms)*8) A946_MPUPerms MPURegionPermsUser[8];
         alignas(sizeof(u32)*8) u32 MPURegionBase[8];
         alignas(sizeof(u32)*8) u32 MPURegionMask[8];
-        alignas(sizeof(u8)*8) ARM9_MPUPerms MPURegionPermsPriv[8];
+        alignas(sizeof(A946_MPUPerms)*8) A946_MPUPerms MPURegionPermsPriv[8];
         u64 DCachePRNG;
         u64 ICachePRNG;
     } CP15; // Coprocessor 15; System Control.
-    MEMORY(DTCM, ARM9_DTCMSize);
-    MEMORY(ITCM, ARM9_ITCMSize);
-    MEMORY(DCache, ARM9_DCacheSize);
-    MEMORY(ICache, ARM9_ICacheSize);
-    alignas(ARM9_DCacheAssoc*4) union ARM9_DCacheTagsInternal DTagRAM[ARM9_DTagNum];
-    alignas(ARM9_ICacheAssoc*4) union ARM9_ICacheTagsInternal ITagRAM[ARM9_ITagNum];
-};
+    MEMORY(DTCM, A946_DTCMSize);
+    MEMORY(ITCM, A946_ITCMSize);
+    MEMORY(DCache, A946_DCacheSize);
+    MEMORY(ICache, A946_ICacheSize);
+    alignas(A946_DCacheAssoc*4) A946_DCacheTagsInternal DTagRAM[A946_DTagNum];
+    alignas(A946_ICacheAssoc*4) A946_ICacheTagsInternal ITagRAM[A946_ITagNum];
+} ARM946ES;
 
 // ensure casting between the two types works as expected
-static_assert(offsetof(struct ARM946ES, ARM) == 0);
+static_assert(offsetof(ARM946ES, ARM) == 0);
 
-extern void (*ARM9_InstructionLUT[0x1000])(struct ARM*, ARM_Instr);
-extern s8 (*ARM9_InterlockLUT[0x1000])(struct ARM946ES*, ARM_Instr, s8, s8, s8);
-extern void (*THUMB9_InstructionLUT[64])(struct ARM*, ARM_Instr);
-extern s8 (*THUMB9_InterlockLUT[64])(struct ARM946ES*, ARM_Instr, s8, s8, s8);
+extern void (*A9ES_InstructionLUT[0x1000])(ARM*, ARM_Instr);
+extern s8 (*A9ES_InterlockLUT[0x1000])(ARM946ES*, ARM_Instr, s8, s8, s8);
+extern void (*T9ES_InstructionLUT[64])(ARM*, ARM_Instr);
+extern s8 (*T9ES_InterlockLUT[64])(ARM946ES*, ARM_Instr, s8, s8, s8);
 
 // run to initialize the cpu.
 // assumes everything was zero'd out.
 // should be akin to a cold boot?
-void ARM9_Init(struct ARM946ES* ARM9, struct Console* sys);
+void A946_Init(ARM946ES* a946, Console* sys);
 
 // ARM9 handler entrypoint
-void ARM9_MainLoop(struct ARM946ES* ARM9);
+void A946_MainLoop(ARM946ES* a946);
 
 // TEMP: debugging
-void ARM9_Log(struct ARM946ES* ARM9);
+void A946_Log(ARM946ES* a946);
 
-// special exceptions.
-void ARM9_Reset(struct ARM946ES* ARM9, const bool itcm, const bool hivec);
-void ARM9_DataAbort(struct ARM946ES* ARM9);
-void ARM9_InterruptRequest(struct ARM946ES* ARM9);
-// only used by debugger hardware.
-void ARM9_FastInterruptRequest(struct ARM946ES* ARM9);
+// signal exceptions.
+void A946_Reset(ARM946ES* a946, const bool itcm, const bool hivec);
+void A9ES_DataAbort(ARM946ES* a9es);
+void A9ES_InterruptRequest(ARM946ES* a9es);
+void A9ES_FastInterruptRequest(ARM946ES* a9es); // only used by debugger hardware on gba/nds/dsi/3ds.
 
-void ARM9_RaiseUDF(struct ARM* ARM, const ARM_Instr instr_data, const int execycles, const int memcycles);
 // executed exceptions.
-void ARM9_UndefinedInstruction(struct ARM* cpu, const ARM_Instr instr_data);
-void ARM9_SoftwareInterrupt(struct ARM* ARM, const ARM_Instr instr_data);
-void ARM9_PrefetchAbort(struct ARM* ARM, const ARM_Instr instr_data);
+void A9ES_RaiseUDF(ARM* arm, const ARM_Instr instr_data, const s32 execycles);
+void A9ES_UndefinedInstruction(ARM* arm, const ARM_Instr instr_data);
+void A9ES_SupervisorCall(ARM* arm, const ARM_Instr instr_data); // aka: software interrupt
+void A9ES_PrefetchAbort(ARM* arm, const ARM_Instr instr_data);
 // stubs to make the compiler shut up
-void THUMB9_UndefinedInstruction(struct ARM* ARM, const ARM_Instr instr_data);
-void THUMB9_SoftwareInterrupt(struct ARM* ARM, const ARM_Instr instr_data);
-void THUMB9_PrefetchAbort(struct ARM* ARM, const ARM_Instr instr_data);
+void T9ES_UndefinedInstruction(ARM* arm, const ARM_Instr instr_data);
+void T9ES_SupervisorCall(ARM* arm, const ARM_Instr instr_data); // aka: software interrupt
+void T9ES_PrefetchAbort(ARM* arm, const ARM_Instr instr_data);
 
-// read register.
-[[nodiscard]] u32 ARM9_GetReg(struct ARM946ES* ARM9, const int reg);
-// write register.
-// also sets up interlocks.
-void ARM9_SetReg(struct ARM946ES* ARM9, const int reg, u32 val);
-// write program counter (r15).
-void ARM9_SetPC(struct ARM946ES* ARM9, u32 addr);
+// setters and getters
+[[nodiscard]] u32 A9ES_GetReg(ARM946ES* a9es, const s32 reg); // read register.
+void A9ES_SetReg(ARM946ES* a9es, const s32 reg, u32 val); // write register.
+void A9ES_SetPC(ARM946ES* a9es, u32 addr); // write program counter (r15).
+[[nodiscard]] ARM_PSR A9ES_GetSPSR(ARM946ES* a9es);
+void A9ES_SetSPSR(ARM946ES* a9es, ARM_PSR psr); // NOTE: this has no sanity checking for the inputs.
 
-[[nodiscard]] union ARM_PSR ARM9_GetSPSR(struct ARM946ES* ARM9);
-// NOTE: this has 0 sanity checking for the inputs.
-void ARM9_SetSPSR(struct ARM946ES* ARM9, union ARM_PSR psr);
+// interlock handlers
+s8 A9ES_DecodeInterlocks(ARM946ES* a9es, const bool thumb, const s8 reg, const s8 len, const s8 len_c);
+inline void A9ES_SetTwoCycleInterlock(ARM946ES* a9es, const u8 reg);
 
-// decrement interlock waits.
-void ARM9_UpdateInterlocks(struct ARM946ES* ARM9, const s8 diff);
-s8 ARM9_DecodeInterlocks(struct ARM946ES* ARM9, const bool thumb, const s8 reg, const s8 len, const s8 len_c);
-// cycledelay: time between the instruction beginning and register being fetched; used for interlock handling
-// portc: refers to the port used to read from the register bank, does not allow for forwarding from certain instructions resulting in different interlock conditions
-void ARM9_CheckInterlocks(struct ARM946ES* ARM9, s8* stall, const int reg, const s8 cycledelay, const bool portc);
-// handle fetch stage cycles.
-void ARM9_FetchCycles(struct ARM946ES* ARM9, const int fetch);
 // add execute stage cycles.
-void ARM9_ExecuteCycles(struct ARM946ES* ARM9, const int execute);
-// use after a load/store family instruction to fix up the timings
-void ARM9_FixupLoadStore(struct ARM946ES* ARM9, const int execute, s64 memdiff);
+void A9ES_ExecuteCycles(ARM946ES* ARM9, const s32 execute);
 
-// should only be run on nonsequentials or when crossing 4 KiB boundaries.
-void ARM9_UpdateInstrRegion(struct ARM946ES* ARM9);
-// returns true if using fast path (does not need to access ahb)
-bool ARM9_InstrRead(struct ARM946ES* ARM9);
+void A946_UpdateInstrRegion(ARM946ES* a946); // should be run on nonsequentials or when crossing 4 KiB boundaries.
+void A946_InstrRead(ARM946ES* a946, timestamp now);
 
-[[nodiscard]] u32 ARM9_DataRead32(struct ARM946ES* ARM9, u32 addr, bool* seq, bool* dabt);
-[[nodiscard]] u16 ARM9_DataRead16(struct ARM946ES* ARM9, u32 addr, bool* seq, bool* dabt);
-[[nodiscard]] u32 ARM9_DataRead8(struct ARM946ES* ARM9, u32 addr, bool* seq, bool* dabt);
-void ARM9_DataWrite32(struct ARM946ES* ARM9, u32 addr, u32 val, const bool atomic, const bool deferrable, bool* seq, bool* dabt);
-void ARM9_DataWrite16(struct ARM946ES* ARM9, u32 addr, u32 val, bool* seq, bool* dabt);
-void ARM9_DataWrite8(struct ARM946ES* ARM9, u32 addr, u32 val, const bool atomic, bool* seq, bool* dabt);
-[[nodiscard]] u32 ARM9_RotateExtendUnit(u32 val, const u32 addr, const ARM_DataWidth size, const bool signext, const bool bigendian);
+// misc cleanup functions
+void A946_InstrRead_Post(ARM946ES* a946, const u32 addr);
+void A946_AddMemCycles(ARM946ES* a946);
 
-void ARM9_Uncond(struct ARM* cpu, const ARM_Instr instr_data); // idk where to put this tbh
+// read/write handlers
+[[nodiscard]] u32 A946_DataRead32(ARM946ES* a946, u32 addr, bool* seq, bool* dabt);
+[[nodiscard]] u16 A946_DataRead16(ARM946ES* a946, u32 addr, bool* seq, bool* dabt);
+[[nodiscard]] u32 A946_DataRead8(ARM946ES* a946, u32 addr, bool* seq, bool* dabt);
+void A946_DataWrite32(ARM946ES* a946, u32 addr, u32 val, const bool atomic, const bool deferrable, bool* seq, bool* dabt);
+void A946_DataWrite16(ARM946ES* a946, u32 addr, u32 val, bool* seq, bool* dabt);
+void A946_DataWrite8(ARM946ES* a946, u32 addr, u32 val, const bool atomic, bool* seq, bool* dabt);
+[[nodiscard]] bool A9ES_RotateExtendUnit(u32* val, const u32 addr, const ARM_DataWidth size, const bool signext, const bool bigendian);
 
-void ARM9_ConfigureITCM(struct ARM946ES* ARM9);
-void ARM9_ConfigureDTCM(struct ARM946ES* ARM9);
-void ARM9_ConfigureMPURegionSize(struct ARM946ES* ARM9, const u8 rgn);
-void ARM9_ConfigureMPURegionPerms(struct ARM946ES* ARM9);
+void A9ES_Uncond(ARM* cpu, const ARM_Instr instr_data); // idk where to put this tbh
 
-// write buffer
-void ARM9_CatchUpWriteBuffer(struct ARM946ES* ARM9, timestamp* until);
-void ARM9_DrainWriteBuffer(struct ARM946ES* ARM9, timestamp* until);
-void ARM9_FillWriteBuffer(struct ARM946ES* ARM9, timestamp* now, u32 val, u8 flag);
+// mpu handlers
+void A946_ConfigureITCM(ARM946ES* a946);
+void A946_ConfigureDTCM(ARM946ES* a946);
+void A946_ConfigureMPURegionSize(ARM946ES* a946, const u8 rgn);
+void A946_ConfigureMPURegionPerms(ARM946ES* a946);
+
+// cache handlers
+bool A946_DCacheReadLookup(ARM946ES* a946, const u32 addr, timestamp now, u32* data);
+bool A946_ICacheLookup(ARM946ES* a946, const u32 addr, timestamp now, u32* instr);
 
 // Logging
-void ARM9_DumpMPU(const struct ARM946ES* ARM9);
+void A946_DumpMPU(const ARM946ES* a946);

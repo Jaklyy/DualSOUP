@@ -29,7 +29,7 @@ void GX_MatrixTranslate(Matrix* a, Vector b)
     a->Row[3] += (((a->Row[0] * b.X) + (a->Row[1] * b.Y) + (a->Row[2] * b.Z)) << 20) >> 32;
 }
 
-void GX_UpdateClip(struct Console* sys)
+void GX_UpdateClip(Console* sys)
 {
     GX3D* gx = &sys->GX3D;
 
@@ -133,7 +133,7 @@ void GX_ClipPolygon(GX3D* gx, PolygonTmp* poly, unsigned* nvert)
     *poly = GX_ClipVertex(gx, poly, nvert, 0, false);
 }
 
-void GX_FinalizePolygon(struct Console* sys, unsigned nvert, bool* boxtestres)
+void GX_FinalizePolygon(Console* sys, unsigned nvert, bool* boxtestres)
 {
     GX3D* gx = &sys->GX3D;
     PolygonTmp poly = gx->PolygonTmp;
@@ -400,7 +400,7 @@ void GX_FinalizePolygon(struct Console* sys, unsigned nvert, bool* boxtestres)
     gx->PolyRAMPtr++;
 }
 
-void GX_SubmitVertex(struct Console* sys, bool* boxtestres, const bool postest)
+void GX_SubmitVertex(Console* sys, bool* boxtestres, const bool postest)
 {
     GX3D* gx = &sys->GX3D;
     GX_UpdateClip(sys);
@@ -491,7 +491,7 @@ void GX_SubmitVertex(struct Console* sys, bool* boxtestres, const bool postest)
 
 }
 
-void GX_UpdateNormal(struct Console* sys, const u32 param, const bool vectest)
+void GX_UpdateNormal(Console* sys, const u32 param, const bool vectest)
 {
     GX3D* gx = &sys->GX3D;
 
@@ -609,7 +609,7 @@ bool GX_PolygonBegin(GX3D* gx, const u8 type)
     return !gx->PartialPolygon;
 }
 
-void GX_BoxTest(struct Console* sys)
+void GX_BoxTest(Console* sys)
 {
     GX3D* gx = &sys->GX3D;
 
@@ -762,7 +762,7 @@ void GX_BoxTest(struct Console* sys)
     }
 }
 
-bool GX_RunCommand(struct Console* sys, const timestamp now)
+bool GX_RunCommand(Console* sys, const timestamp now)
 {
     GX3D* gx = &sys->GX3D;
 
@@ -1334,7 +1334,7 @@ int GX_Cmp(const void* a, const void* b)
     return ((((Polygon*)a)->SortKey) - ((Polygon*)b)->SortKey);
 }
 
-void GX_Swap(struct Console* sys, const timestamp now)
+void GX_Swap(Console* sys, const timestamp now)
 {
     GX3D* gx = &sys->GX3D;
 

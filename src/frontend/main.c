@@ -33,7 +33,7 @@ typedef enum : u8
 
 typedef struct
 {
-    volatile struct Console* Sys;
+    volatile Console* Sys;
     SDL_Gamepad* Pad;
     SDL_AudioStream* Aud;
     volatile InitFlag InitFlag;
@@ -47,7 +47,7 @@ int SDLCALL Core_Init(void* pass)
 
     // initialize main emulator state struct
     SDL_LockMutex(mailbox->CfgMutex);
-    struct Console* sys = Console_Init((struct Console*)mailbox->Sys, mailbox->Cfg, mailbox->Pad, mailbox->Aud);
+    Console* sys = Console_Init((Console*)mailbox->Sys, mailbox->Cfg, mailbox->Pad, mailbox->Aud);
     SDL_UnlockMutex(mailbox->CfgMutex);
     if (sys == nullptr)
     {
@@ -68,7 +68,7 @@ int SDLCALL Core_Init(void* pass)
     return EXIT_SUCCESS;
 }
 
-void CoreThread_Shutdown(volatile struct Console* sys, bool* thrdrunning)
+void CoreThread_Shutdown(volatile Console* sys, bool* thrdrunning)
 {
     if (*thrdrunning)
     {
@@ -78,7 +78,7 @@ void CoreThread_Shutdown(volatile struct Console* sys, bool* thrdrunning)
     }
 }
 
-void CoreThread_Reset(struct Console** sys, SDL_Thread** thrd, SDL_Gamepad* pad, SDL_AudioStream* aud, CoreCfg* cfg, SDL_Mutex* cfgmutex, bool* frontbuffer, bool* thrdrunning)
+void CoreThread_Reset(Console** sys, SDL_Thread** thrd, SDL_Gamepad* pad, SDL_AudioStream* aud, CoreCfg* cfg, SDL_Mutex* cfgmutex, bool* frontbuffer, bool* thrdrunning)
 {
     CoreThread_Shutdown(*sys, thrdrunning);
 
@@ -94,7 +94,7 @@ void CoreThread_Reset(struct Console** sys, SDL_Thread** thrd, SDL_Gamepad* pad,
     if (mailbox.InitFlag == Init_Fail)
         return;
 
-    *sys = (struct Console*)mailbox.Sys;
+    *sys = (Console*)mailbox.Sys;
 
     *frontbuffer = false; // feels wrong to be resetting this here...?
     *thrdrunning = true;
@@ -129,8 +129,8 @@ int main()
     strcat(cfgpath, ininame);
 
     MainCfg mcfg = {.Dirty = false};
-    Config_Load(cfgpath, &mcfg, MainCfgData, sizeof(MainCfgData)/sizeof(MainCfgData[0]), &mcfg.Dirty, &mcfg.Mutex);
-    Config_Load(NULL, &mcfg.CoreCfg.SysCfg, SystemCfgData, sizeof(SystemCfgData)/sizeof(SystemCfgData[0]), NULL, &mcfg.Mutex);
+    Config_Load(cfgpath, &mcfg, MainCfgData, countof(MainCfgData), &mcfg.Dirty, &mcfg.Mutex);
+    Config_Load(NULL, &mcfg.CoreCfg.SysCfg, SystemCfgData, countof(SystemCfgData), NULL, &mcfg.Mutex);
 
     MainGUI mgui = MainGUI_Init(&mcfg);
 
@@ -153,7 +153,7 @@ int main()
 
     bool thrdrunning = false;
     SDL_Thread* cthrd;
-    struct Console* sys = nullptr;
+    Console* sys = nullptr;
 
     if (aud != NULL)
     {
@@ -197,7 +197,7 @@ int main()
 
         if (mcfg.Dirty)
         {
-            Config_Write(cfgpath, &mcfg, MainCfgData, sizeof(MainCfgData)/sizeof(MainCfgData[0]), &mcfg.Dirty, mcfg.Mutex);
+            Config_Write(cfgpath, &mcfg, MainCfgData, countof(MainCfgData), &mcfg.Dirty, mcfg.Mutex);
         }
     }
 }

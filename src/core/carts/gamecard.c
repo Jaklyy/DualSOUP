@@ -388,7 +388,7 @@ u32 GameCardMisc_InvalidCmdHandler([[maybe_unused]] GameCard* card)
     return 0xFFFFFFFF; // idk
 }
 
-void* GameCardMisc_ROMCommandHandler(struct Console* sys, const bool a9)
+void* GameCardMisc_ROMCommandHandler(Console* sys, const bool a9)
 {
     GameCard* card = &sys->GameCard;
     u64 cmd = sys->GCCommandPort[a9].Raw;
@@ -474,9 +474,9 @@ void* GameCardMisc_ROMCommandHandler(struct Console* sys, const bool a9)
     return GameCardMisc_InvalidCmdHandler;
 }
 
-void GameCard_HandleSchedulingROM(struct Console* sys, timestamp now);
+void GameCard_HandleSchedulingROM(Console* sys, timestamp now);
 
-void QueueNextTransfer(struct Console* sys, timestamp cur, const bool a9)
+void QueueNextTransfer(Console* sys, timestamp cur, const bool a9)
 {
     GameCard* card = &sys->GameCard;
 
@@ -510,7 +510,7 @@ void QueueNextTransfer(struct Console* sys, timestamp cur, const bool a9)
     }
 }
 
-u32 GameCard_ROMDataRead(struct Console* sys, timestamp cur, const bool a9)
+u32 GameCard_ROMDataRead(Console* sys, timestamp cur, const bool a9)
 {
     GameCard* card = &sys->GameCard;
 
@@ -533,7 +533,7 @@ u32 GameCard_ROMDataRead(struct Console* sys, timestamp cur, const bool a9)
     return ret;
 }
 
-void GameCard_HandleSchedulingROM(struct Console* sys, timestamp now)
+void GameCard_HandleSchedulingROM(Console* sys, timestamp now)
 {
     GameCard* card = &sys->GameCard;
     bool a9 = !sys->ExtMemCR_Shared.NDSCardAccess;
@@ -561,7 +561,7 @@ void GameCard_HandleSchedulingROM(struct Console* sys, timestamp now)
     else QueueNextTransfer(sys, now, a9);
 }
 
-void GameCard_ROMCommandSubmit(struct Console* sys, timestamp cur, const bool a9)
+void GameCard_ROMCommandSubmit(Console* sys, timestamp cur, const bool a9)
 {
     GameCard* card = &sys->GameCard;
     // check if slot is enabled and in ROM mode
@@ -591,21 +591,21 @@ void GameCard_ROMCommandSubmit(struct Console* sys, timestamp cur, const bool a9
     Schedule_Event(sys, GameCard_HandleSchedulingROM, Evt_CardROM, cur+transfertime);
 }
 
-void GameCard_SPIFinish9(struct Console* sys, [[maybe_unused]] timestamp cur)
+void GameCard_SPIFinish9(Console* sys, [[maybe_unused]] timestamp cur)
 {
     sys->GCSPIOut[true] = sys->GCSPIBuf;
     sys->GCSPICR[true].Busy = false;
     Schedule_Event(sys, nullptr, Evt_CardSPI, timestamp_max);
 }
 
-void GameCard_SPIFinish7(struct Console* sys, [[maybe_unused]] timestamp cur)
+void GameCard_SPIFinish7(Console* sys, [[maybe_unused]] timestamp cur)
 {
     sys->GCSPIOut[false] = sys->GCSPIBuf;
     sys->GCSPICR[false].Busy = false;
     Schedule_Event(sys, nullptr, Evt_CardSPI, timestamp_max);
 }
 
-u32 GameCard_IOReadHandler(struct Console* sys, u32 addr, const bool a9)
+u32 GameCard_IOReadHandler(Console* sys, u32 addr, const bool a9)
 {
     addr -= 0x040001A0;
 
@@ -623,7 +623,7 @@ u32 GameCard_IOReadHandler(struct Console* sys, u32 addr, const bool a9)
     }
 }
 
-void GameCard_IOWriteHandler(struct Console* sys, u32 addr, const u32 val, const u32 mask, timestamp cur, const bool a9)
+void GameCard_IOWriteHandler(Console* sys, u32 addr, const u32 val, const u32 mask, timestamp cur, const bool a9)
 {
     addr -= 0x040001A0;
 

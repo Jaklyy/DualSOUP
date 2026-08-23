@@ -21,13 +21,13 @@ u32 RGB555to666(u16 color)
         | ((((u32)color >> 10) & 0x1F) << 13); // b
 }
 
-extern u32 VRAM_LCD(struct Console* sys, const u32 addr, const u32 mask, const bool write, const u32 val, const bool timings);
-extern u32 VRAM_BGB(struct Console* sys, const u32 addr, const u32 mask, const bool write, const u32 val, const bool timings);
-extern u32 VRAM_BGA(struct Console* sys, const u32 addr, const u32 mask, const bool write, const u32 val, const bool timings);
-extern u32 VRAM_OBJB(struct Console* sys, const u32 addr, const u32 mask, const bool write, const u32 val, const bool timings);
-extern u32 VRAM_OBJA(struct Console* sys, const u32 addr, const u32 mask, const bool write, const u32 val, const bool timings);
+extern u32 VRAM_LCD(Console* sys, const u32 addr, const u32 mask, const bool write, const u32 val, const bool timings);
+extern u32 VRAM_BGB(Console* sys, const u32 addr, const u32 mask, const bool write, const u32 val, const bool timings);
+extern u32 VRAM_BGA(Console* sys, const u32 addr, const u32 mask, const bool write, const u32 val, const bool timings);
+extern u32 VRAM_OBJB(Console* sys, const u32 addr, const u32 mask, const bool write, const u32 val, const bool timings);
+extern u32 VRAM_OBJA(Console* sys, const u32 addr, const u32 mask, const bool write, const u32 val, const bool timings);
 
-u16 VRAM_BGAExtPal(struct Console* sys, const u16 idx)
+u16 VRAM_BGAExtPal(Console* sys, const u16 idx)
 {
     u16 val = 0;
     if (sys->VRAMCR[4].Raw == 0x84)
@@ -51,7 +51,7 @@ u16 VRAM_BGAExtPal(struct Console* sys, const u16 idx)
     return val;
 }
 
-u16 VRAM_BGBExtPal(struct Console* sys, const u16 idx)
+u16 VRAM_BGBExtPal(Console* sys, const u16 idx)
 {
     if (sys->VRAMCR[7].Raw == 0x82)
     {
@@ -60,7 +60,7 @@ u16 VRAM_BGBExtPal(struct Console* sys, const u16 idx)
     else return 0;
 }
 
-u16 VRAM_OBJAExtPal(struct Console* sys, const u16 idx)
+u16 VRAM_OBJAExtPal(Console* sys, const u16 idx)
 {
     u16 val = 0;
     if ((sys->VRAMCR[5].Raw & 0x87) == 0x85)
@@ -80,7 +80,7 @@ u16 VRAM_OBJAExtPal(struct Console* sys, const u16 idx)
     return val;
 }
 
-u16 VRAM_OBJBExtPal(struct Console* sys, const u16 idx)
+u16 VRAM_OBJBExtPal(Console* sys, const u16 idx)
 {
     if (sys->VRAMCR[8].Raw == 0x83)
     {
@@ -90,7 +90,7 @@ u16 VRAM_OBJBExtPal(struct Console* sys, const u16 idx)
 }
 
 
-void PPU_None(struct Console* sys, const bool b, const u8 bg)
+void PPU_None(Console* sys, const bool b, const u8 bg)
 {
     PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
     CompositeBuffer* buffer = ppu->CompositeBuffer[bg];
@@ -98,10 +98,10 @@ void PPU_None(struct Console* sys, const bool b, const u8 bg)
         buffer[x] = (CompositeBuffer){0, 0, true, false, false, false, false};
 }
 
-void PPU_RenderText(struct Console* sys, const bool b, u16 y, const u8 bg)
+void PPU_RenderText(Console* sys, const bool b, u16 y, const u8 bg)
 {
     PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
-    u32 (*BG)(struct Console*, const u32, const u32, const bool, const u32, const bool) = (b ? VRAM_BGB : VRAM_BGA);
+    u32 (*BG)(Console*, const u32, const u32, const bool, const u32, const bool) = (b ? VRAM_BGB : VRAM_BGA);
     CompositeBuffer* buffer = ppu->CompositeBuffer[bg];
 
     u32 tilebase = ppu->BGCR[bg].CharBase * KiB(16);
@@ -169,10 +169,10 @@ void PPU_RenderText(struct Console* sys, const bool b, u16 y, const u8 bg)
     }
 }
 
-void PPU_RenderBitmap(struct Console* sys, const bool b, u16 y, const u8 bg, const bool dircolor)
+void PPU_RenderBitmap(Console* sys, const bool b, u16 y, const u8 bg, const bool dircolor)
 {
     PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
-    u32 (*BG)(struct Console*, const u32, const u32, const bool, const u32, const bool) = (b ? VRAM_BGB : VRAM_BGA);
+    u32 (*BG)(Console*, const u32, const u32, const bool, const u32, const bool) = (b ? VRAM_BGB : VRAM_BGA);
     CompositeBuffer* buffer = ppu->CompositeBuffer[bg];
 
     u32 screenbase = ppu->BGCR[bg].ScreenBase * KiB(16);
@@ -202,13 +202,13 @@ void PPU_RenderBitmap(struct Console* sys, const bool b, u16 y, const u8 bg, con
     }
 }
 
-void PPU_Affine(struct Console* sys, const bool b, const u16 y [[maybe_unused]], const u8 bg)
+void PPU_Affine(Console* sys, const bool b, const u16 y [[maybe_unused]], const u8 bg)
 {
     PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
     LogPrint(LOG_PPU|LOG_UNIMP, "UNIMPLEMENTED: AFFINE BG %i %08X\n", bg, ppu->BGCR[bg].Raw);
 }
 
-void PPU_Extended(struct Console* sys, const bool b, const u16 y, const u8 bg)
+void PPU_Extended(Console* sys, const bool b, const u16 y, const u8 bg)
 {
     PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
 
@@ -223,7 +223,7 @@ void PPU_Extended(struct Console* sys, const bool b, const u16 y, const u8 bg)
     }
 }
 
-void PPU_Large(struct Console* sys, const bool b, const u16 y [[maybe_unused]], const u8 bg)
+void PPU_Large(Console* sys, const bool b, const u16 y [[maybe_unused]], const u8 bg)
 {
     PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
     //CompositeBuffer* buffer = (b ? sys->CompositeBufferB[bg] : sys->CompositeBufferA[bg]);
@@ -231,7 +231,7 @@ void PPU_Large(struct Console* sys, const bool b, const u16 y [[maybe_unused]], 
     LogPrint(LOG_PPU|LOG_UNIMP, "UNIMPLEMENTED: LARGE BG %i %08X\n", bg, ppu->BGCR[bg].Raw);
 }
 
-void PPU_3D(struct Console* sys, const u16 y)
+void PPU_3D(Console* sys, const u16 y)
 {
     CompositeBuffer* buffer = sys->PPU_A.CompositeBuffer[0];
     SWRen_SyncRenderedLines(sys, y+1);
@@ -239,7 +239,7 @@ void PPU_3D(struct Console* sys, const u16 y)
         buffer[x] = (CompositeBuffer){sys->GX3D.CBuf[0][y][x] + (1<<18) /* increase alpha to allow for max alpha for blending */, 0, ((sys->GX3D.CBuf[0][y][x] >> 18) & 0x1F) == 0, true, false, true, true};
 }
 
-void PPU_BG0_Lookup(struct Console* sys, const bool b, const u16 y)
+void PPU_BG0_Lookup(Console* sys, const bool b, const u16 y)
 {
     PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
     if (!ppu->DisplayCR.BG0Enable) return PPU_None(sys, b, 0);
@@ -266,7 +266,7 @@ void PPU_BG0_Lookup(struct Console* sys, const bool b, const u16 y)
     }
 }
 
-void PPU_BG1_Lookup(struct Console* sys, const bool b, const u16 y)
+void PPU_BG1_Lookup(Console* sys, const bool b, const u16 y)
 {
     PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
     if (!ppu->DisplayCR.BG1Enable) return PPU_None(sys, b, 1);
@@ -282,7 +282,7 @@ void PPU_BG1_Lookup(struct Console* sys, const bool b, const u16 y)
     }
 }
 
-void PPU_BG2_Lookup(struct Console* sys, const bool b, const u16 y)
+void PPU_BG2_Lookup(Console* sys, const bool b, const u16 y)
 {
     PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
     if (!ppu->DisplayCR.BG2Enable) return PPU_None(sys, b, 2);
@@ -308,7 +308,7 @@ void PPU_BG2_Lookup(struct Console* sys, const bool b, const u16 y)
     }
 }
 
-void PPU_BG3_Lookup(struct Console* sys, const bool b, const u16 y)
+void PPU_BG3_Lookup(Console* sys, const bool b, const u16 y)
 {
     PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
     if (!ppu->DisplayCR.BG3Enable) return PPU_None(sys, b, 3);
@@ -329,7 +329,7 @@ void PPU_BG3_Lookup(struct Console* sys, const bool b, const u16 y)
 }
 
 
-void PPU_BuildBGs(struct Console* sys, const bool b, const u16 y)
+void PPU_BuildBGs(Console* sys, const bool b, const u16 y)
 {
     // todo: windows
 
@@ -411,12 +411,12 @@ u32 PPU_Blend(PPU* ppu, CompositeBuffer* indices, u32* colors, int* bgs, int num
     return rgb[0][0] | (rgb[0][1] << 6) | (rgb[0][2] << 12);
 }
 
-void PPU_Composite(struct Console* sys, const bool b, const u16 y)
+void PPU_Composite(Console* sys, const bool b, const u16 y)
 {
     PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
     volatile u16* palbase = (b ? &sys->Palette.b16[0x400/sizeof(u16)] : &sys->Palette.b16[0]);
-    u16 (*BGExtPal)(struct Console*, const u16) = (b ? VRAM_BGBExtPal : VRAM_BGAExtPal);
-    u16 (*OBJExtPal)(struct Console*, const u16) = (b ? VRAM_OBJBExtPal : VRAM_OBJAExtPal);
+    u16 (*BGExtPal)(Console*, const u16) = (b ? VRAM_BGBExtPal : VRAM_BGAExtPal);
+    u16 (*OBJExtPal)(Console*, const u16) = (b ? VRAM_OBJBExtPal : VRAM_OBJAExtPal);
     u32* scanline = sys->Framebuffer[sys->BackBuf][sys->PowerCR9.AOnBottom ? b : !b][y];
     volatile timestamp* time = (b ? (&sys->PPUBTimestamp) : (&sys->PPUATimestamp));
 
@@ -533,11 +533,11 @@ void PPU_Composite(struct Console* sys, const bool b, const u16 y)
     *time += 2+HBlank_Cycles;
 }
 
-void PPU_SpriteAffine(struct Console* sys, const bool b, const SprAttrs01 attr1, const SprAttrs2 attr2, const u8 width, const u8 height, u8 y)
+void PPU_SpriteAffine(Console* sys, const bool b, const SprAttrs01 attr1, const SprAttrs2 attr2, const u8 width, const u8 height, u8 y)
 {
     PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
     CompositeBuffer* buffer = ppu->CompositeBuffer[4];
-    u32 (*OBJ)(struct Console*, const u32, const u32, const bool, const u32, const bool) = (b ? VRAM_OBJB : VRAM_OBJA);
+    u32 (*OBJ)(Console*, const u32, const u32, const bool, const u32, const bool) = (b ? VRAM_OBJB : VRAM_OBJA);
 
     // fetch rotation and scaling parameters
     volatile u32* oambase = (b ? &sys->OAM.b32[0x400/sizeof(u32)] : &sys->OAM.b32[0]);
@@ -686,11 +686,11 @@ void PPU_SpriteAffine(struct Console* sys, const bool b, const SprAttrs01 attr1,
     }
 }
 
-void PPU_SpriteNormal(struct Console* sys, const bool b, const SprAttrs01 attr1, const SprAttrs2 attr2, const u8 width, const u8 height, u8 y)
+void PPU_SpriteNormal(Console* sys, const bool b, const SprAttrs01 attr1, const SprAttrs2 attr2, const u8 width, const u8 height, u8 y)
 {
     PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
     CompositeBuffer* buffer = ppu->CompositeBuffer[4];
-    u32 (*OBJ)(struct Console*, const u32, const u32, const bool, const u32, const bool) = (b ? VRAM_OBJB : VRAM_OBJA);
+    u32 (*OBJ)(Console*, const u32, const u32, const bool, const u32, const bool) = (b ? VRAM_OBJB : VRAM_OBJA);
 
     // vertical flip flag means we start from the bottom of the sprite
     if (attr1.VFlip) y = ((height-1) - y);
@@ -802,7 +802,7 @@ void PPU_SpriteNormal(struct Console* sys, const bool b, const SprAttrs01 attr1,
     }
 }
 
-void PPU_BuildSprites(struct Console* sys, const bool b, const u8 y)
+void PPU_BuildSprites(Console* sys, const bool b, const u8 y)
 {
     PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
     // checkme: does this need to be volatile to handle thread sync properly?
@@ -906,7 +906,7 @@ void ApplyBrightnessModifier(u32* scanline, Brightness bright)
     }
 }
 
-void PPU_RenderScanline(struct Console* sys, const bool b, const s16 y)
+void PPU_RenderScanline(Console* sys, const bool b, const s16 y)
 {
     PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
     volatile timestamp* time = (b ? (&sys->PPUBTimestamp) : (&sys->PPUATimestamp));
@@ -964,7 +964,7 @@ void PPU_RenderScanline(struct Console* sys, const bool b, const s16 y)
     }
 }
 
-void PPU_GlobalStep(struct Console* sys, const timestamp now, const u16 vcount)
+void PPU_GlobalStep(Console* sys, const timestamp now, const u16 vcount)
 {
     PPU* ppus[2] = {&sys->PPU_A, &sys->PPU_B};
 
@@ -987,7 +987,7 @@ void PPU_GlobalStep(struct Console* sys, const timestamp now, const u16 vcount)
 
 int SDLCALL PPUA_MainLoop(void* ptr)
 {
-    struct Console* sys = ptr;
+    Console* sys = ptr;
     while (!sys->PPUStart) SDL_CPUPauseInstruction();
 
     while (!sys->KillPPUs)
@@ -1005,7 +1005,7 @@ int SDLCALL PPUA_MainLoop(void* ptr)
 
 int SDLCALL PPUB_MainLoop(void* ptr)
 {
-    struct Console* sys = ptr;
+    Console* sys = ptr;
     while (!sys->PPUStart) SDL_CPUPauseInstruction();
 
     while (!sys->KillPPUs)

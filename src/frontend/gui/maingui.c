@@ -57,7 +57,7 @@ MainGUI MainGUI_Init(MainCfg* mcfg)
     return mgui;
 }
 
-bool MainGUI_Loop(struct Console* sys, MainGUI* mgui, MainCfg* mcfg)
+bool MainGUI_Loop(Console* sys, MainGUI* mgui, MainCfg* mcfg)
 {
     GuiCfg* gcfg = &mcfg->GuiCfg;
     SysCfg* scfg = &mcfg->CoreCfg.SysCfg;
@@ -135,7 +135,7 @@ bool MainGUI_Loop(struct Console* sys, MainGUI* mgui, MainCfg* mcfg)
         if (dispwin->NoDecor) flags |= ImGuiWindowFlags_NoTitleBar|ImGuiWindowFlags_NoScrollbar|ImGuiWindowFlags_NoCollapse;
 
         static_assert((('0'+(GUI_MaxDisplayWindows)) <= '9') || (('0'+(GUI_MaxDisplayWindows)) >= '0'), "This code needs to be updated to work with > 10 windows\n");
-        label[sizeof(label)/sizeof(label[0])-2] += 1;
+        label[countof(label)-2] += 1;
 
         if (dispwin->Dirty)
         {
@@ -213,7 +213,7 @@ bool MainGUI_Loop(struct Console* sys, MainGUI* mgui, MainCfg* mcfg)
 
                 GUI_INPUTCLAMPED(Int, "Num Displays", dispwin->NumDisplays, GUI_MinDisplaysPerWindow, GUI_MaxDisplaysPerWindow)
                 const char* inputs[] = {"No Scaling", "Stetch", "Maintain Aspect Ratio", "Integer Scale"};
-                if (ImGui_ComboChar("Scaling Mode", &dispwin->ScaleMode, inputs, sizeof(inputs)/sizeof(inputs[0])))
+                if (ImGui_ComboChar("Scaling Mode", &dispwin->ScaleMode, inputs, countof(inputs)))
                 {
                     mcfg->Dirty = true;
                 }

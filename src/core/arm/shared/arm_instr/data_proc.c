@@ -41,7 +41,7 @@ union ARM_DataProc_Decode
     };
 };
 
-void ARM_DataProc(struct ARM* cpu, const ARM_Instr instr_data)
+void ARM_DataProc(ARM* cpu, const ARM_Instr instr_data)
 {
     const union ARM_DataProc_Decode instr = {.Raw = instr_data.Raw};
 
@@ -234,12 +234,10 @@ void ARM_DataProc(struct ARM* cpu, const ARM_Instr instr_data)
     }
 }
 
-s8 ARM9_DataProc_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c)
+s8 ARM9_DataProc_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c [[maybe_unused]])
 {
     const union ARM_DataProc_Decode instr = {.Raw = instr_data.Raw};
 
-    // checkme
-    s8 stall = 0;
     if (instr.Immediate)
     {
         if (((instr.Opcode & 0b1101) != 0b1101) // NOT mov or mvn
@@ -289,7 +287,7 @@ union ARM_Multiply_Decode
 
 // MUL, MLA, SMULL, SMLAL, UMULL, UMLAL
 // should UMAAL be in here too...?
-void ARM_Mul(struct ARM* cpu, const ARM_Instr instr_data)
+void ARM_Mul(ARM* cpu, const ARM_Instr instr_data)
 {
     const union ARM_Multiply_Decode instr = {.Raw = instr_data.Raw};
 
@@ -390,7 +388,7 @@ void ARM_Mul(struct ARM* cpu, const ARM_Instr instr_data)
     }
 }
 
-s8 ARM9_Mul_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c)
+s8 ARM9_Mul_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c)
 {
     const union ARM_Multiply_Decode instr = {.Raw = instr_data.Raw};
 
@@ -418,7 +416,7 @@ union ARM_CLZ_Decode
     };
 };
 
-void ARM_CLZ(struct ARM* cpu, const ARM_Instr instr_data)
+void ARM_CLZ(ARM* cpu, const ARM_Instr instr_data)
 {
     const union ARM_CLZ_Decode instr = {.Raw = instr_data.Raw};
 
@@ -432,7 +430,7 @@ void ARM_CLZ(struct ARM* cpu, const ARM_Instr instr_data)
     ARM_SetReg(instr.Rd, alu_out);
 }
 
-s8 ARM9_CLZ_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c)
+s8 ARM9_CLZ_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c [[maybe_unused]])
 {
     const union ARM_CLZ_Decode instr = {.Raw = instr_data.Raw};
 
@@ -456,7 +454,7 @@ union ARM_SatMath_Decode
 };
 
 // QADD, QDADD, QSUB, QDSUB
-void ARM_SatMath(struct ARM* cpu, const ARM_Instr instr_data)
+void ARM_SatMath(ARM* cpu, const ARM_Instr instr_data)
 {
     const union ARM_SatMath_Decode instr = {.Raw = instr_data.Raw};
 
@@ -515,12 +513,12 @@ void ARM_SatMath(struct ARM* cpu, const ARM_Instr instr_data)
     ARM_ExeCycles(0, 1+interlock);
 }
 
-s8 ARM9_SatMath_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c)
+s8 ARM9_SatMath_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c [[maybe_unused]])
 {
     const union ARM_SatMath_Decode instr = {.Raw = instr_data.Raw};
 
     if ((instr.Rm == reg) || (instr.Rn == reg)) return len;
-    return 0;
+    else return 0;
 }
 
 
@@ -542,7 +540,7 @@ union ARM_HalfwordMul_Decode
     };
 };
 
-void ARM_HalfwordMul(struct ARM* cpu, const ARM_Instr instr_data)
+void ARM_HalfwordMul(ARM* cpu, const ARM_Instr instr_data)
 {
     const union ARM_HalfwordMul_Decode instr = {.Raw = instr_data.Raw};
 
@@ -638,10 +636,10 @@ void ARM_HalfwordMul(struct ARM* cpu, const ARM_Instr instr_data)
     }
     else interlock = 0;
 
-    ARM_ExeCycles(0, 1 + oplong);
+    ARM_ExeCycles(0, 1 + oplong + interlock);
 }
 
-s8 ARM9_HalfwordMul_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c)
+s8 ARM9_HalfwordMul_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c)
 {
     const union ARM_HalfwordMul_Decode instr = {.Raw = instr_data.Raw};
     bool oplong;

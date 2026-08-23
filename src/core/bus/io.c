@@ -15,7 +15,7 @@
 // TODO: Regs im 99% confident about:
 // Timers (edit: its really funny how i wrote this during the period of time that performance was completely crippled by timer dividers not working properly)
 
-u32 IPC_FIFORead(struct Console* sys, const bool a9)
+u32 IPC_FIFORead(Console* sys, const bool a9)
 {
     struct IPCFIFO* send = ((a9) ? &sys->IPCFIFO7 : &sys->IPCFIFO9);
     struct IPCFIFO* recv = ((a9) ? &sys->IPCFIFO9 : &sys->IPCFIFO7);
@@ -65,7 +65,7 @@ u32 IPC_FIFORead(struct Console* sys, const bool a9)
     return ret;
 }
 
-void IPC_FIFOWrite(struct Console* sys, const u32 val, const u32 mask, const bool a9)
+void IPC_FIFOWrite(Console* sys, const u32 val, const u32 mask, const bool a9)
 {
     struct IPCFIFO* send = ((a9) ? &sys->IPCFIFO7 : &sys->IPCFIFO9);
     struct IPCFIFO* recv = ((a9) ? &sys->IPCFIFO9 : &sys->IPCFIFO7);
@@ -105,7 +105,7 @@ void IPC_FIFOWrite(struct Console* sys, const u32 val, const u32 mask, const boo
     }
 }
 
-void IPC_FIFOCRWrite(struct Console* sys, const u32 val, const u32 mask, bool a9)
+void IPC_FIFOCRWrite(Console* sys, const u32 val, const u32 mask, bool a9)
 {
     struct IPCFIFO* send = ((a9) ? &sys->IPCFIFO7 : &sys->IPCFIFO9);
     struct IPCFIFO* recv = ((a9) ? &sys->IPCFIFO9 : &sys->IPCFIFO7);
@@ -145,7 +145,7 @@ void IPC_FIFOCRWrite(struct Console* sys, const u32 val, const u32 mask, bool a9
 
 }
 
-void IO9_FinishDiv(struct Console* sys, [[maybe_unused]] timestamp now)
+void IO9_FinishDiv(Console* sys, [[maybe_unused]] timestamp now)
 {
     s64 num;
     s64 den;
@@ -203,7 +203,7 @@ void IO9_FinishDiv(struct Console* sys, [[maybe_unused]] timestamp now)
     Schedule_Event(sys, IO9_FinishDiv, Evt_Divider, timestamp_max);
 }
 
-void IO9_StartDiv(struct Console* sys)
+void IO9_StartDiv(Console* sys)
 {
     sys->DivQuo.b64 = 0;
     sys->DivRem.b64 = 0;
@@ -214,7 +214,7 @@ void IO9_StartDiv(struct Console* sys)
 // algorithm stolen from melonds which links this so im linking it too, sue me.
 // one could also do this with 80 bit floats, but that's less portable.
 // http://stackoverflow.com/questions/1100090/looking-for-an-efficient-integer-square-root-algorithm-for-arm-thumb2
-void IO9_FinishSqrt(struct Console* sys, [[maybe_unused]] timestamp now)
+void IO9_FinishSqrt(Console* sys, [[maybe_unused]] timestamp now)
 {
     u64 val;
     u32 res = 0;
@@ -253,14 +253,14 @@ void IO9_FinishSqrt(struct Console* sys, [[maybe_unused]] timestamp now)
     Schedule_Event(sys, IO9_FinishSqrt, Evt_Sqrt, timestamp_max);
 }
 
-void IO9_StartSqrt(struct Console* sys)
+void IO9_StartSqrt(Console* sys)
 {
     sys->SqrtRes = 0;
     sys->SqrtCR.Busy = true;
     Schedule_Event(sys, IO9_FinishSqrt, Evt_Sqrt, sys->AHB9.Timestamp + 13);
 }
 
-void SPI_Finish(struct Console* sys, timestamp cur)
+void SPI_Finish(Console* sys, timestamp cur)
 {
     sys->SPIOut = sys->SPIBuf;
     sys->SPICR.Busy = false;
@@ -269,7 +269,7 @@ void SPI_Finish(struct Console* sys, timestamp cur)
 }
 
 
-u32 IO7_Read(struct Console* sys, const u32 addr, const bool timings)
+u32 IO7_Read(Console* sys, const u32 addr, const bool timings)
 {
     Scheduler_Sync(sys, sys->AHB7.Timestamp, Sync_Normal7);
 
@@ -356,7 +356,7 @@ u32 IO7_Read(struct Console* sys, const u32 addr, const bool timings)
     }
 }
 
-void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mask, const u32 a7pc)
+void IO7_Write(Console* sys, const u32 addr, const u32 val, const u32 mask, const u32 a7pc)
 {
     Scheduler_Sync(sys, sys->AHB7.Timestamp, Sync_Normal7);
 
@@ -580,7 +580,7 @@ void IO7_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mas
     }
 }
 
-u32 IO9_Read(struct Console* sys, const u32 addr, const bool timings)
+u32 IO9_Read(Console* sys, const u32 addr, const bool timings)
 {
     Scheduler_Sync(sys, sys->AHB9.Timestamp, Sync_Normal9);
 
@@ -701,7 +701,7 @@ u32 IO9_Read(struct Console* sys, const u32 addr, const bool timings)
     }
 }
 
-void IO9_Write(struct Console* sys, const u32 addr, const u32 val, const u32 mask)
+void IO9_Write(Console* sys, const u32 addr, const u32 val, const u32 mask)
 {
     Scheduler_Sync(sys, sys->AHB9.Timestamp, Sync_Normal9);
 

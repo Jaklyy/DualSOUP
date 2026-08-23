@@ -92,4 +92,4 @@ typedef struct
 
 typedef struct MainCfg MainCfg;
 MainGUI MainGUI_Init(MainCfg* mcfg);
-bool MainGUI_Loop(struct Console* sys, MainGUI* mgui, MainCfg* mcfg);
+bool MainGUI_Loop(Console* sys, MainGUI* mgui, MainCfg* mcfg);

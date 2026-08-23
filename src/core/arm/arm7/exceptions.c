@@ -3,9 +3,9 @@
 
 
 
-#define cpu ((struct ARM*)ARM7)
+#define cpu ((ARM*)ARM7)
 
-void ARM7_Reset(struct ARM7TDMI* ARM7, const bool delayflush)
+void ARM7_Reset(ARM7TDMI* ARM7, const bool delayflush)
 {
     // according to docs reset requires:
     // min 2 cycles lo
@@ -36,9 +36,9 @@ void ARM7_Reset(struct ARM7TDMI* ARM7, const bool delayflush)
     ARM7_SetPC(ARM7, ARMVector_RST, delayflush);
 }
 
-void ARM7_RaiseUDF(struct ARM* ARM, const ARM_Instr instr_data, const int cycles)
+void ARM7_RaiseUDF(ARM* ARM, const ARM_Instr instr_data, const int cycles)
 {
-    struct ARM7TDMI* ARM7 = (struct ARM7TDMI*)ARM;
+    ARM7TDMI* ARM7 = (ARM7TDMI*)ARM;
 
     if (cpu->CPSR.Thumb)
         LogPrint(LOG_ARM9 | LOG_EXCEP, "THUMB7 - UNDEF INSTR: %04X @ %08X\n", instr_data.Raw, cpu->PC);
@@ -62,20 +62,20 @@ void ARM7_RaiseUDF(struct ARM* ARM, const ARM_Instr instr_data, const int cycles
     ARM7_SetPC(ARM7, ARMVector_UND, false);
 }
 
-void ARM7_UndefinedInstruction(struct ARM* ARM, const ARM_Instr instr_data)
+void ARM7_UndefinedInstruction(ARM* ARM, const ARM_Instr instr_data)
 {
     ARM7_RaiseUDF(ARM, instr_data, 1);
 }
 
-void THUMB7_UndefinedInstruction(struct ARM* ARM, const ARM_Instr instr_data)
+void THUMB7_UndefinedInstruction(ARM* ARM, const ARM_Instr instr_data)
 {
     ARM7_RaiseUDF(ARM, instr_data, 1);
 }
 
-void ARM7_SoftwareInterrupt(struct ARM* ARM, [[maybe_unused]] const ARM_Instr instr_data)
+void ARM7_SoftwareInterrupt(ARM* ARM, [[maybe_unused]] const ARM_Instr instr_data)
 {
     // TODO: could add a print here for logging software interrupts that gets fired.
-    struct ARM7TDMI* ARM7 = (struct ARM7TDMI*)ARM;
+    ARM7TDMI* ARM7 = (ARM7TDMI*)ARM;
 
     // addr of next instr
     u32 oldpc = cpu->PC - (cpu->CPSR.Thumb ? 2 : 4);
@@ -93,14 +93,14 @@ void ARM7_SoftwareInterrupt(struct ARM* ARM, [[maybe_unused]] const ARM_Instr in
     ARM7_SetPC(ARM7, ARMVector_SWI, false);
 }
 
-void THUMB7_SoftwareInterrupt(struct ARM* ARM, const ARM_Instr instr_data)
+void THUMB7_SoftwareInterrupt(ARM* ARM, const ARM_Instr instr_data)
 {
     ARM7_SoftwareInterrupt(ARM, instr_data);
 }
 
 // TODO: data/prefetch aborts?
 
-void ARM7_InterruptRequest(struct ARM7TDMI* ARM7)
+void ARM7_InterruptRequest(ARM7TDMI* ARM7)
 {
     // lr is next instr + 4
     u32 oldpc = cpu->PC - ((cpu->CPSR.Thumb) ? 0 : 4);
@@ -121,7 +121,7 @@ void ARM7_InterruptRequest(struct ARM7TDMI* ARM7)
     ARM7_SetPC(ARM7, ARMVector_IRQ, false);
 }
 
-void ARM7_FastInterruptRequest(struct ARM7TDMI* ARM7)
+void ARM7_FastInterruptRequest(ARM7TDMI* ARM7)
 {
     // lr is next instr + 4
     u32 oldpc = cpu->PC - ((cpu->CPSR.Thumb) ? 0 : 4);

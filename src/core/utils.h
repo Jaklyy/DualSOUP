@@ -78,80 +78,106 @@ typedef uint64_t timestamp;
 
 #ifndef stdc_trailing_zeros
     //#warning "stdc_trailing_zeros not found, using fallback."
-    static unsigned int ds_internal_stdctz64 [[maybe_unused]] (u64 input)
+    static unsigned int ds_internal_stdctzll [[maybe_unused]] (unsigned long long input)
     {
-        if (input == 0) return 64;
-        else return __builtin_ctzll(input);
+        return __builtin_ctzg(input, (int)(sizeof(input) * CHAR_BIT));
     }
-    static unsigned int ds_internal_stdctz32 [[maybe_unused]] (u32 input)
+    static unsigned int ds_internal_stdctzl [[maybe_unused]] (unsigned long input)
     {
-        if (input == 0) return 32;
-        else return __builtin_ctz(input);
+        return __builtin_ctzg(input, (int)(sizeof(input) * CHAR_BIT));
     }
-    static unsigned int ds_internal_stdctz16 [[maybe_unused]] (u16 input)
+    static unsigned int ds_internal_stdctzi [[maybe_unused]] (unsigned int input)
     {
-        if (input == 0) return 16;
-        else return __builtin_ctz(input);
+        return __builtin_ctzg(input, (int)(sizeof(input) * CHAR_BIT));
     }
-    static unsigned int ds_internal_stdctz8 [[maybe_unused]] (u8 input)
+    static unsigned int ds_internal_stdctzs [[maybe_unused]] (unsigned short input)
     {
-        if (input == 0) return 8;
-        else return __builtin_ctz(input);
+        return __builtin_ctzg(input, (int)(sizeof(input) * CHAR_BIT));
+    }
+    static unsigned int ds_internal_stdctzc [[maybe_unused]] (unsigned char input)
+    {
+        return __builtin_ctzg(input, (int)(sizeof(input) * CHAR_BIT));
     }
     #define stdc_trailing_zeros(x) _Generic((x), \
-        s8: ds_internal_stdctz8, u8: ds_internal_stdctz8, \
-        s16: ds_internal_stdctz16, u16: ds_internal_stdctz16, \
-        s32: ds_internal_stdctz32, u32: ds_internal_stdctz32, \
-        s64: ds_internal_stdctz64, u64: ds_internal_stdctz64)((x))
+        char: ds_internal_stdctzc, unsigned char: ds_internal_stdctzc, \
+        short: ds_internal_stdctzs, unsigned short: ds_internal_stdctzs, \
+        int: ds_internal_stdctzi, unsigned: ds_internal_stdctzi, \
+        long: ds_internal_stdctzl, unsigned long: ds_internal_stdctzl, \
+        long long: ds_internal_stdctzll, unsigned long long: ds_internal_stdctzll)((x))
 #endif
 
 #ifndef stdc_trailing_ones
     //#warning "stdc_trailing_ones not found, using fallback."
-    #define stdc_trailing_ones(x) stdc_trailing_zeros(~(x))
+    #define stdc_trailing_ones(x) stdc_trailing_zeros((typeof(x))~(x))
 #endif
 
 #ifndef stdc_leading_zeros
     //#warning "stdc_leading_zeros not found, using fallback."
-    static unsigned int ds_internal_stdclz64 [[maybe_unused]] (u64 input)
+    static unsigned int ds_internal_stdclzll [[maybe_unused]] (unsigned long long input)
     {
-        if (input == 0) return 64;
-        else return __builtin_clzll(input);
+        return __builtin_clzg(input, (int)(sizeof(input) * CHAR_BIT));
     }
-    static unsigned int ds_internal_stdclz32 [[maybe_unused]] (u32 input)
+    static unsigned int ds_internal_stdclzl [[maybe_unused]] (unsigned long input)
     {
-        if (input == 0) return 32;
-        else return __builtin_clz(input);
+        return __builtin_clzg(input, (int)(sizeof(input) * CHAR_BIT));
     }
-    static unsigned int ds_internal_stdclz16 [[maybe_unused]] (u16 input)
+    static unsigned int ds_internal_stdclzi [[maybe_unused]] (unsigned int input)
     {
-        if (input == 0) return 16;
-        else return (32-16)-__builtin_clz(input);
+        return __builtin_clzg(input, (int)(sizeof(input) * CHAR_BIT));
     }
-    static unsigned int ds_internal_stdclz8 [[maybe_unused]] (u8 input)
+    static unsigned int ds_internal_stdclzs [[maybe_unused]] (unsigned short input)
     {
-        if (input == 0) return 8;
-        else return (32-8)-__builtin_clz(input);
+        return __builtin_clzg(input, (int)(sizeof(input) * CHAR_BIT));
+    }
+    static unsigned int ds_internal_stdclzc [[maybe_unused]] (unsigned char input)
+    {
+        return __builtin_clzg(input, (int)(sizeof(input) * CHAR_BIT));
     }
     #define stdc_leading_zeros(x) _Generic((x), \
-        s8: ds_internal_stdclz8, u8: ds_internal_stdclz8, \
-        s16: ds_internal_stdclz16, u16: ds_internal_stdclz16, \
-        s32: ds_internal_stdclz32, u32: ds_internal_stdclz32, \
-        s64: ds_internal_stdclz64, u64: ds_internal_stdclz64)((x))
+        char: ds_internal_stdclzc, unsigned char: ds_internal_stdclzc, \
+        short: ds_internal_stdclzs, unsigned short: ds_internal_stdclzs, \
+        int: ds_internal_stdclzi, unsigned: ds_internal_stdclzi, \
+        long: ds_internal_stdclzl, unsigned long: ds_internal_stdclzl, \
+        long long: ds_internal_stdclzll, unsigned long long: ds_internal_stdclzll)((x))
 #endif
 
 #ifndef stdc_leading_ones
     //#warning "stdc_leading_ones not found, using fallback."
-    #define stdc_leading_ones(x) stdc_leading_zeros(~(x))
+    #define stdc_leading_ones(x) stdc_leading_zeros((typeof(x))~(x))
 #endif
 
 #ifndef stdc_count_ones
     //#warning "stdc_count_ones not found, using fallback."
-    #define stdc_count_ones(x) __builtin_popcountll((u64)(x))
+    #define stdc_count_ones(x) __builtin_popcountll((long long)(x))
 #endif
 
 #ifndef stdc_count_zeros
     //#warning "stdc_count_zeros not found, using fallback."
-    #define stdc_count_zeros(x) stdc_count_ones(~(x))
+    #define stdc_count_zeros(x) stdc_count_ones((typeof(x))~(x))
+#endif
+
+// C29; may break
+#if __has_include(<stdcountof.h>)
+    #include <stdcountof.h>
+#endif
+#ifndef countof
+    #define countof(x) _Countof(x)
+#endif
+
+// C29; may break
+#if __has_include(<stddefer.h>)
+    #include <stddefer.h>
+#endif
+    #ifndef defer
+    #define __DEFER__(F, V)            \
+    auto void F(int*);                 \
+    __attribute__((cleanup(F))) int V; \
+    __attribute__((always_inline))     \
+    auto inline void F(int*)
+
+    #define defer __DEFER(__COUNTER__)
+    #define __DEFER(N) __DEFER_(N)
+    #define __DEFER_(N) __DEFER__(__DEFER_FUNCTION_ ## N, __DEFER_VARIABLE_ ## N)
 #endif
 
 #define bswap(x) _Generic((x), \
@@ -165,15 +191,37 @@ typedef uint64_t timestamp;
 
 
 // the builtins are constexpr but the actual standard defined functions aren't...
-#define CTZ_CONSTEXPR(x) _Generic((x), \
-    s32: __builtin_ctz, u32: __builtin_ctz, \
-    s64: __builtin_ctzll, u64: __builtin_ctzll)((x))
-#define CLZ_CONSTEXPR(x) _Generic((x), \
-    s32: __builtin_clz, u32: __builtin_clz, \
-    s64: __builtin_clzll, u64: __builtin_clzll)((x))
+#define CTZ_CONSTEXPR(x) (((x) == 0) ? (sizeof((x)) * CHAR_BIT) : (_Generic((x), \
+    /*char: __builtin_ctz, unsigned char: __builtin_ctz, \
+    short: __builtin_ctz, unsigned short: __builtin_ctz,*/ \
+    int: __builtin_ctz, unsigned: __builtin_ctz, \
+    long: __builtin_ctzl, unsigned long: __builtin_ctzl, \
+    long long: __builtin_ctzll, unsigned long long: __builtin_ctzll)((x))))
+#define CTO_CONSTEXPR(x) ((~(x) == 0) ? (sizeof((x)) * CHAR_BIT) : (_Generic((x), \
+    /*char: __builtin_ctz, unsigned char: __builtin_ctz, \
+    short: __builtin_ctz, unsigned short: __builtin_ctz,*/ \
+    int: __builtin_ctz, unsigned: __builtin_ctz, \
+    long: __builtin_ctzl, unsigned long: __builtin_ctzl, \
+    long long: __builtin_ctzll, unsigned long long: __builtin_ctzll)((~(x)))))
+
+#define CLZ_CONSTEXPR(x) (((x) == 0) ? (sizeof((x)) * CHAR_BIT) : (_Generic((x), \
+    /*char: __builtin_clz, unsigned char: __builtin_clz, \
+    short: __builtin_clz, unsigned short: __builtin_clz,*/ \
+    int: __builtin_clz, unsigned: __builtin_clz, \
+    long: __builtin_clzl, unsigned long: __builtin_clzl, \
+    long long: __builtin_clzll, unsigned long long: __builtin_clzll)((x)))) \
+
+#define CLO_CONSTEXPR(x) ((~(x) == 0) ? (sizeof((x)) * CHAR_BIT) : (_Generic((x), \
+    /*char: __builtin_clz, unsigned char: __builtin_clz, \
+    short: __builtin_clz, unsigned short: __builtin_clz,*/ \
+    int: __builtin_clz, unsigned: __builtin_clz, \
+    long: __builtin_clzl, unsigned long: __builtin_clzl, \
+    long long: __builtin_clzll, unsigned long long: __builtin_clzll)(~(x))))
+
 #define POPCNT_CONSTEXPR(x) _Generic((x), \
-    s32: __builtin_popcount, u32: __builtin_popcount, \
-    s64: __builtin_popcountll, u64: __builtin_popcountll)((x))
+    int: __builtin_popcount, unsigned: __builtin_popcount, \
+    long: __builtin_popcountl, unsigned long: __builtin_popcountl, \
+    long long: __builtin_popcountll, unsigned long long: __builtin_popcountll)((x))
 
 #define MEMORY(name, size) \
 union { \
@@ -192,6 +240,8 @@ union { \
     : (((accesssize) == 16) ? ((memory.b##16)[(((addr) & ((memsize)-1))/sizeof(u16))] = (((memory.b##16)[(((addr) & ((memsize)-1))/sizeof(u16))] & ~(mask)) | ((write) & (mask)))) \
                             : ((memory.b##8) [(((addr) & ((memsize)-1))/sizeof(u8) )] = (((memory.b##8) [(((addr) & ((memsize)-1))/sizeof(u8) )] & ~(mask)) | ((write) & (mask))))))
 
+#define MaskedWrite(dest, write, mask) ((dest) = (((dest) & ~(mask)) | ((write) & (mask))))
+
 #define DS_SWAP(l, r) \
 { typeof(l) tmp = (l); (l) = (r); (r) = tmp; }
 
@@ -204,12 +254,6 @@ enum CPU_IDs : u8
     ARM7ID,
     ARM9ID,
     ARM11ID,
-};
-
-struct Pattern
-{
-    u32 cmp;
-    u32 mask;
 };
 
 enum LoggingLevels : u64
@@ -234,12 +278,17 @@ enum LoggingLevels : u64
     LOG_TSC     = (1<<16), // Touch Screen Controller.
     LOG_SOUND   = (1<<17), // Sound Processing.
     LOG_PAK     = (1<<18), // Game Pak.
+    LOG_FCRAM   = (1<<19), // FCRAM (aka Main RAM).
 };
 
 #define LOG_CPUID (1 << cpu->CPUID)
 #define CPUIDtoCPUNum ((cpu->CPUID*2)+7)
 
-#define MaskedWrite(dest, write, mask) ((dest) = (((dest) & ~(mask)) | ((write) & (mask))))
+struct Pattern
+{
+    u32 cmp;
+    u32 mask;
+};
 
 [[nodiscard]] static inline bool PatternMatch(const struct Pattern pattern, const u32 bits)
 {
@@ -249,14 +298,12 @@ enum LoggingLevels : u64
 // for some reason there isn't a rotate right function i can use...?
 [[nodiscard]] static inline u32 ROR32(const u32 val, u8 ror)
 {
-    // AND to hopefully avoid undefined behavior.
     ror &= 0x1F;
     return (val >> ror) | (val << ((32-ror) & 0x1F));
 }
 
 [[nodiscard]] static inline u32 ROL32(const u32 val, u8 rol)
 {
-    // AND to hopefully avoid undefined behavior.
     rol &= 0x1F;
     return (val << rol) | (val >> ((32-rol) & 0x1F));
 }

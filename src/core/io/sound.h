@@ -3,13 +3,13 @@
 
 
 
-enum AudioFormat
+typedef enum
 {
     AudioFormat_PCM8,
     AudioFormat_PCM16,
     AudioFormat_ADPCM,
     AudioFormat_PSGNoise,
-};
+} AudioFormat;
 
 constexpr s8 ADPCM_IndexTable[] = 
 {
@@ -33,11 +33,11 @@ constexpr u16 ADPCM_Table[] =
     0x7FFF,
 };
 
-constexpr int PCM_Delay = 3;
-constexpr int ADPCM_HeaderDelay = 8;
-constexpr int ADPCM_Delay = ADPCM_HeaderDelay + 1 + PCM_Delay;
+constexpr s32 PCM_Delay = 3;
+constexpr s32 ADPCM_HeaderDelay = 8;
+constexpr s32 ADPCM_Delay = ADPCM_HeaderDelay + 1 + PCM_Delay;
 
-constexpr int MixerDivide = 32;
+constexpr s32 MixerDivide = 32;
 
 typedef struct
 {
@@ -114,14 +114,14 @@ typedef struct
     } FIFO; // checkme: how big is this?
 } SoundCapture;
 
-struct Console;
-u32 SoundChannel_IORead(struct Console* sys, const u32 addr);
-void SoundChannel_IOWrite(struct Console* sys, const u32 addr, const u32 val, const u32 mask, const timestamp now);
-void SoundCapture_CRWrite(struct Console* sys, const u8 val, const timestamp now, const u8 id);
+typedef struct Console Console;
+u32 SoundChannel_IORead(Console* sys, const u32 addr);
+void SoundChannel_IOWrite(Console* sys, const u32 addr, const u32 val, const u32 mask, const timestamp now);
+void SoundCapture_CRWrite(Console* sys, const u8 val, const timestamp now, const u8 id);
 
-void SoundFIFO_Fill(struct Console* sys, const u32 val, const u8 id);
-void SoundFIFO_Sample(struct Console* sys, const u8 id, const timestamp now);
-void AudioMixer_Sample(struct Console* sys, timestamp now);
+void SoundFIFO_Fill(Console* sys, const u32 val, const u8 id);
+void SoundFIFO_Sample(Console* sys, const u8 id, const timestamp now);
+void AudioMixer_Sample(Console* sys, timestamp now);
 
-void SoundChannel_TryStartAll(struct Console* sys, const timestamp now);
-void SoundChannel_KillAll(struct Console* sys, const timestamp now);
+void SoundChannel_TryStartAll(Console* sys, const timestamp now);
+void SoundChannel_KillAll(Console* sys, const timestamp now);

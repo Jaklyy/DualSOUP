@@ -15,7 +15,7 @@ union THUMB_BranchCond_Decode
     };
 };
 
-void THUMB_BranchCond(struct ARM* cpu, const ARM_Instr instr_data)
+void THUMB_BranchCond(ARM* cpu, const ARM_Instr instr_data)
 {
     const union THUMB_BranchCond_Decode instr = {.Raw = instr_data.Raw};
 
@@ -59,7 +59,7 @@ union THUMB_Branch_Decode
     };
 };
 
-void THUMB_Branch(struct ARM* cpu, const ARM_Instr instr_data)
+void THUMB_Branch(ARM* cpu, const ARM_Instr instr_data)
 {
     const union THUMB_Branch_Decode instr = {.Raw = instr_data.Raw};
 
@@ -130,7 +130,7 @@ void THUMB_Branch(struct ARM* cpu, const ARM_Instr instr_data)
     }
 }
 
-s8 THUMB9_Branch_Interlocks(struct ARM946ES* ARM9, const ARM_Instr instr_data)
+s8 THUMB9_Branch_Interlocks(ARM946ES* ARM9, const ARM_Instr instr_data)
 {
     const union THUMB_Branch_Decode instr = {.Raw = instr_data.Raw};
     s8 stall = 0;

@@ -4,7 +4,7 @@
 
 
 
-u8 PowMan_CMDSend(struct Console* sys, const u8 val, const bool chipsel)
+u8 PowMan_CMDSend(Console* sys, const u8 val, const bool chipsel)
 {
     Powman* pow = &sys->Powman;
     u8 ret;
