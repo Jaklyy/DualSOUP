@@ -1,4 +1,4 @@
-#include "../../../utils.h"
+#include "core/utils.h"
 #include "../arm.h"
 #include "../inc.h"
 
@@ -62,13 +62,14 @@ void THUMB_ShiftImm(ARM* cpu, const ARM_Instr instr_data)
     ARM_SetReg(instr.Rd, rm_val);
 }
 
-s8 THUMB9_ShiftImm_Interlocks(ARM946ES* ARM9, const ARM_Instr instr_data)
+s8 T9ES_ShiftImm_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c [[maybe_unused]], bool* retry)
 {
     const union THUMB_ShiftImm_Decode instr = {.Raw = instr_data.Raw};
-    s8 stall = 0;
 
-    ARM9_CheckInterlocks(ARM9, &stall, instr.Rm, 0, false);
-    return stall;
+    if (instr.Rm == reg) return len;
+
+    if ((len > 1) && (instr.Rd != reg)) *retry = true;
+    return 0;
 }
 
 
@@ -94,7 +95,7 @@ void THUMB_AddSub(ARM* cpu, const ARM_Instr instr_data)
 {
     const union THUMB_AddSub_Decode instr = {.Raw = instr_data.Raw};
 
-    union ARM_FlagsOut flags_out;
+    ARM_FlagsOut flags_out;
     const u32 rn_val = ARM_GetReg(instr.Rn);
     // handle both imm3 and register variants here
     const u32 rm_val = (instr.Immediate) ? instr.Imm3 : ARM_GetReg(instr.Rm);
@@ -115,18 +116,15 @@ void THUMB_AddSub(ARM* cpu, const ARM_Instr instr_data)
     ARM_SetReg(instr.Rd, alu_out);
 }
 
-s8 THUMB9_AddSub_Interlocks(ARM946ES* ARM9, const ARM_Instr instr_data)
+s8 THUMB9_AddSub_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c [[maybe_unused]], bool* retry)
 {
     const union THUMB_AddSub_Decode instr = {.Raw = instr_data.Raw};
-    s8 stall = 0;
 
-    ARM9_CheckInterlocks(ARM9, &stall, instr.Rn, 0, false);
-    if (!instr.Immediate)
-    {
-        ARM9_CheckInterlocks(ARM9, &stall, instr.Rm, 0, false);
-    }
+    if (instr.Rn == reg) return len;
+    if (!instr.Immediate && (instr.Rm == reg)) return len;
 
-    return stall;
+    if ((len > 1) && (instr.Rd != reg)) *retry = true;
+    return 0;
 }
 
 union THUMB_DataProcImm8_Decode
@@ -154,6 +152,14 @@ void THUMB_MovsImm8(ARM* cpu, const ARM_Instr instr_data)
     ARM_SetReg(instr.Rd, instr.Imm8);
 }
 
+s8 THUMB9_MovsImm8_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len [[maybe_unused]], const s8 len_c [[maybe_unused]], bool* retry)
+{
+    const union THUMB_DataProcImm8_Decode instr = {.Raw = instr_data.Raw};
+
+    if ((len > 1) && (instr.Rd != reg)) *retry = true;
+    return 0;
+}
+
 void THUMB_DataProcImm8(ARM* cpu, const ARM_Instr instr_data)
 {
     const union THUMB_DataProcImm8_Decode instr = {.Raw = instr_data.Raw};
@@ -161,17 +167,13 @@ void THUMB_DataProcImm8(ARM* cpu, const ARM_Instr instr_data)
     // mov is handled in a separate function since it really has no reason to share any logic.
     if (instr.Opcode == 0) unreachable();
 
-    union ARM_FlagsOut flags_out;
+    ARM_FlagsOut flags_out;
     u32 rd_val = ARM_GetReg(instr.Rd);
 
     if (instr.Opcode == 2) // ADDS
-    {
         rd_val = ARM_ADD(rd_val, instr.Imm8, &flags_out);
-    }
     else // SUBS/CMP
-    {
         rd_val = ARM_SUB_RSB(rd_val, instr.Imm8, &flags_out);
-    }
 
     flags_out.Negative = rd_val >> 31;
     flags_out.Zero = !rd_val;
@@ -182,18 +184,17 @@ void THUMB_DataProcImm8(ARM* cpu, const ARM_Instr instr_data)
     ARM_ExeCycles(1, 1);
 
     if (instr.Opcode != 1) // not CMP
-    {
         ARM_SetReg(instr.Rd, rd_val);
-    }
 }
 
-s8 THUMB9_DataProcImm8_Interlocks(ARM946ES* ARM9, const ARM_Instr instr_data)
+s8 THUMB9_DataProcImm8_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c [[maybe_unused]], bool* retry)
 {
     const union THUMB_DataProcImm8_Decode instr = {.Raw = instr_data.Raw};
-    s8 stall = 0;
 
-    ARM9_CheckInterlocks(ARM9, &stall, instr.Rd, 0, false);
-    return stall;
+    if (instr.Rd == reg) return len;
+
+    if (len > 1) *retry = true; // if we reach this point retry is always true
+    return 0;
 }
 
 union THUMB_DataProcReg_Decode
@@ -221,61 +222,54 @@ void THUMB_DataProcReg(ARM* cpu, const ARM_Instr instr_data)
     const u32 rd_val = (((instr.Opcode == 9) || (instr.Opcode == 15)) ? 0 : ARM_GetReg(instr.Rd));
     const u32 rm_val = ARM_GetReg(instr.Rm);
 
-    union ARM_FlagsOut flags_out = {.Raw = cpu->CPSR.Flags};
+    ARM_FlagsOut flags_out = {.Raw = cpu->CPSR.Flags};
     u32 alu_out;
     switch(instr.Opcode)
     {
-    case 0:  // ANDS
-    case 8:  // TST
+    case 0: // ANDS
+    case 8: // TST
         alu_out = rd_val & rm_val; break;
-    case 1:  // EORS
-             // Fs in the chat for my man TEQ
+    case 1: // EORS
+            // Fs in the chat for my man TEQ
         alu_out = rd_val ^ rm_val; break;
-    case 2:  // LSLS
+    case 2: // LSLS
     {
         bool carry_out = flags_out.Carry;
         alu_out = ARM_LSL(rd_val, rm_val, &carry_out); 
         flags_out.Carry = carry_out;
         break;
     }
-    case 3:  // LSRS
+    case 3: // LSRS
     {
         bool carry_out = flags_out.Carry;
         alu_out = ARM_LSR(rd_val, rm_val, &carry_out); 
         flags_out.Carry = carry_out;
         break;
     }
-    case 4:  // ASRS
+    case 4: // ASRS
     {
         bool carry_out = flags_out.Carry;
         alu_out = ARM_ASR(rd_val, rm_val, &carry_out); 
         flags_out.Carry = carry_out;
         break;
     }
-    case 5:  // ADCS
-        alu_out = ARM_ADC(rd_val, rm_val, cpu->CPSR.Carry, &flags_out); break;
-    case 6:  // SBCS
-        alu_out = ARM_SBC_RSC(rd_val, rm_val, cpu->CPSR.Carry, &flags_out); break;
-    case 7:  // RORS
+    case 5: alu_out = ARM_ADC(rd_val, rm_val, cpu->CPSR.Carry, &flags_out); break; // ADCS
+    case 6: alu_out = ARM_SBC_RSC(rd_val, rm_val, cpu->CPSR.Carry, &flags_out); break; // SBCS
+    case 7: // RORS
     {
         bool carry_out = flags_out.Carry;
         alu_out = ARM_ROR(rd_val, rm_val, &carry_out); 
         flags_out.Carry = carry_out;
         break;
     }
-    case 9:  // RSBS (imm #0) AKA: NEGS
+    case 9: // RSBS (imm #0) AKA: NEGS
     case 10: // CMP
         alu_out = ARM_SUB_RSB(rd_val, rm_val, &flags_out); break;
-    case 11: // CMN
-        alu_out = ARM_ADD(rd_val, rm_val, &flags_out); break;
-    case 12: // ORRS
-        alu_out = rd_val | rm_val; break;
-    case 13: // MULS
-        alu_out = rd_val * rm_val; break;
-    case 14: // BICS
-        alu_out = rd_val & ~rm_val; break;
-    case 15: // MVNS
-        alu_out = ~rm_val; break;
+    case 11: alu_out = ARM_ADD(rd_val, rm_val, &flags_out); break; // CMN
+    case 12: alu_out = rd_val | rm_val; break; // ORRS
+    case 13: alu_out = rd_val * rm_val; break; // MULS
+    case 14: alu_out = rd_val & ~rm_val; break; // BICS
+    case 15: alu_out = ~rm_val; break; // MVNS
     }
 
     // special multiply handling
@@ -283,19 +277,13 @@ void THUMB_DataProcReg(ARM* cpu, const ARM_Instr instr_data)
     {
         if (cpu->CPUID == ARM7ID)
         {
-            int iterations = ARM7_NumBoothIters(rm_val, true);
-            ARM7_ExecuteCycles(ARM7Cast, iterations + 1);
+            int iterations = A7TDMI_NumBoothIters(rm_val, true);
+            A7TDMI_ExecuteCycles(ARM7Cast, iterations);
             flags_out.Carry = flags_out.Carry; // TODO: Soon...
         }
-        else // ARM9ID
-        {
-            ARM9_ExecuteCycles(ARM9Cast, 4);
-        }
+        else A9ES_ExecuteCycles(ARM9Cast, 3);
     }
-    else
-    {
-        ARM_ExeCycles(1, 1);
-    }
+    else ARM_ExeCycles(1, 1);
 
     // all opcodes set flags
     flags_out.Negative = alu_out >> 31;
@@ -305,22 +293,21 @@ void THUMB_DataProcReg(ARM* cpu, const ARM_Instr instr_data)
     ARM_StepPC(cpu, true);
 
     // not TST, CMP, or CMN
-    if (instr.Opcode != 8 && instr.Opcode != 10 && instr.Opcode != 11)
-    {
+    if ((instr.Opcode != 8) && (instr.Opcode != 10) && (instr.Opcode != 11))
         ARM_SetReg(instr.Rd, alu_out);
-    }
 }
 
-s8 THUMB9_DataProcReg_Interlocks(ARM946ES* ARM9, const ARM_Instr instr_data)
+s8 THUMB9_DataProcReg_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c [[maybe_unused]], bool* retry)
 {
     const union THUMB_DataProcReg_Decode instr = {.Raw = instr_data.Raw};
-    s8 stall = 0;
 
-    if (((instr.Opcode != 9) && (instr.Opcode != 15)))
-    {
-        ARM9_CheckInterlocks(ARM9, &stall, instr.Rd, 0, false);
-    }
-    return stall;
+    if (instr.Rm == reg) return len;
+    if (((instr.Opcode != 9 /* NEGS */) && (instr.Opcode != 15 /* MVNS */)) && (instr.Rd == reg)) return len;
+
+    if ((len > 1) && ((instr.Opcode == 8 /* TST */) || (instr.Opcode == 10 /* CMP */) || (instr.Opcode == 11 /* CMN */) // if it is an opcode that doesn't write Rd
+    || ((instr.Opcode != 13 /* MULS */) && (instr.Rd != reg)))) // or if it isn't MULS and isn't writing Rd
+        *retry = true;
+    return 0;
 }
 
 union THUMB_DataProcHiReg_Decode
@@ -348,10 +335,7 @@ void THUMB_DataProcHiReg(ARM* cpu, const ARM_Instr instr_data)
 
     u32 rd_val = 0;
     // MOV/CPY & BX/BLX dont use this reg
-    if (instr.Opcode < 2)
-    {
-        rd_val = ARM_GetReg(rd);
-    }
+    if (instr.Opcode < 2) rd_val = ARM_GetReg(rd);
 
     u32 rm_val = ARM_GetReg(instr.Rm);
 
@@ -363,13 +347,13 @@ void THUMB_DataProcHiReg(ARM* cpu, const ARM_Instr instr_data)
     {
     case 0: // ADD
     {
-        union ARM_FlagsOut flags_out;
+        ARM_FlagsOut flags_out;
         alu_out = ARM_ADD(rd_val, rm_val, &flags_out);
         break;
     }
     case 1: // CMP
     {
-        union ARM_FlagsOut flags_out;
+        ARM_FlagsOut flags_out;
         alu_out = ARM_SUB_RSB(rd_val, rm_val, &flags_out);
 
         // TODO: add stupid ARM7TDMI jank where it restores cpsr here
@@ -380,8 +364,7 @@ void THUMB_DataProcHiReg(ARM* cpu, const ARM_Instr instr_data)
         cpu->CPSR.Flags = flags_out.Raw;
         return;
     }
-    case 2: // MOV/CPY
-        alu_out = rm_val; break;
+    case 2: alu_out = rm_val; break; // MOV/CPY
     case 3: // BX/BLX
     {
         ARM_SetThumb(cpu, rm_val & 1);
@@ -402,20 +385,19 @@ void THUMB_DataProcHiReg(ARM* cpu, const ARM_Instr instr_data)
     ARM_SetReg(rd, alu_out);
 }
 
-s8 THUMB9_DataProcHiReg_Interlocks(ARM946ES* ARM9, const ARM_Instr instr_data)
+s8 THUMB9_DataProcHiReg_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c [[maybe_unused]], bool* retry)
 {
     const union THUMB_DataProcHiReg_Decode instr = {.Raw = instr_data.Raw};
-    s8 stall = 0;
+    u8 rd = instr.Rd | (instr.RdHi << 3);
 
-    ARM9_CheckInterlocks(ARM9, &stall, instr.Rm, 0, false);
+    if (instr.Rm == reg) return len;
     // MOV/CPY & BX/BLX dont use this reg
-    if (instr.Opcode < 2)
-    {
-        int rd = instr.Rd | (instr.RdHi << 3);
-        ARM9_CheckInterlocks(ARM9, &stall, rd, 0, false);
-    }
+    if ((instr.Opcode < 2) && (rd == reg)) return len;
 
-    return stall;
+    if ((len > 1) && (((instr.Opcode == 3) && (!instr.Link && (14 != reg))) // bx / blx
+    || (instr.Opcode == 2))) // cmp
+        *retry = true; // dont test add/cpy; they're handled by the rd interlock test
+    return 0;
 }
 
 union THUMB_AddPCSPRel_Decode
@@ -435,14 +417,10 @@ void THUMB_AddPCSPRel(ARM* cpu, const ARM_Instr instr_data)
 
     u32 alu_out;
     if (instr.SP)
-    {
         alu_out = ARM_GetReg(13);
-    }
-    else
-    {
-        // pc has bit 1 force cleared.
+    else // pc has bit 1 force cleared.
         alu_out = ARM_GetReg(15) & ~0b11;
-    }
+
     alu_out += instr.Imm8 * 4;
 
     ARM_StepPC(cpu, true);
@@ -451,18 +429,14 @@ void THUMB_AddPCSPRel(ARM* cpu, const ARM_Instr instr_data)
     ARM_SetReg(instr.Rd, alu_out);
 }
 
-s8 THUMB9_AddPCSPRel_Interlocks(ARM946ES* ARM9, const ARM_Instr instr_data)
+s8 THUMB9_AddPCSPRel_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c [[maybe_unused]], bool* retry)
 {
     const union THUMB_AddPCSPRel_Decode instr = {.Raw = instr_data.Raw};
-    s8 stall = 0;
 
-    if (instr.SP)
-    {
-        // im not sure if this interlock can actually be triggered but it should work in theory?
-        ARM9_CheckInterlocks(ARM9, &stall, 13, 0, false);
-    }
+    if (instr.SP && (13 == reg)) return len; // im not sure if this interlock can actually be triggered but it should work in theory?
 
-    return stall;
+    if ((len > 1) && (instr.Rd != reg)) *retry = true;
+    return 0;
 }
 
 union THUMB_AdjustSP_Decode
@@ -490,11 +464,11 @@ void THUMB_AdjustSP(ARM* cpu, const ARM_Instr instr_data)
     ARM_SetReg(13, alu_out);
 }
 
-s8 THUMB9_AdjustSP_Interlocks(ARM946ES* ARM9, [[maybe_unused]] const ARM_Instr instr_data)
+s8 THUMB9_AdjustSP_Interlocks(const ARM_Instr instr_data [[maybe_unused]], const s8 reg, const s8 len, const s8 len_c [[maybe_unused]], bool* retry)
 {
-    s8 stall = 0;
     // im not sure if this interlock can actually be triggered but it should work in theory?
-    ARM9_CheckInterlocks(ARM9, &stall, 13, 0, false);
+    if (13 == reg) return len;
 
-    return stall;
+    if (len > 1) *retry = true;
+    return 0;
 }

@@ -1,10 +1,10 @@
 #pragma once
 #include <SDL3/SDL.h>
 
-#include "../../../libs/imgui/dcimgui.h"
+#include "imgui/dcimgui.h"
 
-#include "../../core/console.h"
-#include "../../core/utils.h"
+#include "core/console.h"
+#include "core/utils.h"
 
 
 

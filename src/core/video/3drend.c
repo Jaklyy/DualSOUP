@@ -1,5 +1,5 @@
 #include <stdlib.h>
-#include "../console.h"
+#include "core/console.h"
 #include "3d.h"
 
 

@@ -1,7 +1,7 @@
 #include <SDL3/SDL_time.h>
 #include <stdckdint.h>
 #include "rtc.h"
-#include "../console.h"
+#include "core/console.h"
 
 
 

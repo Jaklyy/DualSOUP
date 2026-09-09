@@ -3,5 +3,7 @@
 
 
 
-[[nodiscard]] s8 ARM9_None_Interlocks([[maybe_unused]] ARM946ES* ARM9, [[maybe_unused]] const ARM_Instr instr_data) {return 0;}
-[[nodiscard]] s8 THUMB9_None_Interlocks([[maybe_unused]] ARM946ES* ARM9, [[maybe_unused]] const ARM_Instr instr_data) {return 0;}
+s8 A9ES_None_Interlocks(const ARM_Instr instr_data [[maybe_unused]], const s8 reg [[maybe_unused]], const s8 len [[maybe_unused]], const s8 len_c [[maybe_unused]], bool* retry [[maybe_unused]])
+{ return 0; }
+s8 T9ES_None_Interlocks(const ARM_Instr instr_data [[maybe_unused]], const s8 reg [[maybe_unused]], const s8 len [[maybe_unused]], const s8 len_c [[maybe_unused]], bool* retry [[maybe_unused]])
+{ return 0; }

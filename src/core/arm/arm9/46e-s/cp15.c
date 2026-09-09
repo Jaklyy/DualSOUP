@@ -4,13 +4,13 @@
 
 
 
-void ARM9_DumpMPU(const ARM946ES* ARM9)
+void A946_DumpMPU(const ARM946ES* ARM9)
 {
-    for (int i = 0; i < 8; i++)
-        LogPrint(LOG_ARM9, "MPU%i: %08X %08X %02X %02X\n", i, ARM9->CP15.MPURegionBase[i], ARM9->CP15.MPURegionMask[i], *(u8*)&ARM9->CP15.MPURegionPermsUser[i], *(u8*)&ARM9->CP15.MPURegionPermsPriv[i]);
+    for (s8 i = 0; i < 8; i++)
+        LogPrint(LOG_ARM9, "MPU%"PRIi8": %08"PRIX32" %08"PRIX32" %02"PRIX8" %02"PRIX8"\n", i, ARM9->CP15.MPURegionBase[i], ARM9->CP15.MPURegionMask[i], *(u8*)&ARM9->CP15.MPURegionPermsUser[i], *(u8*)&ARM9->CP15.MPURegionPermsPriv[i]);
 }
 
-void ARM9_ConfigureITCM(ARM946ES* ARM9)
+void A946_ConfigureITCM(ARM946ES* ARM9)
 {
     u32 size = ARM9->CP15.ITCMCR.Size + 9;
     if (size < 12) size = 12; // 4KiB min
@@ -19,7 +19,7 @@ void ARM9_ConfigureITCM(ARM946ES* ARM9)
     ARM9->CP15.ITCMShift = size;
 }
 
-void ARM9_ConfigureDTCM(ARM946ES* ARM9)
+void A946_ConfigureDTCM(ARM946ES* ARM9)
 {
     bool enabled = ARM9->CP15.CR.DTCMEnable;
     bool writeonly = ARM9->CP15.CR.DTCMLoadMode;
@@ -36,14 +36,9 @@ void ARM9_ConfigureDTCM(ARM946ES* ARM9)
         ARM9->CP15.DTCMWriteBase = base;
 
         if (writeonly)
-        {
-            // sort of silly solution
-            ARM9->CP15.DTCMReadBase = u64_max;
-        }
+            ARM9->CP15.DTCMReadBase = u64_max; // sort of silly solution
         else
-        {
             ARM9->CP15.DTCMReadBase = base;
-        }
     }
     else
     {
@@ -52,7 +47,7 @@ void ARM9_ConfigureDTCM(ARM946ES* ARM9)
     }
 }
 
-void ARM9_ConfigureMPURegionSize(ARM946ES* ARM9, const u8 rgn)
+void A946_ConfigureMPURegionSize(ARM946ES* ARM9, const u8 rgn)
 {
     if (!ARM9->CP15.CR.MPUEnable) return;
     if (!ARM9->CP15.MPURegionCR[rgn].Enable)
@@ -72,9 +67,9 @@ void ARM9_ConfigureMPURegionSize(ARM946ES* ARM9, const u8 rgn)
     ARM9->CP15.MPURegionBase[rgn] = (ARM9->CP15.MPURegionCR[rgn].Raw >> size) << size;
 }
 
-void ARM9_ConfigureMPURegionPerms(ARM946ES* ARM9)
+void A946_ConfigureMPURegionPerms(ARM946ES* ARM9)
 {
-    for (int rgn = 0; rgn < 8; rgn++)
+    for (s32 rgn = 0; rgn < 8; rgn++)
     {
         if (!ARM9->CP15.CR.MPUEnable) continue;
         // data
@@ -159,29 +154,26 @@ void ARM9_ConfigureMPURegionPerms(ARM946ES* ARM9)
     }
 }
 
-
-
-
-void ARM9_MCR_15(ARM946ES* ARM9, const u16 cmd, const u32 val)
+void A946_CP15Write(ARM946ES* ARM9, const u16 cmd, const u32 val)
 {
     // try to make sure the compiler knows only 14 bits are used here.
-    //if (cmd >= (1<<14)) unreachable();
+    if (cmd >= (1<<14)) unreachable();
 
-    switch(cmd)
+    switch(cmd & ((1<<14)-1))
     {
     case ARM_CoprocReg(0, 1, 0, 0): // control register
     {
         // CHECKME: bitmask
         MaskedWrite(ARM9->CP15.CR.Raw, val, 0x000FF085);
-        ARM9_ConfigureDTCM(ARM9);
-        ARM9_ConfigureITCM(ARM9);
+        A946_ConfigureDTCM(ARM9);
+        A946_ConfigureITCM(ARM9);
 
         // cheaty thingy
         if (ARM9->CP15.CR.MPUEnable)
         {
-            ARM9_ConfigureMPURegionPerms(ARM9);
-            for (int i = 0; i < 8; i++)
-                ARM9_ConfigureMPURegionSize(ARM9, i);
+            A946_ConfigureMPURegionPerms(ARM9);
+            for (s32 i = 0; i < 8; i++)
+                A946_ConfigureMPURegionSize(ARM9, i);
         }
         else
         {
@@ -202,63 +194,61 @@ void ARM9_MCR_15(ARM946ES* ARM9, const u16 cmd, const u32 val)
             ARM9->CP15.MPURegionMask[7] = 0;
         }
         // CHECKME: this is untested
-        ARM9_ExecuteCycles(ARM9, 2);
+        A9ES_ExecuteCycles(ARM9, 1);
         break;
     }
 
     case ARM_CoprocReg(0, 2, 0, 0): // dcache
         ARM9->CP15.DCacheConfig = val;
-        ARM9_ConfigureMPURegionPerms(ARM9);
+        A946_ConfigureMPURegionPerms(ARM9);
         // CHECKME: this is untested
-        ARM9_ExecuteCycles(ARM9, 2);
+        A9ES_ExecuteCycles(ARM9, 1);
         break;
     case ARM_CoprocReg(0, 2, 0, 1): // icache
         ARM9->CP15.ICacheConfig = val;
-        ARM9_ConfigureMPURegionPerms(ARM9);
+        A946_ConfigureMPURegionPerms(ARM9);
         // CHECKME: this is untested
-        ARM9_ExecuteCycles(ARM9, 2);
+        A9ES_ExecuteCycles(ARM9, 1);
         break;
     case ARM_CoprocReg(0, 3, 0, 0): // wbuffer
         ARM9->CP15.WriteBufferConfig = val;
-        ARM9_ConfigureMPURegionPerms(ARM9);
+        A946_ConfigureMPURegionPerms(ARM9);
         // CHECKME: this is untested
-        ARM9_ExecuteCycles(ARM9, 2);
+        A9ES_ExecuteCycles(ARM9, 1);
         break;
 
     case ARM_CoprocReg(0, 5, 0, 0): // legacy data perms
         ARM9->CP15.DataPermsReg = 0;
-        for (int i = 0; i < 8; i++)
-        {
+        for (s32 i = 0; i < 8; i++)
             ARM9->CP15.DataPermsReg |= ((val & (3<<(i*2))) << (i*2));
-        }
-        ARM9_ConfigureMPURegionPerms(ARM9);
+
+        A946_ConfigureMPURegionPerms(ARM9);
         // CHECKME: this is untested
-        ARM9_ExecuteCycles(ARM9, 2);
+        A9ES_ExecuteCycles(ARM9, 1);
         break;
 
     case ARM_CoprocReg(0, 5, 0, 1): // legacy instr perms
         ARM9->CP15.InstrPermsReg = 0;
-        for (int i = 0; i < 8; i++)
-        {
+        for (s32 i = 0; i < 8; i++)
             ARM9->CP15.InstrPermsReg |= (val & (3<<(i*2)) << (0xF<<(i*4)));
-        }
-        ARM9_ConfigureMPURegionPerms(ARM9);
+
+        A946_ConfigureMPURegionPerms(ARM9);
         // CHECKME: this is untested
-        ARM9_ExecuteCycles(ARM9, 2);
+        A9ES_ExecuteCycles(ARM9, 1);
         break;
 
     case ARM_CoprocReg(0, 5, 0, 2): // data perms
         ARM9->CP15.DataPermsReg = val;
-        ARM9_ConfigureMPURegionPerms(ARM9);
+        A946_ConfigureMPURegionPerms(ARM9);
         // CHECKME: this is untested
-        ARM9_ExecuteCycles(ARM9, 2);
+        A9ES_ExecuteCycles(ARM9, 1);
         break;
 
     case ARM_CoprocReg(0, 5, 0, 3): // instr perms
         ARM9->CP15.InstrPermsReg = val;
-        ARM9_ConfigureMPURegionPerms(ARM9);
+        A946_ConfigureMPURegionPerms(ARM9);
         // CHECKME: this is untested
-        ARM9_ExecuteCycles(ARM9, 2);
+        A9ES_ExecuteCycles(ARM9, 1);
         break;
 
     // Regions: op2 == 1 is not valid for some reason?
@@ -270,63 +260,63 @@ void ARM9_MCR_15(ARM946ES* ARM9, const u16 cmd, const u32 val)
     case ARM_CoprocReg(0, 6, 5, 0): // region 5
     case ARM_CoprocReg(0, 6, 6, 0): // region 6
     case ARM_CoprocReg(0, 6, 7, 0): // region 7
-        unsigned rgn = ((cmd >> 3) & 0xF);
+        u32 rgn = ((cmd >> 3) & 0xF);
         ARM9->CP15.MPURegionCR[rgn].Raw = val & 0xFFFFF03F; // CHECKME: mask
-        ARM9_ConfigureMPURegionSize(ARM9, rgn);
+        A946_ConfigureMPURegionSize(ARM9, rgn);
         // CHECKME: this is untested
-        ARM9_ExecuteCycles(ARM9, 2);
+        A9ES_ExecuteCycles(ARM9, 1);
         break;
 
 
     case ARM_CoprocReg(0, 7, 0, 4): // wait for interrupt
     case ARM_CoprocReg(0, 15, 8, 2): // wait for interrupt
-        //if (!Console_CheckARM9Wake(ARM9->ARM.Sys)) // checkme: might still halt for a little?
-            ARM9->ARM.WaitForInterrupt = true;
+        ARM9->ARM.WaitForInterrupt = true;
         break;
 
     case ARM_CoprocReg(0, 7, 5, 0): // flush icache
-        ICache_FlushAll(ARM9);
+        A946_ICacheFlushAll(ARM9);
         break;
     case ARM_CoprocReg(0, 7, 5, 1): // flush icache line by addr
-        ICache_FlushAddr(ARM9, val);
+        A946_ICacheFlushAddr(ARM9, val);
         break;
     case ARM_CoprocReg(0, 7, 6, 0): // flush dcache
-        DCache_FlushAll(ARM9);
+        A946_DCacheFlushAll(ARM9);
         break;
     case ARM_CoprocReg(0, 7, 6, 1): // flush dcache line by addr
-        DCache_FlushAddr(ARM9, val);
+        A946_DCacheFlushAddr(ARM9, val);
         break;
     case ARM_CoprocReg(0, 7, 10, 1): // clean dcache line by addr
-        DCache_CleanAddr(ARM9, val);
+        A946_DCacheCleanAddr(ARM9, ARM9->ARM.Timestamp, val);
         break;
     case ARM_CoprocReg(0, 7, 10, 2): // clean dcache line by index + segment
-        DCache_CleanIdxSet(ARM9, val);
+        A946_DCacheCleanIdxSet(ARM9, ARM9->ARM.Timestamp, val);
         break;
     case ARM_CoprocReg(0, 7, 10, 4): // drain write buffer
-        ARM9_DrainWriteBuffer(ARM9, &ARM9->MemTimestamp);
+        ARM9->BIU.InstrFlushWriteBuffer = true;
+        A9ES_InstrBusy(ARM9);
         break;
     case ARM_CoprocReg(0, 7, 13, 1): // prefetch icache line
-        ICache_Prefetch(ARM9, val);
+        A946_ICachePrefetch(ARM9, ARM9->ARM.Timestamp, val);
         break;
     case ARM_CoprocReg(0, 7, 14, 1): // clean + flush dcache line by addr
-        DCache_CleanFlushAddr(ARM9, val);
+        A946_DCacheCleanFlushAddr(ARM9, ARM9->ARM.Timestamp, val);
         break;
     case ARM_CoprocReg(0, 7, 14, 2): // clean + flush dcache line by index + segment
-        DCache_CleanFlushIdxSet(ARM9, val);
+        A946_DCacheCleanFlushIdxSet(ARM9, ARM9->ARM.Timestamp, val);
         break;
 
     case ARM_CoprocReg(0, 9, 1, 0): // dtcm reg
         ARM9->CP15.DTCMCR.Raw = val & 0xFFFFF03E;
-        ARM9_ConfigureDTCM(ARM9);
+        A946_ConfigureDTCM(ARM9);
         // CHECKME: this needs more testing
-        ARM9_ExecuteCycles(ARM9, 2);
+        A9ES_ExecuteCycles(ARM9, 1);
         break;
 
     case ARM_CoprocReg(0, 9, 1, 1): // itcm reg
         ARM9->CP15.ITCMCR.Raw = val & 0x3E;
-        ARM9_ConfigureITCM(ARM9);
+        A946_ConfigureITCM(ARM9);
         // CHECKME: this needs more testing
-        ARM9_ExecuteCycles(ARM9, 2);
+        A9ES_ExecuteCycles(ARM9, 1);
         break;
 
     case ARM_CoprocReg(0, 13, 0, 1): // pid
@@ -368,29 +358,29 @@ void ARM9_MCR_15(ARM946ES* ARM9, const u16 cmd, const u32 val)
     {
         LogPrint(LOG_ARM9 | LOG_UNIMP, "ARM9 - UNIMPLEMENTED MCR CMD: %04hX %08X %08X @ %08X\n", cmd, val, ARM9->ARM.Instr[0].Raw, ARM9->ARM.PC);
         // CHECKME: this is a placeholder basically.
-        ARM9_ExecuteCycles(ARM9, 2);
+        A9ES_ExecuteCycles(ARM9, 1);
         break;
     }
     }
 }
 
-u32 ARM9_MRC_15(ARM946ES* ARM9, const u16 cmd)
+u32 A946_CP15Read(ARM946ES* ARM9, const u16 cmd)
 {
     // try to make sure the compiler knows only 14 bits are used here.
-    //if (cmd >= (1<<14)) unreachable();
+    if (cmd >= (1<<14)) unreachable();
 
     // Note: I couldn't find any undocumented ways of accessing registers other than MRC2
     switch(cmd)
     {
     case ARM_CoprocReg(0, 0, 0, 0):
     case ARM_CoprocReg(0, 0, 0, 3) ... ARM_CoprocReg(0, 0, 0, 7): // idk why they duplicated this one so much but im sure there was a reason.
-        return ARM9_IDCodeReg;
+        return A946_IDCodeReg;
 
     case ARM_CoprocReg(0, 0, 0, 1):
-        return ARM9_CacheTypeReg;
+        return A946_CacheTypeReg;
 
     case ARM_CoprocReg(0, 0, 0, 2):
-        return ARM9_TCMSizeReg;
+        return A946_TCMSizeReg;
 
 
     case ARM_CoprocReg(0, 1, 0, 0): // control reg
@@ -411,20 +401,16 @@ u32 ARM9_MRC_15(ARM946ES* ARM9, const u16 cmd)
     case ARM_CoprocReg(0, 5, 0, 0):
     {
         u16 ret = 0;
-        for (int i = 0; i < 8; i++)
-        {
+        for (s32 i = 0; i < 8; i++)
             ret |= (ARM9->CP15.DataPermsReg >> (i*4)) & 0b11;
-        }
         return ret;
     }
 
     case ARM_CoprocReg(0, 5, 0, 1):
     {
         u16 ret = 0;
-        for (int i = 0; i < 8; i++)
-        {
+        for (s32 i = 0; i < 8; i++)
             ret |= (ARM9->CP15.InstrPermsReg >> (i*4)) & 0b11;
-        }
         return ret;
     }
 

@@ -15,8 +15,8 @@ LIBS := -lSDL3
 
 CC := clang
 CXX := clang++
-CFLAGS := -MP -MMD -std=gnu23 -fwrapv -Wimplicit-fallthrough -Wall -Wextra -Werror=implicit-fallthrough -Isrc
-CPPFLAGS := -MP -MMD -std=gnu++23 -fwrapv -Wimplicit-fallthrough -Wall -Wextra -Werror=implicit-fallthrough -Isrc
+CFLAGS := -MP -MMD -std=gnu23 -fwrapv -Wimplicit-fallthrough -Wall -Wextra -Werror=implicit-fallthrough -Isrc -Ilibs
+CPPFLAGS := -MP -MMD -std=gnu++23 -fwrapv -Wimplicit-fallthrough -Wall -Wextra -Werror=implicit-fallthrough -Isrc -Ilibs
 
 ifeq ($(FPS), 1) # monitor performance -- outputs frametime info via printf
 	CFLAGS += -DFPSLOG

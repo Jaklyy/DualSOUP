@@ -1,7 +1,7 @@
 #include "dma.h"
 #include "sound.h"
-#include "../console.h"
-#include "../scheduler.h"
+#include "core/console.h"
+#include "core/scheduler.h"
 
 
 

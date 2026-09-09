@@ -1,6 +1,6 @@
 #pragma once
 #include <SDL3/SDL_thread.h>
-#include "../utils.h"
+#include "core/utils.h"
 
 
 

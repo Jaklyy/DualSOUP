@@ -1,7 +1,7 @@
 #include <SDL3/SDL_audio.h>
 #include <SDL3/SDL_error.h>
 #include <stdckdint.h>
-#include "../console.h"
+#include "core/console.h"
 #include "sound.h"
 #include "dma.h"
 #include "timer.h"
@@ -74,7 +74,7 @@ void AudioMixer_Sample(Console* sys, timestamp now)
 
             if (sys->SysCfg.NTRAudioOut == NTRAudioOut_10)
             {
-                if (sys->Powman.PowerCR.SoundAmpEn)
+                if (sys->PMIC.PowerCR.SoundAmpEn)
                 {
                     // convert to unsigned 10 bit
                     out[i] >>= 6;

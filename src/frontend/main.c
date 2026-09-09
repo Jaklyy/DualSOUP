@@ -11,15 +11,15 @@
 #include <SDL3/SDL_thread.h>
 #include <SDL3/SDL_filesystem.h>
 
-#include "../../libs/imgui/dcimgui_impl_sdl3.h"
+#include "imgui/dcimgui_impl_sdl3.h"
 
 #include "gui/maingui.h"
 #include "soupparser/soupparser.h"
 
-#include "../core/utils.h"
-#include "../core/console.h"
-#include "../core/arm/arm9/instr_luts.h"
-#include "../core/arm/arm7/instr_luts.h"
+#include "core/utils.h"
+#include "core/console.h"
+#include "core/arm/arm9/instr_luts.h"
+#include "core/arm/arm7/instr_luts.h"
 
 
 

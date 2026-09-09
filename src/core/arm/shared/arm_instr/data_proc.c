@@ -1,6 +1,6 @@
 #include <stddef.h>
 #include <stdckdint.h>
-#include "../../../utils.h"
+#include "core/utils.h"
 #include "../arm.h"
 #include "../inc.h"
 
@@ -48,7 +48,7 @@ void ARM_DataProc(ARM* cpu, const ARM_Instr instr_data)
     // barrel shifter output
     u32 shifter_out;
 
-    union ARM_FlagsOut flags_out = {.Raw = cpu->CPSR.Flags};
+    ARM_FlagsOut flags_out = {.Raw = cpu->CPSR.Flags};
 
     u32 rn_val = 0;
     bool carry_out = flags_out.Carry;
@@ -227,22 +227,19 @@ void ARM_DataProc(ARM* cpu, const ARM_Instr instr_data)
         }
     }
 
-    // tst/teq/cmp/cmn do not writeback to registers
+    // tst/teq/cmp/cmn do not writeback to dest reg
     if ((instr.Opcode & 0b1100) != 0b1000)
-    {
         ARM_SetReg(instr.Rd, alu_out);
-    }
 }
 
-s8 ARM9_DataProc_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c [[maybe_unused]])
+s8 A9ES_DataProc_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c [[maybe_unused]], bool* retry)
 {
     const union ARM_DataProc_Decode instr = {.Raw = instr_data.Raw};
 
     if (instr.Immediate)
     {
         if (((instr.Opcode & 0b1101) != 0b1101) // NOT mov or mvn
-            && (instr.Rn == reg))
-            return len;
+            && (instr.Rn == reg)) return len;
     }
     else
     {
@@ -260,6 +257,12 @@ s8 ARM9_DataProc_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 l
                 && (instr.Rn == reg)) return len;
         }
     }
+
+    if ((len > 1) // not 1 cycle interlock
+        && ((instr.Immediate) || !(instr.ShiftType & 0x1)) // not reg shift reg
+        && (((instr.Opcode & 0b1100) == 0b1000) // is a compare (there is an undocumented(?) variant that does writeback, pc interlocks dont go through this path)
+        || (instr.Rd != reg))) // or is not being overwritten
+            *retry = true;
     return 0;
 }
 
@@ -328,7 +331,7 @@ void ARM_Mul(ARM* cpu, const ARM_Instr instr_data)
 
     if (cpu->CPUID == ARM7ID)
     {
-        int iterations = ARM7_NumBoothIters(rs_val, instr.Signed || !instr.Long);
+        int iterations = A7TDMI_NumBoothIters(rs_val, instr.Signed || !instr.Long);
 
         if (instr.SetFlags)
         {
@@ -341,7 +344,7 @@ void ARM_Mul(ARM* cpu, const ARM_Instr instr_data)
 
         // takes 1 cycle + 1 cycle per booth iteration needed to calculate.
         // one booth iteration is needed per byte of Rs.
-        ARM7_ExecuteCycles(ARM7Cast, iterations + 1 + instr.Long);
+        A7TDMI_ExecuteCycles(ARM7Cast, iterations + instr.Long);
     }
     else // ARM9ID
     {
@@ -350,23 +353,23 @@ void ARM_Mul(ARM* cpu, const ARM_Instr instr_data)
             cpu->CPSR.Negative = (s64)mul_out < 0;
             cpu->CPSR.Zero = !mul_out;
 
-            ARM9_ExecuteCycles(ARM9Cast, 4 + instr.Long);
+            A9ES_ExecuteCycles(ARM9Cast, 3 + instr.Long);
         }
         else
         {
             s8 interlock;
             if ((instr.Rd != 15) && (!instr.SetFlags))
             {
-                interlock = ARM9_DecodeInterlocks(ARM9Cast, false, instr.Rd, 1, 1);
+                interlock = A9ES_DecodeInterlocks(ARM9Cast, false, instr.Rd, 1, 1, nullptr);
             }
             // CHECKME: are these timings correct?
             if (!instr.Long)
             {
-                ARM9_ExecuteCycles(ARM9Cast, 2 + interlock);
+                A9ES_ExecuteCycles(ARM9Cast, 1 + interlock);
             }
             else
             {
-                ARM9_ExecuteCycles(ARM9Cast, 3 + interlock);
+                A9ES_ExecuteCycles(ARM9Cast, 2 + interlock);
             }
         }
     }
@@ -388,7 +391,7 @@ void ARM_Mul(ARM* cpu, const ARM_Instr instr_data)
     }
 }
 
-s8 ARM9_Mul_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c)
+s8 A9ES_Mul_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c, bool* retry [[maybe_unused]])
 {
     const union ARM_Multiply_Decode instr = {.Raw = instr_data.Raw};
 
@@ -400,6 +403,8 @@ s8 ARM9_Mul_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, c
         if (instr.Rn == reg) return len_c - 1;
         if (instr.Long && (instr.Rd == reg)) return len_c - 1; // checkme?
     }
+
+    // instr too long for retry cond to matter
     return 0;
 }
 
@@ -430,12 +435,14 @@ void ARM_CLZ(ARM* cpu, const ARM_Instr instr_data)
     ARM_SetReg(instr.Rd, alu_out);
 }
 
-s8 ARM9_CLZ_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c [[maybe_unused]])
+s8 A9ES_CLZ_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c [[maybe_unused]], bool* retry)
 {
     const union ARM_CLZ_Decode instr = {.Raw = instr_data.Raw};
 
     if (reg == instr.Rm) return len;
-    else return 0;
+
+    if ((len > 1) && (instr.Rd != reg)) *retry = true;
+    return 0;
 }
 
 union ARM_SatMath_Decode
@@ -505,7 +512,7 @@ void ARM_SatMath(ARM* cpu, const ARM_Instr instr_data)
     s8 interlock;
     if (instr.Rd != 15) // saturating maths dont support pc writeback
     {
-        interlock = ARM9_DecodeInterlocks(ARM9Cast, false, instr.Rd, 1, 1);
+        interlock = A9ES_DecodeInterlocks(ARM9Cast, false, instr.Rd, 1, 1, nullptr);
         ARM_SetReg(instr.Rd, alu_out);
     }
     else interlock = 0;
@@ -513,12 +520,14 @@ void ARM_SatMath(ARM* cpu, const ARM_Instr instr_data)
     ARM_ExeCycles(0, 1+interlock);
 }
 
-s8 ARM9_SatMath_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c [[maybe_unused]])
+s8 A9ES_SatMath_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c [[maybe_unused]], bool* retry)
 {
     const union ARM_SatMath_Decode instr = {.Raw = instr_data.Raw};
 
     if ((instr.Rm == reg) || (instr.Rn == reg)) return len;
-    else return 0;
+
+    if ((len > 1) && (instr.Rd != reg)) *retry = true;
+    return 0;
 }
 
 
@@ -631,7 +640,7 @@ void ARM_HalfwordMul(ARM* cpu, const ARM_Instr instr_data)
     s8 interlock;
     if (instr.Rd != 15) // multiplies fail writeback to pc
     {
-        interlock = ARM9_DecodeInterlocks(ARM9Cast, false, instr.Rd, 1, 1);
+        interlock = A9ES_DecodeInterlocks(ARM9Cast, false, instr.Rd, 1, 1, nullptr);
         ARM_SetReg(instr.Rd, mul_out);
     }
     else interlock = 0;
@@ -639,7 +648,7 @@ void ARM_HalfwordMul(ARM* cpu, const ARM_Instr instr_data)
     ARM_ExeCycles(0, 1 + oplong + interlock);
 }
 
-s8 ARM9_HalfwordMul_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c)
+s8 A9ES_HalfwordMul_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c, bool* retry)
 {
     const union ARM_HalfwordMul_Decode instr = {.Raw = instr_data.Raw};
     bool oplong;
@@ -676,5 +685,6 @@ s8 ARM9_HalfwordMul_Interlocks(const ARM_Instr instr_data, const s8 reg, const s
     // CHECKME: accumulate interlock timings and port.
     if ((opacc && (instr.Rn == reg)) || (oplong && (instr.Rd == reg))) return len_c-1;
 
+    if ((len > 1) && !oplong && (instr.Rd != reg)) *retry = true;
     return 0;
 }

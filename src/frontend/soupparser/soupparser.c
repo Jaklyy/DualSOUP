@@ -7,7 +7,7 @@
 
 #include <SDL3/SDL_iostream.h>
 
-#include "../../core/utils.h"
+#include "core/utils.h"
 #include "soupparser.h"
 
 

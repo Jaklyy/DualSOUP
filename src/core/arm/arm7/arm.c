@@ -1,16 +1,17 @@
-#include "../../utils.h"
+#include "core/utils.h"
 #include "../shared/arm.h"
-#include "../../console.h"
+#include "core/console.h"
 #include "arm.h"
 
 
 
 
-#define cpu ((ARM*)ARM7)
+#define cpu ((ARM*)a7tdmi)
 
 // TEMP: debugging
-void ARM7_Log(ARM7TDMI* ARM7)
+void A7TDMI_Log(ARM7TDMI* a7tdmi [[maybe_unused]])
 {
+#if 0
     LogPrint(LOG_ARM7, "DUMPING ARM7 STATE:\n");
     for (int i = 0; i < 16; i++)
     {
@@ -22,14 +23,15 @@ void ARM7_Log(ARM7TDMI* ARM7)
     LogPrint(LOG_ARM7, "EXE:%li\n\n", cpu->Timestamp);
     LogPrint(LOG_ARM7, "%08X %08X %i\n", cpu->Sys->IF7, cpu->Sys->IE7, cpu->Sys->IME7);
     LogPrint(LOG_ARM7, "%08X\n", cpu->Sys->Timers7[3].CR.Raw);
+#endif
 }
 
-void ARM7_Init(ARM7TDMI* ARM7, Console* sys)
+void A7TDMI_Init(ARM7TDMI* a7tdmi, Console* sys)
 {
     ARM_Init(cpu, sys, ARM7ID);
 }
 
-union ARM_PSR ARM7_GetSPSR(ARM7TDMI* ARM7)
+ARM_PSR A7TDMI_GetSPSR(ARM7TDMI* a7tdmi)
 {
     // TODO: THIS IS WRONG FOR ARM7
     switch(cpu->CPSR.Mode)
@@ -38,9 +40,9 @@ union ARM_PSR ARM7_GetSPSR(ARM7TDMI* ARM7)
         return cpu->FIQ_Bank.SPSR;
     case ARMMode_IRQ:
         return cpu->IRQ_Bank.SPSR;
-    case ARMMode_SWI:
-        return cpu->SWI_Bank.SPSR;
-    case ARMMode_SWI+1 ... ARMMode_ABT:
+    case ARMMode_SVC:
+        return cpu->SVC_Bank.SPSR;
+    case ARMMode_SVC+1 ... ARMMode_ABT:
         return cpu->ABT_Bank.SPSR;
     case ARMMode_ABT+1 ... ARMMode_UND:
         return cpu->UND_Bank.SPSR;
@@ -51,7 +53,7 @@ union ARM_PSR ARM7_GetSPSR(ARM7TDMI* ARM7)
     }
 }
 
-void ARM7_SetSPSR(ARM7TDMI* ARM7, union ARM_PSR psr)
+void A7TDMI_SetSPSR(ARM7TDMI* a7tdmi, ARM_PSR psr)
 {
     // TODO: THIS IS WRONG FOR ARM7
     switch(cpu->CPSR.Mode)
@@ -62,10 +64,10 @@ void ARM7_SetSPSR(ARM7TDMI* ARM7, union ARM_PSR psr)
     case ARMMode_IRQ:
         cpu->IRQ_Bank.SPSR = psr;
         break;
-    case ARMMode_SWI:
-        cpu->SWI_Bank.SPSR = psr;
+    case ARMMode_SVC:
+        cpu->SVC_Bank.SPSR = psr;
         break;
-    case ARMMode_SWI+1 ... ARMMode_ABT:
+    case ARMMode_SVC+1 ... ARMMode_ABT:
         cpu->ABT_Bank.SPSR = psr;
         break;
     case ARMMode_ABT+1 ... ARMMode_UND:
@@ -80,14 +82,14 @@ void ARM7_SetSPSR(ARM7TDMI* ARM7, union ARM_PSR psr)
     return;
 }
 
-u32 ARM7_GetReg(ARM7TDMI* ARM7, const int reg)
+u32 A7TDMI_GetReg(ARM7TDMI* a7tdmi, const int reg)
 {
     // todo: ldm user mode bus contention?
 
     return cpu->R[reg];
 }
 
-void ARM7_SetPC(ARM7TDMI* ARM7, u32 val)
+void A7TDMI_SetPC(ARM7TDMI* a7tdmi, u32 val)
 {
     // arm7 doesn't seem to implement bit0 of program counter
     // and doesn't enforce alignment in arm mode.
@@ -97,13 +99,13 @@ void ARM7_SetPC(ARM7TDMI* ARM7, u32 val)
     cpu->Prog = ARMProg_RefillStart;
 }
 
-void ARM7_SetReg(ARM7TDMI* ARM7, const int reg, u32 val)
+void A7TDMI_SetReg(ARM7TDMI* a7tdmi, const int reg, u32 val)
 {
     // todo: ldm user mode bus contention?
 
     if (reg == 15) // writes to PC need special handling
     {
-        ARM7_SetPC(ARM7, val);
+        A7TDMI_SetPC(a7tdmi, val);
     }
     else
     {
@@ -111,16 +113,15 @@ void ARM7_SetReg(ARM7TDMI* ARM7, const int reg, u32 val)
     }
 }
 
-void ARM7_ExecuteCycles(ARM7TDMI* ARM7, const u32 execute)
+void A7TDMI_ExecuteCycles(ARM7TDMI* a7tdmi, const u32 execute)
 {
-    // must be minus 1 to model pipeline overlaps
-    cpu->Timestamp += execute - 1;
-    // internal cycles break up instruction bursts
-    // CHECKME: presumably it ends the burst on the first internal cycle?
-    cpu->CodeSeq = (execute == 1);
+    cpu->Timestamp += execute;
+    // NOTE: internally arm7tdmi instruction bursts are weird due to mixed sequential + idle cycles?
+    // they seem to just be handled as nonsequential though...
+    cpu->CodeSeq = (execute == 0);
 }
 
-[[nodiscard]] bool ARM7_CheckInterrupts(ARM7TDMI* ARM7)
+[[nodiscard]] bool A7TDMI_CheckInterrupts(ARM7TDMI* a7tdmi)
 {
     //Scheduler_Sync(cpu->Sys, cpu->Timestamp, Sync_Normal7);
 
@@ -136,35 +137,35 @@ void ARM7_ExecuteCycles(ARM7TDMI* ARM7, const u32 execute)
         else
 #endif
         {
-            ARM7_InterruptRequest(ARM7);
+            A7TDMI_InterruptRequest(a7tdmi);
             return true;
         }
     }
     else return false;
 }
 
-void ARM7_Fetch(ARM7TDMI* ARM7)
+void A7TDMI_Fetch(ARM7TDMI* a7tdmi)
 {
     // step the pipeline.
     ARM_PipelineStep(cpu);
 
     // begin instruction fetch
     if (cpu->CPSR.Thumb)
-        ARM7_InstrRead16(ARM7, cpu->PC);
+        A7TDMI_InstrRead16(a7tdmi, cpu->PC);
     else
-        ARM7_InstrRead32(ARM7, cpu->PC);
+        A7TDMI_InstrRead32(a7tdmi, cpu->PC);
 }
 
-void ARM7_Exec(ARM7TDMI* ARM7)
+void A7TDMI_Exec(ARM7TDMI* a7tdmi)
 {
-    if (!ARM7_CheckInterrupts(ARM7))
+    if (!A7TDMI_CheckInterrupts(a7tdmi))
     {
         if (cpu->CPSR.Thumb)
         {
             const ARM_Instr instr = cpu->Instr[0];
             const u16 decode = (instr.Thumb >> 10);
 
-            THUMB7_InstructionLUT[decode](cpu, instr);
+            T7TDMI_InstructionLUT[decode](cpu, instr);
         }
         else
         {
@@ -174,21 +175,16 @@ void ARM7_Exec(ARM7TDMI* ARM7)
 
             // first we need to check the condition code (should be part of decoding?)
             if (ARM_ConditionLookup(condcode, cpu->CPSR.Flags))
-            {
-                ARM7_InstructionLUT[decode](cpu, instr);
-            }
+                A7TDMI_InstructionLUT[decode](cpu, instr);
             else // failed the condition check.
-            {
-                ARM7_ExecuteCycles(ARM7, 1);
                 ARM_StepPC(cpu, false);
-            }
         }
     }
 
     cpu->Prog = ARMProg_SleepCheck;
 }
 
-void ARM7_MainLoop(ARM7TDMI* ARM7)
+void A7TDMI_Run(ARM7TDMI* a7tdmi)
 {
     switch(cpu->Prog)
     {
@@ -208,12 +204,12 @@ void ARM7_MainLoop(ARM7TDMI* ARM7)
         {
             cpu->Prog += 1; static_assert((((ARMProg_RefillStart + 1) == ARMProg_RefillMid) && ((ARMProg_RefillMid + 1) == ARMProg_Fetch) && ((ARMProg_Fetch + 1) == ARMProg_Exec)), "ARM PROG NEEDS ADJUSTING HERE");
 
-            ARM7_Fetch(ARM7);
+            A7TDMI_Fetch(a7tdmi);
             break;
         }
         case ARMProg_Exec:
         {
-            ARM7_Exec(ARM7);
+            A7TDMI_Exec(a7tdmi);
             break;
         }
         case ARMProg_BusWait:

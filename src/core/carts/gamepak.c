@@ -2,7 +2,7 @@
 #include <stdlib.h>
 
 #include "gamepak.h"
-#include "../utils.h"
+#include "core/utils.h"
 
 
 

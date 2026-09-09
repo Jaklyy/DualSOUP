@@ -1,4 +1,5 @@
-#include "../../../utils.h"
+#include "core/utils.h"
+#include "../../arm9/arm.h"
 #include "../arm.h"
 #include "../inc.h"
 
@@ -24,9 +25,6 @@ union ARM_MCR_MRC_Decode
     };
 };
 
-void ARM9_MCR_15(ARM946ES* ARM9, const u16 cmd, const u32 val);
-u32 ARM9_MRC_15(ARM946ES* ARM9, const u16 cmd);
-
 void ARM_MCR(ARM* cpu, const ARM_Instr instr_data)
 {
     const union ARM_MCR_MRC_Decode instr = {.Raw = instr_data.Raw};
@@ -45,7 +43,7 @@ void ARM_MCR(ARM* cpu, const ARM_Instr instr_data)
         else // absent
         {
             /// UHHHHHHHHH
-            ARM7_RaiseUDF(cpu, instr_data, 1); // idk cycle counts.
+            A7TDMI_RaiseUDF(cpu, instr_data, 1); // idk cycle counts.
             // TODO: ARM7 UNDEFINED EXCEPTION???
             // TODO: ARM7 TIMINGS????
         }
@@ -63,14 +61,14 @@ void ARM_MCR(ARM* cpu, const ARM_Instr instr_data)
             {
                 // this actually does stuff wow!
                 // note: individual opcodes probably have different timings.
-                ARM9_MCR_15(ARM9Cast, ARM_CoprocReg(instr.Op1, instr.CRn, instr.CRm, instr.Op2), rd_val);
+                A946_CP15Write(ARM9Cast, ARM_CoprocReg(instr.Op1, instr.CRn, instr.CRm, instr.Op2), rd_val);
             }
             else
             {
                 // user mode; raise udf
                 // present coprocessors seemingly take 2 cycles longer to raise udf
                 LogPrint(LOG_ARM9 | LOG_EXCEP, "ARM9: USER MODE MCR COPROC 15!\n");
-                ARM9_RaiseUDF(cpu, instr_data, 3, 1);
+                A9ES_RaiseUDF(cpu, instr_data, 3);
             }
         }
         else if (instr.Coproc == 14) // debug coprocessor
@@ -83,27 +81,28 @@ void ARM_MCR(ARM* cpu, const ARM_Instr instr_data)
             {
                 // present coprocessors seemingly take 2 cycles longer to raise udf
                 LogPrint(LOG_ARM9 | LOG_EXCEP, "ARM9: MCR COPROC 14!\n");
-                ARM9_RaiseUDF(cpu, instr_data, 3, 1);
+                A9ES_RaiseUDF(cpu, instr_data, 3);
             }
         }
         else // absent
         {
             // absent coprocessors takes 3 cycles longer to raise undefined
-            LogPrint(LOG_ARM9 | LOG_EXCEP, "ARM9: MCR ABSENT COPROC %i!\n", instr.Coproc);
-            ARM9_RaiseUDF(cpu, instr_data, 4, 1);
+            LogPrint(LOG_ARM9 | LOG_EXCEP, "ARM9: MCR ABSENT COPROC %"PRIu32"!\n", instr.Coproc);
+            A9ES_RaiseUDF(cpu, instr_data, 4);
         }
     }
 }
 
-s8 ARM9_MCR_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len [[maybe_unused]], const s8 len_c)
+s8 A9ES_MCR_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len [[maybe_unused]], const s8 len_c)
 {
     const union ARM_MCR_MRC_Decode instr = {.Raw = instr_data.Raw};
     // ARM9E-S docs specify it as needing data during it's decode stage...?
     // i dont think that's true...? (does it mean coprocessor decode stage?)
     // i think it's literally just an STR but to a coprocessor instead of memory.
 
-    if (instr.Rd == reg) return len_c-1;
-    else return 0;
+    if (reg == instr.Rd) return len_c-1;
+
+    return 0;
 }
 
 void ARM_MRC(ARM* cpu, const ARM_Instr instr_data)
@@ -133,8 +132,8 @@ void ARM_MRC(ARM* cpu, const ARM_Instr instr_data)
         {
             // TODO: ARM7 UNDEFINED EXCEPTION
             // TODO: ARM7 TIMINGS
-            ARM7_RaiseUDF(cpu, instr_data, 1); // idk cycle counts.
-            LogPrint(LOG_ARM7 | LOG_EXCEP, "ARM7: MRC ABSENT COPROC %i!\n", instr.Coproc);
+            A7TDMI_RaiseUDF(cpu, instr_data, 1); // idk cycle counts.
+            LogPrint(LOG_ARM7 | LOG_EXCEP, "ARM7: MRC ABSENT COPROC %"PRIu32"!\n", instr.Coproc);
             return;
         }
     }
@@ -143,26 +142,24 @@ void ARM_MRC(ARM* cpu, const ARM_Instr instr_data)
         if (instr.Coproc == 15) // system control coprocessor
         {
             if (instr_data.CoprocPriv != cpu->Privileged) 
-            {
                 LogPrint(LOG_ARM9 | LOG_BUG, "ARM9 ERRATA TRIGGERED: MRC COPROC 15 USING STALE PRIVILEGES!\n");
-            }
 
             if (instr_data.CoprocPriv) // requires privileged mode (this is different than the normal arm privilege check)
             {
-                val = ARM9_MRC_15(ARM9Cast, ARM_CoprocReg(instr.Op1, instr.CRn, instr.CRm, instr.Op2));
+                val = A946_CP15Read(ARM9Cast, ARM_CoprocReg(instr.Op1, instr.CRn, instr.CRm, instr.Op2));
                 // timings for MRC are always the same, no matter the command.
                 if (instr.Rd == 15)
                 {
                     // flag update: takes longer due to needing to wait for the CPSR flag write.
                     // speculation: this seems to be one of the few cases where the decode stage actually matters for timings and effectively triggers an interlock.
-                    ARM9_ExecuteCycles(ARM9Cast, 3);
+                    A9ES_ExecuteCycles(ARM9Cast, 2);
                 }
                 else
                 {
                     // should be based off of ldr but it doesn't cause extra delay for reads via port C...?
-                    s8 interlock = ARM9_DecodeInterlocks(ARM9Cast, false, instr.Rd, 1, 1);
+                    s8 interlock = A9ES_DecodeInterlocks(ARM9Cast, false, instr.Rd, 1, 1, nullptr);
                     // CHECKME: memory 2?
-                    ARM9_ExecuteCycles(ARM9Cast, 2+interlock);
+                    A9ES_ExecuteCycles(ARM9Cast, 1+interlock);
                 }
             }
             else
@@ -170,7 +167,7 @@ void ARM_MRC(ARM* cpu, const ARM_Instr instr_data)
                 // user mode; raise udf
                 // present coprocessors seemingly take 2 cycles longer to raise udf
                 LogPrint(LOG_ARM9 | LOG_EXCEP, "ARM9: USER MODE MRC COPROC 15!\n");
-                return ARM9_RaiseUDF(cpu, instr_data, 3, 1);
+                return A9ES_RaiseUDF(cpu, instr_data, 2);
             }
         }
         else if (instr.Coproc == 14) // debug coprocessor
@@ -183,26 +180,20 @@ void ARM_MRC(ARM* cpu, const ARM_Instr instr_data)
             {
                 // present coprocessors seemingly take 2 cycles longer to raise udf
                 LogPrint(LOG_ARM9 | LOG_EXCEP, "ARM9: MRC COPROC 14!\n");
-                return ARM9_RaiseUDF(cpu, instr_data, 3, 1);
+                return A9ES_RaiseUDF(cpu, instr_data, 3);
             }
         }
         else // absent
         {
             // absent coprocessors takes 3 cycles longer to raise undefined
-            LogPrint(LOG_ARM9 | LOG_EXCEP, "ARM9: MRC ABSENT COPROC %i!\n", instr.Coproc);
-            return ARM9_RaiseUDF(cpu, instr_data, 4, 1);
+            LogPrint(LOG_ARM9 | LOG_EXCEP, "ARM9: MRC ABSENT COPROC %"PRIu32"!\n", instr.Coproc);
+            return A9ES_RaiseUDF(cpu, instr_data, 4);
         }
     }
 
     // encoding r15 results in the cpsr flags being set to the msb of the read.
-    if (instr.Rd == 15)
-    {
-        cpu->CPSR.Flags = val >> 28;
-    }
-    else
-    {
-        ARM_SetReg(instr.Rd, val);
-    }
+    if (instr.Rd == 15) cpu->CPSR.Flags = val >> 28;
+    else ARM_SetReg(instr.Rd, val);
 }
 
 union ARM_LDC_Decode
@@ -233,25 +224,23 @@ void ARM_LDC(ARM* cpu, const ARM_Instr instr_data)
     else if (cpu->CPUID == ARM9ID)
     {
         if (instr.Coproc < 14) // fully absent coprocessors raise exceptions slower for some reason.
-            ARM9_ExecuteCycles(ARM9Cast, 2);
+            A9ES_ExecuteCycles(ARM9Cast, 2);
 
-        ARM9_UndefinedInstruction(cpu, instr_data);
+        A9ES_UndefinedInstruction(cpu, instr_data);
     }
 }
 
-s8 ARM9_LDC_Interlocks(ARM946ES* ARM9, const ARM_Instr instr_data)
+s8 A9ES_LDC_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c [[maybe_unused]])
 {
     union ARM_LDC_Decode instr = {.Raw = instr_data.Raw};
-    s8 stall = 0;
 
-    ARM9_CheckInterlocks(ARM9, &stall, instr.Rn, 0, false);
-    return stall;
+    if (reg == instr.Rn) return len;
+
+    return 0;
 }
-
 
 // ARMv5 below here
 // note: all of these instructions use the same interlock behavior as their standard counterparts
-
 
 void ARM_MCR2(ARM* cpu, const ARM_Instr instr_data)
 {

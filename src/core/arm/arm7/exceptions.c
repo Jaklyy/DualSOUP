@@ -3,9 +3,9 @@
 
 
 
-#define cpu ((ARM*)ARM7)
+#define cpu (&a7tdmi->ARM)
 
-void ARM7_Reset(ARM7TDMI* ARM7, const bool delayflush)
+void A7TDMI_Reset(ARM7TDMI* a7tdmi)
 {
     // according to docs reset requires:
     // min 2 cycles lo
@@ -18,14 +18,14 @@ void ARM7_Reset(ARM7TDMI* ARM7, const bool delayflush)
     // while indicating internal cycles on nMREQ and SEQ signals
 
     // arm7 stores pc and cpsr on reset
-    union ARM_PSR oldcpsr = cpu->CPSR;
+    ARM_PSR oldcpsr = cpu->CPSR;
 
-    ARM_SetMode(cpu, ARMMode_SWI);
+    ARM_SetMode(cpu, ARMMode_SVC);
 
     // one can only imagine what pc would be here... probably depends on when the current instruction got interrupted?
     u32 oldpc = cpu->PC;
     cpu->LR = oldpc;
-    ARM7_SetSPSR(ARM7, oldcpsr);
+    A7TDMI_SetSPSR(a7tdmi, oldcpsr);
 
     // set cpsr bits
     // flag bits dont seem to be mentioned anywhere?
@@ -33,12 +33,12 @@ void ARM7_Reset(ARM7TDMI* ARM7, const bool delayflush)
     cpu->CPSR.IRQDisable = true;
     cpu->CPSR.FIQDisable = true;
 
-    ARM7_SetPC(ARM7, ARMVector_RST, delayflush);
+    A7TDMI_SetPC(a7tdmi, ARMVector_RST);
 }
 
-void ARM7_RaiseUDF(ARM* ARM, const ARM_Instr instr_data, const int cycles)
+void A7TDMI_RaiseUDF(ARM* ARM, const ARM_Instr instr_data, const int cycles)
 {
-    ARM7TDMI* ARM7 = (ARM7TDMI*)ARM;
+    ARM7TDMI* a7tdmi = (ARM7TDMI*)ARM;
 
     if (cpu->CPSR.Thumb)
         LogPrint(LOG_ARM9 | LOG_EXCEP, "THUMB7 - UNDEF INSTR: %04X @ %08X\n", instr_data.Raw, cpu->PC);
@@ -48,91 +48,85 @@ void ARM7_RaiseUDF(ARM* ARM, const ARM_Instr instr_data, const int cycles)
     //CrashSpectacularly("FARK\n");
     // addr of next instr
     u32 oldpc = cpu->PC - (cpu->CPSR.Thumb ? 2 : 4);
-    union ARM_PSR oldcpsr = cpu->CPSR;
+    ARM_PSR oldcpsr = cpu->CPSR;
 
-    ARM7_ExecuteCycles(ARM7, cycles);
+    A7TDMI_ExecuteCycles(a7tdmi, cycles-1);
 
     ARM_SetMode(cpu, ARMMode_UND);
 
     cpu->LR = oldpc;
-    ARM7_SetSPSR(ARM7, oldcpsr);
+    A7TDMI_SetSPSR(a7tdmi, oldcpsr);
 
     cpu->CPSR.Thumb = false;
     cpu->CPSR.IRQDisable = true;
-    ARM7_SetPC(ARM7, ARMVector_UND, false);
+    A7TDMI_SetPC(a7tdmi, ARMVector_UND);
 }
 
-void ARM7_UndefinedInstruction(ARM* ARM, const ARM_Instr instr_data)
+void A7TDMI_UndefinedInstruction(ARM* ARM, const ARM_Instr instr_data)
 {
-    ARM7_RaiseUDF(ARM, instr_data, 1);
+    A7TDMI_RaiseUDF(ARM, instr_data, 1);
 }
 
-void THUMB7_UndefinedInstruction(ARM* ARM, const ARM_Instr instr_data)
+void T7TDMI_UndefinedInstruction(ARM* ARM, const ARM_Instr instr_data)
 {
-    ARM7_RaiseUDF(ARM, instr_data, 1);
+    A7TDMI_RaiseUDF(ARM, instr_data, 1);
 }
 
-void ARM7_SoftwareInterrupt(ARM* ARM, [[maybe_unused]] const ARM_Instr instr_data)
+void A7TDMI_SupervisorCall(ARM* ARM, [[maybe_unused]] const ARM_Instr instr_data)
 {
     // TODO: could add a print here for logging software interrupts that gets fired.
-    ARM7TDMI* ARM7 = (ARM7TDMI*)ARM;
+    ARM7TDMI* a7tdmi = (ARM7TDMI*)ARM;
 
     // addr of next instr
     u32 oldpc = cpu->PC - (cpu->CPSR.Thumb ? 2 : 4);
-    union ARM_PSR oldcpsr = cpu->CPSR;
+    ARM_PSR oldcpsr = cpu->CPSR;
 
-    ARM7_ExecuteCycles(ARM7, 1);
-
-    ARM_SetMode(cpu, ARMMode_SWI);
+    ARM_SetMode(cpu, ARMMode_SVC);
 
     cpu->LR = oldpc;
-    ARM7_SetSPSR(ARM7, oldcpsr);
+    A7TDMI_SetSPSR(a7tdmi, oldcpsr);
 
     cpu->CPSR.Thumb = false;
     cpu->CPSR.IRQDisable = true;
-    ARM7_SetPC(ARM7, ARMVector_SWI, false);
+    A7TDMI_SetPC(a7tdmi, ARMVector_SVC);
 }
 
-void THUMB7_SoftwareInterrupt(ARM* ARM, const ARM_Instr instr_data)
+void T7TDMI_SupervisorCall(ARM* ARM, const ARM_Instr instr_data)
 {
-    ARM7_SoftwareInterrupt(ARM, instr_data);
+    A7TDMI_SupervisorCall(ARM, instr_data);
 }
 
 // TODO: data/prefetch aborts?
 
-void ARM7_InterruptRequest(ARM7TDMI* ARM7)
+void A7TDMI_InterruptRequest(ARM7TDMI* a7tdmi)
 {
     // lr is next instr + 4
     u32 oldpc = cpu->PC - ((cpu->CPSR.Thumb) ? 0 : 4);
-    union ARM_PSR oldcpsr = cpu->CPSR;
-
-    ARM7_ExecuteCycles(ARM7, 1);
+    ARM_PSR oldcpsr = cpu->CPSR;
 
     ARM_SetMode(cpu, ARMMode_IRQ);
 
     cpu->LR = oldpc;
-    ARM7_SetSPSR(ARM7, oldcpsr);
+    A7TDMI_SetSPSR(a7tdmi, oldcpsr);
 
     cpu->CPSR.Thumb = false;
     cpu->CPSR.IRQDisable = true;
 
     cpu->CpuSleeping = 0;
 
-    ARM7_SetPC(ARM7, ARMVector_IRQ, false);
+    A7TDMI_SetPC(a7tdmi, ARMVector_IRQ);
 }
 
-void ARM7_FastInterruptRequest(ARM7TDMI* ARM7)
+void A7TDMI_FastInterruptRequest(ARM7TDMI* a7tdmi)
 {
     // lr is next instr + 4
     u32 oldpc = cpu->PC - ((cpu->CPSR.Thumb) ? 0 : 4);
-    union ARM_PSR oldcpsr = cpu->CPSR;
-
-    ARM7_ExecuteCycles(ARM7, 1);
+    ARM_PSR oldcpsr = cpu->CPSR;
 
     ARM_SetMode(cpu, ARMMode_FIQ);
 
     cpu->LR = oldpc;
-    ARM7_SetSPSR(ARM7, oldcpsr);
+    A7TDMI_SetSPSR(a7tdmi, oldcpsr);
 
     cpu->CPSR.Thumb = false;
     cpu->CPSR.IRQDisable = true;
@@ -140,7 +134,7 @@ void ARM7_FastInterruptRequest(ARM7TDMI* ARM7)
 
     cpu->CpuSleeping = 0;
 
-    ARM7_SetPC(ARM7, ARMVector_FIQ, false);
+    A7TDMI_SetPC(a7tdmi, ARMVector_FIQ);
 }
 
 #undef cpu

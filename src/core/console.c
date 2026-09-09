@@ -1,5 +1,6 @@
 #include <SDL3/SDL_timer.h>
 #include <SDL3/SDL_gamepad.h>
+#include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -32,7 +33,7 @@ void Console_DebugLog(Console* sys)
         sys->Timers7[i+4].Regs, sys->SoundChannels[i].FIFO_DrainPtr, sys->SoundChannels[i].FIFO_FillPtr, sys->SoundChannels[i].FIFO_Bytes);
     }
     printf("dma cur: %08X\n", sys->DMA7.CurMask);
-#elif 1
+#elif 0
     bool seq = false;
     printf("dumping\n");
     {
@@ -46,12 +47,12 @@ void Console_DebugLog(Console* sys)
     }
     {
         FILE* file = fopen("log9dt.bin", "wb");
-        fwrite(sys->ARM9.DTCM.b8, ARM9_DTCMSize, 1, file);
+        fwrite(sys->ARM9.DTCM.b8, A946_DTCMSize, 1, file);
         fclose(file);
     }
     {
         FILE* file = fopen("log9it.bin", "wb");
-        fwrite(sys->ARM9.ITCM.b8, ARM9_ITCMSize, 1, file);
+        fwrite(sys->ARM9.ITCM.b8, A946_ITCMSize, 1, file);
         fclose(file);
     }
     {
@@ -112,7 +113,6 @@ Console* Console_Init(Console* sys, CoreCfg* cfg, void* pad, void* aud)
     {
         // de-allocate shit so it can be re-allocated
         // TODO: dont do this?
-        CR_Free(sys->HandleARM7);
         SDL_DestroyMutex(sys->FrameBufferMutex[0]);
         SDL_DestroyMutex(sys->FrameBufferMutex[1]);
 #ifdef REALTHREAD
@@ -164,9 +164,6 @@ Console* Console_Init(Console* sys, CoreCfg* cfg, void* pad, void* aud)
     }
 
     // allocate shit
-    sys->HandleARM9 = CR_Active();
-    bool cr7init = CR_Create(&sys->HandleARM7, (void*)ARM7_MainLoop, &sys->ARM7);
-
     bool gcinit = GameCard_Init(&sys->GameCard, cfg->NTR.CardROM, sys->NTRBios7.b8);
 
     GamePak_Init(&sys->GamePak);
@@ -186,11 +183,9 @@ Console* Console_Init(Console* sys, CoreCfg* cfg, void* pad, void* aud)
     bool thrdinit1 = true, thrdinit2 = true, thrdinit3 = true;
 #endif
 
-    if ((!cr7init) || !ntr9init || !ntr7init || !firminit || !gcinit || !mtxinit || !mtxinit2|| !mtxinit3 || !thrdinit1 || !thrdinit2)
+    if (!ntr9init || !ntr7init || !firminit || !gcinit || !mtxinit || !mtxinit2|| !mtxinit3 || !thrdinit1 || !thrdinit2)
     {
         // return error messages
-        if (!cr7init)
-            LogPrint(LOG_ALWAYS, "FATAL: Coroutine handle creation failed!\n");
         if (!mtxinit || !mtxinit2|| !mtxinit3)
             LogPrint(LOG_ALWAYS, "FATAL: Mutex init failed.\n");
         if (!ntr9init)
@@ -208,7 +203,6 @@ Console* Console_Init(Console* sys, CoreCfg* cfg, void* pad, void* aud)
         }
 
         // cleanup ones that actually allocated correctly
-        if (cr7init) CR_Free(sys->HandleARM7);
         if (firminit) Flash_Cleanup(&sys->Firmware);
         if (gcinit) GameCard_Cleanup(&sys->GameCard);
         if (mtxinit) SDL_DestroyMutex(sys->FrameBufferMutex[0]);
@@ -243,11 +237,8 @@ Console* Console_Init(Console* sys, CoreCfg* cfg, void* pad, void* aud)
 
     // init variables
 
-    A946_Init(&sys->ARM9, sys);
-    A7TDMI_Init(&sys->ARM7, sys);
-
-    //for (int i = 0; i < Evt_Max; i++)
-    //    sys->Sched.EventTimes[i] = timestamp_max;
+    A946_Init(&sys->A946ES, sys);
+    A7TDMI_Init(&sys->A7TDMI, sys);
 
     for (int i = 0; i < Evt_Max; i++)
     {
@@ -314,12 +305,10 @@ Console* Console_Init(Console* sys, CoreCfg* cfg, void* pad, void* aud)
     sys->DMA9.NextID = DMA7_Max;
     sys->DMA7.NextID = DMA7_Max;
 
-    sys->IPCFIFO7.CR.RecvFIFOEmpty = true;
-    sys->IPCFIFO7.CR.SendFIFOEmpty = true;
-    sys->IPCFIFO9.CR.RecvFIFOEmpty = true;
-    sys->IPCFIFO9.CR.SendFIFOEmpty = true;
+    IPC_FIFOInit(&sys->IPCFIFO7);
+    IPC_FIFOInit(&sys->IPCFIFO9);
 
-    sys->Powman.BacklightLevels.AlwaysSet = true;
+    PMIC_Init(sys);
 
     sys->GX3D.Status.FIFOHalfEmpty = true;
     sys->GX3D.Status.FIFOEmpty = true;
@@ -336,6 +325,9 @@ Console* Console_Init(Console* sys, CoreCfg* cfg, void* pad, void* aud)
     sys->GX3D.ProjectionMatrix = IdentityMatrix;
     sys->GX3D.TextureMatrix = IdentityMatrix;
 
+    Bus9_Init(&sys->Bus9);
+    Bus7_Init(&sys->Bus7);
+
     RTC_Init(&sys->RTC);
 
     // TODO: are these always running?
@@ -350,6 +342,23 @@ Console* Console_Init(Console* sys, CoreCfg* cfg, void* pad, void* aud)
 
 void Console_DirectBoot(Console* sys)
 {
+    u32 arm9_romoffs = sys->GameCard.ROM[0x20/4];
+    u32 arm9_entryaddr = sys->GameCard.ROM[0x24/4];
+    u32 arm9_ramaddr = sys->GameCard.ROM[0x28/4];
+    u32 arm9_romsize = sys->GameCard.ROM[0x2C/4];
+
+    u32 arm7_romoffs = sys->GameCard.ROM[0x30/4];
+    u32 arm7_entryaddr = sys->GameCard.ROM[0x34/4];
+    u32 arm7_ramaddr = sys->GameCard.ROM[0x38/4];
+    u32 arm7_romsize = sys->GameCard.ROM[0x3C/4];
+
+    if (((arm9_romoffs + arm9_romsize) > sys->GameCard.RomSize)
+     || ((arm7_romoffs + arm7_romsize) > sys->GameCard.RomSize))
+    {
+        LogPrint(LOG_ALWAYS, "ROM CONTAINS INVALID A9/A7 PROGRAMS\n");
+        return;
+    }
+
     // wram should probably be enabled...?
     sys->WRAMCR = 3;
     sys->PostFlag = true;
@@ -365,115 +374,195 @@ void Console_DirectBoot(Console* sys)
     sys->ExtMemCR_Shared.GBAPakA7Access = true;
     sys->ExtMemCR_Shared.NDSCardA7Access = true;
 
-    ARM_SetMode((ARM*)&sys->ARM9, ARMMode_SYS);
-    ARM_SetMode((ARM*)&sys->ARM7, ARMMode_SYS);
-    sys->ARM9.ARM.SP = 0x03002F7C;
-    sys->ARM9.ARM.IRQ_Bank.R[0] = 0x03003F80;
-    sys->ARM9.ARM.SWI_Bank.R[0] = 0x03003FC0;
-    sys->ARM7.ARM.SP = 0x0380FD80;
-    sys->ARM7.ARM.IRQ_Bank.R[0] = 0x0380FF80;
-    sys->ARM7.ARM.SWI_Bank.R[0] = 0x0380FFC0;
+    ARM_SetMode((ARM*)&sys->A946ES, ARMMode_SYS);
+    ARM_SetMode((ARM*)&sys->A7TDMI, ARMMode_SYS);
+    sys->A946ES.ARM.SP = 0x03002F7C;
+    sys->A946ES.ARM.IRQ_Bank.R[0] = 0x03003F80;
+    sys->A946ES.ARM.SVC_Bank.R[0] = 0x03003FC0;
+    sys->A7TDMI.ARM.SP = 0x0380FD80;
+    sys->A7TDMI.ARM.IRQ_Bank.R[0] = 0x0380FF80;
+    sys->A7TDMI.ARM.SVC_Bank.R[0] = 0x0380FFC0;
 
-    //fseek(rom, 0x20, SEEK_SET);
-    u32 arm9_romoffs = sys->GameCard.ROM[0x20/4];
-    u32 arm9_entryaddr = sys->GameCard.ROM[0x24/4];
-    u32 arm9_ramaddr = sys->GameCard.ROM[0x28/4];
-    u32 arm9_romsize = sys->GameCard.ROM[0x2C/4];
-    u32 arm7_romoffs = sys->GameCard.ROM[0x30/4];
-    u32 arm7_entryaddr = sys->GameCard.ROM[0x34/4];
-    u32 arm7_ramaddr = sys->GameCard.ROM[0x38/4];
-    u32 arm7_romsize = sys->GameCard.ROM[0x3C/4];
+    sys->A946ES.ARM.R12 = arm9_entryaddr;
+    sys->A946ES.ARM.R14 = arm9_entryaddr;
+    sys->A7TDMI.ARM.R12 = arm7_entryaddr;
+    sys->A7TDMI.ARM.R14 = arm7_entryaddr;
 
-    if (((arm9_romoffs + arm9_romsize) > sys->GameCard.RomSize)
-     || ((arm7_romoffs + arm7_romsize) > sys->GameCard.RomSize))
-    {
-        LogPrint(LOG_ALWAYS, "ROM CONTAINS INVALID A9/A7 PROGRAMS\n");
-        return;
-    }
-
-    //fread(vars, 4*4*2, 1, rom);
-
-    sys->ARM9.ARM.R12 = arm9_entryaddr;
-    sys->ARM9.ARM.R14 = arm9_entryaddr;
-    sys->ARM7.ARM.R12 = arm7_entryaddr;
-    sys->ARM7.ARM.R14 = arm7_entryaddr;
-
-    timestamp nop;
-    bool nopy;
-
+    const u32 mrmask = (MainRAM_Size-1) & (sys->BusMR.AddrSubmMask);
     // load arm9 rom
-    for (unsigned i = 0; i < arm9_romsize; i+=4)
+    for (u32 i = 0; i < arm9_romsize; i+=4)
     {
-        //AHB9_Write(sys, &nop, arm9_ramaddr+i, sys->GameCard.ROM[(arm9_romoffs+i)/4], u32_max, false, &nopy, false);
+        u32 addr = arm9_ramaddr+i;
+        u32 romaddr = arm9_romoffs+i;
+        if ((addr & 0xFF000000) == 0x02000000)
+        {
+            sys->MainRAM.b32[(addr & mrmask)/4] = sys->GameCard.ROM[(romaddr & (sys->GameCard.RomSize-1))/4];
+        }
     }
 
     // load arm7 rom
-    for (unsigned i = 0; i < arm7_romsize; i+=4)
+    for (u32 i = 0; i < arm7_romsize; i+=4)
     {
-        //AHB7_Write(sys, &nop, arm7_ramaddr+i, sys->GameCard.ROM[(arm7_romoffs+i)/4], u32_max, false, &nopy, false, 0);
+        u32 addr = arm7_ramaddr+i;
+        u32 romaddr = arm7_romoffs+i;
+        if ((addr & 0xFF000000) == 0x02000000)
+        {
+            sys->MainRAM.b32[(addr & mrmask)/4] = sys->GameCard.ROM[(romaddr & (sys->GameCard.RomSize-1))/4];
+        }
+        else if ((addr & 0xFF800000) == 0x03000000) // assume its always fully mapped to arm7
+        {
+            sys->SharedWRAM.b32[(addr & (SharedWRAM_Size-1))/4] = sys->GameCard.ROM[(romaddr & (sys->GameCard.RomSize-1))/4];
+        }
+        else if ((addr & 0xFF800000) == 0x03800000)
+        {
+            sys->ARM7WRAM.b32[(addr & (ARM7WRAM_Size-1))/4] = sys->GameCard.ROM[(romaddr & (sys->GameCard.RomSize-1))/4];
+        }
     }
 
-    sys->ARM9.CP15.CR.DTCMEnable = true;
-    sys->ARM9.CP15.DTCMCR.Raw = 0x0300000A;
-    A946_ConfigureDTCM(&sys->ARM9);
+    sys->A946ES.CP15.CR.DTCMEnable = true;
+    sys->A946ES.CP15.DTCMCR.Raw = 0x0300000A;
+    A946_ConfigureDTCM(&sys->A946ES);
 
     // load header
-    memcpy(&sys->MainRAM.b8[0x27FFE00 & (MainRAM_Size-1)], sys->GameCard.ROM, 0x170);
+    memcpy(&sys->MainRAM.b8[0x27FFE00 & mrmask], sys->GameCard.ROM, 0x170);
     // "load" chipid
-    sys->MainRAM.b32[(0x27FF800 & (MainRAM_Size-1))/sizeof(u32)] = 0x010101C2;
-    sys->MainRAM.b32[(0x27FF804 & (MainRAM_Size-1))/sizeof(u32)] = 0x010101C2;
-    sys->MainRAM.b32[(0x27FFC00 & (MainRAM_Size-1))/sizeof(u32)] = 0x010101C2;
-    sys->MainRAM.b32[(0x27FFC04 & (MainRAM_Size-1))/sizeof(u32)] = 0x010101C2;
+    sys->MainRAM.b32[(0x27FF800 & mrmask)/4] = 0x010101C2;
+    sys->MainRAM.b32[(0x27FF804 & mrmask)/4] = 0x010101C2;
+    sys->MainRAM.b32[(0x27FFC00 & mrmask)/4] = 0x010101C2;
+    sys->MainRAM.b32[(0x27FFC04 & mrmask)/4] = 0x010101C2;
 
     // header checksum
-    memcpy(&sys->MainRAM.b8[0x27FF808 & (MainRAM_Size-1)], &sys->GameCard.ROM[0x15E/4]+2, 2);
+    memcpy(&sys->MainRAM.b8[0x27FF808 & mrmask], (void*)(((intptr_t)&(sys->GameCard.ROM[0x15E/4]))+2), 2);
 
-    memcpy(&sys->MainRAM.b8[0x27FFC08 & (MainRAM_Size-1)], &sys->GameCard.ROM[0x15E/4]+2, 2);
+    memcpy(&sys->MainRAM.b8[0x27FFC08 & mrmask], (void*)(((intptr_t)&sys->GameCard.ROM[0x15E/4])+2), 2);
 
     // secure area checksum
-    memcpy(&sys->MainRAM.b8[0x27FF80A & (MainRAM_Size-1)], &sys->GameCard.ROM[0x6C/4], 2);
+    memcpy(&sys->MainRAM.b8[0x27FF80A & mrmask], &sys->GameCard.ROM[0x6C/4], 2);
 
-    memcpy(&sys->MainRAM.b8[0x27FFC0A & (MainRAM_Size-1)], &sys->GameCard.ROM[0x6C/4], 2);
+    memcpy(&sys->MainRAM.b8[0x27FFC0A & mrmask], &sys->GameCard.ROM[0x6C/4], 2);
 
     // idk
-    sys->MainRAM.b16[(0x27FF850 & (MainRAM_Size-1))/sizeof(u16)] = 0x5835;
-    sys->MainRAM.b16[(0x27FFC10 & (MainRAM_Size-1))/sizeof(u16)] = 0x5835;
-    sys->MainRAM.b16[(0x27FFC30 & (MainRAM_Size-1))/sizeof(u16)] = 0xFFFF;
-    sys->MainRAM.b16[(0x27FFC40 & (MainRAM_Size-1))/sizeof(u16)] = 0x0001;
+    sys->MainRAM.b16[(0x27FF850 & mrmask)/2] = 0x5835;
+    sys->MainRAM.b16[(0x27FFC10 & mrmask)/2] = 0x5835;
+    sys->MainRAM.b16[(0x27FFC30 & mrmask)/2] = 0xFFFF;
+    sys->MainRAM.b16[(0x27FFC40 & mrmask)/2] = 0x0001;
 
     u16 usersettings = (sys->Firmware.RAM[0x20] | (sys->Firmware.RAM[0x21] << 8))*8;
 
-    sys->MainRAM.b32[((0x27FF864) & (MainRAM_Size-1))/4] = 0;
-    sys->MainRAM.b32[((0x27FF868) & (MainRAM_Size-1))/4] = usersettings;
+    sys->MainRAM.b32[((0x27FF864) & mrmask)/4] = 0;
+    sys->MainRAM.b32[((0x27FF868) & mrmask)/4] = usersettings;
 
-    sys->MainRAM.b16[((0x27FF874) & (MainRAM_Size-1))/2] = (sys->Firmware.RAM[0x26] | (sys->Firmware.RAM[0x27] << 8));
+    sys->MainRAM.b16[((0x27FF874) & mrmask)/2] = (sys->Firmware.RAM[0x26] | (sys->Firmware.RAM[0x27] << 8));
 
-    sys->MainRAM.b16[((0x27FF876) & (MainRAM_Size-1))/2] = (sys->Firmware.RAM[4] | (sys->Firmware.RAM[5] << 8));
+    sys->MainRAM.b16[((0x27FF876) & mrmask)/2] = (sys->Firmware.RAM[4] | (sys->Firmware.RAM[5] << 8));
 
     for (int i = 0; i < 0x70; i++)
-        sys->MainRAM.b8[((0x27FFC80 + i) & (MainRAM_Size-1))] = sys->Firmware.RAM[usersettings+i];
+        sys->MainRAM.b8[((0x27FFC80 + i) & mrmask)] = sys->Firmware.RAM[usersettings+i];
 
-    A9ES_SetPC(&sys->ARM9, arm9_entryaddr);
-    ARM7_SetPC(&sys->ARM7, arm7_entryaddr);
+    A9ES_SetPC(&sys->A946ES, arm9_entryaddr);
+    A7TDMI_SetPC(&sys->A7TDMI, arm7_entryaddr);
     sys->DirectBoot = true;
 }
 
 void Console_Reset(Console* sys)
 {
-    A946_Reset(&sys->ARM9, false /*unverified I guess?*/, true);
-    ARM7_Reset(&sys->ARM7);
+    A946_Reset(&sys->A946ES, false /*unverified I guess?*/, true);
+    A7TDMI_Reset(&sys->A7TDMI);
 
     // TODO: reset dma?
 }
 
-bool Console_CheckARM9Wake(Console* sys)
+void IRQ9_Update(Console* sys, const timestamp now)
 {
-    return (sys->IME9 && (sys->IE9 & sys->IF9));
+    // send irq to arm9
+    sys->A946ES.ARM.InterruptRequest = (sys->IME9 && (sys->IF9 & sys->IE9));
+
+    // arm946e-s wakes when interrupt is raised, regardless of cpsr bit
+    if (sys->A946ES.ARM.InterruptRequest && sys->A946ES.ARM.WaitForInterrupt)
+    {
+    }
 }
 
+void IF9_Clear(Console* sys, u32 wrdata, const timestamp now)
+{
+    sys->IF9 &= ~wrdata | sys->IF9Persist;
+    Sched_AddEvent(sys, now+DSClk33(1), Evt_UpdateIRQ9);
+}
+
+void IF9_Set(Console* sys, const IRQIDs id, const timestamp now)
+{
+    sys->IF9 |= 1<<id;
+    sys->IF9Persist |= ((u32)1<<id) & IRQ9_LevelSens;
+    Sched_AddEvent(sys, now+DSClk33(1), Evt_UpdateIRQ9);
+}
+
+void LevelIRQ9_Stop(Console* sys, const IRQIDs id)
+{
+    sys->IF9Persist &= ~((u32)1<<id);
+}
+
+// arm7 halt is implemented by the SoC hardware
+// it checks for IE and IF; IME only prevents irqs from signaling the processor
 bool Console_CheckARM7Wake(Console* sys)
 {
     return (sys->IE7 & sys->IF7);
+}
+
+void IRQ7_Update(Console* sys, const timestamp now)
+{
+    // send irq to arm7
+    sys->A7TDMI.ARM.InterruptRequest = (sys->IME7 && (sys->IF7 & sys->IE7));
+
+    // gba/nds uses an external mechanism for power saving for the arm7tdmi
+    if (sys->A7ClkDisable && Console_CheckARM7Wake(sys)) Bus7_A7Wake(sys, now);
+}
+
+void IF7_Clear(Console* sys, u32 wrdata, const timestamp now)
+{
+    sys->IF7 &= ~wrdata | sys->IF7Persist;
+    Sched_AddEvent(sys, now+DSClk33(1), Evt_UpdateIRQ7);
+}
+
+void IF7_Set(Console* sys, const IRQIDs id, const timestamp now)
+{
+    sys->IF7 |= 1<<id;
+    sys->IF7Persist |= ((u64)1<<id) & IRQ7_LevelSens;
+    Sched_AddEvent(sys, now+DSClk33(1), Evt_UpdateIRQ7);
+}
+
+#if 0
+
+void IRQ9_Run(Console* sys, timestamp now)
+{
+
+}
+
+void Console_ScheduleIRQs(Console* sys, const u8 irq, const bool a9, timestamp time)
+{
+    timestamp* irqs;
+    if (a9)
+    {
+        irqs = sys->IRQSched9;
+    }
+    else
+    {
+        irqs = sys->IRQSched7;
+    }
+
+    irqs[irq] = time;
+
+    timestamp next = timestamp_max;
+
+    for (int i = 0; i < IRQ_Max; i++)
+    {
+        if (next > irqs[i])
+            next = irqs[i];
+    }
+
+    if (a9)
+        Schedule_Event(sys, IF9_Update, Evt_IF9Update, next);
+    else
+        Schedule_Event(sys, IF7_Update, Evt_IF7Update, next);
 }
 
 void IF9_Update(Console* sys, timestamp now)
@@ -497,15 +586,15 @@ void IF9_Update(Console* sys, timestamp now)
 
     // wake up cpu
     // TODO: SCHEDULE THIS INSTEAD
-    if (sys->ARM9.ARM.CpuSleeping && Console_CheckARM9Wake(sys))
+    if (sys->A946ES.ARM.CpuSleeping && Console_CheckARM9Wake(sys))
     {
-        sys->ARM9.ARM.CpuSleeping = 0;
-        sys->ARM9.ARM.DeadAsleep = false;
+        sys->A946ES.ARM.CpuSleeping = 0;
+        sys->A946ES.ARM.DeadAsleep = false;
 
-        DS_CLAMP(sys->ARM9.ARM.Timestamp, <, now << A9ClockShift(sys->ARM9)) // checkme
-        ARM9_ExecuteCycles(&sys->ARM9, 1, 1);
-        if (sys->Sleep9) DS_CLAMP(sys->A9Sync, >, sys->ARM9.ARM.Timestamp >> A9ClockShift(sys->ARM9));
-        sys->ARM9.ARM.CodeSeq = false;
+        //DS_CLAMP(sys->A946ES.ARM.Timestamp, <, now << A9ClockShift(sys->A946ES)) // checkme
+        //ARM9_ExecuteCycles(&sys->A946ES, 1, 1);
+        //if (sys->Sleep9) DS_CLAMP(sys->A9Sync, >, sys->A946ES.ARM.Timestamp >> A9ClockShift(sys->A946ES));
+        sys->A946ES.ARM.CodeSeq = false;
     }
     Schedule_Event(sys, IF9_Update, Evt_IF9Update, next);
 }
@@ -593,19 +682,19 @@ void Console_ClearHeldIRQs(Console* sys, const u8 irq, const bool a9)
     }
     Console_ScheduleIRQs(sys, irq, a9, timestamp_max); // what was this line supposed to do...? (i think its supposed to prevent spurious irqs???)
 }
+#endif
 
 void Console_MainLoop(Console* sys)
 {
-    CR_Start = true;
     sys->TimeFrac = 0;
     sys->OldTime = SDL_GetPerformanceCounter();
 #ifdef DUMPAUDIO
     sys->log = fopen("audioout.bin", "wb");
 #endif
 
-    while(!sys->KillThread)
+    while(sys->CoreRunning)
     {
-        NeoSched_RunEvent(sys);
+        Sched_RunEvent(sys);
     }
 
     return;

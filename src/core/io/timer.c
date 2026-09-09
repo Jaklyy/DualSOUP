@@ -1,5 +1,5 @@
 #include <stdckdint.h>
-#include "../console.h"
+#include "core/console.h"
 #include "timer.h"
 #include "sound.h"
 

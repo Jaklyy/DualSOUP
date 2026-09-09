@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../../utils.h"
+#include "core/utils.h"
 
 
 
@@ -52,22 +52,7 @@ typedef enum : u8
     ARMVector_FIQ = 0x1C, // Fast Interrupt Request
 } ARM_Exception_Vector_Offsets;
 
-// proper order of these matters
 typedef enum : u8
-{
-    ARMProg_Sleep,
-    ARMProg_RefillStart,
-    ARMProg_RefillStartBusy,
-    ARMProg_RefillMid,
-    ARMProg_RefillMidBusy,
-    ARMProg_Fetch,
-    ARMProg_FetchBusy,
-    ARMProg_Exec,
-    ARMProg_MemBusy,
-    ARMProg_SleepCheck,
-} ARMProg;
-
-typedef enum
 {
     ARMDataWidth_8,
     ARMDataWidth_16,
@@ -193,10 +178,10 @@ typedef struct
         u32 R[2];
         ARM_PSR SPSR;
     } UND_Bank;
-    u8 CPUID;
+    CPU_IDs CPUID;
     bool Privileged; // permissions
     bool CodeSeq; // should the next code fetch be sequential
-    ARMProg Prog;
+    u8 FlushProg;
     alignas(alignof(ARM_Instr)*4) ARM_Instr Instr[3]; // prefetch pipeline
     timestamp Timestamp;
     timestamp MinWakeup;

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/bus/bus.h"
 #ifdef __SSE2__
     #include <emmintrin.h>
     #include <string.h>
@@ -43,6 +44,7 @@ constexpr u32 A946_TCMSizeReg = (A946_CP15DTCMSize << 18) // DTCM Size
 constexpr u32 A946_DCacheLineLength = 8; // words per line
 constexpr u32 A946_DCacheAssoc = 4; // Cache associativity; aka: lines per set
 constexpr u32 A946_DCacheSize = KiB(4);
+constexpr u32 A946_DCacheLineBytes = A946_DCacheLineLength * 4; // bytes per line
 constexpr u32 A946_DCacheIndices = A946_DCacheSize / A946_DCacheAssoc / A946_DCacheLineLength / 4; // 32
 constexpr u32 A946_DTagNum = A946_DCacheIndices * A946_DCacheAssoc; // 128 tags
 
@@ -50,6 +52,7 @@ constexpr u32 A946_DTagNum = A946_DCacheIndices * A946_DCacheAssoc; // 128 tags
 constexpr u32 A946_ICacheLineLength = 8; // words per line
 constexpr u32 A946_ICacheAssoc = 4; // Cache associativity; aka: lines per set
 constexpr u32 A946_ICacheSize = KiB(8);
+constexpr u32 A946_ICacheLineBytes = A946_ICacheLineLength * 4; // bytes per line
 constexpr u32 A946_ICacheIndices = A946_ICacheSize / A946_ICacheAssoc / A946_ICacheLineLength / 4; // 64
 constexpr u32 A946_ITagNum = A946_ICacheIndices * A946_ICacheAssoc; // 256 tags
 
@@ -161,57 +164,6 @@ typedef union
         u32 BaseAddr : 20;
     };
 } A946_RegionCR;
-
-typedef enum : u8
-{
-    A946WB_8,
-    A946WB_16,
-    A946WB_32,
-    A946WB_Addr,
-} A946_WBufferFlags;
-
-typedef struct
-{
-    alignas(u64)
-    u32 Data;
-    A946_WBufferFlags Flags;
-} A946_WBufferFIFO;
-
-typedef struct
-{
-    A946_WBufferFIFO FIFOEntry[16];
-    u32 Addr;
-    u8 FIFOFillPtr;
-    u8 FIFODrainPtr;
-    bool Empty;
-} A946_WBuffer; // Write Buffer
-
-typedef enum : u8
-{
-    A946BIU_DataNone,
-    A946BIU_DataCache,
-} A946_BIUDType;
-
-typedef enum : u8
-{
-    A946BIU_InstrNone,
-    A946BIU_InstrCache,
-    A946BIU_InstrSingle,
-} A946_BIUIType;
-
-typedef struct
-{
-    A946_WBuffer WBuffer;
-    u32 WriteVal[16]; // stm can do up to 16 values at a time
-    u32 DataAddr;
-    u32 InstrAddr;
-    A946_BIUDType DataType;
-    u8 DataMax;
-    u8 DataCur;
-    A946_BIUIType InstrType;
-    u8 InstrCur;
-    u8 InstrMax;
-} A946_BIU; // Bus Interface Unit
 
 typedef struct
 {
@@ -330,32 +282,160 @@ typedef enum : u8
 
 typedef enum : u8
 {
-    A946_BusNone,
-    A946_BusDone,
-    A946_BusGo,
-    A946_BusBusy,
-} A946_InternalBusFlags;
+    A946WB_8,
+    A946WB_16,
+    A946WB_32,
+    A946WB_Addr,
+} A946_WBufferFlags;
+
+typedef enum : u8
+{
+    A946BIU_DataNone,
+    A946BIU_DataLoad,
+    A946BIU_DataCache,
+    A946BIU_DataStore,
+    A946BIU_DataSwapLoad,
+    A946BIU_DataSwapStore,
+    A946BIU_DataSwapIdle,
+} A946_BIUDType;
+
+typedef enum : u8
+{
+    A946BIU_InstrNone,
+    A946BIU_InstrSingle,
+    A946BIU_InstrCache,
+} A946_BIUIType;
+
+typedef enum : u8
+{
+    A946BIUBurst_None,
+    A946BIUBurst_Data,
+    A946BIUBurst_Instr,
+    A946BIUBurst_Buffer,
+} A946_BIUCurrentBurst;
+
+typedef enum : u8
+{
+    A9ESDataCB_LoadSingle,
+    A9ESDataCB_StoreSingle,
+    A9ESDataCB_LoadMultiple,
+    A9ESDataCB_StoreMultiple,
+    A9ESDataCB_SwapLoad,
+    A9ESDataCB_SwapStore,
+} A9ES_DataCB;
+
+typedef struct
+{
+    union {
+        u32 RData[16];
+        u32 WrData[16];
+    };
+    u32 Addr;
+    u32 BaseRestore;
+    u16 RListOrig;
+    u16 RListRem;
+    u8 RBase;
+    u8 DataPtr; // used by biu and cache streaming
+    bool DataAbort;
+    u8 NumFetch;
+    u8 NumFetchCompleted;
+    ARM_DataWidth Size;
+    union {
+        bool Special; // ldm/stm
+        bool SignExt; // ldr
+    };
+    bool Priv;
+    u8 ILDelay;
+    bool ILRetry;
+    A9ES_DataCB DataCB;
+} A9ES_PostMem;
+
+typedef struct
+{
+    alignas(u64)
+    u32 Data;
+    A946_WBufferFlags Flags;
+} A946_WBufferFIFO;
+
+typedef struct
+{
+    A946_WBufferFIFO FIFOEntry[16];
+    u32 Addr;
+    u8 FIFOFillPtr;
+    u8 FIFODrainPtr;
+    bool Empty;
+    bool Full;
+    bool Seq;
+
+    A946_WBufferFIFO FIFOWaitList[17];
+    u8 BufferInsCur;
+    u8 BufferInsMax;
+} A946_WBuffer; // Write Buffer
+
+typedef enum : u8
+{
+    A946WBCause_Inactive,
+    A946WBCause_DataDir,
+    A946WBCause_CP15,
+    A946WBCause_DCache,
+} A946_WBCause;
+
+typedef struct
+{
+    A946_WBuffer WBuffer;
+    u32 WriteVal[16]; // stm can do up to 16 values at a time
+    u32 DataAddr;
+    u32 InstrAddr;
+    A946_BIUDType DataType;
+    u8 DataMax;
+    u8 DataSubmCur;
+    u8 DataCompCur;
+    AHB_HPROT DataProt;
+    ARM_DataWidth DataWidth;
+    A946_BIUIType InstrType;
+    u8 InstrMax;
+    u8 InstrSubmCur;
+    u8 InstrCompCur;
+
+    // hacky bullshit zone: TODO: make this not stupid
+    A946_WBCause WBFill;
+    bool InstrFlushWriteBuffer;
+    bool wbfillstupidcont;
+
+    bool BIUBusy;
+    A946_BIUCurrentBurst BurstCur;
+} A946_BIU; // Bus Interface Unit
 
 typedef struct
 {
     ARM ARM;
     A946_BIU BIU;
-    union
-    {
-        struct
-        {
+    union {
+        struct {
             s8 Cur; // test as no interlock via: !(& 0x10)
             s8 Next; // should always be set as: (reg | 0x80)
         };
         s16 Raw; // move Next to Cur via (>>= 8) to automatically set as none via sign extension.
     } RegIL; // should be initialized as -1
-    A946_InternalBusFlags IBus;
-    A946_InternalBusFlags DBus;
-    s8 IStreamWait;
-    s8 DStreamWait;
-    u16 IStreamIndex;
-    u16 DStreamIndex;
-    s8 WriteBufferWait;
+    //A946_InternalBusFlags IBus;
+    //A946_InternalBusFlags DBus;
+    struct
+    {
+        bool DataGo : 1;
+        bool InstrGo : 1;
+        bool DataDone : 1;
+        bool InstrDone : 1;
+        bool DataBusy : 1;
+        bool InstrBusy : 1;
+        bool InstrLate : 1;
+    } BusFlags;
+    s8 IStreamWaitCur;
+    s8 DStreamWaitCur;
+    s8 DStreamWaitEnd;
+    u16 IStreamPtr;
+    u16 DStreamPtr;
+
+    A9ES_PostMem PostMem;
 
     u32 InstrLatch; // used for thumb upper halfword fetches (speculative: 32 bit?)
     bool ITCMMultiplexData; // is itcm multiplexer set to data?
@@ -373,13 +453,10 @@ typedef struct
     timestamp DataTS;
     timestamp DataWrStall;
     A946_InstrBus InstrBus; // cached
-    struct
-    {
-        union
-        {
+    struct {
+        union {
             u32 Raw;
-            struct
-            {
+            struct {
                 bool MPUEnable : 1;
                 bool : 1;
                 bool DCacheEnable : 1;
@@ -431,10 +508,10 @@ typedef struct
 // ensure casting between the two types works as expected
 static_assert(offsetof(ARM946ES, ARM) == 0);
 
-extern void (*A9ES_InstructionLUT[0x1000])(ARM*, ARM_Instr);
-extern s8 (*A9ES_InterlockLUT[0x1000])(ARM946ES*, ARM_Instr, s8, s8, s8);
-extern void (*T9ES_InstructionLUT[64])(ARM*, ARM_Instr);
-extern s8 (*T9ES_InterlockLUT[64])(ARM946ES*, ARM_Instr, s8, s8, s8);
+extern void (*A9ES_InstructionLUT[0x1000])(ARM*, const ARM_Instr);
+extern s8 (*A9ES_InterlockLUT[0x1000])(const ARM_Instr, const s8, const s8, const s8, bool*);
+extern void (*T9ES_InstructionLUT[64])(ARM*, const ARM_Instr);
+extern s8 (*T9ES_InterlockLUT[64])(const ARM_Instr, const s8, const s8, const s8, bool*);
 
 // run to initialize the cpu.
 // assumes everything was zero'd out.
@@ -442,7 +519,8 @@ extern s8 (*T9ES_InterlockLUT[64])(ARM946ES*, ARM_Instr, s8, s8, s8);
 void A946_Init(ARM946ES* a946, Console* sys);
 
 // ARM9 handler entrypoint
-void A946_MainLoop(ARM946ES* a946);
+void A946_Run(ARM946ES* a946);
+void A946_BIURun(ARM946ES* a946, timestamp now);
 
 // TEMP: debugging
 void A946_Log(ARM946ES* a946);
@@ -464,34 +542,50 @@ void T9ES_SupervisorCall(ARM* arm, const ARM_Instr instr_data); // aka: software
 void T9ES_PrefetchAbort(ARM* arm, const ARM_Instr instr_data);
 
 // setters and getters
-[[nodiscard]] u32 A9ES_GetReg(ARM946ES* a9es, const s32 reg); // read register.
-void A9ES_SetReg(ARM946ES* a9es, const s32 reg, u32 val); // write register.
+[[nodiscard]] u32 A9ES_GetReg(ARM946ES* a9es, const u8 reg); // read register.
+void A9ES_SetReg(ARM946ES* a9es, const u8 reg, u32 val); // write register.
 void A9ES_SetPC(ARM946ES* a9es, u32 addr); // write program counter (r15).
 [[nodiscard]] ARM_PSR A9ES_GetSPSR(ARM946ES* a9es);
 void A9ES_SetSPSR(ARM946ES* a9es, ARM_PSR psr); // NOTE: this has no sanity checking for the inputs.
 
 // interlock handlers
-s8 A9ES_DecodeInterlocks(ARM946ES* a9es, const bool thumb, const s8 reg, const s8 len, const s8 len_c);
+[[nodiscard]] s8 A9ES_DecodeInterlocks(ARM946ES* a9es, const bool thumb, const s8 reg, const s8 len, const s8 len_c, bool* retry);
 inline void A9ES_SetTwoCycleInterlock(ARM946ES* a9es, const u8 reg);
+[[nodiscard]] s8 A9ES_TestTwoCycleInterlocks(ARM946ES* a9es);
 
 // add execute stage cycles.
-void A9ES_ExecuteCycles(ARM946ES* ARM9, const s32 execute);
+void A9ES_ExecuteCycles(ARM946ES* a9es, const u8 execute);
+
+void A946_BIUSched(ARM946ES* a946, const timestamp now);
+
+void A9ES_DataGo(ARM946ES* a9es, const A9ES_PostMem* postmem);
+void A9ES_DataDone(ARM946ES* a9es);
+void A9ES_DataBusy(ARM946ES* a9es);
+
+void A9ES_InstrGo(ARM946ES* a9es, const bool late);
+void A9ES_InstrDone(ARM946ES* a9es);
+void A9ES_InstrBusy(ARM946ES* a9es);
 
 void A946_UpdateInstrRegion(ARM946ES* a946); // should be run on nonsequentials or when crossing 4 KiB boundaries.
 void A946_InstrRead(ARM946ES* a946, timestamp now);
 
 // misc cleanup functions
 void A946_InstrRead_Post(ARM946ES* a946, const u32 addr);
-void A946_AddMemCycles(ARM946ES* a946);
+void A946_BIUSubmPost(ARM946ES* a946, timestamp now);
+void A946_BIUCompPost(ARM946ES* a946, timestamp now, u32 rdata, const BusCallbacks cb);
+
+void A9ES_STR_Post(ARM946ES* a9es);
+void A9ES_LDR_Post(ARM946ES* a9es);
+void A9ES_STM_Post(ARM946ES* a9es);
+void A9ES_LDM_Post(ARM946ES* a9es);
+void A9ES_SWPLoad_Post(ARM946ES* a9es);
+void A9ES_SWPStore_Post(ARM946ES* a9es);
+void A9ES_MemCallbacks(ARM946ES* a9es);
 
 // read/write handlers
-[[nodiscard]] u32 A946_DataRead32(ARM946ES* a946, u32 addr, bool* seq, bool* dabt);
-[[nodiscard]] u16 A946_DataRead16(ARM946ES* a946, u32 addr, bool* seq, bool* dabt);
-[[nodiscard]] u32 A946_DataRead8(ARM946ES* a946, u32 addr, bool* seq, bool* dabt);
-void A946_DataWrite32(ARM946ES* a946, u32 addr, u32 val, const bool atomic, const bool deferrable, bool* seq, bool* dabt);
-void A946_DataWrite16(ARM946ES* a946, u32 addr, u32 val, bool* seq, bool* dabt);
-void A946_DataWrite8(ARM946ES* a946, u32 addr, u32 val, const bool atomic, bool* seq, bool* dabt);
-[[nodiscard]] bool A9ES_RotateExtendUnit(u32* val, const u32 addr, const ARM_DataWidth size, const bool signext, const bool bigendian);
+void A946_DataRead(ARM946ES* a946, timestamp now);
+void A946_DataWrite(ARM946ES* a946, timestamp now);
+void A9ES_RotateExtendUnit(u32* val, const u32 addr, const ARM_DataWidth size, const bool signext, const bool bigendian);
 
 void A9ES_Uncond(ARM* cpu, const ARM_Instr instr_data); // idk where to put this tbh
 
@@ -501,9 +595,32 @@ void A946_ConfigureDTCM(ARM946ES* a946);
 void A946_ConfigureMPURegionSize(ARM946ES* a946, const u8 rgn);
 void A946_ConfigureMPURegionPerms(ARM946ES* a946);
 
+// system control handlers
+void A946_CP15Write(ARM946ES* ARM9, const u16 cmd, const u32 val);
+u32 A946_CP15Read(ARM946ES* ARM9, const u16 cmd);
+
 // cache handlers
-bool A946_DCacheReadLookup(ARM946ES* a946, const u32 addr, timestamp now, u32* data);
+void A946_DCacheReadLookup(ARM946ES* a946, const AHB_HPROT prot, const u32 addr, const timestamp now, const u8 numfetch);
+bool A946_DCacheWriteLookup(ARM946ES* a946, const u32 addr, const timestamp now, const u32 wrlanes, const u8 numfetch, const bool bufferable);
+void A946_DCacheFlushAddr(ARM946ES* a946, u32 addr);
+void A946_DCacheFlushAll(ARM946ES* a946);
+void A946_DCacheCleanLine(ARM946ES* a946, timestamp now, const u32 idxset, const bool cp15);
+void A946_DCacheCleanFlushLine(ARM946ES* a946, timestamp now, const u32 idxset);
+void A946_DCacheCleanIdxSet(ARM946ES* a946, timestamp now, const u32 val);
+void A946_DCacheCleanFlushIdxSet(ARM946ES* a946, timestamp now, const u32 val);
+void A946_DCacheCleanAddr(ARM946ES* a946, timestamp now, const u32 addr);
+void A946_DCacheCleanFlushAddr(ARM946ES* a946, timestamp now, const u32 addr);
+
 bool A946_ICacheLookup(ARM946ES* a946, const u32 addr, timestamp now, u32* instr);
+void A946_ICacheFlushAddr(ARM946ES* a946, u32 addr);
+void A946_ICacheFlushAll(ARM946ES* a946);
+void A946_ICachePrefetch(ARM946ES* a946, const u32 addr, timestamp now);
+
+void A946_DCacheStream_Post(ARM946ES* a946, u32 rdata, timestamp now);
+void A946_ICacheStream_Post(ARM946ES* a946, u32 rdata, timestamp now);
+
+void A946_WriteBufferFill(ARM946ES* a946, const timestamp now, u32* datastart, const u32 addr, const ARM_DataWidth size, const u8 words, const A946_WBCause cause);
+void A946_WriteBufferFillRun(ARM946ES* a946, const timestamp now);
 
 // Logging
 void A946_DumpMPU(const ARM946ES* a946);

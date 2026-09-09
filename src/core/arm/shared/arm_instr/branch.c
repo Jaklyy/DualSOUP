@@ -1,4 +1,4 @@
-#include "../../../utils.h"
+#include "core/utils.h"
 #include "../arm.h"
 #include "../inc.h"
 
@@ -85,11 +85,11 @@ void ARM_BranchExchange(ARM* cpu, const ARM_Instr instr_data)
     ARM_SetReg(15, addr);
 }
 
-s8 ARM9_BranchExchange_Interlocks(ARM946ES* ARM9, const ARM_Instr instr_data)
+s8 A9ES_BranchExchange_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c [[maybe_unused]], bool* retry [[maybe_unused]])
 {
     const union ARM_BranchExchange_Decode instr = {.Raw = instr_data.Raw};
-    s8 stall = 0;
 
-    ARM9_CheckInterlocks(ARM9, &stall, instr.Rm, 0, false);
-    return stall;
+    if (instr.Rm == reg) return len;
+
+    return 0;
 }

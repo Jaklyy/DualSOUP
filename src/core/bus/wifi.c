@@ -1,6 +1,7 @@
-#include "../utils.h"
-#include "../console.h"
-#include "ahb.h"
+#include "core/utils.h"
+#include "core/console.h"
+#include "bus.h"
+#include "core/scheduler.h"
 
 
 
@@ -11,29 +12,24 @@ void WiFi_Init(Console* sys)
     sys->WiFiBB[0x64] = 0xFF;
 }
 
-u32 WiFi_Read(Console* sys, timestamp* ts [[maybe_unused]], u32 addr, const AHB_HSIZE size, const bool timings)
+void WiFi_Read(Console* sys, u32* rdata, timestamp* now, const u32 addr, const AHB_HSIZE size)
 {
-    u32 ret;
-
     if (!sys->PowerCR7.WifiPower // checkme: does this return 0?
         || (addr >= 0x04810000)) // melonds does this deliberately so im gonna assume this is how this works?
     {
-        if (timings) Timing32(&sys->AHB9); // checkme
-        return 0;
+        *now += DSClk33(1); // checkme
+        *rdata = 0;
+        return;
     }
 
-    if (timings) Timing32(&sys->AHB7); // TODO
+    *now += DSClk33(1); // TODO
 
     switch (addr & 0x6000)
     {
-        case 0x0000: // io?
-            break;
-        case 0x2000: // idk lets just blindly trust melonds here
-            return 0xFFFFFFFF;
-        case 0x4000: // ram
-            return MemoryRead(32, sys->WiFiRAM, addr, WiFiRAM_Size);
-        case 0x6000: // ???
-            break;
+        case 0x0000: break; // io?
+        case 0x2000: *rdata = 0xFFFFFFFF; return; // idk lets just blindly trust melonds here
+        case 0x4000: *rdata = MemoryRead(32, sys->WiFiRAM, addr, WiFiRAM_Size); return; // ram
+        case 0x6000: break; // ???
         default: unreachable();
     }
 
@@ -41,48 +37,44 @@ u32 WiFi_Read(Console* sys, timestamp* ts [[maybe_unused]], u32 addr, const AHB_
     switch (addr & 0xFFC)
     {
         case 0x034:
-            ret = sys->WiFiPowerUS.Raw << 16;
+            *rdata = sys->WiFiPowerUS.Raw << 16;
             break;
         case 0x03C:
-            ret = 0x0200;
+            *rdata = 0x0200;
             break;
         case 0x158:
-            ret = 0;
+            *rdata = 0;
             break;
         case 0x15C:
-            ret = (sys->WiFiPowerUS.PowerOff ? 0 : sys->WiFiBBRdBuf);
+            *rdata = (sys->WiFiPowerUS.PowerOff ? 0 : sys->WiFiBBRdBuf);
             break;
         case 0x180:
-            ret = 0;
+            *rdata = 0;
             break;
         case 0x214:
-            ret = 9;
+            *rdata = 9;
             break;
         default:
-            ret = MemoryRead(32, sys->WifiIO, addr, 0x1000); // TODO
+            *rdata = MemoryRead(32, sys->WifiIO, addr, 0x1000); // TODO
+            LogPrint(LOG_UNIMP|LOG_WIFI, "NTR Bus7: Unimplemented READ%"PRIu32": WiFi IO %08"PRIX32" %08"PRIX32"\n", (8<<size), addr, *rdata);
             break;
     }
-    if (timings) LogPrint(LOG_UNIMP|LOG_WIFI, "NTR_AHB7: Unimplemented READ%i: WiFi IO %08X %08X\n", (8<<size), addr, ret);
-    return ret;
 }
 
-void WiFi_Write(Console* sys, timestamp* ts [[maybe_unused]], u32 addr, const u32 val, const u32 mask, const bool timings)
+void WiFi_Write(Console* sys, timestamp* now, const u32 addr, const u32 wrdata, const u32 mask)
 {
-    const unsigned width = stdc_count_ones(mask);
+    const u32 width = stdc_count_ones(mask);
 
     if (!sys->PowerCR7.WifiPower
         || (addr >= 0x04810000) // melonds does this deliberately so im gonna assume this is how this works?
         || (width == 8)) // checkme: gbatek claims 8 bit wide writes dont work for the wifi region?
     {
-        if (timings)
-        {
-            // CHECKME: contention for bytes?
-            Timing32(&sys->AHB9); // checkme?
-        }
+        // CHECKME: contention for bytes?
+        *now += DSClk33(1); // TODO // checkme?
         return;
     }
 
-    if (timings) Timing32(&sys->AHB7); // TODO
+    *now += DSClk33(1); // TODO
 
     switch (addr & 0x6000)
     {
@@ -91,7 +83,7 @@ void WiFi_Write(Console* sys, timestamp* ts [[maybe_unused]], u32 addr, const u3
         case 0x2000: // idk lets just blindly trust melonds here
             return;
         case 0x4000: // ram
-            MemoryWrite(32, sys->WiFiRAM, addr, WiFiRAM_Size, val, mask);
+            MemoryWrite(32, sys->WiFiRAM, addr, WiFiRAM_Size, wrdata, mask);
             return;
         case 0x6000: // ???
             break;
@@ -104,7 +96,7 @@ void WiFi_Write(Console* sys, timestamp* ts [[maybe_unused]], u32 addr, const u3
         case 0x034:
             if (mask & 0xFFFF0000)
             {
-                MaskedWrite(sys->WiFiPowerUS.Raw, val >> 16, 0x3);
+                MaskedWrite(sys->WiFiPowerUS.Raw, wrdata >> 16, 0x3);
             }
             break;
 
@@ -112,8 +104,8 @@ void WiFi_Write(Console* sys, timestamp* ts [[maybe_unused]], u32 addr, const u3
             if (sys->WiFiPowerUS.PowerOff) break; // checkme
             if (mask & 0x0000FFFF)
             {
-                u8 idx = (val & 0xFF);
-                if ((val >> 12) == 5)
+                u8 idx = (wrdata & 0xFF);
+                if ((wrdata >> 12) == 5)
                 {
                     bool pass;
                     if (idx < 0x40)
@@ -132,25 +124,25 @@ void WiFi_Write(Console* sys, timestamp* ts [[maybe_unused]], u32 addr, const u3
                     }
                     else
                     {
-                        LogPrint(LOG_WIFI, "INV ");
+                        LogPrint(LOG_WIFI, "Invalid ");
                     }
-                    LogPrint(LOG_WIFI, "BB WR: %02X %02X\n", idx, sys->WiFiBBWrBuf);
+                    LogPrint(LOG_WIFI, "BB WR: %02"PRIX8" %02"PRIX8"\n", idx, sys->WiFiBBWrBuf);
                 }
-                else if ((val >> 12) == 6)
+                else if ((wrdata >> 12) == 6)
                 {
                     sys->WiFiBBRdBuf = sys->WiFiBB[idx];
-                    LogPrint(LOG_WIFI, "BB RD: %02X %02X\n", idx, sys->WiFiBBRdBuf);
+                    LogPrint(LOG_WIFI, "BB RD: %02"PRIX8" %02"PRIX8"\n", idx, sys->WiFiBBRdBuf);
                 }
             }
             if (mask & 0xFFFF0000)
             {
-                sys->WiFiBBWrBuf = (val >> 16) & 0xFF;
+                sys->WiFiBBWrBuf = (wrdata >> 16) & 0xFF;
             }
             break;
 
         default:
-            MemoryWrite(32, sys->WifiIO, addr, 0x1000, val, mask); // TODO
+            LogPrint(LOG_UNIMP|LOG_WIFI, "NTR Bus7: Unimplemented WRITE%"PRIu32": WiFi IO %08"PRIX32" %08"PRIX32"\n", width, addr, wrdata);
+            MemoryWrite(32, sys->WifiIO, addr, 0x1000, wrdata, mask); // TODO
             break;
     }
-    if (timings) LogPrint(LOG_UNIMP|LOG_WIFI, "NTR_AHB7: Unimplemented WRITE%i: WiFi IO %08X %08X %08X\n", width, addr, val, mask);
 }

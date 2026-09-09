@@ -1,9 +1,9 @@
 #pragma once
+#include "utils.h"
 
 
 
-
-enum IRQs
+typedef enum
 {
     // AGB irqs
     IRQ_VBlank,
@@ -36,4 +36,7 @@ enum IRQs
     IRQ_WiFi, // arm7
 
     IRQ_Max
-};
+} IRQIDs;
+
+constexpr u32 IRQ9_LevelSens = (1<<IRQ_3DFIFO);
+constexpr u32 IRQ7_LevelSens = 0;

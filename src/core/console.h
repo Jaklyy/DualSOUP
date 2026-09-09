@@ -12,13 +12,13 @@
 #include "irq.h"
 #include "arm/arm9/arm.h"
 #include "arm/arm7/arm.h"
-#include "bus/ahb.h"
+#include "bus/bus.h"
 #include "io/sound.h"
 #include "io/timer.h"
 #include "io/dma.h"
 #include "io/rtc.h"
 #include "io/tsc.h"
-#include "io/powman.h"
+#include "io/pmic.h"
 #include "carts/gamecard.h"
 #include "carts/gamepak.h"
 #include "sram/flash.h"
@@ -76,7 +76,7 @@ constexpr size_t IWRAM_Size       = KiB(32);
 constexpr size_t AGBBios_Size     = KiB(16);
 
 // NDS
-constexpr size_t MainRAM_Size     = MiB(4);
+constexpr size_t MainRAM_Size     = MiB(4); // TODO: raise to 32MiB in future? (dynamically allocate?)
 constexpr size_t SharedWRAM_Size  = KiB(32);
 constexpr size_t ARM7WRAM_Size    = KiB(64);
 constexpr size_t NTRBios9_Size    = KiB(4);
@@ -109,7 +109,7 @@ typedef enum : u8
     VRAMID_MAX [[maybe_unused]], 
 } VRAMBankIDs;
 
-union VRAMCR
+typedef union
 {
     u8 Raw;
     struct
@@ -119,10 +119,9 @@ union VRAMCR
         u32 : 2;
         bool Enable : 1;
     };
-};
+} VRAMCR;
 
-
-struct IPCFIFO
+typedef struct
 {
     union 
     {
@@ -141,36 +140,32 @@ struct IPCFIFO
             bool EnableFIFOs : 1;
         };
     } CR;
-    s8 FillPtr;
-    s8 DrainPtr;
+    u8 FillPtr;
+    u8 DrainPtr;
     u32 FIFO[16];
-};
+} IPCFIFO;
+
+typedef enum
+{
+    Prot7_Inactive = 0,
+    Prot7_Partial  = 1 << 0,
+    Prot7_Full     = 1 << 1
+} Bios7Prot;
 
 typedef struct Console
 {
-    ARM946ES ARM9;
-    ARM7TDMI ARM7;
+    ARM946ES A946ES;
+    ARM7TDMI A7TDMI;
 
     struct DMA_Controller DMA9;
     struct DMA_Controller DMA7;
 
-    AHB AHB9;
-    Bus7 Bus7;
+    BusImpl Bus9;
+    BusImpl Bus7;
     BusMainRAM BusMR;
     timestamp AHBBusyTS[Dev_Max];
 
-    coroutine HandleARM9;
-    coroutine HandleARM7;
-
-    timestamp MainTarget;
-    timestamp A9Sync;
-    timestamp A7Sync;
-    bool Sleep9;
-    bool Sleep7;
-    bool MR9;
-    bool MR7;
-
-    NeoSched Sched;
+    Sched Sched;
 
     alignas(HOST_CACHEALIGN) timestamp IRQSched9[IRQ_Max];
 
@@ -187,25 +182,22 @@ typedef struct Console
 
     bool IME9;
     bool IME7;
+    bool A7ClkDisable;
 
-    alignas(u32) union VRAMCR VRAMCR[9];
+    alignas(u32) VRAMCR VRAMCR[9];
     u8 WRAMCR;
     bool PostFlag;
     bool PostFlagA9Bit;
     u32 IE9;
     u32 IF9;
-    u32 IF9HoldQueue;
-    u32 IF9Held;
-    u32 IE7;
-    u32 IF7;
-    u32 IF7HoldQueue;
-    u32 IF7Held;
+    u32 IF9Persist;
+    u64 IE7;
+    u64 IF7;
+    u64 IF7Persist;
     u32 DMAFill[4];
-    union
-    {
+    union {
         u16 Raw;
-        struct
-        {
+        struct {
             u16 : 3;
             bool VBlankIRQ : 1;
             bool HBlankIRQ : 1;
@@ -215,11 +207,9 @@ typedef struct Console
             u16 VCountLSB : 8;
         };
     } DispStatRW9;
-    union
-    {
+    union {
         u16 Raw;
-        struct
-        {
+        struct {
             u16 : 3;
             bool VBlankIRQ : 1;
             bool HBlankIRQ : 1;
@@ -235,11 +225,9 @@ typedef struct Console
     u16 VCountNew7;
     bool VCountUpdate9;
     bool VCountUpdate7;
-    union
-    {
+    union {
         u8 Raw;
-        struct
-        {
+        struct {
             bool VBlank : 1;
             bool HBlank : 1;
             bool VCountMatch : 1;
@@ -247,11 +235,9 @@ typedef struct Console
             bool LCDReady : 1;
         };
     } DispStatRO9;
-    union
-    {
+    union {
         u8 Raw;
-        struct
-        {
+        struct {
             bool VBlank : 1;
             bool HBlank : 1;
             bool VCountMatch : 1;
@@ -263,33 +249,27 @@ typedef struct Console
     struct Timer Timers9[4];
     struct Timer Timers7[20];
 
-    union
-    {
+    union {
         u8 Raw;
-        struct
-        {
+        struct {
             u8 GBARAMTimings : 2;
             u8 GBAROMTimingsNS : 2;
             u8 GBAROMTimingsSeq : 1;
             u8 GBAPHIClock : 2;
         };
     } ExtMemCR_7;
-    union
-    {
+    union {
         u8 Raw;
-        struct
-        {
+        struct {
             u8 GBARAMTimings : 2;
             u8 GBAROMTimingsNS : 2;
             u8 GBAROMTimingsSeq : 1;
             u8 GBAPHIClock : 2;
         };
     } ExtMemCR_9;
-    union
-    {
+    union {
         u16 Raw;
-        struct
-        {
+        struct {
             u16 : 7;
             bool GBAPakA7Access : 1; // enabled = arm7
             u16 : 1;
@@ -303,11 +283,9 @@ typedef struct Console
         };
     } ExtMemCR_Shared;
 
-    union
-    {
+    union {
         u16 Raw;
-        struct
-        {
+        struct {
             bool LCDPower : 1; // might be able to damage lcds?
             bool PPUAPower : 1;
             bool GPURasterizerPower : 1;
@@ -319,21 +297,17 @@ typedef struct Console
         };
     } PowerCR9;
 
-    union
-    {
+    union {
         u8 Raw;
-        struct
-        {
+        struct {
             bool AudioPower : 1;
             bool WifiPower : 1;
         };
     } PowerCR7;
 
-    union
-    {
+    union {
         u16 Raw;
-        struct
-        {
+        struct {
             u16 DivMode : 2;
             u16 : 12;
             bool DivByZero : 1;
@@ -341,51 +315,44 @@ typedef struct Console
         };
     } DivCR;
 
-    union
-    {
+    union {
         s32 b32[2];
         s64 b64;
     } DivNum;
 
-    union
-    {
+    union {
         s32 b32[2];
         s64 b64;
     } DivDen;
 
-    union
-    {
+    union {
         s32 b32[2];
         s64 b64;
     } DivQuo;
 
-    union
-    {
+    union {
         s32 b32[2];
         s64 b64;
     } DivRem;
 
-    union
-    {
+    union {
         s32 b32[2];
         s64 b64;
     } SqrtParam;
 
     u32 SqrtRes;
 
-    union
-    {
+    union {
         u16 Raw;
-        struct
-        {
+        struct {
             bool Use64Bits : 1;
             u16 : 14;
             bool Busy : 1;
         };
     } SqrtCR;
 
-    struct IPCFIFO IPCFIFO7;
-    struct IPCFIFO IPCFIFO9;
+    IPCFIFO IPCFIFO7;
+    IPCFIFO IPCFIFO9;
 
     PPU PPU_A;
     PPU PPU_B;
@@ -394,11 +361,9 @@ typedef struct Console
 
     Flash Firmware;
 
-    union
-    {
+    union {
         u16 Raw;
-        struct
-        {
+        struct {
             u16 Baudrate : 2;
             u16 : 5;
             bool Busy : 1;
@@ -415,11 +380,9 @@ typedef struct Console
 
     u8 GCSPIBuf;
     u8 GCSPIOut[2]; // [cpu]
-    union
-    {
+    union {
         u16 Raw;
-        struct
-        {
+        struct {
             u16 Baudrate : 2;
             u16 : 4;
             bool ChipSelect : 1;
@@ -431,11 +394,9 @@ typedef struct Console
         };
     } GCSPICR[2]; // [cpu]
 
-    union
-    {
+    union {
         u32 Raw;
-        struct
-        {
+        struct {
             u32 Key1Gap : 13;
             bool Key2Encryption : 1;
             bool GodKnows : 1;
@@ -454,21 +415,17 @@ typedef struct Console
 
     u32 GCROMData[2]; // [cpu]
 
-    union
-    {
+    union {
         u64 Raw;
-        struct
-        {
+        struct {
             u32 Lo;
             u32 Hi; 
         };
     } GCCommandPort[2]; // [cpu]
 
-    union
-    {
+    union {
         u64 Raw : 32+7;
-        struct
-        {
+        struct {
             u32 Lo;
             u32 Hi : 7; 
         };
@@ -481,29 +438,26 @@ typedef struct Console
     u16 RCR;
 
     u16 Bios7Prot;
+    u16 Bios7ProtCur;
 
-    Powman Powman;
+    PMIC PMIC;
     TSC TSC;
 
     u8 WiFiBBWrBuf;
     u8 WiFiBBRdBuf;
 
     u8 WiFiBB[256]; // checkme: how many?
-    union
-    {
+    union {
         u8 Raw;
-        struct
-        {
+        struct {
             bool PowerOff : 1;
             bool UNK : 1;
         };
     } WiFiPowerUS;
 
-    union
-    {
+    union {
         u16 Raw;
-        struct
-        {
+        struct {
             u16 MasterVol : 7;
             bool : 1;
             u16 LeftSrc : 2;
@@ -530,50 +484,9 @@ typedef struct Console
     u64 TimeFrac;
     volatile double FrameTime;
     volatile double FrameTimeActual;
+    bool CoreRunning;
     bool DirectBoot;
 
-
-    alignas(HOST_CACHEALIGN)
-    // FCRAM
-    MEMORY(MainRAM, MainRAM_Size);
-    // WRAM
-    union
-    {
-        MEMORY(IWRAM,      IWRAM_Size); // gba (checkme: is this mapped to swram or a7wram on nds models? it uses the same mapping as swram on 3ds at least)
-        MEMORY(SharedWRAM, SharedWRAM_Size);
-        struct
-        {
-            MEMORY(SharedWRAMLo, SharedWRAM_Size/2);
-            MEMORY(SharedWRAMHi, SharedWRAM_Size/2);
-        };
-    };
-    MEMORY(ARM7WRAM, ARM7WRAM_Size); // nds
-    // VRAM
-    MEMORY(VRAM_A, VRAM_A_Size);
-    MEMORY(VRAM_B, VRAM_B_Size);
-    union
-    {
-        MEMORY(EWRAM, EWRAM_Size); // gba
-        struct
-        {
-            MEMORY(VRAM_C, VRAM_C_Size);
-            MEMORY(VRAM_D, VRAM_D_Size);
-        }; // nds
-    };
-    MEMORY(VRAM_E, VRAM_E_Size);
-    MEMORY(VRAM_F, VRAM_F_Size);
-    MEMORY(VRAM_G, VRAM_G_Size);
-    MEMORY(VRAM_H, VRAM_H_Size);
-    MEMORY(VRAM_I, VRAM_I_Size);
-    // Video Misc
-    MEMORY(Palette, Palette_Size);
-    MEMORY(OAM,     OAM_Size);
-    // BIOS
-    MEMORY(NTRBios9, NTRBios9_Size);
-    MEMORY(NTRBios7, NTRBios7_Size);
-    MEMORY(AGBBios,  AGBBios_Size);
-    MEMORY(WiFiRAM, WiFiRAM_Size);
-    MEMORY(WifiIO, 0x1000); // TEMP
 
     alignas(HOST_CACHEALIGN) // ppu a sync area
     volatile timestamp PPUATimestamp;
@@ -610,7 +523,48 @@ typedef struct Console
     volatile bool KillThread;
     u64 dummy; // for debugging i guess
     FILE* log;
+
+
+    alignas(HOST_CACHEALIGN)
+    // WRAM
+    union {
+        MEMORY(IWRAM,      IWRAM_Size); // gba (checkme: is this mapped to swram or a7wram on nds models? it uses the same mapping as swram on 3ds at least)
+        MEMORY(SharedWRAM, SharedWRAM_Size);
+        struct {
+            MEMORY(SharedWRAMLo, SharedWRAM_Size/2);
+            MEMORY(SharedWRAMHi, SharedWRAM_Size/2);
+        };
+    };
+    MEMORY(ARM7WRAM, ARM7WRAM_Size); // nds
+    // VRAM
+    MEMORY(VRAM_A, VRAM_A_Size);
+    MEMORY(VRAM_B, VRAM_B_Size);
+    union {
+        MEMORY(EWRAM, EWRAM_Size); // gba
+        struct {
+            MEMORY(VRAM_C, VRAM_C_Size);
+            MEMORY(VRAM_D, VRAM_D_Size);
+        }; // nds
+    };
+    MEMORY(VRAM_E, VRAM_E_Size);
+    MEMORY(VRAM_F, VRAM_F_Size);
+    MEMORY(VRAM_G, VRAM_G_Size);
+    MEMORY(VRAM_H, VRAM_H_Size);
+    MEMORY(VRAM_I, VRAM_I_Size);
+    // Video Misc
+    MEMORY(Palette, Palette_Size);
+    MEMORY(OAM,     OAM_Size);
+    MEMORY(WiFiRAM, WiFiRAM_Size);
+    MEMORY(WifiIO, 0x1000); // TEMP
+    // FCRAM
+    MEMORY(MainRAM, MainRAM_Size);
+    // BIOS
+    MEMORY(NTRBios9, NTRBios9_Size);
+    MEMORY(NTRBios7, NTRBios7_Size);
+    MEMORY(AGBBios,  AGBBios_Size);
 } Console;
+
+void IPC_FIFOInit(IPCFIFO* fifo); // pretend i put this in a better spot
 
 // initialize a console to a clean state.
 // if a nullptr is passed then it will allocate and initialize a console from scratch.
@@ -626,8 +580,12 @@ void Console_DirectBoot(Console* sys);
 
 void Console_DebugLog(Console* sys);
 
-void Console_ScheduleIRQs(Console* sys, const u8 irq, const bool a9, timestamp time);
-void Console_ScheduleHeldIRQs(Console* sys, const u8 irq, const bool a9, timestamp time);
-void Console_ClearHeldIRQs(Console* sys, const u8 irq, const bool a9);
-bool Console_CheckARM9Wake(Console* sys);
+void IRQ9_Update(Console* sys, const timestamp now);
+void IF9_Clear(Console* sys, u32 wrdata, const timestamp now);
+void IF9_Set(Console* sys, const IRQIDs id, const timestamp now);
+void LevelIRQ9_Stop(Console* sys, const IRQIDs id);
+
 bool Console_CheckARM7Wake(Console* sys);
+void IRQ7_Update(Console* sys, const timestamp now);
+void IF7_Clear(Console* sys, u32 wrdata, const timestamp now);
+void IF7_Set(Console* sys, const IRQIDs id, const timestamp now);

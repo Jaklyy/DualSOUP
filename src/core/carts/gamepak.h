@@ -1,5 +1,5 @@
 #pragma once
-#include "../utils.h"
+#include "core/utils.h"
 
 
 
@@ -72,6 +72,7 @@ typedef struct
 } GamePak;
 
 
+// handlers for cart hardware
 void GamePak_Init(GamePak* pak);
 
 u16 GamePak_ROMRead(GamePak* pak, u32 addr);

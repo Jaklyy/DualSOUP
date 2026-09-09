@@ -1,3 +1,4 @@
+#include "core/arm/shared/arm.h"
 #include "core/utils.h"
 #include "core/scheduler.h"
 #include "../arm.h"
@@ -42,14 +43,17 @@ bool A946_ICacheLookup(ARM946ES* a946, const u32 addr, timestamp now, u32* instr
     a946->ITagRAM[index+set].Valid = true;
     a946->ITagRAM[index+set].TagBits = (tagcmp >> 1);
 
+    A9ES_InstrBusy(a946);
     // setup biu for cache streaming
-    a946->BIU.InstrCur = 0;
-    a946->BIU.InstrMax = 8;
     a946->BIU.InstrAddr = addr & ~0x1F; // a94646E-S does not implement wrapping bursts; must always start at beginning of cacheline
     a946->BIU.InstrType = A946BIU_InstrCache;
-    a946->IStreamWait = ((addr/4) & 0x7) + 1;
-    a946->IStreamIndex = (index+set) * A946_ICacheLineLength;
-    NeoSched_AddEventIfEarlier(a946->ARM.Sys, now, Evt_ARM9BIU);
+    a946->BIU.InstrMax = 8;
+    a946->BIU.InstrSubmCur = 0;
+    a946->BIU.InstrCompCur = 0;
+
+    a946->IStreamWaitCur = ((addr/4) & 0x7) + 1;
+    a946->IStreamPtr = (index+set) * A946_ICacheLineLength;
+    A946_BIUSched(a946, now);
     return false;
 }
 
@@ -60,16 +64,14 @@ void A946_ICacheFlushAddr(ARM946ES* a946, u32 addr)
     // TODO: IMPROVE CACHE STREAMING HANDLING
     A946_ICacheSetLookup
     if (set < A946_ICacheAssoc)
-    {
         a946->ITagRAM[index+set].Valid = false;
-    }
 }
 
 void A946_ICacheFlushAll(ARM946ES* a946)
 {
     // TODO: TIMINGS
     // TODO: IMPROVE CACHE STREAMING HANDLING
-    for (unsigned i = 0; i < countof(a946->ITagRAM); i++)
+    for (u32 i = 0; i < countof(a946->ITagRAM); i++)
         a946->ITagRAM[i].Valid = false;
 }
 
@@ -77,21 +79,28 @@ void A946_ICachePrefetch(ARM946ES* a946, const u32 addr, timestamp now)
 {
     // TODO: TIMINGS
     // TODO: IMPROVE CACHE STREAMING HANDLING
-    u32* dummy;
-    A946_ICacheLookup(a946, addr, now /* idfk how to pass this along */, dummy);
-    a946->IStreamWait = -1; // hacky; override icache stream wait
+    u32 dummy;
+    A946_ICacheLookup(a946, addr, now /* idfk how to pass this along */, &dummy);
+    a946->IStreamWaitCur = 0; // hacky; override icache stream wait
+    a946->ARM.CodeSeq = false; // hacky
 }
 
-bool A946_DCacheReadLookup(ARM946ES* a946, const u32 addr, timestamp now, u32* data)
+void A946_DCacheReadLookup(ARM946ES* a946, const AHB_HPROT prot, const u32 addr, const timestamp now, const u8 numfetch)
 {
     A946_DCacheSetLookup
 
-    // if we found a valid set we use that set.
+    // if we found a valid set use that set to lookup into dcache
     if (set < A946_DCacheAssoc)
     {
-        // use set to lookup into dcache
-        *data = a946->DCache.b32[((index | set)<<3) | ((addr/sizeof(u32)) & 0x7)];
-        return true;
+        u32 cachebase = ((index | set)<<3) | ((addr/4) & 0x7);
+        for (u8 i = 0; i < numfetch; i++)
+            a946->PostMem.RData[i+a946->PostMem.NumFetchCompleted] = a946->DCache.b32[cachebase + i];
+
+        a946->DataTS = now + DSClk67(numfetch);
+        a946->PostMem.NumFetchCompleted += numfetch;
+        A9ES_DataDone(a946);
+
+        return;
     }
 
     // cache line fill time, oh boy.
@@ -105,53 +114,68 @@ bool A946_DCacheReadLookup(ARM946ES* a946, const u32 addr, timestamp now, u32* d
     else set = A946_CachePRNG(&a946->CP15.DCachePRNG) & 3;
 
     // CHECKME: is it clean -> fill or fill -> clean?
-    // i would assume the former? because the other sounds hard to implement
+    // i would assume the former? because the latter sounds harder to implement
 
     // CHECKME: this likely cannot trigger the clean+flush errata; presumably just does a clean operation and then overwrites the old cacheline
-    A946_DCacheCleanLine(a946, index|set);
+    A946_DCacheCleanLine(a946, now, index|set, false);
 
     // update tag ram
     // CHECKME: is this actually done immediately?
     a946->DTagRAM[index|set].Valid = true;
     a946->DTagRAM[index|set].TagBits = (tagcmp >> 1);
 
-    // setup biu for cache streaming
-    a946->BIU.DataCur = 0;
-    a946->BIU.DataMax = 8;
+
+    // progress memory transfer
+    a946->PostMem.DataPtr = a946->PostMem.NumFetchCompleted;
+    a946->PostMem.NumFetchCompleted += numfetch;
+    A9ES_DataBusy(a946);
+
+    // biu req
     a946->BIU.DataAddr = addr & ~0x1F; // a94646E-S does not implement wrapping bursts; must always start at beginning of cacheline
     a946->BIU.DataType = A946BIU_DataCache;
-    a946->DStreamWait = ((addr/4) & 0x7) + 1;
-    a946->DStreamIndex = index+set;
-    NeoSched_AddEventIfEarlier(a946->ARM.Sys, now, Evt_ARM9BIU);
-    return false;
+    a946->BIU.DataMax = 8;
+    a946->BIU.DataSubmCur = 0;
+    a946->BIU.DataCompCur = 0;
+    a946->BIU.DataProt = prot;
+    a946->BIU.DataWidth = ARMDataWidth_32;
+
+    // cache streaming vars
+    a946->DStreamWaitCur = ((addr/4) & 0x7) + 1;
+    a946->DStreamWaitEnd = ((addr/4) & 0x7) + numfetch;
+    a946->DStreamPtr = (index+set) * A946_DCacheLineLength;
+
+    A946_BIUSched(a946, now);
 }
 
-bool A946_DCacheWriteLookup(ARM946ES* a946, const u32 addr, const u32 val, const u32 mask, const bool bufferable)
+bool A946_DCacheWriteLookup(ARM946ES* a946, const u32 addr, const timestamp now, const u32 wrlanes, const u8 numfetch, const bool bufferable)
 {
     A946_DCacheSetLookup
 
     // if we found a valid set we use that set.
     if (set < A946_DCacheAssoc)
     {
-        // use set to lookup into icache
+        // use set to lookup into dcache
+        u32 dcachebase = ((index | set)<<3) | ((addr/4) & 0x7);
 
-        // CHECKME: does this actually contention?
-        a946->DataContTS = a946->MemTimestamp + 1;
+        if (wrlanes != 0xFFFFFFFF) // handle halfword/byte writes
+            MaskedWrite(a946->DCache.b32[dcachebase], a946->PostMem.WrData[a946->PostMem.NumFetchCompleted], wrlanes);
+        else for (u8 i = 0; i < numfetch; i++)
+            a946->DCache.b32[dcachebase+i] = a946->PostMem.WrData[i+a946->PostMem.NumFetchCompleted];
 
-        MaskedWrite(a946->DCache.b32[((index | set)<<3) | ((addr/sizeof(u32)) & 0x7)], val, mask);
-
-        if (bufferable)
+        if (bufferable) // write-back cache: does not write back to memory until line is cleaned
         {
-            a946->MemTimestamp += 1;
-            if (addr & 0x10)
-                a946->DTagRAM[index | set].DirtyHi = true;
-            else
-                a946->DTagRAM[index | set].DirtyLo = true;
+            if (addr & 0x10) a946->DTagRAM[index|set].DirtyHi = true;
+            else             a946->DTagRAM[index|set].DirtyLo = true;
 
+            a946->PostMem.NumFetchCompleted += numfetch;
+            a946->DataTS = now + DSClk67(numfetch);
+            a946->DataWrStall = a946->DataTS+DSClk67(1);
+            A9ES_DataDone(a946);
             return true;
         }
-        // fall through to writebuffer
+        // write-through cache: write is put into write buffer immediately
     }
+    // fall through to writebuffer
     return false;
 }
 
@@ -161,47 +185,46 @@ void A946_DCacheFlushAddr(ARM946ES* a946, u32 addr)
     // TODO: IMPROVE CACHE STREAMING HANDLING
     A946_DCacheSetLookup
     if (set < A946_DCacheAssoc)
-    {
         a946->DTagRAM[index+set].Valid = false;
-    }
 }
 
 void A946_DCacheFlushAll(ARM946ES* a946)
 {
     // TODO: TIMINGS
     // TODO: IMPROVE CACHE STREAMING HANDLING
-    for (unsigned i = 0; i < countof(a946->DTagRAM); i++)
+    for (u32 i = 0; i < countof(a946->DTagRAM); i++)
         a946->DTagRAM[i].Valid = false;
 }
 
-void A946_DCacheCleanLine(ARM946ES* a946, const u32 idxset)
+void A946_DCacheCleanLine(ARM946ES* a946, timestamp now, const u32 idxset, const bool cp15)
 {
-    bool seq = false;
-    u32 addr = (a946->DTagRAM[idxset].TagBits << 10) | (idxset >> 2 << 5);
-    static_assert(false, "REDO WRITE BUFFER HANDLING\n");
-    if (a946->DTagRAM[idxset].DirtyLo)
-    {
-        //A946_FillWriteBuffer(a946, &a946->MemTimestamp, addr, A9WB_Addr);
-        seq = true;
-        for (int i = 0; i < 4; i++)
-        {
-            //A946_FillWriteBuffer(a946, &a946->MemTimestamp, a946->DCache.b32[(idxset<<3)+i], A9WB_32);
-        }
-    }
+    const u32 addr = (a946->DTagRAM[idxset].TagBits << 10) | (idxset >> 2 << 5);
+
+    u8 num = 0;
+    u32 baseaddr;
+    u32* buf;
     if (a946->DTagRAM[idxset].DirtyHi)
     {
-        if (!seq)
-            //A946_FillWriteBuffer(ARM9, &ARM9->MemTimestamp, addr+(4*sizeof(u32)), A9WB_Addr);
-        for (int i = 4; i < 8; i++)
-        {
-            //A946_FillWriteBuffer(ARM9, &ARM9->MemTimestamp, ARM9->DCache.b32[(idxset<<3)+i], A9WB_32);
-        }
+        baseaddr = addr + (A946_DCacheLineBytes/2);
+        buf = &a946->DCache.b32[(idxset*A946_DCacheLineLength)+4];
+        num += 4;
     }
+
+    if (a946->DTagRAM[idxset].DirtyLo)
+    {
+        baseaddr = addr;
+        buf = &a946->DCache.b32[idxset*A946_DCacheLineLength];
+        num += 4;
+    }
+
+    if (num == 0) return; // already clean
+
+    A946_WriteBufferFill(a946, now, buf, baseaddr, ARMDataWidth_32, num, cp15 ? A946WBCause_CP15 : A946WBCause_DCache);
     a946->DTagRAM[idxset].DirtyLo = false;
     a946->DTagRAM[idxset].DirtyHi = false;
 }
 
-void A946_DCacheCleanFlushLine(ARM946ES* a946, const u32 idxset)
+void A946_DCacheCleanFlushLine(ARM946ES* a946, timestamp now, const u32 idxset)
 {
     // TODO: TIMINGS
     // TODO: IMPROVE CACHE STREAMING HANDLING
@@ -209,12 +232,11 @@ void A946_DCacheCleanFlushLine(ARM946ES* a946, const u32 idxset)
     // CHECKME: does this errata emulation all check out?
     if (a946->DTagRAM[idxset].DirtyLo || a946->DTagRAM[idxset].DirtyHi)
     {
-        A946_DCacheCleanLine(a946, idxset);
+        A946_DCacheCleanLine(a946, now, idxset, true);
         a946->DTagRAM[idxset].Valid = false;
     }
-    else if (a946->WBuffer.FIFOFillPtr != a946->WBuffer.FIFODrainPtr)
+    else if (!a946->BIU.WBuffer.Full)
     {
-        static_assert(false, "REDO WRITE BUFFER HANDLING\n");
         a946->DTagRAM[idxset].Valid = false;
     }
     else
@@ -224,88 +246,104 @@ void A946_DCacheCleanFlushLine(ARM946ES* a946, const u32 idxset)
     }
 }
 
-void A946_DCacheCleanIdxSet(ARM946ES* a946, const u32 val)
+void A946_DCacheCleanIdxSet(ARM946ES* a946, timestamp now, const u32 val)
 {
     // TODO: TIMINGS
     // TODO: IMPROVE CACHE STREAMING HANDLING
     u32 idxset = (val >> 30) | (((val >> 5) & 0x1F) << 2);
 
-    A946_DCacheCleanLine(a946, idxset);
+    A946_DCacheCleanLine(a946, now, idxset, true);
 }
 
-void A946_DCacheCleanFlushIdxSet(ARM946ES* a946, const u32 val)
+void A946_DCacheCleanFlushIdxSet(ARM946ES* a946, timestamp now, const u32 val)
 {
     // TODO: TIMINGS
     // TODO: IMPROVE CACHE STREAMING HANDLING
     u32 idxset = (val >> 30) | (((val >> 5) & 0x1F) << 2);
 
-    A946_DCacheCleanFlushLine(a946, idxset);
+    A946_DCacheCleanFlushLine(a946, now, idxset);
 }
 
-void A946_DCacheCleanAddr(ARM946ES* a946, const u32 addr)
+void A946_DCacheCleanAddr(ARM946ES* a946, timestamp now, const u32 addr)
 {
     // TODO: TIMINGS
     // TODO: IMPROVE CACHE STREAMING HANDLING
     A946_DCacheSetLookup
     if (set < A946_DCacheAssoc)
-    {
-        A946_DCacheCleanLine(a946, index | set);
-    }
+        A946_DCacheCleanLine(a946, now, index | set, true);
 }
 
-void A946_DCacheCleanFlushAddr(ARM946ES* a946, const u32 addr)
+void A946_DCacheCleanFlushAddr(ARM946ES* a946, timestamp now, const u32 addr)
 {
     // TODO: TIMINGS
     // TODO: IMPROVE CACHE STREAMING HANDLING
     A946_DCacheSetLookup
     if (set < A946_DCacheAssoc)
-    {
-        A946_DCacheCleanFlushLine(a946, index | set);
-    }
+        A946_DCacheCleanFlushLine(a946, now, index | set);
 }
 
 // TODO: make sure that the arm9 can't be in the future?
-void A946_DCacheStream_Post(ARM946ES* a946, u32 val, timestamp now)
+void A946_DCacheStream_Post(ARM946ES* a946, u32 rdata, timestamp now)
 {
-    a946->DCache.b32[a946->DStreamIndex] = val;
-    a946->DStreamIndex++;
+    A9ES_PostMem* post = &a946->PostMem;
 
-    if (a946->BIU.DataCur == a946->DStreamWait) // cpu was waiting for this word!!
+    a946->BIU.DataCompCur++;
+    a946->DCache.b32[a946->DStreamPtr++] = rdata;
+
+    if (a946->BIU.DataCompCur == a946->DStreamWaitCur) // cpu was waiting for this word!!
     {
-        a946->DStreamWait = 0;
-        NeoSched_AddEvent(a946->ARM.Sys, NTRClock_CvtFrom67(now), Evt_ARM9);
-    }
-    if (a946->BIU.DataCur == a946->BIU.DataMax) // stream over
-    {
-        if (a946->DStreamWait) // let cpu go if it was waiting
+        post->RData[post->DataPtr++] = rdata;
+        a946->DStreamWaitCur++;
+        a946->DataTS = now;
+
+        if (a946->DStreamWaitCur == a946->DStreamWaitEnd) // finished waiting
         {
-            a946->DStreamWait = 0;
-            NeoSched_AddEvent(a946->ARM.Sys, NTRClock_CvtFrom67(now), Evt_ARM9);
+            a946->DStreamWaitCur = 0;
+            if (a946->BIU.WBFill != A946WBCause_DCache)
+            {
+                A9ES_DataDone(a946);
+                Sched_AddEvent(a946->ARM.Sys, now, Evt_ARM9);
+            }
         }
+    }
+
+    if (a946->BIU.DataCompCur == a946->BIU.DataMax) // stream over
+    {
+        if (a946->DStreamWaitCur) // let cpu go if it was waiting
+        {
+            a946->DStreamWaitCur = 0;
+            A9ES_DataGo(a946, &a946->PostMem);
+            Sched_AddEvent(a946->ARM.Sys, now, Evt_ARM9);
+        }
+
+        a946->BIU.BurstCur = A946BIUBurst_None;
         a946->BIU.DataType = A946BIU_DataNone; // free up biu's data path
     }
 }
 
-void A946_ICacheStream_Post(ARM946ES* a946, u32 val, timestamp now)
+void A946_ICacheStream_Post(ARM946ES* a946, u32 rdata, timestamp now)
 {
-    a946->ICache.b32[a946->IStreamIndex] = val;
-    a946->IStreamIndex++;
+    a946->ICache.b32[a946->IStreamPtr] = rdata;
+    a946->IStreamPtr++;
 
-    if (a946->BIU.InstrCur == a946->IStreamWait) // cpu was waiting for this word!!
+    if (a946->BIU.InstrCompCur == a946->IStreamWaitCur) // cpu was waiting for this word!!
     {
         // arm946e-s has a fast path for this case
-        a946->InstrLatch = val;
-        A946_InstrRead_Post(a946, a946->BIU.InstrAddr, now);
+        a946->InstrLatch = rdata;
+        a946->InstrTS = now;
+        A946_InstrRead_Post(a946, a946->ARM.PC);
 
-        a946->IStreamWait = 0;
-        NeoSched_AddEvent(a946->ARM.Sys, NTRClock_CvtFrom67(now), Evt_ARM9);
+        a946->IStreamWaitCur = 0;
+        Sched_AddEvent(a946->ARM.Sys, now, Evt_ARM9);
     }
-    if (a946->BIU.InstrCur == a946->BIU.InstrMax) // stream over
+
+    if (a946->BIU.InstrCompCur == a946->BIU.InstrMax) // stream over
     {
-        if (a946->IStreamWait) // let cpu go if it was waiting
+        if (a946->IStreamWaitCur) // let cpu go if it was waiting
         {
-            a946->IStreamWait = 0;
-            NeoSched_AddEvent(a946->ARM.Sys, NTRClock_CvtFrom67(now), Evt_ARM9);
+            a946->IStreamWaitCur = 0;
+            A9ES_InstrGo(a946, false);
+            Sched_AddEvent(a946->ARM.Sys, now, Evt_ARM9);
         }
         a946->BIU.InstrType = A946BIU_InstrNone; // free up biu's instr path
     }

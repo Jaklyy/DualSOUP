@@ -136,7 +136,7 @@ void A946_Reset(ARM946ES* a946, const bool itcm, const bool hivec)
     A9ES_SetPC(a946, A946_GetExceptionBase(a946) + ARMVector_RST);
 }
 
-void A9ES_RaiseUDF(ARM* cpu, const ARM_Instr instr_data, const int execycles)
+void A9ES_RaiseUDF(ARM* cpu, const ARM_Instr instr_data, const s32 execycles)
 {
     ARM946ES* a9es = (ARM946ES*)cpu;
 
@@ -150,7 +150,7 @@ void A9ES_RaiseUDF(ARM* cpu, const ARM_Instr instr_data, const int execycles)
     u32 oldpc = cpu->PC - (cpu->CPSR.Thumb ? 2 : 4);
     ARM_PSR oldcpsr = cpu->CPSR;
 
-    A9ES_ExecuteCycles(a9es, execycles);
+    A9ES_ExecuteCycles(a9es, execycles-1);
 
     ARM_SetMode(cpu, ARMMode_UND);
 
@@ -181,8 +181,6 @@ void A9ES_SupervisorCall(ARM* cpu, [[maybe_unused]] const ARM_Instr instr_data) 
     // addr of next instr
     u32 oldpc = cpu->PC - (cpu->CPSR.Thumb ? 2 : 4);
     ARM_PSR oldcpsr = cpu->CPSR;
-
-    A9ES_ExecuteCycles(a9es, 1);
 
     ARM_SetMode(cpu, ARMMode_SVC);
 
@@ -216,8 +214,6 @@ void A9ES_PrefetchAbort(ARM* cpu, const ARM_Instr instr_data)
     // lr is aborted instruction + 4
     u32 oldpc = cpu->PC - ((cpu->CPSR.Thumb) ? 0 : 4);
     ARM_PSR oldcpsr = cpu->CPSR;
-
-    A9ES_ExecuteCycles(a9es, 1);
 
     ARM_SetMode(cpu, ARMMode_ABT);
 
@@ -264,8 +260,6 @@ void A9ES_InterruptRequest(ARM946ES* a9es)
     u32 oldpc = cpu->PC - ((cpu->CPSR.Thumb) ? 0 : 4);
     ARM_PSR oldcpsr = cpu->CPSR;
 
-    A9ES_ExecuteCycles(a9es, 1);
-
     ARM_SetMode(cpu, ARMMode_IRQ);
 
     cpu->LR = oldpc;
@@ -285,8 +279,6 @@ void ARM9_FastInterruptRequest(ARM946ES* a9es)
     // lr is next instr + 4
     u32 oldpc = cpu->PC - ((cpu->CPSR.Thumb) ? 0 : 4);
     ARM_PSR oldcpsr = cpu->CPSR;
-
-    A9ES_ExecuteCycles(a9es, 1);
 
     ARM_SetMode(cpu, ARMMode_FIQ);
 

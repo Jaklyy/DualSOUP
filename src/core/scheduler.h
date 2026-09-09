@@ -13,28 +13,76 @@ typedef enum : u8
 {
     Evt_Null,
 
+    Evt_IRQ9_VBlank,
+    Evt_IRQ9_HBlank,
+    Evt_IRQ9_VCount,
+    Evt_IRQ9_Time0,
+    Evt_IRQ9_Time1,
+    Evt_IRQ9_Time2,
+    Evt_IRQ9_Time3,
+    Evt_IRQ9_DMA0,
+    Evt_IRQ9_DMA1,
+    Evt_IRQ9_DMA2,
+    Evt_IRQ9_DMA3,
+    Evt_IRQ9_Keypad,
+    Evt_IRQ9_AGBPak,
+    Evt_IRQ9_IPCSync,
+    Evt_IRQ9_IPCFIFOEmpty,
+    Evt_IRQ9_IPCFIFONotEmpty,
+    Evt_IRQ9_NTRCardTranferComplete,
+    Evt_IRQ9_NTRCard,
+    Evt_IRQ9_GXFIFO,
+
+    Evt_IRQ7_VBlank,
+    Evt_IRQ7_HBlank,
+    Evt_IRQ7_VCount,
+    Evt_IRQ7_Time0,
+    Evt_IRQ7_Time1,
+    Evt_IRQ7_Time2,
+    Evt_IRQ7_Time3,
+    Evt_IRQ7_SIO,
+    Evt_IRQ7_DMA0,
+    Evt_IRQ7_DMA1,
+    Evt_IRQ7_DMA2,
+    Evt_IRQ7_DMA3,
+    Evt_IRQ7_Keypad,
+    Evt_IRQ7_AGBPak,
+    Evt_IRQ7_IPCSync,
+    Evt_IRQ7_IPCFIFOEmpty,
+    Evt_IRQ7_IPCFIFONotEmpty,
+    Evt_IRQ7_NTRCardTranferComplete,
+    Evt_IRQ7_NTRCard,
+    Evt_IRQ7_Lid,
+    Evt_IRQ7_SPI,
+    Evt_IRQ7_WiFi,
+
+    Evt_UpdateIRQ9,
+
     Evt_ARM9,
+    Evt_ARM9WBFill,
     Evt_ARM9BIU,
     Evt_DMA90,
     Evt_DMA91,
     Evt_DMA92,
     Evt_DMA93,
-    Evt_AHB9,
-    Evt_IF9Update,
+    Evt_Timer9,
+    Evt_Bus9HReady,
+    Evt_Bus9,
     Evt_Divider,
     Evt_Sqrt,
-    Evt_Timer9,
     //Evt_GXExec,
     Evt_GX,
+
+    Evt_UpdateIRQ7,
 
     Evt_ARM7,
     Evt_DMA70,
     Evt_DMA71,
     Evt_DMA72,
     Evt_DMA73,
-    Evt_Bus7,
-    Evt_IF7Update,
     Evt_Timer7,
+    Evt_Bus7HReady,
+    Evt_Bus7,
     Evt_SPI,
     Evt_MixAudio,
 
@@ -46,6 +94,8 @@ typedef enum : u8
     Evt_CardROM,
     Evt_CardSPI,
 
+    Evt_HaltCore,
+
     Evt_Invalid,
 
     Evt_Max
@@ -56,7 +106,7 @@ typedef struct
     timestamp Times[Evt_Max];
     Scheduler_Events Next[Evt_Max];
     Scheduler_Events Prev[Evt_Max];
-} NeoSched;
+} Sched;
 
 typedef struct
 {
@@ -70,7 +120,7 @@ typedef struct
 
 typedef union
 {
-    NeoSched Neo;
+    Sched Neo;
     OldSched Old;
 } Scheduler;
 
@@ -91,25 +141,19 @@ typedef enum : u8
 // clock conversion helpers
 
  // convert 16 mhz clock to standardized scheduler clock
-inline timestamp NTRClock_CvtFrom16(timestamp ts);
+timestamp DSClk16(timestamp ts);
  // convert 33 mhz clock to standardized scheduler clock
-inline timestamp NTRClock_CvtFrom33(timestamp ts);
+timestamp DSClk33(timestamp ts);
  // convert 67 mhz clock to standardized scheduler clock
-inline timestamp NTRClock_CvtFrom67(timestamp ts);
+timestamp DSClk67(timestamp ts);
 
- // convert 67 mhz clock to standardized scheduler clock, while aligning clock with 33 mhz clock
-inline timestamp NTRClock_67Align33(timestamp ts);
+ // align standardized scheduler clock with 33 mhz clock
+timestamp DSClkAlign33(timestamp ts);
 
 
-void NeoSched_RemoveEvent(NeoSched* sched, Scheduler_Events id);
-bool NeoSched_CheckEventScheduled(Console* sys, Scheduler_Events id);
-void NeoSched_AddEvent(Console* sys, timestamp time, Scheduler_Events id);
-void NeoSched_AddEventIfEarlier(Console* sys, timestamp time, Scheduler_Events id);
-void NeoSched_RunEvent(Console* sys);
-
-// schedule an event to run
-void Schedule_Event(Console* sys, void (*callback) (Console*, timestamp), u8 event, timestamp time);
-// sync arm9, arm7, and system.
-void Scheduler_Sync(Console* sys, timestamp now, const SyncMode mode);
-// stall until an event is run
-void Scheduler_StallForEvent(Console* sys, timestamp* time, const u8 event, const bool a9);
+void Sched_RemoveEvent(Sched* sched, Scheduler_Events id);
+timestamp Sched_GetTime(Sched* sched, Scheduler_Events id);
+bool Sched_CheckEventScheduled(Console* sys, Scheduler_Events id);
+void Sched_AddEvent(Console* sys, timestamp time, Scheduler_Events id);
+void Sched_AddEventIfEarlier(Console* sys, timestamp time, Scheduler_Events id);
+void Sched_RunEvent(Console* sys);

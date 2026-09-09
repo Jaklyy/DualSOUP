@@ -1,63 +1,79 @@
 #include "arm.h"
-#include "../../bus/ahb.h"
+#include "core/bus/bus.h"
+#include "core/arm/shared/arm.h"
+#include "core/scheduler.h"
 
 
 
 
-u32 ARM7_BusRead(ARM7TDMI* ARM7, const u32 addr, const AHB_HSIZE size, bool* seq)
+void A7TDMI_BusRead(ARM7TDMI* a7tdmi, const timestamp now, u32 addr, const ARM_DataWidth size, const bool nseq)
 {
-    if (!AHB_NegOwnership(ARM7->ARM.Sys, &ARM7->ARM.Timestamp, false, false))
-        *seq = false;
-    u32 val = AHB7_Read(ARM7->ARM.Sys, &ARM7->ARM.Timestamp, addr, size, false, false, seq, true, ARM7->ARM.PC);
-    *seq = true;
-    return val;
-}
+    // nds hardware seems to force align words (but not halfwords!?) when accessing the gba sram interface.
+    // this still occurs in gba mode (on 3ds at least) and the same code run on actual gba hardware will result in unaligned accesses as expected.
+    // so im suspecting, but unable to outright confirm, a cpu revision difference.
+    // though it could be a difference anywhere from the arm7tdmi bus interface, the bus itself, the gba cart sram interface, etc.
+    // but it is almost certainly a hardware revision somewhere along the chain.
+    if (size == ARMDataWidth_32) addr &= ~3;
 
-u32 ARM7_DataRead32(ARM7TDMI* ARM7, const u32 addr, bool* seq)
-{
-    // nds seems to force align words even for gba sram
-    // this case is known to be unaligned on gba so im suspecting, but unable to outright confirm, a cpu revision difference?
-    return ARM7_BusRead(ARM7, addr & ~3, HSIZE_32, seq);
-}
-
-u32 ARM7_DataRead16(ARM7TDMI* ARM7, const u32 addr, bool* seq)
-{
-    // nds does not seem to force align even for gba sram
-    return ARM7_BusRead(ARM7, addr, HSIZE_16, seq);
-}
-
-u32 ARM7_DataRead8(ARM7TDMI* ARM7, const u32 addr, bool* seq)
-{
-    return ARM7_BusRead(ARM7, addr, HSIZE_8, seq);
+    BusReq req = {
+        .Addr = addr,
+        .WrVal = 0,
+        .Write = false,
+        .Lock = false,
+        .Man7 = MAN7_ARM7,
+        .Prot = {.Data = true}, // other signals might just not exist on arm7 bus?
+        .Size = size,
+        .Type = (nseq ? HTRANS_NONSEQ : HTRANS_SEQ),
+        .CB = 0,
+    };
+    Bus_Req(a7tdmi->ARM.Sys, &req, now, false);
 }
 
 void ARM7_BusWrite(ARM7TDMI* ARM7, const u32 addr, const u32 val, const u32 mask, const bool atomic, bool* seq)
 {
+    // TODO: how is misalignment of address handled?
     if (!AHB_NegOwnership(ARM7->ARM.Sys, &ARM7->ARM.Timestamp, atomic, false))
         *seq = false;
     AHB7_Write(ARM7->ARM.Sys, &ARM7->ARM.Timestamp, addr, val, mask, atomic, seq, true, ARM7->ARM.PC);
     *seq = true;
 }
 
-void ARM7_DataWrite32(ARM7TDMI* ARM7, const u32 addr, u32 val, const bool atomic, bool* seq)
+void A7TDMI_RotateExtendUnit(u32* rdata, const u32 addr, const ARM_DataWidth size, const bool signext)
 {
-    // todo: how is misalignment handled?
-    ARM7_BusWrite(ARM7, addr, val, u32_max, atomic, seq);
-}
+    switch (size)
+    {
+    case ARMDataWidth_8:
+    {
+        *rdata = ROR32(*rdata, ((addr & 0x3) * 8));
 
-void ARM7_DataWrite16(ARM7TDMI* ARM7, const u32 addr, u32 val, bool* seq)
-{
-    // todo: how is misalignment handled?
-    val = ROL32(val, ((addr & 2) * 8));
-    u32 mask = ROL32(u16_max, ((addr & 2) * 8));
-    ARM7_BusWrite(ARM7, addr, val, mask, false, seq);
-}
-
-void ARM7_DataWrite8(ARM7TDMI* ARM7, const u32 addr, u32 val, const bool atomic, bool* seq)
-{
-    val = ROL32(val, ((addr & 3) * 8));
-    u32 mask = ROL32(u8_max, ((addr & 3) * 8));
-    ARM7_BusWrite(ARM7, addr, val, mask, atomic, seq);
+        if (signext) *rdata = (s32)(s8)*rdata;
+        else *rdata &= 0xFF; // zero extend
+        break;
+    }
+    case ARMDataWidth_16:
+    {
+        // misaligned halfword reads are weird on ARM7TDMI
+        // it selects unused byte lanes to zero/sign fill using bit 1 of the address (properly halfword aligned)
+        // but then does the ASR/ROR to put them into place using bits 1 & 0 (not aligned!!!)
+        // this results in misaligned ldrsh giving behavior similar to ldrsb and misaligned ldrh putting a byte into the high portion of the register
+        // presumably the halfword select logic is unique, but the ASR/ROR logic is reused from byte/word fetch logic
+        if (signext)
+        {
+            // put sign bit in high lanes and arithmetic right shift them into the proper spot
+            if (!(addr & 0x2)) *rdata = (s32)(s16)*rdata;
+            *rdata = ((s32)*rdata) >> ((addr&0x3)*8);
+        }
+        else
+        {
+            // isolate byte lanes and then rotate them into place
+            *rdata &= (0xFFFF << ((addr&0x2)*8));
+            *rdata = ROR32(*rdata, ((addr&0x3)*8));
+        }
+        break;
+    }
+    case ARMDataWidth_32:  *rdata = ROR32(*rdata, ((addr & 0x3) * 8)); break;
+    default: unreachable();
+    }
 }
 
 void ARM7_InstrRead32(ARM7TDMI* ARM7, const u32 addr)

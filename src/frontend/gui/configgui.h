@@ -1,7 +1,7 @@
 #pragma once
 
 #include "maingui.h"
-#include "../soupparser/soupparser.h"
+#include "frontend/soupparser/soupparser.h"
 
 
 

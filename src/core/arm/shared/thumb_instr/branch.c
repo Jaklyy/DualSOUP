@@ -1,4 +1,4 @@
-#include "../../../utils.h"
+#include "core/utils.h"
 #include "../arm.h"
 #include "../inc.h"
 
@@ -19,15 +19,9 @@ void THUMB_BranchCond(ARM* cpu, const ARM_Instr instr_data)
 {
     const union THUMB_BranchCond_Decode instr = {.Raw = instr_data.Raw};
 
-    // these condition codes are handled specially
-    if (instr.Condition == ARMCond_NV)
-    {
-        return ARM_RaiseSWI;
-    }
-    else if (instr.Condition == ARMCond_AL)
-    {
-        return ARM_RaiseUDF;
-    }
+    // unconditional encodings are repurposed for special purposes
+    if (instr.Condition == ARMCond_NV) return ARM_RaiseSVC;
+    if (instr.Condition == ARMCond_AL) return ARM_RaiseUDF;
 
     ARM_ExeCycles(1, 1);
 
@@ -130,17 +124,12 @@ void THUMB_Branch(ARM* cpu, const ARM_Instr instr_data)
     }
 }
 
-s8 THUMB9_Branch_Interlocks(ARM946ES* ARM9, const ARM_Instr instr_data)
+s8 T9ES_Branch_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c [[maybe_unused]], bool* retry [[maybe_unused]])
 {
     const union THUMB_Branch_Decode instr = {.Raw = instr_data.Raw};
-    s8 stall = 0;
 
     // hi variants read lr to use for branching.
     // ... can lr actually be interlocked on thumb?
-    if (instr.Opcode & 0b01)
-    {
-        ARM9_CheckInterlocks(ARM9, &stall, 14, 0, false);
-    }
-
-    return stall;
+    if ((instr.Opcode & 0b01) && (14 == reg)) return len;
+    return 0;
 }

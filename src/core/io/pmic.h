@@ -38,7 +38,9 @@ typedef struct
     bool PrevChipSelect;
     u8 CurCmd;
     u8 CmdLen;
-} Powman;
+} PMIC;
 
 typedef struct Console Console;
-u8 PowMan_CMDSend(Console* sys, const u8 val, const bool chipsel);
+
+void PMIC_Init(Console* sys);
+u8 PMIC_CMDSend(Console* sys, const u8 val, const bool chipsel);

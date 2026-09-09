@@ -1,6 +1,6 @@
 #include "3d.h"
-#include "../console.h"
-#include "../io/dma.h"
+#include "core/console.h"
+#include "core/io/dma.h"
 
 
 

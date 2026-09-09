@@ -3,10 +3,10 @@
 #include <SDL3/SDL_dialog.h>
 #include <SDL3/SDL_mutex.h>
 
-#include "../../../libs/imgui/dcimgui.h"
+#include "imgui/dcimgui.h"
 
-#include "../../core/utils.h"
-#include "../soupparser/soupparser.h"
+#include "core/utils.h"
+#include "frontend/soupparser/soupparser.h"
 #include "configgui.h"
 #include "maingui.h"
 

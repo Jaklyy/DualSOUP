@@ -2,11 +2,11 @@
 #include <string.h>
 #include <stdio.h>
 #include "gamecard.h"
-#include "../console.h"
-#include "../sram/flash.h"
-#include "../sram/eeprom.h"
-#include "../sram/ir.h"
-#include "../../frontend/soupparser/soupparser.h"
+#include "core/console.h"
+#include "core/sram/flash.h"
+#include "core/sram/eeprom.h"
+#include "core/sram/ir.h"
+#include "frontend/soupparser/soupparser.h"
 
 
 

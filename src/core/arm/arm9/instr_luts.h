@@ -3,5 +3,5 @@
 
 
 
-void ARM9_InitInstrLUT();
-void THUMB9_InitInstrLUT();
+void A9ES_InitInstrLUT();
+void T9ES_InitInstrLUT();

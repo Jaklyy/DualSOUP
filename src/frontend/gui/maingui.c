@@ -3,15 +3,15 @@
 
 #include <SDL3/SDL.h>
 
-#include "../../../libs/imgui/dcimgui.h"
-#include "../../../libs/imgui/dcimgui_impl_sdl3.h"
-#include "../../../libs/imgui/dcimgui_impl_sdlrenderer3.h"
+#include "imgui/dcimgui.h"
+#include "imgui/dcimgui_impl_sdl3.h"
+#include "imgui/dcimgui_impl_sdlrenderer3.h"
 
 #include "maingui.h"
 #include "configgui.h"
-#include "../soupparser/soupparser.h"
+#include "frontend/soupparser/soupparser.h"
 
-#include "../../core/console.h"
+#include "core/console.h"
 
 
 
@@ -77,7 +77,7 @@ bool MainGUI_Loop(Console* sys, MainGUI* mgui, MainCfg* mcfg)
     ConfigGUI_Loop(mgui, mcfg);
     if (mgui->DemoDisplay) ImGui_ShowDemoWindow(&mgui->DemoDisplay);
 
-    bool active = (sys && !sys->Powman.PowerCR.SystemShutDown);
+    bool active = (sys && !sys->PMIC.PowerCR.SystemShutDown);
     if (active)
     {
         if (SDL_TryLockMutex(sys->FrameBufferMutex[mgui->Buffer]))

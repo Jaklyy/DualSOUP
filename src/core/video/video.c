@@ -1,10 +1,10 @@
 #include <SDL3/SDL_audio.h>
 #include <SDL3/SDL_timer.h>
 #include "video.h"
-#include "../scheduler.h"
-#include "../console.h"
-#include "../io/dma.h"
-#include "../utils.h"
+#include "core/scheduler.h"
+#include "core/console.h"
+#include "core/io/dma.h"
+#include "core/utils.h"
 #include "ppu.h"
 #include "3d.h"
 

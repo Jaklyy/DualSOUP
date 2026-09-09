@@ -1,13 +1,14 @@
 #include <string.h>
-#include "../utils.h"
-#include "../io/dma.h"
-#include "../console.h"
-#include "../sram/flash.h"
-#include "../carts/gamecard.h"
-#include "../io/powman.h"
-#include "../video/video.h"
-#include "../io/tsc.h"
-#include "../io/sound.h"
+#include "core/utils.h"
+#include "core/io/dma.h"
+#include "core/console.h"
+#include "core/sram/flash.h"
+#include "core/carts/gamecard.h"
+#include "core/io/pmic.h"
+#include "core/video/video.h"
+#include "core/io/tsc.h"
+#include "core/io/sound.h"
+#include "core/scheduler.h"
 
 
 
@@ -15,11 +16,16 @@
 // TODO: Regs im 99% confident about:
 // Timers (edit: its really funny how i wrote this during the period of time that performance was completely crippled by timer dividers not working properly)
 
-u32 IPC_FIFORead(Console* sys, const bool a9)
+void IPC_FIFOInit(IPCFIFO* fifo)
 {
-    struct IPCFIFO* send = ((a9) ? &sys->IPCFIFO7 : &sys->IPCFIFO9);
-    struct IPCFIFO* recv = ((a9) ? &sys->IPCFIFO9 : &sys->IPCFIFO7);
-    timestamp ts = ((a9) ? sys->AHB9.Timestamp : sys->AHB7.Timestamp);
+    fifo->CR.RecvFIFOEmpty = true;
+    fifo->CR.SendFIFOEmpty = true;
+}
+
+u32 IPC_FIFORead(Console* sys, const timestamp now, const bool a9)
+{
+    IPCFIFO* send = ((a9) ? &sys->IPCFIFO7 : &sys->IPCFIFO9);
+    IPCFIFO* recv = ((a9) ? &sys->IPCFIFO9 : &sys->IPCFIFO7);
 
     u32 ret;
     // CHECKME: do both sides need to be enabled for it to work?
@@ -30,7 +36,7 @@ u32 IPC_FIFORead(Console* sys, const bool a9)
         if (recv->CR.RecvFIFOEmpty)
         {
             recv->CR.Error = true;
-            return recv->FIFO[(recv->DrainPtr-1) % 16];
+            return recv->FIFO[(recv->DrainPtr-1) % countof(recv->FIFO)];
         }
 
         ret = recv->FIFO[recv->DrainPtr];
@@ -42,7 +48,7 @@ u32 IPC_FIFORead(Console* sys, const bool a9)
             send->CR.SendFIFOFull = false;
         }
 
-        recv->DrainPtr = (recv->DrainPtr + 1) % 16;
+        recv->DrainPtr = (recv->DrainPtr + 1) % countof(recv->FIFO);
 
         // now empty
         if (recv->FillPtr == recv->DrainPtr)
@@ -51,35 +57,24 @@ u32 IPC_FIFORead(Console* sys, const bool a9)
             send->CR.SendFIFOEmpty = true;
             // send irq
             if (send->CR.SendFIFOEmptyIRQ)
-            {
-                Console_ScheduleIRQs(sys, IRQ_IPCFIFOEmpty, !a9, ts);
-            }
+                Sched_AddEvent(sys, now+DSClk33(1) /*checkme: delay?*/, (!a9 ? Evt_IRQ9_IPCFIFOEmpty : Evt_IRQ7_IPCFIFOEmpty));
         }
     }
-    else
-    {
-        // return oldest value.
-        ret = recv->FIFO[recv->DrainPtr];
-    }
-
+    else ret = recv->FIFO[recv->DrainPtr]; // return oldest value.
     return ret;
 }
 
-void IPC_FIFOWrite(Console* sys, const u32 val, const u32 mask, const bool a9)
+void IPC_FIFOWrite(Console* sys, const u32 val, const u32 mask, const timestamp now, const bool a9)
 {
-    struct IPCFIFO* send = ((a9) ? &sys->IPCFIFO7 : &sys->IPCFIFO9);
-    struct IPCFIFO* recv = ((a9) ? &sys->IPCFIFO9 : &sys->IPCFIFO7);
-    timestamp ts = ((a9) ? sys->AHB9.Timestamp : sys->AHB7.Timestamp);
+    IPCFIFO* send = ((a9) ? &sys->IPCFIFO7 : &sys->IPCFIFO9);
+    IPCFIFO* recv = ((a9) ? &sys->IPCFIFO9 : &sys->IPCFIFO7);
 
     // CHECKME: do both sides need to be enabled for it to work?
     // CHECKME: halfword/byte accesses?
     if (recv->CR.EnableFIFOs)
     {
         // CHECKME: does this write just get ignored or overwrite?
-        if (recv->CR.SendFIFOFull)
-        {
-            return;
-        }
+        if (recv->CR.SendFIFOFull) return;
 
         MaskedWrite(send->FIFO[send->FillPtr], val, mask);
 
@@ -90,11 +85,9 @@ void IPC_FIFOWrite(Console* sys, const u32 val, const u32 mask, const bool a9)
             recv->CR.SendFIFOEmpty = false;
             // send irq
             if (send->CR.RecvFIFONotEmptyIRQ)
-            {
-                Console_ScheduleIRQs(sys, IRQ_IPCFIFONotEmpty, !a9, ts);
-            }
+            Sched_AddEvent(sys, now+DSClk33(1) /*checkme: delay?*/, (!a9 ? Evt_IRQ9_IPCFIFONotEmpty : Evt_IRQ7_IPCFIFONotEmpty));
         }
-        send->FillPtr = (send->FillPtr + 1) % 16;
+        send->FillPtr = (send->FillPtr + 1) % countof(send->FIFO);
 
         // now full
         if (send->FillPtr == send->DrainPtr)
@@ -105,20 +98,19 @@ void IPC_FIFOWrite(Console* sys, const u32 val, const u32 mask, const bool a9)
     }
 }
 
-void IPC_FIFOCRWrite(Console* sys, const u32 val, const u32 mask, bool a9)
+void IPC_FIFOCRWrite(Console* sys, const u32 val, const u32 mask, const timestamp now, const bool a9)
 {
-    struct IPCFIFO* send = ((a9) ? &sys->IPCFIFO7 : &sys->IPCFIFO9);
-    struct IPCFIFO* recv = ((a9) ? &sys->IPCFIFO9 : &sys->IPCFIFO7);
-    timestamp ts = ((a9) ? sys->AHB9.Timestamp : sys->AHB7.Timestamp);
+    IPCFIFO* send = ((a9) ? &sys->IPCFIFO7 : &sys->IPCFIFO9);
+    IPCFIFO* recv = ((a9) ? &sys->IPCFIFO9 : &sys->IPCFIFO7);
 
     u16 old = recv->CR.Raw;
     MaskedWrite(recv->CR.Raw, val, mask & 0x8404);
 
+    // raise irqs on enable if their conditions are met
     if (((old & 0x500) == 0x000) && recv->CR.RecvFIFONotEmptyIRQ) // checkme
-        Console_ScheduleIRQs(sys, IRQ_IPCFIFONotEmpty, a9, ts);
-
+        Sched_AddEvent(sys, now+DSClk33(1) /*checkme: delay?*/, (a9 ? Evt_IRQ9_IPCFIFONotEmpty : Evt_IRQ7_IPCFIFONotEmpty));
     if (((old & 0x5) == 0x1) && recv->CR.SendFIFOEmptyIRQ) // checkme
-        Console_ScheduleIRQs(sys, IRQ_IPCFIFOEmpty, a9, ts);
+        Sched_AddEvent(sys, now+DSClk33(1) /*checkme: delay?*/, (a9 ? Evt_IRQ9_IPCFIFOEmpty : Evt_IRQ7_IPCFIFOEmpty));
 
     // FIFO Flush; CHECKME: does this need power?
     if (mask & val & (1<<3))
@@ -132,20 +124,14 @@ void IPC_FIFOCRWrite(Console* sys, const u32 val, const u32 mask, bool a9)
         send->DrainPtr = 0;
         // send irq
         if (send->CR.SendFIFOEmptyIRQ)
-        {
-            Console_ScheduleIRQs(sys, IRQ_IPCFIFOEmpty, !a9, ts);
-        }
+            Sched_AddEvent(sys, now+DSClk33(1) /*checkme: delay?*/, (!a9 ? Evt_IRQ9_IPCFIFOEmpty : Evt_IRQ7_IPCFIFOEmpty));
     }
 
     // ack error
-    if (mask & val & (1<<14))
-    {
-        recv->CR.Error = false;
-    }
-
+    if (mask & val & (1<<14)) recv->CR.Error = false;
 }
 
-void IO9_FinishDiv(Console* sys, [[maybe_unused]] timestamp now)
+void IO9_FinishDiv(Console* sys)
 {
     s64 num;
     s64 den;
@@ -199,22 +185,20 @@ void IO9_FinishDiv(Console* sys, [[maybe_unused]] timestamp now)
     // CHECKME: test divide by 0 timings. (when is flag set? is it full length?)
     sys->DivCR.DivByZero = !sys->DivDen.b64;
     sys->DivCR.Busy = false;
-
-    Schedule_Event(sys, IO9_FinishDiv, Evt_Divider, timestamp_max);
 }
 
-void IO9_StartDiv(Console* sys)
+void IO9_StartDiv(Console* sys, timestamp now)
 {
     sys->DivQuo.b64 = 0;
     sys->DivRem.b64 = 0;
     sys->DivCR.Busy = true;
-    Schedule_Event(sys, IO9_FinishDiv, Evt_Divider, sys->AHB9.Timestamp + ((sys->DivCR.DivMode == 0 ) ? 18 : 34));
+    Sched_AddEvent(sys, now + DSClk33((sys->DivCR.DivMode == 0 ) ? 18 : 34), Evt_Divider);
 }
 
 // algorithm stolen from melonds which links this so im linking it too, sue me.
 // one could also do this with 80 bit floats, but that's less portable.
 // http://stackoverflow.com/questions/1100090/looking-for-an-efficient-integer-square-root-algorithm-for-arm-thumb2
-void IO9_FinishSqrt(Console* sys, [[maybe_unused]] timestamp now)
+void IO9_FinishSqrt(Console* sys)
 {
     u64 val;
     u32 res = 0;
@@ -250,688 +234,546 @@ void IO9_FinishSqrt(Console* sys, [[maybe_unused]] timestamp now)
 
     sys->SqrtRes = res;
     sys->SqrtCR.Busy = false;
-    Schedule_Event(sys, IO9_FinishSqrt, Evt_Sqrt, timestamp_max);
 }
 
-void IO9_StartSqrt(Console* sys)
+void IO9_StartSqrt(Console* sys, timestamp now)
 {
     sys->SqrtRes = 0;
     sys->SqrtCR.Busy = true;
-    Schedule_Event(sys, IO9_FinishSqrt, Evt_Sqrt, sys->AHB9.Timestamp + 13);
+    Sched_AddEvent(sys, now + DSClk33(13), Evt_Sqrt);
 }
 
-void SPI_Finish(Console* sys, timestamp cur)
+void SPI_Finish(Console* sys, timestamp now)
 {
     sys->SPIOut = sys->SPIBuf;
     sys->SPICR.Busy = false;
-    if (sys->SPICR.IRQ) Console_ScheduleIRQs(sys, IRQ_SPI, false, cur); // delay?
-    Schedule_Event(sys, SPI_Finish, Evt_SPI, timestamp_max);
+    if (sys->SPICR.IRQ) Sched_AddEvent(sys, now+DSClk33(1), Evt_IRQ7_SPI); // delay?
 }
 
-
-u32 IO7_Read(Console* sys, const u32 addr, const bool timings)
+void IO9_Read(Console* sys, const u32 addr, const timestamp now, const BusCallbacks cb)
 {
-    Scheduler_Sync(sys, sys->AHB7.Timestamp, Sync_Normal7);
-
-    switch(addr & 0xFF'FF'FC)
+    u32 rdata;
+    switch (addr & 0xFF'FF'FC)
     {
-        case 0x00'00'04:
-            return (sys->VCount << 16) | sys->DispStatRO7.Raw | sys->DispStatRW7.Raw;
+    // video A
+    case 0x00'00'00: // dispcnt
+    case 0x00'00'08 ... 0x00'00'54: // ppu/lcd a block
+    case 0x00'00'6C: // bright a
+        rdata = PPU_IORead(&sys->PPU_A, addr);  break;
+    case 0x00'00'04: rdata = (sys->VCount << 16) | sys->DispStatRO9.Raw | sys->DispStatRW9.Raw; break;
+    case 0x00'00'60: rdata = sys->GX3D.RasterCR.Raw; break;
 
-        case 0x00'00'B0 ... 0x00'00'E0-1:
-            return DMA_IOReadHandler(&sys->DMA7.Channels[DMA7_NormalBase], addr);
+    case 0x00'00'B0 ... 0x00'00'E0-1: rdata = DMA_IOReadHandler(sys->DMA9.Channels, addr); break;
+    case 0x00'00'E0 ... 0x00'00'EC: rdata = sys->DMAFill[(addr & 0xF) / 4]; break;
+    case 0x00'01'00 ... 0x00'01'0C: rdata = Timer_IOReadHandler(sys, now, addr, true); break;
+    case 0x00'01'30: rdata = Input_PollMain(sys->Pad); break;
 
-        case 0x00'01'00 ... 0x00'01'0C:
-            return Timer_IOReadHandler(sys, sys->AHB7.Timestamp, addr, false);
+    case 0x00'01'80: rdata = sys->IPCSyncDataTo9 | (sys->IPCSyncDataTo7 << 8) | (sys->IPCSyncIRQEnableTo9 << 14); break;
 
-        case 0x00'01'30:
-            return Input_PollMain(sys->Pad);
+    case 0x00'01'84: rdata = sys->IPCFIFO9.CR.Raw; break;
 
-        case 0x00'01'34:
-            u32 ret = sys->RCR | (Input_PollExtra(sys->TSC.State.Touched, sys->Pad) << 16);
-            return ret;
+    case 0x00'01'A0 ... 0x00'01'B8: rdata = GameCard_IOReadHandler(sys, addr, true); break;
 
-        case 0x00'01'38:
-            return sys->RTC.CR.Raw;
+    case 0x00'02'04: rdata = sys->ExtMemCR_Shared.Raw | sys->ExtMemCR_9.Raw; break;
 
-        case 0x00'01'80: // ipcsync
-            return sys->IPCSyncDataTo7
-                    | (sys->IPCSyncDataTo9 << 8)
-                    | (sys->IPCSyncIRQEnableTo7 << 14);
-        case 0x00'01'84:
-            return sys->IPCFIFO7.CR.Raw;
+    case 0x00'02'08: rdata = sys->IME9; break;
+    case 0x00'02'10: rdata = sys->IE9; break;
+    case 0x00'02'14: rdata = sys->IF9; break;
 
-        case 0x00'01'A0 ... 0x00'01'B8:
-            return GameCard_IOReadHandler(sys, addr, false);
+    // internal memory control
+    case 0x00'02'40:
+        rdata = (sys->VRAMCR[VRAMID_A].Raw << 0 ) | (sys->VRAMCR[VRAMID_B].Raw << 8 )
+                | (sys->VRAMCR[VRAMID_C].Raw << 16) | (sys->VRAMCR[VRAMID_D].Raw << 24);
+        break;
+    case 0x00'02'44:
+        rdata = (sys->VRAMCR[VRAMID_E].Raw << 0 ) | (sys->VRAMCR[VRAMID_F].Raw << 8 )
+                | (sys->VRAMCR[VRAMID_G].Raw << 16) | (sys->WRAMCR               << 24);
+        break;
+    case 0x00'02'48:
+        rdata = (sys->VRAMCR[VRAMID_H].Raw << 0 ) | (sys->VRAMCR[VRAMID_I].Raw << 8);
+        break;
 
-        case 0x00'01'C0:
-            return sys->SPICR.Raw | (sys->SPIOut << 16);
+    // hardware divider
+    case 0x00'02'80: rdata = sys->DivCR.Raw; break;
 
-        case 0x00'02'04: // External Memory Control
-            return sys->ExtMemCR_Shared.Raw | sys->ExtMemCR_7.Raw;
+    case 0x00'02'90: rdata = sys->DivNum.b32[0]; break;
+    case 0x00'02'94: rdata = sys->DivNum.b32[1]; break;
 
-        case 0x00'02'08: // IME
-            return sys->IME7;
-        case 0x00'02'10: // IE
-            return sys->IE7;
-        case 0x00'02'14: // IF
-            return sys->IF7;
+    case 0x00'02'98: rdata = sys->DivDen.b32[0]; break;
+    case 0x00'02'9C: rdata = sys->DivDen.b32[1]; break;
 
-        case 0x00'02'40: // VRAM/WRAM Status
-            return ((sys->VRAMCR[2].Raw & 0x87) == 0x82) | (((sys->VRAMCR[3].Raw & 0x87) == 0x82) << 1)
-                   | sys->WRAMCR << 8;
+    case 0x00'02'A0: rdata = sys->DivQuo.b32[0]; break;
+    case 0x00'02'A4: rdata = sys->DivQuo.b32[1]; break;
 
-        case 0x00'03'00:
-            return sys->PostFlag;
+    case 0x00'02'A8: rdata = sys->DivRem.b32[0]; break;
+    case 0x00'02'AC: rdata = sys->DivRem.b32[1]; break;
 
-        case 0x00'03'04:
-            return sys->PowerCR7.Raw;
+    // hardware square root
+    case 0x00'02'B0: rdata = sys->SqrtCR.Raw;       break;
+    case 0x00'02'B4: rdata = sys->SqrtRes;          break;
+    case 0x00'02'B8: rdata = sys->SqrtParam.b32[0]; break;
+    case 0x00'02'BC: rdata = sys->SqrtParam.b32[1]; break;
 
+    case 0x00'03'04: rdata = sys->PowerCR9.Raw; break;
 
-        case 0x00'04'00 ... 0x00'04'FC:
-            return SoundChannel_IORead(sys, addr);
+    case 0x00'03'20 ... 0x00'03'FF: // 3d rasterizer io block
+        if (!sys->PowerCR9.GPURasterizerPower) rdata = 0;
+        else rdata = GX_IORead(sys, addr);
+        break;
 
-        case 0x00'05'00:
-            return sys->SoundCR.Raw;
-        case 0x00'05'04:
-            return sys->SoundBias;
+    case 0x00'04'00 ... 0x00'07'00: // 3d geometry io block
+        if (!sys->PowerCR9.GPUGeometryPower) rdata = 0;
+        else rdata = GX_IORead(sys, addr);
+        break;
 
-        case 0x00'05'08:
-            return sys->SoundCaptures[0].CR.Raw | (sys->SoundCaptures[1].CR.Raw << 8);
-        case 0x00'05'10:
-            return sys->SoundCaptures[0].DstAddr;
-        case 0x00'05'18:
-            return sys->SoundCaptures[1].DstAddr;
+    case 0x00'10'00 ... 0x00'10'6C: rdata = PPU_IORead(&sys->PPU_B, addr); break;
 
-        case 0x10'00'00:
-            return IPC_FIFORead(sys, false);
+    case 0x00'03'00: rdata = sys->PostFlag | (sys->PostFlagA9Bit << 1); break;
 
-        case 0x10'00'10:
-            return GameCard_ROMDataRead(sys, sys->AHB7.Timestamp, false);
+    case 0x10'00'00: rdata = IPC_FIFORead(sys, now, true); break;
+    case 0x10'00'10: rdata = GameCard_ROMDataRead(sys, now, true); break;
 
-
-        default:
-            if (timings) LogPrint(LOG_ARM7 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO7 READ: %08"PRIX32" @ %08"PRIX32"\n", addr, sys->ARM7.ARM.PC);
-            return 0;
+    default: // unmapped io
+        LogPrint(LOG_ARM9 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO9 READ: %08"PRIX32" @ %08"PRIX32"\n", addr, sys->A946ES.ARM.PC);
+        rdata = 0;
+        break;
     }
+    Bus_TransferPostSetup(sys, rdata, true, now + DSClk33(1), false, cb, true);
 }
 
-void IO7_Write(Console* sys, const u32 addr, const u32 val, const u32 mask, const u32 a7pc)
+void IO9_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, const u32 mask, const BusCallbacks cb)
 {
-    Scheduler_Sync(sys, sys->AHB7.Timestamp, Sync_Normal7);
+    switch (addr & 0xFF'FF'FC)
+    {
+    case 0x00'00'00:
+    case 0x00'00'08 ... 0x00'00'54:
+    case 0x00'00'6C:
+        PPU_Sync(sys, now);
+        PPU_IOWrite(&sys->PPU_A, addr, wrdata, mask, false, sys->PowerCR9.PPUAPower);
+        break;
 
+    case 0x00'00'04:
+        MaskedWrite(sys->DispStatRW9.Raw, wrdata, mask & 0xFFB8);
+        sys->TargetVCount9 = (sys->DispStatRW9.VCountMSB << 8) | sys->DispStatRW9.VCountLSB;
+
+        if (mask & 0xFFFF0000)
+        {
+            sys->VCountUpdate9 = true;
+            MaskedWrite(sys->VCountNew9, wrdata>>16, (mask>>16) & 0x1FF);
+        }
+        break;
+
+    case 0x00'00'60: MaskedWrite(sys->GX3D.RasterCR.Raw, wrdata, mask & 0x4FFF); break;
+
+    // DMA
+    case 0x00'00'B0 ... 0x00'00'E0-1: DMA9_IOWriteHandler(sys, sys->DMA9.Channels, addr, wrdata, mask); break;
+    case 0x00'00'E0 ... 0x00'00'EC: MaskedWrite(sys->DMAFill[(addr & 0xF) / 4], wrdata, mask); break;
+
+    case 0x00'01'00 ... 0x00'01'0C: Timer_IOWriteHandler(sys, now, addr, wrdata, mask, true); break;
+
+    case 0x00'01'80: // ipcsync
+        if (mask & 0xF00) sys->IPCSyncDataTo7 = (wrdata >> 8) & 0xF;
+
+        if ((wrdata & mask & (1<<13)) && sys->IPCSyncIRQEnableTo7)
+            Sched_AddEvent(sys, now + DSClk33(1), Evt_IRQ7_IPCSync);
+
+        if (mask & (1<<14)) sys->IPCSyncIRQEnableTo9 = wrdata & (1<<14);
+        break;
+
+    case 0x00'01'84: IPC_FIFOCRWrite(sys, wrdata, mask, now, true); break;
+    case 0x00'01'88: IPC_FIFOWrite(sys, wrdata, mask, now, true); break;
+
+    case 0x00'01'A0 ... 0x00'01'B8: GameCard_IOWriteHandler(sys, addr, wrdata, mask, now, true); break;
+
+    case 0x00'02'04: // exmemcnt
+        MaskedWrite(sys->ExtMemCR_9.Raw, wrdata, mask & 0x7F);
+        MaskedWrite(sys->ExtMemCR_Shared.Raw, wrdata, mask & 0x8880); // TODO: this mask should be 0x8CFF for DSi cut second card slot
+        sys->ExtMemCR_Shared.Raw |= wrdata & mask & 0x6000; // Main RAM Bits; these are probably write once...?
+        break;
+
+    case 0x00'02'08: MaskedWrite(sys->IME9, wrdata, mask & 1); break;
+    case 0x00'02'10: MaskedWrite(sys->IE9, wrdata, mask & 0x003F3F7F); break;
+    case 0x00'02'14: IF9_Clear(sys, wrdata, now); break;
+
+    // VRAM/WRAM Control
+    // TODO: Does disabling a VRAM Bank actually decay bits? Test that pls.
+    case 0x00'02'40:
+    {
+        PPU_Sync(sys, now);
+        if (mask & 0x000000FF)
+        {
+            VRAMCR new = {.Raw = wrdata & 0x9B};
+            if ((sys->VRAMCR[VRAMID_A].Mode == 3) != (new.Mode == 3)) SWRen_Sync(sys, now);
+            sys->VRAMCR[VRAMID_A] = new;
+        }
+        if (mask & 0x0000FF00)
+        {
+            VRAMCR new = {.Raw = (wrdata>>8) & 0x9B};
+            if ((sys->VRAMCR[VRAMID_B].Mode == 3) != (new.Mode == 3)) SWRen_Sync(sys, now);
+            sys->VRAMCR[VRAMID_B] = new;
+        }
+        if (mask & 0x00FF0000)
+        {
+            VRAMCR new = {.Raw = (wrdata>>16) & 0x9F};
+            if (!(sys->VRAMCR[VRAMID_C].Mode == 3) != (new.Mode == 3)) SWRen_Sync(sys, now);
+            sys->VRAMCR[VRAMID_C] = new;
+        }
+        if (mask & 0xFF000000)
+        {
+            VRAMCR new = {.Raw = (wrdata>>24) & 0x9F};
+            if ((sys->VRAMCR[VRAMID_D].Mode == 3) != (new.Mode == 3)) SWRen_Sync(sys, now);
+            sys->VRAMCR[VRAMID_D] = new;
+        }
+        break;
+    }
+    case 0x00'02'44:
+    {
+        PPU_Sync(sys, now);
+        if (mask & 0x000000FF)
+        {
+            VRAMCR new = {.Raw = wrdata & 0x87};
+            if ((sys->VRAMCR[VRAMID_E].Mode == 3) != (new.Mode == 3)) SWRen_Sync(sys, now);
+            sys->VRAMCR[VRAMID_E] = new;
+        }
+        if (mask & 0x0000FF00)
+        {
+            VRAMCR new = {.Raw = (wrdata>>8) & 0x9F};
+            if ((sys->VRAMCR[VRAMID_F].Mode == 3) != (new.Mode == 3)) SWRen_Sync(sys, now);
+            sys->VRAMCR[VRAMID_F] = new;
+        }
+        if (mask & 0x00FF0000)
+        {
+            VRAMCR new = {.Raw = (wrdata>>16) & 0x9F};
+            if ((sys->VRAMCR[VRAMID_G].Mode == 3) != (new.Mode == 3)) SWRen_Sync(sys, now);
+            sys->VRAMCR[VRAMID_G] = new;
+        }
+        if (mask & 0xFF000000) sys->WRAMCR = (wrdata >> 24) & 0x3;
+        break;
+    }
+    case 0x00'02'48:
+    {
+        PPU_Sync(sys, now);
+        if (mask & 0x000000FF) sys->VRAMCR[VRAMID_H].Raw = wrdata & 0x83;
+        if (mask & 0x0000FF00) sys->VRAMCR[VRAMID_I].Raw = (wrdata >> 8) & 0x83;
+        break;
+    }
+
+    // division
+    case 0x00'02'80:
+        MaskedWrite(sys->DivCR.Raw, wrdata, mask & 0x3);
+        IO9_StartDiv(sys, now); // checkme: does it restart if no changes were made? does writing the high bits restart?
+        break;
+    case 0x00'02'90:
+        MaskedWrite(sys->DivNum.b32[0], wrdata, mask);
+        IO9_StartDiv(sys, now);
+        break;
+    case 0x00'02'94:
+        MaskedWrite(sys->DivNum.b32[1], wrdata, mask);
+        IO9_StartDiv(sys, now);
+        break;
+    case 0x00'02'98:
+        MaskedWrite(sys->DivDen.b32[0], wrdata, mask);
+        IO9_StartDiv(sys, now);
+        break;
+    case 0x00'02'9C:
+        MaskedWrite(sys->DivDen.b32[1], wrdata, mask);
+        IO9_StartDiv(sys, now);
+        break;
+    // square root
+    case 0x00'02'B0:
+        MaskedWrite(sys->SqrtCR.Raw, wrdata, mask & 1);
+        IO9_StartSqrt(sys, now);
+        break;
+    case 0x00'02'B8:
+        MaskedWrite(sys->SqrtParam.b32[0], wrdata, mask);
+        IO9_StartSqrt(sys, now);
+        break;
+    case 0x00'02'BC:
+        MaskedWrite(sys->SqrtParam.b32[1], wrdata, mask);
+        IO9_StartSqrt(sys, now);
+        break;
+
+    case 0x00'03'00:
+        if (mask & 2) sys->PostFlagA9Bit = wrdata & 2;
+        break;
+
+    case 0x00'03'04:
+        PPU_Sync(sys, now);
+        SWRen_Sync(sys, now);
+        MaskedWrite(sys->PowerCR9.Raw, wrdata, mask & 0x820F);
+        break;
+
+    case 0x00'03'20 ... 0x00'03'FC:
+        if (sys->PowerCR9.GPURasterizerPower) GX_IOWrite(sys, addr, mask, wrdata);
+        break;
+    case 0x00'04'00 ... 0x00'06'FC:
+        if (sys->PowerCR9.GPUGeometryPower) GX_IOWrite(sys, addr, mask, wrdata);
+        break;
+
+    case 0x00'10'00 ... 0x00'10'6C:
+        PPU_Sync(sys, now);
+        PPU_IOWrite(&sys->PPU_B, addr, wrdata, mask, true, sys->PowerCR9.PPUBPower);
+        break;
+
+    default:
+        LogPrint(LOG_ARM9 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO9 WRITE: %08"PRIX32" %08"PRIX32" %08"PRIX32" @ %08"PRIX32"\n", addr, wrdata, mask, sys->A946ES.ARM.PC);
+        break;
+    }
+    now += DSClk33(1);
+    AddBusContention(sys, now, Dev_IO9);
+    Bus_TransferPostSetup(sys, 0, false, now, false, cb, true);
+}
+
+void IO7_Read(Console* sys, const u32 addr, const timestamp now, const BusCallbacks cb)
+{
+    u32 rdata;
     switch(addr & 0xFF'FF'FC)
     {
-        case 0x00'00'04:
-            MaskedWrite(sys->DispStatRW7.Raw, val, mask & 0xFFB8);
-            sys->TargetVCount7 = (sys->DispStatRW7.VCountMSB << 8) | sys->DispStatRW7.VCountLSB;\
+    case 0x00'00'04: rdata = (sys->VCount << 16) | sys->DispStatRO7.Raw | sys->DispStatRW7.Raw; break;
 
-            if (mask & 0xFFFF0000)
-            {
-                sys->VCountUpdate7 = true;
-                MaskedWrite(sys->VCountNew7, val>>16, (mask>>16) & 0x1FF);
-            }
-            break;
+    case 0x00'00'B0 ... 0x00'00'E0-1: rdata = DMA_IOReadHandler(&sys->DMA7.Channels[DMA7_NormalBase], addr); break;
 
-        case 0x00'00'B0 ... 0x00'00'E0-1:
-            DMA7_IOWriteHandler(sys, &sys->DMA7.Channels[DMA7_NormalBase], addr, val, mask);
-            break;
+    case 0x00'01'00 ... 0x00'01'0C: rdata = Timer_IOReadHandler(sys, now, addr, false); break;
 
-        case 0x00'01'00 ... 0x00'01'0C:
-            Timer_IOWriteHandler(sys, sys->AHB7.Timestamp, addr, val, mask, false);
-            break;
+    case 0x00'01'30:rdata = Input_PollMain(sys->Pad); break;
 
-        case 0x00'01'34:
-            MaskedWrite(sys->RCR, val, mask & 0x83);
-            break;
+    case 0x00'01'34:
+        rdata = sys->RCR | (Input_PollExtra(sys->TSC.State.Touched, sys->Pad) << 16); break;
 
-        case 0x00'01'38:
-            if (mask & 0x0000FFFF)
-                RTC_IOWriteHandler(sys, val&0xFFFF,  mask&0xFFFF);
-            break;
+    case 0x00'01'38: rdata = sys->RTC.CR.Raw; break;
 
-        case 0x00'01'80: // ipcsync
+    case 0x00'01'80: // ipcsync
+        rdata = sys->IPCSyncDataTo7
+                | (sys->IPCSyncDataTo9 << 8)
+                | (sys->IPCSyncIRQEnableTo7 << 14);
+        break;
+    case 0x00'01'84: rdata = sys->IPCFIFO7.CR.Raw; break;
+
+    case 0x00'01'A0 ... 0x00'01'B8: rdata = GameCard_IOReadHandler(sys, addr, false); break;
+
+    case 0x00'01'C0: rdata = sys->SPICR.Raw | (sys->SPIOut << 16); break;
+
+    case 0x00'02'04: rdata = sys->ExtMemCR_Shared.Raw | sys->ExtMemCR_7.Raw; break;
+
+    case 0x00'02'08: rdata = sys->IME7; break;
+    case 0x00'02'10: rdata = sys->IE7; break;
+    case 0x00'02'14: rdata = sys->IF7; break;
+
+    case 0x00'02'40: rdata = ((sys->VRAMCR[VRAMID_C].Raw & 0x87) == 0x82) | (((sys->VRAMCR[VRAMID_D].Raw & 0x87) == 0x82) << 1) | (sys->WRAMCR << 8); break;
+
+    case 0x00'03'00: rdata = sys->PostFlag; break;
+
+    case 0x00'03'04: rdata = sys->PowerCR7.Raw; break;
+
+
+    case 0x00'04'00 ... 0x00'04'FC: rdata = SoundChannel_IORead(sys, addr); break;
+
+    case 0x00'05'00: rdata = sys->SoundCR.Raw; break;
+    case 0x00'05'04: rdata = sys->SoundBias; break;
+
+    case 0x00'05'08: rdata = sys->SoundCaptures[0].CR.Raw | (sys->SoundCaptures[1].CR.Raw << 8); break;
+    case 0x00'05'10: rdata = sys->SoundCaptures[0].DstAddr; break;
+    case 0x00'05'18: rdata = sys->SoundCaptures[1].DstAddr; break;
+
+    case 0x10'00'00: rdata = IPC_FIFORead(sys, now, false); break;
+
+    case 0x10'00'10: rdata = GameCard_ROMDataRead(sys, now, false); break;
+
+    default:
+        LogPrint(LOG_ARM7 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO7 READ: %08"PRIX32" @ %08"PRIX32"\n", addr, sys->A7TDMI.ARM.PC);
+        rdata = 0;
+        break;
+    }
+    Bus_TransferPostSetup(sys, rdata, true, now + DSClk33(1), false, cb, false);
+}
+
+void IO7_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, const u32 mask, const BusCallbacks cb)
+{
+    switch(addr & 0xFF'FF'FC)
+    {
+    case 0x00'00'04:
+        MaskedWrite(sys->DispStatRW7.Raw, wrdata, mask & 0xFFB8);
+        sys->TargetVCount7 = (sys->DispStatRW7.VCountMSB << 8) | sys->DispStatRW7.VCountLSB;\
+
+        if (mask & 0xFFFF0000)
         {
-            if (mask & 0xF00)
-            {
-                sys->IPCSyncDataTo9 = (val >> 8) & 0xF;
-            }
-
-            if ((val & mask & (1<<13)) && sys->IPCSyncIRQEnableTo9)
-            {
-                Console_ScheduleIRQs(sys, IRQ_IPCSync, true, sys->AHB7.Timestamp);
-            }
-
-            if (mask & (1<<14))
-            {
-                sys->IPCSyncIRQEnableTo7 = val & (1<<14);
-            }
-            break;
+            sys->VCountUpdate7 = true;
+            MaskedWrite(sys->VCountNew7, wrdata>>16, (mask>>16) & 0x1FF);
         }
+        break;
 
-        case 0x00'01'84:
-            IPC_FIFOCRWrite(sys, val, mask, false);
-            break;
-        case 0x00'01'88:
-            IPC_FIFOWrite(sys, val, mask, false);
-            break;
+    case 0x00'00'B0 ... 0x00'00'E0-1: DMA7_IOWriteHandler(sys, &sys->DMA7.Channels[DMA7_NormalBase], addr, wrdata, mask); break;
 
-        case 0x00'01'A0 ... 0x00'01'B8:
-            GameCard_IOWriteHandler(sys, addr, val, mask, sys->AHB7.Timestamp, false);
-            break;
+    case 0x00'01'00 ... 0x00'01'0C: Timer_IOWriteHandler(sys, now, addr, wrdata, mask, false); break;
 
-        case 0x00'01'C0:
-            MaskedWrite(sys->SPICR.Raw, val, mask & 0xCF83);
+    case 0x00'01'34: MaskedWrite(sys->RCR, wrdata, mask & 0x83); break;
 
-            if (mask & 0xFF0000)
+    case 0x00'01'38:
+        if (mask & 0x0000FFFF) RTC_IOWriteHandler(sys, wrdata&0xFFFF,  mask&0xFFFF);
+        break;
+
+    case 0x00'01'80: // ipcsync
+    {
+        if (mask & 0xF00) sys->IPCSyncDataTo9 = (wrdata >> 8) & 0xF;
+
+        if ((wrdata & mask & (1<<13)) && sys->IPCSyncIRQEnableTo9)
+            Sched_AddEvent(sys, now + DSClk33(1), Evt_IRQ9_IPCSync);
+
+        if (mask & (1<<14)) sys->IPCSyncIRQEnableTo7 = wrdata & (1<<14);
+        break;
+    }
+
+    case 0x00'01'84: IPC_FIFOCRWrite(sys, wrdata, mask, now, false); break;
+    case 0x00'01'88: IPC_FIFOWrite(sys, wrdata, mask, now, false); break;
+
+    case 0x00'01'A0 ... 0x00'01'B8: GameCard_IOWriteHandler(sys, addr, wrdata, mask, now, false); break;
+
+    case 0x00'01'C0:
+        MaskedWrite(sys->SPICR.Raw, wrdata, mask & 0xCF83);
+
+        if (mask & 0xFF0000)
+        {
+            Sched_AddEvent(sys, now + (((8*8) << sys->SPICR.Baudrate)), Evt_SPI); // checkme: delay?
+            switch(sys->SPICR.DeviceSelect)
             {
-                switch(sys->SPICR.DeviceSelect)
-                {
-                case 0:
-                    sys->SPIBuf = PowMan_CMDSend(sys, val>>16, sys->SPICR.ChipSelect);
-                    break;
-                case 1:
-                    sys->SPIBuf = Flash_CMDSend(&sys->Firmware, val>>16, sys->SPICR.ChipSelect);
-                    break;
-                case 2:
-                    sys->SPIBuf = TSC_SendCommand(&sys->TSC, val >> 16);
-                    break;
-                case 3:
-                    LogPrint(LOG_ARM7|LOG_UNIMP, "spi RESERVED????????????\n");
-                    break;
-                }
-                sys->SPICR.Busy = true;
-                Schedule_Event(sys, SPI_Finish, Evt_SPI, sys->AHB7.Timestamp + (((8*8) << sys->SPICR.Baudrate))); // checkme: delay?
+            case 0: sys->SPIBuf = PMIC_CMDSend(sys, wrdata>>16, sys->SPICR.ChipSelect); break;
+            case 1: sys->SPIBuf = Flash_CMDSend(&sys->Firmware, wrdata>>16, sys->SPICR.ChipSelect); break;
+            case 2: sys->SPIBuf = TSC_SendCommand(&sys->TSC, wrdata >> 16); break;
+            case 3: LogPrint(LOG_ARM7|LOG_UNIMP, "spi RESERVED????????????\n"); break;
             }
-            break;
+            sys->SPICR.Busy = true;
+        }
+        break;
 
-        case 0x00'02'04: // exmemcnt
-            MaskedWrite(sys->ExtMemCR_7.Raw, val, mask & 0x7F);
-            break;
+    case 0x00'02'04: MaskedWrite(sys->ExtMemCR_7.Raw, wrdata, mask & 0x7F); break;
 
-        case 0x00'02'08: // IME
-            MaskedWrite(sys->IME7, val, mask & 1);
-            break;
-        case 0x00'02'10: // IE
-            MaskedWrite(sys->IE7, val, mask & 0x01DF3FFF);
-            break;
-        case 0x00'02'14: // IF
-            sys->IF7 &= ~(val & mask);
-            sys->IF7 |= sys->IF7Held;
-            break;
+    case 0x00'02'08: MaskedWrite(sys->IME7, wrdata, mask & 1); break;
+    case 0x00'02'10: MaskedWrite(sys->IE7, wrdata, mask & 0x01DF3FFF); break;
+    case 0x00'02'14: IF7_Clear(sys, wrdata, now); break;
 
-
-        case 0x00'03'00:
-            if (a7pc < 0x4000) // can only be written from bios. for... some reason?
+    case 0x00'03'00:
+        if (sys->Bios7ProtCur < 0x4000) // can only be written from bios. for... some reason?
+        {
+            if (mask & 0x1) sys->PostFlag |= wrdata & 0x1;
+            if (mask & 0xFF00) // wait control
             {
-                if (mask & 0x1) // post flag
+                switch((wrdata >> 14) & 0x3)
                 {
-                    sys->PostFlag |= val & 0x1;
-                }
-                if (mask & 0xFF00) // wait control
-                {
-                    switch((val >> 14) & 0x3)
+                case 0: // does nothing
+                    LogPrint(LOG_ARM7|LOG_ODD, "A7 wrote nothing to HaltCR...?\n");
+                    break;
+                case 1: // GBA
+                    // GBA mode notes:
+                    //   DS Lite:
+                    //     bits confirmed to impact gba mode:
+                    //       pmic - sound amplifier enable
+                    //       pmic - lcd backlight enables
+                    //       a9 powcr - lcd swap
+                    //     dont seem to matter:
+                    //       vram banks A/B enable (not sure about border, but it doesn't seem to prevent the game from displaying at least?)
+                    //       a9 powcr - 2d engine A enable
+                    //       a7 powcr - sound en
+                    //       "a9 extmemcnt - main ram gba mode bit"
+                    // CHECKME: do you think the dma channel word latches can leak info from nds to gba mode?
+                    LogPrint(LOG_ARM7|LOG_UNIMP, "But nobody came...\n\n\n...GBA mode unsupported, sorry!\n");
+                    [[fallthrough]];
+                case 2: // halt; stop clocking arm7tdmi until IE & IF
+                    if (!Console_CheckARM7Wake(sys)) // checkme: might still halt for a little?
                     {
-                    case 0: // does nothing
-                        LogPrint(LOG_ARM7|LOG_ODD, "A7 wrote nothing to HaltCR...?\n");
-                        break;
-                    case 1: // GBA
-                        // GBA mode notes:
-                        //   DS Lite:
-                        //     bits confirmed to impact gba mode:
-                        //       powman - sound amplifier enable
-                        //       powman - lcd backlight enables
-                        //       a9 powcr - lcd swap
-                        //     dont seem to matter:
-                        //       vram banks A/B enable (not sure about border, but it doesn't seem to prevent the game from displaying at least?)
-                        //       a9 powcr - 2d engine A enable
-                        //       a7 powcr - sound en
-                        //       "a9 extmemcnt - main ram gba mode bit"
-                        LogPrint(LOG_ARM7|LOG_UNIMP, "But nobody came...\n\n\n...GBA mode unsupported, sorry!\n");
-                        sys->ARM7.ARM.WaitForInterrupt = true; // note: seems to just work as wfi on 3ds?
-                        break;
-                    case 2: // halt
-                        if (!Console_CheckARM7Wake(sys)) // checkme: might still halt for a little?
-                        {
-                            sys->ARM7.ARM.WaitForInterrupt = true;
-                        }
-                        break;
-                    case 3: // sleep
-                        LogPrint(LOG_ARM7|LOG_UNIMP, "I dont really know what sleep does but it's not in yet!\n");
-                        break;
+                        sys->A7ClkDisable = true;
                     }
+                    break;
+                case 3: // sleep
+                    // this should be similar to halt but disabling a bunch more hardware...?
+                    LogPrint(LOG_ARM7|LOG_UNIMP, "I dont really know what sleep does but it's not in yet!\n");
+                    break;
                 }
             }
-            break;
+        }
+        break;
 
-        case 0x00'03'04:
-            MaskedWrite(sys->PowerCR7.Raw, val, mask & 0x3);
-            break;
+    case 0x00'03'04: MaskedWrite(sys->PowerCR7.Raw, wrdata, mask & 0x3); break;
 
-        case 0x00'03'08:
-            if ((a7pc < 0x4000) && (sys->Bios7Prot == 0)) // write once and can probably only be written from bios?
-                MaskedWrite(sys->Bios7Prot, val, mask & 0xFFFC);
-            break;
+    case 0x00'03'08:
+        if ((sys->Bios7ProtCur < 0x4000) && (sys->Bios7Prot == 0)) // write once and can probably only be written from bios?
+            MaskedWrite(sys->Bios7Prot, wrdata, mask & 0x3FFC); // mask is a guess; in practice the only value ever written is "0x1205"
+        break;
 
+    case 0x00'04'00 ... 0x00'04'FC: SoundChannel_IOWrite(sys, addr, wrdata, mask, now); break;
 
-        case 0x00'04'00 ... 0x00'04'FC:
-            SoundChannel_IOWrite(sys, addr, val, mask, sys->AHB7.Timestamp);
-            break;
-
-        case 0x00'05'00:
-            if (!sys->PowerCR7.AudioPower) break; // read only
-            //u16 old = sys->SoundCR.Raw;
-            MaskedWrite(sys->SoundCR.Raw, val, mask & 0xBF7F);
-            /*if ((val ^ old) & 0x8000) // checkme?
+    case 0x00'05'00:
+        if (!sys->PowerCR7.AudioPower) break; // read only
+        //u16 old = sys->SoundCR.Raw;
+        MaskedWrite(sys->SoundCR.Raw, wrdata, mask & 0xBF7F);
+        /*if ((wrdata ^ old) & 0x8000) // checkme?
+        {
+            if (wrdata & 0x8000)
             {
-                if (val & 0x8000)
-                {
-                    printf("Sound Master enable\n");
-                    SoundChannel_TryStartAll(sys, sys->AHB7.Timestamp);
-                }
-                else
-                {
-                    printf("Sound Master disable\n");
-                    SoundChannel_KillAll(sys, sys->AHB7.Timestamp);
-                }
-            }*/
-            break;
-
-        case 0x00'05'04:
-            if (!sys->PowerCR7.AudioPower) break; // read only
-            MaskedWrite(sys->SoundBias, val, mask & 0x3FF);
-            break;
-
-        case 0x00'05'08:
-            if (!sys->PowerCR7.AudioPower) break; // read only
-            if (mask & 0x00FF)
-            {
-                SoundCapture_CRWrite(sys, val & 0xFF, sys->AHB7.Timestamp, 0);
+                printf("Sound Master enable\n");
+                SoundChannel_TryStartAll(sys, sys->AHB7.Timestamp);
             }
-            if (mask & 0xFF00)
+            else
             {
-                SoundCapture_CRWrite(sys, (val >> 8) & 0xFF, sys->AHB7.Timestamp, 1);
+                printf("Sound Master disable\n");
+                SoundChannel_KillAll(sys, sys->AHB7.Timestamp);
             }
-            break;
+        }*/
+        break;
 
-        case 0x00'05'10:
-            if (!sys->PowerCR7.AudioPower) break; // read only
-            MaskedWrite(sys->SoundCaptures[0].DstAddr, val, mask & 0x07FFFFFC);
-            break;
-        case 0x00'05'14:
-            if (!sys->PowerCR7.AudioPower) break; // read only
-            MaskedWrite(sys->SoundCaptures[0].Length, val, mask & 0xFFFF);
-            sys->DMA7.Channels[0+DMA7_SoundCapBase].NumWords = sys->SoundCaptures[0].Length + (sys->SoundCaptures[0].Length == 0);
-            break;
-        case 0x00'05'18:
-            if (!sys->PowerCR7.AudioPower) break; // read only
-            MaskedWrite(sys->SoundCaptures[1].DstAddr, val, mask & 0x07FFFFFC);
-            break;
-        case 0x00'05'1C:
-            if (!sys->PowerCR7.AudioPower) break; // read only
-            MaskedWrite(sys->SoundCaptures[1].Length, val, mask & 0xFFFF);
-            sys->DMA7.Channels[1+DMA7_SoundCapBase].NumWords = sys->SoundCaptures[1].Length + (sys->SoundCaptures[1].Length == 0);
-            break;
+    case 0x00'05'04:
+        if (!sys->PowerCR7.AudioPower) break; // read only
+        MaskedWrite(sys->SoundBias, wrdata, mask & 0x3FF);
+        break;
+
+    case 0x00'05'08:
+        if (!sys->PowerCR7.AudioPower) break; // read only
+        if (mask & 0x00FF) SoundCapture_CRWrite(sys, wrdata & 0xFF, now, 0);
+        if (mask & 0xFF00) SoundCapture_CRWrite(sys, (wrdata >> 8) & 0xFF, now, 1);
+        break;
+
+    case 0x00'05'10:
+        if (!sys->PowerCR7.AudioPower) break; // read only
+        MaskedWrite(sys->SoundCaptures[0].DstAddr, wrdata, mask & 0x07FFFFFC);
+        break;
+    case 0x00'05'14:
+        if (!sys->PowerCR7.AudioPower) break; // read only
+        MaskedWrite(sys->SoundCaptures[0].Length, wrdata, mask & 0xFFFF);
+        sys->DMA7.Channels[0+DMA7_SoundCapBase].NumWords = sys->SoundCaptures[0].Length + (sys->SoundCaptures[0].Length == 0);
+        break;
+    case 0x00'05'18:
+        if (!sys->PowerCR7.AudioPower) break; // read only
+        MaskedWrite(sys->SoundCaptures[1].DstAddr, wrdata, mask & 0x07FFFFFC);
+        break;
+    case 0x00'05'1C:
+        if (!sys->PowerCR7.AudioPower) break; // read only
+        MaskedWrite(sys->SoundCaptures[1].Length, wrdata, mask & 0xFFFF);
+        sys->DMA7.Channels[1+DMA7_SoundCapBase].NumWords = sys->SoundCaptures[1].Length + (sys->SoundCaptures[1].Length == 0);
+        break;
 
 
-        default:
-            LogPrint(LOG_ARM7 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO7 WRITE: %08"PRIX32" %08"PRIX32" %08"PRIX32" @ %08"PRIX32"\n", addr, val, mask, sys->ARM7.ARM.PC);
-            break;
+    default:
+        LogPrint(LOG_ARM7 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO7 WRITE: %08"PRIX32" %08"PRIX32" %08"PRIX32" @ %08"PRIX32"\n", addr, wrdata, mask, sys->A7TDMI.ARM.PC);
+        break;
     }
+    now += DSClk33(1);
+    AddBusContention(sys, now, Dev_IO7);
+    Bus_TransferPostSetup(sys, 0, false, now, false, cb, false);
 }
 
-u32 IO9_Read(Console* sys, const u32 addr, const bool timings)
+void IO9_Handler(Console* sys, timestamp now)
 {
-    Scheduler_Sync(sys, sys->AHB9.Timestamp, Sync_Normal9);
+    BusReq* req = &sys->Bus9.PipeFIFO[sys->Bus9.FIFODrainPtr];
+    const u32 addr = req->Addr;
 
-    switch (addr & 0xFF'FF'FC)
-    {
-        case 0x00'00'00:
-        case 0x00'00'08 ... 0x00'00'54:
-        case 0x00'00'6C:
-            return PPU_IORead(&sys->PPU_A, addr);
-
-        case 0x00'00'04:
-            return (sys->VCount << 16) | sys->DispStatRO9.Raw |  sys->DispStatRW9.Raw;
-
-        case 0x00'00'60:
-            return sys->GX3D.RasterCR.Raw;
-
-        // DMA
-        case 0x00'00'B0 ... 0x00'00'E0-1:
-            return DMA_IOReadHandler(sys->DMA9.Channels, addr);
-
-        case 0x00'00'E0 ... 0x00'00'EC:
-            return sys->DMAFill[(addr & 0xF) / 4];
-
-        case 0x00'01'00 ... 0x00'01'0C:
-            return Timer_IOReadHandler(sys, sys->AHB9.Timestamp, addr, true);
-
-        case 0x00'01'30:
-            return Input_PollMain(sys->Pad);
-
-        // IPC
-        case 0x00'01'80: // ipcsync
-            return sys->IPCSyncDataTo9
-                    | (sys->IPCSyncDataTo7 << 8)
-                    | (sys->IPCSyncIRQEnableTo9 << 14);
-        case 0x00'01'84:
-            return sys->IPCFIFO9.CR.Raw;
-
-        case 0x00'01'A0 ... 0x00'01'B8:
-            return GameCard_IOReadHandler(sys, addr, true);
-
-        case 0x00'02'04: // External Memory Control
-            return sys->ExtMemCR_Shared.Raw | sys->ExtMemCR_9.Raw;
-
-        case 0x00'02'08: // IME
-            return sys->IME9;
-        case 0x00'02'10: // IE
-            return sys->IE9;
-        case 0x00'02'14: // IF
-            // TODO: this should run more events?
-            return sys->IF9;
-
-        // VRAM/WRAM Control
-        case 0x00'02'40:
-            return sys->VRAMCR[0].Raw | (sys->VRAMCR[1].Raw << 8)
-                | (sys->VRAMCR[2].Raw << 16) | (sys->VRAMCR[3].Raw << 24);
-        case 0x00'02'44:
-            return sys->VRAMCR[4].Raw | (sys->VRAMCR[5].Raw << 8)
-                | (sys->VRAMCR[6].Raw << 16) | (sys->WRAMCR << 24);
-        case 0x00'02'48:
-            return sys->VRAMCR[7].Raw | (sys->VRAMCR[8].Raw << 8);
-
-
-        case 0x00'02'80:
-            return sys->DivCR.Raw;
-
-        case 0x00'02'90:
-            return sys->DivNum.b32[0];
-        case 0x00'02'94:
-            return sys->DivNum.b32[1];
-        case 0x00'02'98:
-            return sys->DivDen.b32[0];
-        case 0x00'02'9C:
-            return sys->DivDen.b32[1];
-        case 0x00'02'A0:
-            return sys->DivQuo.b32[0];
-        case 0x00'02'A4:
-            return sys->DivQuo.b32[1];
-        case 0x00'02'A8:
-            return sys->DivRem.b32[0];
-        case 0x00'02'AC:
-            return sys->DivRem.b32[1];
-        case 0x00'02'B0:
-            return sys->SqrtCR.Raw;
-        case 0x00'02'B4:
-            return sys->SqrtRes;
-        case 0x00'02'B8:
-            return sys->SqrtParam.b32[0];
-        case 0x00'02'BC:
-            return sys->SqrtParam.b32[1];
-
-
-        case 0x00'03'04:
-            return sys->PowerCR9.Raw;
-
-        case 0x00'03'20 ... 0x00'03'FF:
-            if (!sys->PowerCR9.GPURasterizerPower) return 0;
-            return GX_IORead(sys, addr);
-        case 0x00'04'00 ... 0x00'07'00:
-            if (!sys->PowerCR9.GPUGeometryPower) return 0;
-            return GX_IORead(sys, addr);
-
-
-        case 0x00'10'00 ... 0x00'10'6C:
-            return PPU_IORead(&sys->PPU_B, addr);
-
-        case 0x00'03'00:
-            return sys->PostFlag | (sys->PostFlagA9Bit << 1);
-
-        case 0x10'00'00:
-            return IPC_FIFORead(sys, true);
-
-        case 0x10'00'10:
-            return GameCard_ROMDataRead(sys, sys->AHB9.Timestamp, true);
-
-        default:
-            if (timings) LogPrint(LOG_ARM9 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO9 READ: %08"PRIX32" @ %08"PRIX32"\n", addr, sys->ARM9.ARM.PC);
-            return 0;
-    }
+    if (req->Write) IO9_Write(sys, addr, now, req->WrVal, MakeWriteMask(addr, req->Size), req->CB);
+    else            IO9_Read (sys, addr, now, req->CB);
 }
 
-void IO9_Write(Console* sys, const u32 addr, const u32 val, const u32 mask)
+void IO7_Handler(Console* sys, timestamp now)
 {
-    Scheduler_Sync(sys, sys->AHB9.Timestamp, Sync_Normal9);
+    BusReq* req = &sys->Bus7.PipeFIFO[sys->Bus7.FIFODrainPtr];
+    const u32 addr = req->Addr;
 
-    switch (addr & 0xFF'FF'FC)
-    {
-        case 0x00'00'00:
-        case 0x00'00'08 ... 0x00'00'54:
-        case 0x00'00'6C:
-            PPU_Sync(sys, sys->AHB9.Timestamp);
-            PPU_IOWrite(&sys->PPU_A, addr, val, mask, false, sys->PowerCR9.PPUAPower);
-            break;
-
-        case 0x00'00'04:
-            MaskedWrite(sys->DispStatRW9.Raw, val, mask & 0xFFB8);
-            sys->TargetVCount9 = (sys->DispStatRW9.VCountMSB << 8) | sys->DispStatRW9.VCountLSB;
-
-            if (mask & 0xFFFF0000)
-            {
-                sys->VCountUpdate9 = true;
-                MaskedWrite(sys->VCountNew9, val>>16, (mask>>16) & 0x1FF);
-            }
-            break;
-
-        case 0x00'00'60:
-            MaskedWrite(sys->GX3D.RasterCR.Raw, val, mask & 0x4FFF);
-            break;
-
-        // DMA
-        case 0x00'00'B0 ... 0x00'00'E0-1:
-            DMA9_IOWriteHandler(sys, sys->DMA9.Channels, addr, val, mask);
-            break;
-        case 0x00'00'E0 ... 0x00'00'EC:
-            MaskedWrite(sys->DMAFill[(addr & 0xF) / 4], val, mask);
-            break;
-
-        case 0x00'01'00 ... 0x00'01'0C:
-            Timer_IOWriteHandler(sys, sys->AHB9.Timestamp, addr, val, mask, true);
-            break;
-
-        case 0x00'01'80: // ipcsync
-        {
-            if (mask & 0xF00)
-            {
-                sys->IPCSyncDataTo7 = (val >> 8) & 0xF;
-            }
-
-            if ((val & mask & (1<<13)) && sys->IPCSyncIRQEnableTo7)
-            {
-                Console_ScheduleIRQs(sys, IRQ_IPCSync, false, sys->AHB9.Timestamp);
-            }
-
-            if (mask & (1<<14))
-            {
-                sys->IPCSyncIRQEnableTo9 = val & (1<<14);
-            }
-            break;
-        }
-
-        case 0x00'01'84:
-            IPC_FIFOCRWrite(sys, val, mask, true);
-            break;
-        case 0x00'01'88:
-            IPC_FIFOWrite(sys, val, mask, true);
-            break;
-
-        case 0x00'01'A0 ... 0x00'01'B8:
-            GameCard_IOWriteHandler(sys, addr, val, mask, sys->AHB9.Timestamp, true);
-            break;
-
-        case 0x00'02'04: // exmemcnt
-            MaskedWrite(sys->ExtMemCR_9.Raw, val, mask & 0x7F);
-            bool membit1 = sys->ExtMemCR_Shared.MRSomething1;
-            bool membit2 = sys->ExtMemCR_Shared.MRSomething2;
-
-            // TODO: this mask should change with DSi features
-            MaskedWrite(sys->ExtMemCR_Shared.Raw, val, mask & 0xE880);
-
-            // these are probably write once...?
-            sys->ExtMemCR_Shared.MRSomething1 |= membit1;
-            sys->ExtMemCR_Shared.MRSomething2 |= membit2;
-            break;
-
-        case 0x00'02'08: // IME
-            MaskedWrite(sys->IME9, val, mask & 1);
-            break;
-        case 0x00'02'10: // IE
-            MaskedWrite(sys->IE9, val, mask & 0x003F3F7F);
-            break;
-        case 0x00'02'14: // IF
-            // TODO: this should run more events?
-            sys->IF9 &= ~(val & mask);
-            sys->IF9 |= sys->IF9Held;
-            break;
-
-        // VRAM/WRAM Control
-        // TODO: Does disabling a VRAM Bank actually decay bits? Test that pls.
-        case 0x00'02'40:
-        {
-            PPU_Sync(sys, sys->AHB9.Timestamp);
-            if (mask & 0x000000FF)
-            {
-                union VRAMCR new = {.Raw = val & 0x9B};
-                if ((sys->VRAMCR[0].Mode == 3) || (new.Mode == 3)) SWRen_Sync(sys, sys->AHB9.Timestamp);
-                sys->VRAMCR[0] = new;
-            }
-            if (mask & 0x0000FF00)
-            {
-                union VRAMCR new = {.Raw = (val>>8) & 0x9B};
-                if ((sys->VRAMCR[1].Mode == 3) || (new.Mode == 3)) SWRen_Sync(sys, sys->AHB9.Timestamp);
-                sys->VRAMCR[1] = new;
-            }
-            if (mask & 0x00FF0000)
-            {
-                union VRAMCR new = {.Raw = (val>>16) & 0x9F};
-                if ((sys->VRAMCR[2].Mode == 3) || (new.Mode == 3)) SWRen_Sync(sys, sys->AHB9.Timestamp);
-                sys->VRAMCR[2] = new;
-            }
-            if (mask & 0xFF000000)
-            {
-                union VRAMCR new = {.Raw = (val>>24) & 0x9F};
-                if ((sys->VRAMCR[3].Mode == 3) || (new.Mode == 3)) SWRen_Sync(sys, sys->AHB9.Timestamp);
-                sys->VRAMCR[3] = new;
-            }
-            break;
-        }
-        case 0x00'02'44:
-        {
-            PPU_Sync(sys, sys->AHB9.Timestamp);
-            if (mask & 0x000000FF)
-            {
-                union VRAMCR new = {.Raw = val & 0x87};
-                if ((sys->VRAMCR[4].Mode == 3) || (new.Mode == 3)) SWRen_Sync(sys, sys->AHB9.Timestamp);
-                sys->VRAMCR[4] = new;
-            }
-            if (mask & 0x0000FF00)
-            {
-                union VRAMCR new = {.Raw = (val>>8) & 0x9F};
-                if ((sys->VRAMCR[5].Mode == 3) || (new.Mode == 3)) SWRen_Sync(sys, sys->AHB9.Timestamp);
-                sys->VRAMCR[5] = new;
-            }
-            if (mask & 0x00FF0000)
-            {
-                union VRAMCR new = {.Raw = (val>>16) & 0x9F};
-                if ((sys->VRAMCR[6].Mode == 3) || (new.Mode == 3)) SWRen_Sync(sys, sys->AHB9.Timestamp);
-                sys->VRAMCR[6] = new;
-            }
-            if (mask & 0xFF000000)
-            {
-                sys->WRAMCR = (val >> 24) & 0x3;
-            }
-            break;
-        }
-        case 0x00'02'48:
-        {
-            PPU_Sync(sys, sys->AHB9.Timestamp);
-            if (mask & 0x000000FF)
-            {
-                sys->VRAMCR[7].Raw = val & 0x83;
-            }
-            if (mask & 0x0000FF00)
-            {
-                sys->VRAMCR[8].Raw = (val >> 8) & 0x83;
-            }
-            break;
-        }
-
-
-        // division
-        case 0x00'02'80:
-            MaskedWrite(sys->DivCR.Raw, val, mask & 0x3);
-            IO9_StartDiv(sys);
-            break;
-        case 0x00'02'90:
-            MaskedWrite(sys->DivNum.b32[0], val, mask);
-            IO9_StartDiv(sys);
-            break;
-        case 0x00'02'94:
-            MaskedWrite(sys->DivNum.b32[1], val, mask);
-            IO9_StartDiv(sys);
-            break;
-        case 0x00'02'98:
-            MaskedWrite(sys->DivDen.b32[0], val, mask);
-            IO9_StartDiv(sys);
-            break;
-        case 0x00'02'9C:
-            MaskedWrite(sys->DivDen.b32[1], val, mask);
-            IO9_StartDiv(sys);
-            break;
-        // square root
-        case 0x00'02'B0:
-            MaskedWrite(sys->SqrtCR.Raw, val, mask & 1);
-            IO9_StartSqrt(sys);
-            break;
-        case 0x00'02'B8:
-            MaskedWrite(sys->SqrtParam.b32[0], val, mask);
-            IO9_StartSqrt(sys);
-            break;
-        case 0x00'02'BC:
-            MaskedWrite(sys->SqrtParam.b32[1], val, mask);
-            IO9_StartSqrt(sys);
-            break;
-
-
-
-        case 0x00'03'00:
-            if (mask & 2) sys->PostFlagA9Bit = val & 2;
-            break;
-
-        case 0x00'03'04:
-            PPU_Sync(sys, sys->AHB9.Timestamp);
-            SWRen_Sync(sys, sys->AHB9.Timestamp);
-            MaskedWrite(sys->PowerCR9.Raw, val, mask & 0x820F);
-            break;
-
-        case 0x00'03'20 ... 0x00'03'FC:
-            if (!sys->PowerCR9.GPURasterizerPower) break;
-            GX_IOWrite(sys, addr, mask, val);
-            break;
-        case 0x00'04'00 ... 0x00'06'FC:
-            if (!sys->PowerCR9.GPUGeometryPower) break;
-            GX_IOWrite(sys, addr, mask, val);
-            break;
-
-        case 0x00'10'00 ... 0x00'10'6C:
-            PPU_Sync(sys, sys->AHB9.Timestamp);
-            PPU_IOWrite(&sys->PPU_B, addr, val, mask, true, sys->PowerCR9.PPUBPower);
-            break;
-
-        default:
-            LogPrint(LOG_ARM9 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO9 WRITE: %08"PRIX32" %08"PRIX32" %08"PRIX32" @ %08"PRIX32"\n", addr, val, mask, sys->ARM9.ARM.PC);
-            break;
-    }
+    if (req->Write) IO7_Write(sys, addr, now, req->WrVal, MakeWriteMask(addr, req->Size), req->CB);
+    else            IO7_Read (sys, addr, now, req->CB);
 }

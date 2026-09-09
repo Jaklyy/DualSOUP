@@ -8,7 +8,7 @@
 
 #include <SDL3/SDL_mutex.h>
 
-#include "../frontend/coroutine.h"
+#include "frontend/coroutine.h"
 
 
 
@@ -249,12 +249,12 @@ union { \
 { if ((l) op (r)) \
     (l) = (r); }
 
-enum CPU_IDs : u8
+typedef enum : u8
 {
     ARM7ID,
     ARM9ID,
-    ARM11ID,
-};
+    //ARM11ID,
+} CPU_IDs;
 
 enum LoggingLevels : u64
 {
@@ -308,6 +308,24 @@ struct Pattern
     return (val << rol) | (val >> ((32-rol) & 0x1F));
 }
 
+[[nodiscard]] static inline u32 MakeWriteMask(u32 addr, u8 size)
+{
+    // TODO: test if one of these approaches is actually meaningfully faster
+#if 0
+    const u32 width = 8<<size;
+    const u32 mask = ROL32(((s64)-0x100000000 >> width), ((addr & 0x3) * 8) + 1);
+    return mask;
+#else
+    switch(size)
+    {
+        case 0: return 0xFF   << (addr & 3) * 8;
+        case 1: return 0xFFFF << (addr & 3) * 8;
+        case 2: return 0xFFFFFFFF;
+        default: unreachable();
+    }
+#endif
+}
+
 // TODO: should this be per thread?
 extern u64 LogMask;
 // printf but with support for filtering out the noise
@@ -332,12 +350,12 @@ typedef enum : u8
 
 typedef enum : u8
 {
-    NTRPowMan_NTR, // Phat
-    NTRPowMan_USG, // Lite
-    NTRPowMan_TWL, // DSi
+    NTRPMIC_NTR, // Phat
+    NTRPMIC_USG, // Lite
+    NTRPMIC_TWL, // DSi
 
-    NTRPowMan_MAX [[maybe_unused]],
-} NTRPowMan;
+    NTRPMIC_MAX [[maybe_unused]],
+} NTRPMIC;
 
 typedef enum : u8
 {
@@ -393,7 +411,7 @@ typedef enum : u8
 typedef struct
 {
     NTRAudioOut NTRAudioOut;
-    NTRPowMan NTRPowMan;
+    NTRPMIC NTRPMIC;
     NTRFCRAM NTRFCRAM;
     WiFiNVRAMSize WiFiNVRAMSize;
     WiFiNVRAMWriteProt WiFiNVRAMWriteProt;

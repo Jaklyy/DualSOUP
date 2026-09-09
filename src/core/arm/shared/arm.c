@@ -1,5 +1,5 @@
 #include <string.h>
-#include "../../utils.h"
+#include "core/utils.h"
 #include "arm.h"
 
 
@@ -13,7 +13,7 @@ void ARM_Init(ARM* cpu, Console* sys, const u8 CPUID)
     cpu->CPSR.ModeMSB = 1;
     cpu->FIQ_Bank.SPSR.ModeMSB = 1;
     cpu->IRQ_Bank.SPSR.ModeMSB = 1;
-    cpu->SWI_Bank.SPSR.ModeMSB = 1;
+    cpu->SVC_Bank.SPSR.ModeMSB = 1;
     cpu->ABT_Bank.SPSR.ModeMSB = 1;
     cpu->UND_Bank.SPSR.ModeMSB = 1;
     cpu->Sys = sys;
@@ -75,9 +75,9 @@ void ARM_BankSwap(ARM* cpu, const u8 newmode)
             memcpy(&cpu->IRQ_Bank, &cpu->SP, 2*sizeof(u32));
             memcpy(&cpu->SP, &cpy, 2*sizeof(u32));
             break;
-        case ARMMode_SWI:
-            memcpy(cpy, &cpu->SWI_Bank, 2*sizeof(u32));
-            memcpy(&cpu->SWI_Bank, &cpu->SP, 2*sizeof(u32));
+        case ARMMode_SVC:
+            memcpy(cpy, &cpu->SVC_Bank, 2*sizeof(u32));
+            memcpy(&cpu->SVC_Bank, &cpu->SP, 2*sizeof(u32));
             memcpy(&cpu->SP, &cpy, 2*sizeof(u32));
             break;
         case ARMMode_ABT:

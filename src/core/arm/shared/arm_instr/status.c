@@ -1,4 +1,4 @@
-#include "../../../utils.h"
+#include "core/utils.h"
 #include "../arm.h"
 #include "../inc.h"
 
@@ -130,7 +130,7 @@ void ARM_MSR(ARM* cpu, const ARM_Instr instr_data)
         // yes that is actually how it works.
         // no i dont know why it cares about the extension or status bits?
         // CHECKME: ...it might also care about none set actually...?
-        ARM9_ExecuteCycles(ARM9Cast, 3);
+        A9ES_ExecuteCycles(ARM9Cast, 2);
     }
     else
     {
@@ -138,19 +138,17 @@ void ARM_MSR(ARM* cpu, const ARM_Instr instr_data)
     }
 
 
-    ((instr.UseSPSR) ? ARM_SetSPSR((union ARM_PSR){.Raw = psr}) : ARM_SetCPSR(cpu, psr));
+    ((instr.UseSPSR) ? ARM_SetSPSR((ARM_PSR){.Raw = psr}) : ARM_SetCPSR(cpu, psr));
 }
 
-s8 ARM9_MSR_Interlocks(ARM946ES* ARM9, const ARM_Instr instr_data)
+s8 A9ES_MSR_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c [[maybe_unused]], bool* retry)
 {
     const union ARM_StatusReg_Decode instr = {.Raw = instr_data.Raw};
-    s8 stall = 0;
 
-    // only check for register variant
-    if (!instr.UseImmediate)
-    {
-        ARM9_CheckInterlocks(ARM9, &stall, instr.Rm, 0, false);
-    }
+    if (!instr.UseImmediate // only check for register variant
+        && (instr.Rm == reg)) return len;
 
-    return stall;
+    // allow interlock retry if 1 cycle variant.
+    if ((len > 1) && !(instr.Control || instr.Extension || instr.Status || instr.UseSPSR)) *retry = true;
+    return 0;
 }

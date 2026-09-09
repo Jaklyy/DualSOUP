@@ -1,7 +1,7 @@
 #pragma once
 #include <stdio.h>
-#include "../gui/maingui.h"
-#include "../../core/utils.h"
+#include "frontend/gui/maingui.h"
+#include "core/utils.h"
 
 
 
@@ -65,7 +65,7 @@ typedef struct MainCfg
     GuiCfg GuiCfg;
 } MainCfg;
 
-#include "../../core/carts/gamecard.h"
+#include "core/carts/gamecard.h"
 
 static const ConfigEntry GameCardCfgData[] =
 {
@@ -166,12 +166,12 @@ static const ConfigEntry SystemCfgData[] =
         .Type=      SEARCH_ENUMU8,
     },
     {
-        .Name=      "NTRPowMan",
+        .Name=      "NTRPMIC",
         .EnumNames= (const char*[]){"NTR", "USG", "TWL"},
-        .Offset=    offsetof(SysCfg, NTRPowMan),
-        .UDefVal=   NTRPowMan_USG,
+        .Offset=    offsetof(SysCfg, NTRPMIC),
+        .UDefVal=   NTRPMIC_USG,
         .UMinVal=   0,
-        .UMaxVal=   NTRPowMan_MAX,
+        .UMaxVal=   NTRPMIC_MAX,
         .Type=      SEARCH_ENUMU8,
     },
     {

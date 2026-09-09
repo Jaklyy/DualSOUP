@@ -2,7 +2,7 @@
 #include <SDL3/SDL_scancode.h>
 #include <stdio.h>
 #include <stdarg.h>
-#include "../core/utils.h"
+#include "core/utils.h"
 #include <stdlib.h>
 
 
@@ -130,7 +130,7 @@ thrd_t CR_Active()
     return (thrd_t)0;
 }
 #else
-#include "../../libs/libco/libco.h"
+#include "libco/libco.h"
 
 // internal variable used to pass along parameters to the new cothread
 thread_local void* pass[3];
