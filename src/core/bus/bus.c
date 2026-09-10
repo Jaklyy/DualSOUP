@@ -2,6 +2,7 @@
 #include <stdbit.h>
 #include <stddef.h>
 #include "bus.h"
+#include "core/arm/arm7/arm.h"
 #include "core/arm/arm9/arm.h"
 #include "core/utils.h"
 #include "core/io/dma.h"
@@ -201,7 +202,7 @@ void MainRAM_Run(Console* sys, timestamp now)
 
     if (grant == MainRAM_A9) mr->IsReq9 = false;
     else                     mr->IsReq7 = false;
-    Bus_TransferPostSetup(sys, rdata, !write, now, false, r->CB, (grant == MainRAM_A9));
+    Bus_TransferPostSetup(sys, rdata, !write, now, false, r->CB, r->Man, (grant == MainRAM_A9));
 
     if (size != HSIZE_8) // this special casing is stupid but i dont wanna fix it
         Sched_AddEvent(sys, mr->BurstLimitTs, Evt_MainRAM); // schedule an event to enforce burst limit
@@ -539,7 +540,7 @@ void Bus9_Read(Console* sys, BusReq* req, timestamp now)
         break;
     }
 
-    Bus_TransferPostSetup(sys, rdata, true, now, false, req->CB, true);
+    Bus_TransferPostSetup(sys, rdata, true, now, false, req->CB, req->Man, true);
 }
 
 void Bus9_Write(Console* sys, BusReq* req, timestamp now)
@@ -548,6 +549,19 @@ void Bus9_Write(Console* sys, BusReq* req, timestamp now)
     const AHB_HSIZE size = req->Size;
     const u32 width = 8<<size;
     const u32 mask = MakeWriteMask(addr, size);
+
+    // disgusting hack
+    if (req->Man9 >= MAN9_DMA0 && req->Man9 <= MAN9_NDMA3)
+    {
+        req->WrVal = sys->DMA9.Channels[req->Man9-MAN9_DMA0].RData;
+        if (!sys->DMA9.Channels[req->Man9-MAN9_DMA0].Latched_Width32)
+        {
+            req->WrVal = ROR32(req->WrVal, ((req->Addr & 2) * 8));
+            req->WrVal &= 0xFFFF;
+            req->WrVal |= req->WrVal << 16;
+        }
+    }
+
     const u32 wrdata = req->WrVal;
     // checkme: are there any devices on the bus with weird handling of addr misalignment or weird access widths?
 
@@ -650,7 +664,7 @@ void Bus9_Write(Console* sys, BusReq* req, timestamp now)
         break;
     }
 
-    Bus_TransferPostSetup(sys, 0, false, now, false, req->CB, true);
+    Bus_TransferPostSetup(sys, 0, false, now, false, req->CB, req->Man, true);
 }
 
 void Bus7_Read(Console* sys, BusReq* req, timestamp now)
@@ -737,7 +751,7 @@ void Bus7_Read(Console* sys, BusReq* req, timestamp now)
         GamePakBus_RAMRead(sys, &rdata, &now, addr, size, false); break;
     }
 
-    Bus_TransferPostSetup(sys, rdata, true, now, false, req->CB, false);
+    Bus_TransferPostSetup(sys, rdata, true, now, false, req->CB, req->Man, false);
 }
 
 void Bus7_Write(Console* sys, BusReq* req, timestamp now)
@@ -746,6 +760,19 @@ void Bus7_Write(Console* sys, BusReq* req, timestamp now)
     const AHB_HSIZE size = req->Size;
     const u32 width = 8<<size;
     const u32 mask = MakeWriteMask(addr, size);
+
+    // disgusting hack
+    if (req->Man7 >= MAN7_SCAPDMA0 && req->Man7 <= MAN7_NDMA3)
+    {
+        req->WrVal = sys->DMA7.Channels[req->Man7-MAN7_SCAPDMA0].RData;
+        if (!sys->DMA7.Channels[req->Man7-MAN7_SCAPDMA0].Latched_Width32)
+        {
+            req->WrVal = ROR32(req->WrVal, ((req->Addr & 2) * 8));
+            req->WrVal &= 0xFFFF;
+            req->WrVal |= req->WrVal << 16;
+        }
+    }
+
     const u32 wrdata = req->WrVal;
     // checkme: are there any devices on the bus with weird handling of addr misalignment or weird access widths?
 
@@ -803,7 +830,7 @@ void Bus7_Write(Console* sys, BusReq* req, timestamp now)
         break;
     }
 
-    Bus_TransferPostSetup(sys, 0, false, now, false, req->CB, false);
+    Bus_TransferPostSetup(sys, 0, false, now, false, req->CB, req->Man, false);
 }
 
 void Bus9_Idle(Console* sys, const timestamp now)
@@ -853,12 +880,14 @@ void Bus7_A7Wake(Console* sys, const timestamp now)
     if (!sys->Bus7.LockSched && (sys->Bus7.ReqList & (1<<MAN7_ARM7))) Sched_AddEventIfEarlier(sys, now, Evt_Bus7);
 }
 
-void Bus_TransferPostSetup(Console* sys, const u32 rdata, const bool isread, const timestamp end, const bool noprev, const bool cb, const bool a9)
+void Bus_TransferPostSetup(Console* sys, const u32 rdata, const bool isread, const timestamp end, const bool noprev, const BusCallbacks cb, const u8 man, const bool a9)
 {
     BusImpl* bus = (a9 ? &sys->Bus9 : &sys->Bus7);
     if (isread) bus->PostReadBus = rdata;
     bus->PostNoPrev = noprev;
     bus->PostCB = cb;
+    bus->PostLoad = isread;
+    bus->PostMan = man;
     Sched_AddEvent(sys, end, a9 ? Evt_Bus9HReady : Evt_Bus7HReady);
 }
 
@@ -887,6 +916,7 @@ void Bus_TransferPost(Console* sys, const timestamp fin, const bool a9)
 
 
     BusCallbacks ackcb = CB_None;
+    u8 ackman;
     // arbitrate next req
     if (reqlista7deny)
     {
@@ -906,6 +936,7 @@ void Bus_TransferPost(Console* sys, const timestamp fin, const bool a9)
         bus->PipeFIFO[bus->FIFOFillPtr] = bus->Reqs[manager];
         bus->PipeExitTs[bus->FIFOFillPtr] = fin + bus->PipeCycles;
         ackcb = bus->Reqs[manager].CB;
+        ackman = manager;
 
         bus->ReqList &= ~(1<<manager); // clear req list
         // update lock flag
@@ -944,6 +975,10 @@ void Bus_TransferPost(Console* sys, const timestamp fin, const bool a9)
     {
     case CB_None: break;
     case CB9_BIU9InstrNormal ... CB9_BIU9Idle: A946_BIUSubmPost(&sys->A946ES, fin); break;
+    case CB9_DMA: DMA_Step(sys, ackman-MAN9_DMA0, fin, true); break;
+    case CB7_7TDMIData: break;
+    case CB7_7TDMIInstr: break;
+    case CB7_DMA: DMA_Step(sys, ackman-MAN7_SCAPDMA0, fin, false); break;
     }
 
     // completion callback
@@ -951,6 +986,10 @@ void Bus_TransferPost(Console* sys, const timestamp fin, const bool a9)
     {
     case CB_None: break;
     case CB9_BIU9InstrNormal ... CB9_BIU9Idle: A946_BIUCompPost(&sys->A946ES, fin, rdata, cmpcb); break;
+    case CB9_DMA: DMA_CompPost(sys, bus->PostMan-MAN9_DMA0, rdata, bus->PostLoad, true); break;
+    case CB7_7TDMIData: A7TDMI_DataPost(&sys->A7TDMI, fin, rdata); break;
+    case CB7_7TDMIInstr: A7TDMI_InstrReadPost(&sys->A7TDMI, fin, rdata); break;
+    case CB7_DMA: DMA_CompPost(sys, bus->PostMan-MAN7_SCAPDMA0, rdata, bus->PostLoad, false); break;
     }
 }
 
@@ -995,5 +1034,5 @@ void Bus_Run(Console* sys, const timestamp now, const bool a9)
         else    Bus7_Idle(sys, now);
     }
 
-    Bus_TransferPostSetup(sys, 0, false, now + DSClk33(1), true, CB_None, a9);
+    Bus_TransferPostSetup(sys, 0, false, now + DSClk33(1), true, CB_None, 0, a9);
 }

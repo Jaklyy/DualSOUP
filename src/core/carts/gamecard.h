@@ -91,3 +91,5 @@ void GameCard_Cleanup(GameCard* card);
 u32 GameCard_ROMDataRead(Console* sys, timestamp cur, const bool a9);
 u32 GameCard_IOReadHandler(Console* sys, u32 addr, const bool a9);
 void GameCard_IOWriteHandler(Console* sys, u32 addr, const u32 val, const u32 mask, timestamp cur, const bool a9);
+void GameCard_SPIFinish(Console* sys, const bool a9);
+void GameCard_HandleSchedulingROM(Console* sys, timestamp now);

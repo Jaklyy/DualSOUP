@@ -37,7 +37,7 @@ constexpr s32 PCM_Delay = 3;
 constexpr s32 ADPCM_HeaderDelay = 8;
 constexpr s32 ADPCM_Delay = ADPCM_HeaderDelay + 1 + PCM_Delay;
 
-constexpr s32 MixerDivide = 32;
+constexpr s32 MixerDivide = 32 * 2;
 
 typedef struct
 {

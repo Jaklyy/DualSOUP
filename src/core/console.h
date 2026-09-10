@@ -184,6 +184,10 @@ typedef struct Console
     bool IME7;
     bool A7ClkDisable;
 
+    enum TIMERTEMP timertemp7;
+    enum TIMERTEMP timertemp9;
+    bool TEMPHBLANK;
+
     alignas(u32) VRAMCR VRAMCR[9];
     u8 WRAMCR;
     bool PostFlag;

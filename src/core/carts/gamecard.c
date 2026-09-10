@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include "gamecard.h"
 #include "core/console.h"
+#include "core/scheduler.h"
 #include "core/sram/flash.h"
 #include "core/sram/eeprom.h"
 #include "core/sram/ir.h"
@@ -474,8 +475,6 @@ void* GameCardMisc_ROMCommandHandler(Console* sys, const bool a9)
     return GameCardMisc_InvalidCmdHandler;
 }
 
-void GameCard_HandleSchedulingROM(Console* sys, timestamp now);
-
 void QueueNextTransfer(Console* sys, timestamp cur, const bool a9)
 {
     GameCard* card = &sys->GameCard;
@@ -496,7 +495,7 @@ void QueueNextTransfer(Console* sys, timestamp cur, const bool a9)
 
         transtime *= ((sys->GCROMCR[a9].ClockDivider) ? 8 : 5);
 
-        Schedule_Event(sys, GameCard_HandleSchedulingROM, Evt_CardROM, cur+transtime);
+        Sched_AddEvent(sys, cur+DSClk33(transtime), Evt_CardROM);
     }
     else
     {
@@ -504,9 +503,8 @@ void QueueNextTransfer(Console* sys, timestamp cur, const bool a9)
         {
             sys->GCROMCR[a9].Start = false;
             if (sys->GCSPICR[a9].ROMDataReadyIRQ)
-                Console_ScheduleIRQs(sys, IRQ_GameCardTransferComplete, a9, cur); // todo: delay?
+                Sched_AddEvent(sys, cur, a9 ? Evt_IRQ9_NTRCardTranferComplete : Evt_IRQ7_NTRCardTranferComplete); // todo: delay?
         }
-        Schedule_Event(sys, GameCard_HandleSchedulingROM, Evt_CardROM, timestamp_max);
     }
 }
 
@@ -521,8 +519,8 @@ u32 GameCard_ROMDataRead(Console* sys, timestamp cur, const bool a9)
         QueueNextTransfer(sys, cur, a9);
         sys->GCROMData[a9] = card->WordBuffer;
         card->Buffered = false;
-        if (a9) StartDMA9(sys, cur+1, DMAStart_NTRCard); // checkme: delay?
-        else StartDMA7(sys, cur+1, DMAStart_NTRCard); // checkme: delay?
+        if (a9) StartDMA9(sys, cur+DSClk33(1), DMAStart_NTRCard); // checkme: delay?
+        else StartDMA7(sys, cur+DSClk33(1), DMAStart_NTRCard); // checkme: delay?
     }
     else
     {
@@ -536,7 +534,7 @@ u32 GameCard_ROMDataRead(Console* sys, timestamp cur, const bool a9)
 void GameCard_HandleSchedulingROM(Console* sys, timestamp now)
 {
     GameCard* card = &sys->GameCard;
-    bool a9 = !sys->ExtMemCR_Shared.NDSCardAccess;
+    bool a9 = !sys->ExtMemCR_Shared.NDSCardA7Access;
 
     card->NumWords -= 1;
     u32 data = card->ReadHandler(card);
@@ -546,14 +544,13 @@ void GameCard_HandleSchedulingROM(Console* sys, timestamp now)
         {
             card->WordBuffer = data;
             card->Buffered = true;
-            Schedule_Event(sys, GameCard_HandleSchedulingROM, Evt_CardROM, timestamp_max);
         }
         else
         {
             sys->GCROMData[a9] = data;
             sys->GCROMCR[a9].DataReady = true;
-            if (a9) StartDMA9(sys, now+1, DMAStart_NTRCard); // checkme: delay?
-            else StartDMA7(sys, now+1, DMAStart_NTRCard); // checkme: delay?
+            if (a9) StartDMA9(sys, now+DSClk33(1), DMAStart_NTRCard); // checkme: delay?
+            else StartDMA7(sys, now+DSClk33(1), DMAStart_NTRCard); // checkme: delay?
 
             QueueNextTransfer(sys, now, a9);
         }
@@ -588,21 +585,13 @@ void GameCard_ROMCommandSubmit(Console* sys, timestamp cur, const bool a9)
     transfertime *= ((sys->GCROMCR[a9].ClockDivider) ? 8 : 5);
     transfertime += 3;
 
-    Schedule_Event(sys, GameCard_HandleSchedulingROM, Evt_CardROM, cur+transfertime);
+    Sched_AddEvent(sys, cur+transfertime, Evt_CardROM);
 }
 
-void GameCard_SPIFinish9(Console* sys, [[maybe_unused]] timestamp cur)
+void GameCard_SPIFinish(Console* sys, const bool a9)
 {
-    sys->GCSPIOut[true] = sys->GCSPIBuf;
-    sys->GCSPICR[true].Busy = false;
-    Schedule_Event(sys, nullptr, Evt_CardSPI, timestamp_max);
-}
-
-void GameCard_SPIFinish7(Console* sys, [[maybe_unused]] timestamp cur)
-{
-    sys->GCSPIOut[false] = sys->GCSPIBuf;
-    sys->GCSPICR[false].Busy = false;
-    Schedule_Event(sys, nullptr, Evt_CardSPI, timestamp_max);
+    sys->GCSPIOut[a9] = sys->GCSPIBuf;
+    sys->GCSPICR[a9].Busy = false;
 }
 
 u32 GameCard_IOReadHandler(Console* sys, u32 addr, const bool a9)
@@ -610,7 +599,7 @@ u32 GameCard_IOReadHandler(Console* sys, u32 addr, const bool a9)
     addr -= 0x040001A0;
 
     // a7 is set for exmemcnt bits
-    if (sys->ExtMemCR_Shared.NDSCardAccess == a9) return 0; // checkme: all of them && correct ret?
+    if (sys->ExtMemCR_Shared.NDSCardA7Access == a9) return 0; // checkme: all of them && correct ret?
 
     switch(addr & 0x1C)
     {
@@ -628,7 +617,7 @@ void GameCard_IOWriteHandler(Console* sys, u32 addr, const u32 val, const u32 ma
     addr -= 0x040001A0;
 
     // a7 is set for exmemcnt bits
-    if (sys->ExtMemCR_Shared.NDSCardAccess == a9) return; // checkme: all of them?
+    if (sys->ExtMemCR_Shared.NDSCardA7Access == a9) return; // checkme: all of them?
 
     switch(addr & 0x1C)
     {
@@ -655,7 +644,7 @@ void GameCard_IOWriteHandler(Console* sys, u32 addr, const u32 val, const u32 ma
                     else sys->GCSPIBuf = sys->GameCard.SPI_CMDSend(sys->GameCard.SPI, (val>>16)&0xFF, sys->GCSPICR[a9].ChipSelect);
 
                     sys->GCSPICR[a9].Busy = true;
-                    Schedule_Event(sys, (a9 ? GameCard_SPIFinish9 : GameCard_SPIFinish7), Evt_CardSPI, cur + (8*(8<<sys->GCSPICR[a9].Baudrate))); // checkme: delay
+                    Sched_AddEvent(sys, cur + (DSClk33(8*8)<<sys->GCSPICR[a9].Baudrate), (a9 ? Evt_CardSPI9 : Evt_CardSPI7)); // checkme: delay
                 }
             }
             break;

@@ -250,7 +250,7 @@ void SPI_Finish(Console* sys, timestamp now)
     if (sys->SPICR.IRQ) Sched_AddEvent(sys, now+DSClk33(1), Evt_IRQ7_SPI); // delay?
 }
 
-void IO9_Read(Console* sys, const u32 addr, const timestamp now, const BusCallbacks cb)
+void IO9_Read(Console* sys, const u32 addr, const timestamp now, const BusCallbacks cb, u8 man)
 {
     u32 rdata;
     switch (addr & 0xFF'FF'FC)
@@ -338,10 +338,10 @@ void IO9_Read(Console* sys, const u32 addr, const timestamp now, const BusCallba
         rdata = 0;
         break;
     }
-    Bus_TransferPostSetup(sys, rdata, true, now + DSClk33(1), false, cb, true);
+    Bus_TransferPostSetup(sys, rdata, true, now + DSClk33(1), false, cb, man, true);
 }
 
-void IO9_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, const u32 mask, const BusCallbacks cb)
+void IO9_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, const u32 mask, const BusCallbacks cb, u8 man)
 {
     switch (addr & 0xFF'FF'FC)
     {
@@ -366,7 +366,7 @@ void IO9_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
     case 0x00'00'60: MaskedWrite(sys->GX3D.RasterCR.Raw, wrdata, mask & 0x4FFF); break;
 
     // DMA
-    case 0x00'00'B0 ... 0x00'00'E0-1: DMA9_IOWriteHandler(sys, sys->DMA9.Channels, addr, wrdata, mask); break;
+    case 0x00'00'B0 ... 0x00'00'E0-1: DMA9_IOWriteHandler(sys, now, sys->DMA9.Channels, addr, wrdata, mask); break;
     case 0x00'00'E0 ... 0x00'00'EC: MaskedWrite(sys->DMAFill[(addr & 0xF) / 4], wrdata, mask); break;
 
     case 0x00'01'00 ... 0x00'01'0C: Timer_IOWriteHandler(sys, now, addr, wrdata, mask, true); break;
@@ -521,10 +521,10 @@ void IO9_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
     }
     now += DSClk33(1);
     AddBusContention(sys, now, Dev_IO9);
-    Bus_TransferPostSetup(sys, 0, false, now, false, cb, true);
+    Bus_TransferPostSetup(sys, 0, false, now, false, cb, man, true);
 }
 
-void IO7_Read(Console* sys, const u32 addr, const timestamp now, const BusCallbacks cb)
+void IO7_Read(Console* sys, const u32 addr, const timestamp now, const BusCallbacks cb, u8 man)
 {
     u32 rdata;
     switch(addr & 0xFF'FF'FC)
@@ -584,10 +584,10 @@ void IO7_Read(Console* sys, const u32 addr, const timestamp now, const BusCallba
         rdata = 0;
         break;
     }
-    Bus_TransferPostSetup(sys, rdata, true, now + DSClk33(1), false, cb, false);
+    Bus_TransferPostSetup(sys, rdata, true, now + DSClk33(1), false, cb, man, false);
 }
 
-void IO7_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, const u32 mask, const BusCallbacks cb)
+void IO7_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, const u32 mask, const BusCallbacks cb, u8 man)
 {
     switch(addr & 0xFF'FF'FC)
     {
@@ -602,7 +602,7 @@ void IO7_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
         }
         break;
 
-    case 0x00'00'B0 ... 0x00'00'E0-1: DMA7_IOWriteHandler(sys, &sys->DMA7.Channels[DMA7_NormalBase], addr, wrdata, mask); break;
+    case 0x00'00'B0 ... 0x00'00'E0-1: DMA7_IOWriteHandler(sys, now, &sys->DMA7.Channels[DMA7_NormalBase], addr, wrdata, mask); break;
 
     case 0x00'01'00 ... 0x00'01'0C: Timer_IOWriteHandler(sys, now, addr, wrdata, mask, false); break;
 
@@ -633,7 +633,7 @@ void IO7_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
 
         if (mask & 0xFF0000)
         {
-            Sched_AddEvent(sys, now + (((8*8) << sys->SPICR.Baudrate)), Evt_SPI); // checkme: delay?
+            Sched_AddEvent(sys, now + ((DSClk33(8*8) << sys->SPICR.Baudrate)), Evt_SPI); // checkme: delay?
             switch(sys->SPICR.DeviceSelect)
             {
             case 0: sys->SPIBuf = PMIC_CMDSend(sys, wrdata>>16, sys->SPICR.ChipSelect); break;
@@ -757,7 +757,7 @@ void IO7_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
     }
     now += DSClk33(1);
     AddBusContention(sys, now, Dev_IO7);
-    Bus_TransferPostSetup(sys, 0, false, now, false, cb, false);
+    Bus_TransferPostSetup(sys, 0, false, now, false, cb, man, false);
 }
 
 void IO9_Handler(Console* sys, timestamp now)
@@ -765,8 +765,8 @@ void IO9_Handler(Console* sys, timestamp now)
     BusReq* req = &sys->Bus9.PipeFIFO[sys->Bus9.FIFODrainPtr];
     const u32 addr = req->Addr;
 
-    if (req->Write) IO9_Write(sys, addr, now, req->WrVal, MakeWriteMask(addr, req->Size), req->CB);
-    else            IO9_Read (sys, addr, now, req->CB);
+    if (req->Write) IO9_Write(sys, addr, now, req->WrVal, MakeWriteMask(addr, req->Size), req->CB, req->Man);
+    else            IO9_Read (sys, addr, now, req->CB, req->Man);
 }
 
 void IO7_Handler(Console* sys, timestamp now)
@@ -774,6 +774,6 @@ void IO7_Handler(Console* sys, timestamp now)
     BusReq* req = &sys->Bus7.PipeFIFO[sys->Bus7.FIFODrainPtr];
     const u32 addr = req->Addr;
 
-    if (req->Write) IO7_Write(sys, addr, now, req->WrVal, MakeWriteMask(addr, req->Size), req->CB);
-    else            IO7_Read (sys, addr, now, req->CB);
+    if (req->Write) IO7_Write(sys, addr, now, req->WrVal, MakeWriteMask(addr, req->Size), req->CB, req->Man);
+    else            IO7_Read (sys, addr, now, req->CB, req->Man);
 }

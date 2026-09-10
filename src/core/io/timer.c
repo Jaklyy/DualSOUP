@@ -1,6 +1,7 @@
 #include <stdckdint.h>
 #include "core/console.h"
 #include "timer.h"
+#include "core/scheduler.h"
 #include "sound.h"
 
 
@@ -69,8 +70,9 @@ void Timer_CalcNextIRQ(Console* sys, timestamp now, bool a9)
             next = nextirq[i];
     }
 
-    if (a9) Schedule_Event(sys, Timer_SchedRun9, Evt_Timer9, next);
-    else    Schedule_Event(sys, Timer_SchedRun7, Evt_Timer7, next);
+    Sched_AddEvent(sys, now+DSClk33(1), (a9 ? Evt_Timer9 : Evt_Timer7));
+    if (a9) sys->timertemp9 = TIMER_SCHEDRUN;
+    else sys->timertemp7 = TIMER_SCHEDRUN;
 }
 
 bool Timer_AddTicks(Console* sys, struct Timer* timers, const int timernum, timestamp ticks, bool a9)
@@ -101,7 +103,8 @@ bool Timer_AddTicks(Console* sys, struct Timer* timers, const int timernum, time
         {
             if (timernum < 4)
             {
-                Console_ScheduleIRQs(sys, IRQ_Timer0+timernum, a9, timer->LastUpdated); // last update is kinda wrong to use but probably good enough tbh :: checkme: delay?
+                // last update is kinda wrong to use but probably good enough tbh :: checkme: delay?
+                Sched_AddEvent(sys, timer->LastUpdated, (a9 ? Evt_IRQ9_Time0 : Evt_IRQ7_Time0) + timernum);
             }
             else // sound dma; sample audio fifo
             {
@@ -162,6 +165,7 @@ void Timer_UpdateCRs(Console* sys, timestamp now, bool a9)
 
             if (i >= 4) timer->DividerShift = 1;
             else timer->DividerShift = (((timer->CR.Divider == 0) || timer->CR.OverflowTick) ? 0 : ((timer->CR.Divider * 2) + 4));
+            timer->DividerShift *= (Sched_Clock / NTR_BaseClock);
 
             if (!oldenable && timer->CR.Enable)
             {
@@ -189,8 +193,9 @@ void Timer_UpdateCRs(Console* sys, timestamp now, bool a9)
     {
         if (timers[i].NeedsUpdate || timers[i].NeedsEnable)
         {
-            if (a9) Schedule_Event(sys, Timer9_UpdateCRs, Evt_Timer9, now+1);
-            else    Schedule_Event(sys, Timer7_UpdateCRs, Evt_Timer7, now+1);
+            Sched_AddEvent(sys, now+DSClk33(1), (a9 ? Evt_Timer9 : Evt_Timer7));
+            if (a9) sys->timertemp9 = TIMER_UPDATECR;
+            else sys->timertemp7 = TIMER_UPDATECR;
             return;
         }
     }
@@ -217,8 +222,9 @@ void Timer_IOWriteHandler(Console* sys, const timestamp curts, const u32 addr, c
 
     timer->NeedsUpdate = true;
 
-    if (a9) Schedule_Event(sys, Timer9_UpdateCRs, Evt_Timer9, curts+1);
-    else    Schedule_Event(sys, Timer7_UpdateCRs, Evt_Timer7, curts+1);
+    Sched_AddEvent(sys, curts+DSClk33(1), (a9 ? Evt_Timer9 : Evt_Timer7));
+    if (a9) sys->timertemp9 = TIMER_UPDATECR;
+    else sys->timertemp7 = TIMER_UPDATECR;
 }
 
 u32 Timer_IOReadHandler(Console* sys, const timestamp curts, const u32 addr, const bool a9)

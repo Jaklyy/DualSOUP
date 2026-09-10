@@ -237,7 +237,7 @@ void GXFIFO_PackedSubmit(Console* sys, const u32 val)
                     gx->PackBuffer.All >>= 8;
                     gx->ParamRem = ParamLUT[gx->PackBuffer.CurCmd];
                 }
-                Schedule_Event(sys, GX_RunFIFO, Evt_GX, *ts+1);
+                Schedule_Event(sys, GX_RunFIFO, Evt_GX, *ts+DSClk33(1));
                 return;
             }
         }
@@ -247,7 +247,7 @@ void GXFIFO_PackedSubmit(Console* sys, const u32 val)
             gx->FreshBuffer = true;
             gx->BufferFree = false;
 
-            Schedule_Event(sys, GX_RunFIFO, Evt_GX, *ts+1);
+            Schedule_Event(sys, GX_RunFIFO, Evt_GX, *ts+DSClk33(1));
             return;
         }
         Scheduler_StallForEvent(sys, ts, Evt_GX, true);
@@ -266,7 +266,7 @@ void GXFIFO_PortSubmit(Console* sys, const u32 addr, const u32 val)
 
         if (GXFIFO_Fill(sys, addr/4, val))
         {
-            Schedule_Event(sys, GX_RunFIFO, Evt_GX, *ts+1);
+            Schedule_Event(sys, GX_RunFIFO, Evt_GX, *ts+DSClk33(1));
             gx->Timestamp = *ts;
             return;
         }

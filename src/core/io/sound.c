@@ -3,6 +3,7 @@
 #include <stdckdint.h>
 #include "core/console.h"
 #include "sound.h"
+#include "core/scheduler.h"
 #include "dma.h"
 #include "timer.h"
 
@@ -15,7 +16,7 @@ s32 AudioMixer_Pan(s32 sample, u8 pan, const bool left)
     return ((s64)sample * pan) >> 10;
 }
 
-void AudioMixer_Run(Console* sys, timestamp now)
+void AudioMixer_Run(Console* sys, timestamp now [[maybe_unused]])
 {
     //if ((now/MixerDivide) <= sys->MixerLastRun) return;
     //sys->MixerLastRun = now/MixerDivide;
@@ -102,8 +103,8 @@ void AudioMixer_Sample(Console* sys, timestamp now)
     fflush(sys->log);
 #endif
 
-    Schedule_Event(sys, AudioMixer_Sample, Evt_MixAudio, now + ((u64)(NTRBus_Clock + sys->AudioFrac) / SoundMixerOutput));
-    sys->AudioFrac = 0;//(u64)(NTRBus_Clock + sys->AudioFrac) % SoundMixerOutput;
+    Sched_AddEvent(sys, now + DSClk33(((timestamp)NTR_SysClock + sys->AudioFrac) / SoundMixerOutput), Evt_MixAudio);
+    sys->AudioFrac = 0;//((timestamp)NTR_SysClock + sys->AudioFrac) % SoundMixerOutput;
 }
 
 void SoundFIFO_Fill(Console* sys, const u32 val, const u8 id)
@@ -160,7 +161,9 @@ void SoundFIFO_Sample(Console* sys, const u8 id, const timestamp now)
         {
             sys->Timers7[id+4].NeedsUpdate = true;
             sys->Timers7[id+4].BufferedRegs = 0x00'0000;
-            Schedule_Event(sys, Timer7_UpdateCRs, Evt_Timer7, now+1);
+
+            Sched_AddEvent(sys, now+DSClk33(1), Evt_Timer7);
+            sys->timertemp7 = TIMER_UPDATECR;
             return;
         }
     }
@@ -168,7 +171,7 @@ void SoundFIFO_Sample(Console* sys, const u8 id, const timestamp now)
     if (channel->CR.Enable && ((now / MixerDivide) > channel->LastSubmit))
     {
         if (!sys->SoundCR.MasterEn) channel->LastSubmit = now / MixerDivide; // checkme?
-        if ((sys->Sched.EventTimes[Evt_MixAudio]/MixerDivide) == (now/MixerDivide))
+        if ((Sched_GetTime(&sys->Sched, Evt_MixAudio)/MixerDivide) == (now/MixerDivide))
             AudioMixer_Run(sys, now);
 
         switch(channel->CR.Format)
@@ -386,7 +389,8 @@ void SoundChannel_KillAll(Console* sys, const timestamp now)
         sys->Timers7[i+4].BufferedRegs = 0x00'0000;
     }
 
-    Schedule_Event(sys, Timer7_UpdateCRs, Evt_Timer7, now+1);
+    Sched_AddEvent(sys, now+DSClk33(1), Evt_Timer7);
+    sys->timertemp7 = TIMER_UPDATECR;
 }
 
 void SoundChannel_Start(Console* sys, SoundChannel* channel, const u8 id, const timestamp now)
@@ -417,7 +421,8 @@ void SoundChannel_Start(Console* sys, SoundChannel* channel, const u8 id, const 
     sys->Timers7[id+4].NeedsUpdate = true;
     sys->Timers7[id+4].CR.Enable = false; // hacky?
     sys->Timers7[id+4].BufferedRegs = 0xC0'0000 /* Enable, IRQ */ | channel->Timer;
-    Schedule_Event(sys, Timer7_UpdateCRs, Evt_Timer7, now+1);
+    Sched_AddEvent(sys, now+DSClk33(1), Evt_Timer7);
+    sys->timertemp7 = TIMER_UPDATECR;
 
     if (channel->CR.RepeatMode == 2)
     {
@@ -527,7 +532,8 @@ void SoundChannel_IOWrite(Console* sys, const u32 addr, const u32 val, const u32
         {
             sys->Timers7[id+4].NeedsUpdate = true;
             sys->Timers7[id+4].BufferedRegs = 0xC0'0000 | (val & 0xFFFF);
-            Schedule_Event(sys, Timer7_UpdateCRs, Evt_Timer7, now+1);
+            Sched_AddEvent(sys, now+DSClk33(1), Evt_Timer7);
+            sys->timertemp7 = TIMER_UPDATECR;
         }
 
         MaskedWrite(channel->LoopOffs, val>>16, (mask>>16) & 0xFFFF);
@@ -559,7 +565,8 @@ void SoundCapture_CRWrite(Console* sys, const u8 val, const timestamp now, const
             sys->Timers7[id+4].NeedsUpdate = true;
             sys->Timers7[id+4].CR.Enable = false; // hacky?
             sys->Timers7[id+4].BufferedRegs = 0xC0'0000 /* Enable, IRQ */ | sys->SoundChannels[(id*2)+1].Timer;
-            Schedule_Event(sys, Timer7_UpdateCRs, Evt_Timer7, now+1);
+            Sched_AddEvent(sys, now+DSClk33(1), Evt_Timer7);
+            sys->timertemp7 = TIMER_UPDATECR;
         }
     }
     //else cap->CR.Addition = false; // checkme?

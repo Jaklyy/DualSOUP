@@ -240,20 +240,20 @@ Console* Console_Init(Console* sys, CoreCfg* cfg, void* pad, void* aud)
     A946_Init(&sys->A946ES, sys);
     A7TDMI_Init(&sys->A7TDMI, sys);
 
-    for (int i = 0; i < Evt_Max; i++)
+    for (s32 i = 0; i < Evt_Max; i++)
     {
         sys->Sched.Times[i] = timestamp_max;
         sys->Sched.Next[i] = Evt_Invalid;
         sys->Sched.Prev[i] = Evt_Invalid;
     }
 
-    for (int i = 0; i < IRQ_Max; i++)
+    for (s32 i = 0; i < IRQ_Max; i++)
         sys->IRQSched9[i] = timestamp_max;
 
-    for (int i = 0; i < IRQ_Max; i++)
+    for (s32 i = 0; i < IRQ_Max; i++)
         sys->IRQSched7[i] = timestamp_max;
 
-    for (unsigned i = 0; i < countof(sys->DMA9.ChannelTimestamps); i++)
+    for (u32 i = 0; i < countof(sys->DMA9.ChannelTimestamps); i++)
     {
         sys->DMA9.ChannelTimestamps[i] = timestamp_max;
         sys->DMA7.ChannelTimestamps[i] = timestamp_max;
@@ -262,14 +262,14 @@ Console* Console_Init(Console* sys, CoreCfg* cfg, void* pad, void* aud)
     sys->DMA9.NextTime = timestamp_max;
     sys->DMA7.NextTime = timestamp_max;
 
-    for (int i = DMA7_SoundBase; i < DMA7_SoundMax; i++)
+    for (u32 i = DMA7_SoundBase; i < DMA7_SoundMax; i++)
     {
         sys->DMA7.Channels[i].CurrentMode = DMAStart_Audio;
         sys->DMA7.Channels[i].CR.Width32 = true;
         sys->DMA7.Channels[i].SrcInc = 4;
         sys->DMA7.Channels[i].SrcAddrMask = 0x07FFFFFC;
     }
-    for (int i = DMA7_SoundCapBase; i < DMA7_SoundCapMax; i++)
+    for (u32 i = DMA7_SoundCapBase; i < DMA7_SoundCapMax; i++)
     {
         sys->DMA7.Channels[i].CurrentMode = DMAStart_AudioCap;
         sys->DMA7.Channels[i].CR.Width32 = true;
@@ -331,8 +331,8 @@ Console* Console_Init(Console* sys, CoreCfg* cfg, void* pad, void* aud)
     RTC_Init(&sys->RTC);
 
     // TODO: are these always running?
-    Schedule_Event(sys, AudioMixer_Sample, Evt_MixAudio, 0);
-    Schedule_Event(sys, LCD_Scanline, Evt_Scanline, 0);
+    Sched_AddEvent(sys, 0, Evt_MixAudio);
+    Sched_AddEvent(sys, 0, Evt_Scanline);
 
     // run power on/reset logic
     Console_Reset(sys);
@@ -479,8 +479,7 @@ void IRQ9_Update(Console* sys, const timestamp now)
 
     // arm946e-s wakes when interrupt is raised, regardless of cpsr bit
     if (sys->A946ES.ARM.InterruptRequest && sys->A946ES.ARM.WaitForInterrupt)
-    {
-    }
+        Sched_AddEvent(sys, now, Evt_ARM9);
 }
 
 void IF9_Clear(Console* sys, u32 wrdata, const timestamp now)
@@ -529,160 +528,6 @@ void IF7_Set(Console* sys, const IRQIDs id, const timestamp now)
     sys->IF7Persist |= ((u64)1<<id) & IRQ7_LevelSens;
     Sched_AddEvent(sys, now+DSClk33(1), Evt_UpdateIRQ7);
 }
-
-#if 0
-
-void IRQ9_Run(Console* sys, timestamp now)
-{
-
-}
-
-void Console_ScheduleIRQs(Console* sys, const u8 irq, const bool a9, timestamp time)
-{
-    timestamp* irqs;
-    if (a9)
-    {
-        irqs = sys->IRQSched9;
-    }
-    else
-    {
-        irqs = sys->IRQSched7;
-    }
-
-    irqs[irq] = time;
-
-    timestamp next = timestamp_max;
-
-    for (int i = 0; i < IRQ_Max; i++)
-    {
-        if (next > irqs[i])
-            next = irqs[i];
-    }
-
-    if (a9)
-        Schedule_Event(sys, IF9_Update, Evt_IF9Update, next);
-    else
-        Schedule_Event(sys, IF7_Update, Evt_IF7Update, next);
-}
-
-void IF9_Update(Console* sys, timestamp now)
-{
-    timestamp time = sys->Sched.EventTimes[Evt_IF9Update];
-    timestamp next = timestamp_max;
-    for (int i = 0; i < IRQ_Max; i++)
-    {
-        if (time >= sys->IRQSched9[i])
-        {
-            sys->IF9 |= (1<<i);
-
-            sys->IF9Held |= sys->IF9HoldQueue & (1<<i);
-            sys->IF9HoldQueue &= ~(1<<i);
-
-            sys->IRQSched9[i] = timestamp_max;
-        }
-        if (next > sys->IRQSched9[i])
-            next = sys->IRQSched9[i];
-    }
-
-    // wake up cpu
-    // TODO: SCHEDULE THIS INSTEAD
-    if (sys->A946ES.ARM.CpuSleeping && Console_CheckARM9Wake(sys))
-    {
-        sys->A946ES.ARM.CpuSleeping = 0;
-        sys->A946ES.ARM.DeadAsleep = false;
-
-        //DS_CLAMP(sys->A946ES.ARM.Timestamp, <, now << A9ClockShift(sys->A946ES)) // checkme
-        //ARM9_ExecuteCycles(&sys->A946ES, 1, 1);
-        //if (sys->Sleep9) DS_CLAMP(sys->A9Sync, >, sys->A946ES.ARM.Timestamp >> A9ClockShift(sys->A946ES));
-        sys->A946ES.ARM.CodeSeq = false;
-    }
-    Schedule_Event(sys, IF9_Update, Evt_IF9Update, next);
-}
-
-void IF7_Update(Console* sys, timestamp now)
-{
-    timestamp time = sys->Sched.EventTimes[Evt_IF7Update];
-    timestamp next = timestamp_max;
-    for (int i = 0; i < IRQ_Max; i++)
-    {
-        if (time >= sys->IRQSched7[i])
-        {
-            sys->IF7 |= (1<<i);
-
-            sys->IF7Held |= sys->IF7HoldQueue & (1<<i);
-            sys->IF7HoldQueue &= ~(1<<i);
-
-            sys->IRQSched7[i] = timestamp_max;
-        }
-        if (next > sys->IRQSched7[i])
-            next = sys->IRQSched7[i];
-    }
-    // wake up cpu
-    // TODO: SCHEDULE THIS INSTEAD
-    if (sys->ARM7.ARM.CpuSleeping && Console_CheckARM7Wake(sys))
-    {
-        sys->ARM7.ARM.CpuSleeping = 0;
-        sys->ARM7.ARM.DeadAsleep = false;
-
-        DS_CLAMP(sys->ARM7.ARM.Timestamp, <, now) // checkme
-        ARM7_ExecuteCycles(&sys->ARM7, 1);
-        if (sys->Sleep7) DS_CLAMP(sys->A7Sync, >, sys->ARM7.ARM.Timestamp);
-        sys->ARM7.ARM.CodeSeq = false;
-    }
-    Schedule_Event(sys, IF7_Update, Evt_IF7Update, next);
-}
-
-void Console_ScheduleIRQs(Console* sys, const u8 irq, const bool a9, timestamp time)
-{
-    timestamp* irqs;
-    if (a9)
-    {
-        irqs = sys->IRQSched9;
-    }
-    else
-    {
-        irqs = sys->IRQSched7;
-    }
-
-    irqs[irq] = time;
-
-    timestamp next = timestamp_max;
-
-    for (int i = 0; i < IRQ_Max; i++)
-    {
-        if (next > irqs[i])
-            next = irqs[i];
-    }
-
-    if (a9)
-        Schedule_Event(sys, IF9_Update, Evt_IF9Update, next);
-    else
-        Schedule_Event(sys, IF7_Update, Evt_IF7Update, next);
-}
-
-void Console_ScheduleHeldIRQs(Console* sys, const u8 irq, const bool a9, timestamp time)
-{
-    if (a9) sys->IF9HoldQueue |= 1<<irq;
-    else    sys->IF7HoldQueue |= 1<<irq;
-
-    Console_ScheduleIRQs(sys, irq, a9, time);
-}
-
-void Console_ClearHeldIRQs(Console* sys, const u8 irq, const bool a9)
-{
-    if (a9)
-    {
-        sys->IF9HoldQueue &= ~(1<<irq);
-        sys->IF9Held &= ~(1<<irq); // idk??
-    }
-    else
-    {
-        sys->IF7HoldQueue &= ~(1<<irq);
-        sys->IF7Held &= ~(1<<irq); // idk??
-    }
-    Console_ScheduleIRQs(sys, irq, a9, timestamp_max); // what was this line supposed to do...? (i think its supposed to prevent spurious irqs???)
-}
-#endif
 
 void Console_MainLoop(Console* sys)
 {

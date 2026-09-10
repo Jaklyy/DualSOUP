@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include "core/console.h"
 #include "3d.h"
+#include "core/scheduler.h"
 
 
 
@@ -810,7 +811,7 @@ bool GX_RunCommand(Console* sys, const timestamp now)
 
                 gx->TexMtxStackPtr = !gx->TexMtxStackPtr;
             }
-            gx->ExecTS+=16;
+            gx->ExecTS+=DSClk33(16);
             break;
         }
 
@@ -826,7 +827,7 @@ bool GX_RunCommand(Console* sys, const timestamp now)
                 gx->PositionMatrix = gx->PosMatrixStack[gx->PosVecMtxStackPtr&0x1F];
                 gx->VectorMatrix = gx->VecMatrixStack[gx->PosVecMtxStackPtr&0x1F];
                 gx->ClipDirty = true;
-                gx->ExecTS+=35;
+                gx->ExecTS+=DSClk33(35);
             }
             else if (gx->CurMatrixMode == Mtx_Proj)
             {
@@ -835,7 +836,7 @@ bool GX_RunCommand(Console* sys, const timestamp now)
 
                 gx->ProjectionMatrix = gx->ProjMatrixStack;
                 gx->ClipDirty = true;
-                gx->ExecTS+=35;
+                gx->ExecTS+=DSClk33(35);
             }
             else // tex matrix
             {
@@ -843,7 +844,7 @@ bool GX_RunCommand(Console* sys, const timestamp now)
                 gx->Status.StackError |= (gx->TexMtxStackPtr);
 
                 gx->TextureMatrix = gx->TexMatrixStack;
-                gx->ExecTS+=17;
+                gx->ExecTS+=DSClk33(17);
             }
             break;
         }
@@ -865,7 +866,7 @@ bool GX_RunCommand(Console* sys, const timestamp now)
             {
                 gx->TexMatrixStack = gx->TextureMatrix;
             }
-            gx->ExecTS+=16;
+            gx->ExecTS+=DSClk33(16);
             break;
         }
 
@@ -878,18 +879,18 @@ bool GX_RunCommand(Console* sys, const timestamp now)
                 gx->PositionMatrix = gx->PosMatrixStack[(param & 0x1F)];
                 gx->VectorMatrix = gx->VecMatrixStack[(param & 0x1F)];
                 gx->ClipDirty = true;
-                gx->ExecTS+=35;
+                gx->ExecTS+=DSClk33(35);
             }
             else if (gx->CurMatrixMode == Mtx_Proj)
             {
                 gx->ProjectionMatrix = gx->ProjMatrixStack;
                 gx->ClipDirty = true;
-                gx->ExecTS+=35;
+                gx->ExecTS+=DSClk33(35);
             }
             else // tex matrix
             {
                 gx->TextureMatrix = gx->TexMatrixStack;
-                gx->ExecTS+=17;
+                gx->ExecTS+=DSClk33(17);
             }
             break;
         }
@@ -904,7 +905,7 @@ bool GX_RunCommand(Console* sys, const timestamp now)
             if (gx->CurMatrixMode < Mtx_Tex)
             {
                 gx->ClipDirty = true;
-                gx->ExecTS+=18;
+                gx->ExecTS+=DSClk33(18);
             }
             break;
         }
@@ -926,9 +927,9 @@ bool GX_RunCommand(Console* sys, const timestamp now)
                 if (gx->CurMatrixMode < Mtx_Tex)
                 {
                     gx->ClipDirty = true;
-                    gx->ExecTS+=18;
+                    gx->ExecTS+=DSClk33(18);
                 }
-                else gx->ExecTS+=10;
+                else gx->ExecTS+=DSClk33(10);
             }
             break;
         }
@@ -955,9 +956,9 @@ bool GX_RunCommand(Console* sys, const timestamp now)
                 if (gx->CurMatrixMode < Mtx_Tex)
                 {
                     gx->ClipDirty = true;
-                    gx->ExecTS+=18;
+                    gx->ExecTS+=DSClk33(18);
                 }
-                else gx->ExecTS+=7;
+                else gx->ExecTS+=DSClk33(7);
             }
             break;
         }
@@ -975,14 +976,14 @@ bool GX_RunCommand(Console* sys, const timestamp now)
                 if (gx->CurMatrixMode == Mtx_Vec)
                 {
                     gx->Matrices[Mtx_Pos] = GX_MatrixMultiply(gx->Matrices[Mtx_Pos], gx->TempMatrix);
-                    gx->ExecTS+=30;
+                    gx->ExecTS+=DSClk33(30);
                 }
                 if (gx->CurMatrixMode < Mtx_Tex)
                 {
                     gx->ClipDirty = true;
-                    gx->ExecTS+=35-16;
+                    gx->ExecTS+=DSClk33(35-16);
                 }
-                else gx->ExecTS+=33-16;
+                else gx->ExecTS+=DSClk33(33-16);
             }
             break;
         }
@@ -1005,14 +1006,14 @@ bool GX_RunCommand(Console* sys, const timestamp now)
                 if (gx->CurMatrixMode == Mtx_Vec)
                 {
                     gx->Matrices[Mtx_Pos] = GX_MatrixMultiply(gx->Matrices[Mtx_Pos], gx->TempMatrix);
-                    gx->ExecTS+=30;
+                    gx->ExecTS+=DSClk33(30);
                 }
                 if (gx->CurMatrixMode < Mtx_Tex)
                 {
                     gx->ClipDirty = true;
-                    gx->ExecTS+=35-12;
+                    gx->ExecTS+=DSClk33(35-12);
                 }
-                else gx->ExecTS+=33-12;
+                else gx->ExecTS+=DSClk33(33-12);
             }
             break;
         }
@@ -1035,14 +1036,14 @@ bool GX_RunCommand(Console* sys, const timestamp now)
                 if (gx->CurMatrixMode == Mtx_Vec)
                 {
                     gx->Matrices[Mtx_Pos] = GX_MatrixMultiply(gx->Matrices[Mtx_Pos], gx->TempMatrix);
-                    gx->ExecTS+=30;
+                    gx->ExecTS+=DSClk33(30);
                 }
                 if (gx->CurMatrixMode < Mtx_Tex)
                 {
                     gx->ClipDirty = true;
-                    gx->ExecTS+=35-9;
+                    gx->ExecTS+=DSClk33(35-9);
                 }
-                else gx->ExecTS+=33-9;
+                else gx->ExecTS+=DSClk33(33-9);
             }
             break;
         }
@@ -1062,9 +1063,9 @@ bool GX_RunCommand(Console* sys, const timestamp now)
                 if (gx->CurMatrixMode < Mtx_Tex)
                 {
                     gx->ClipDirty = true;
-                    gx->ExecTS+=35-3;
+                    gx->ExecTS+=DSClk33(35-3);
                 }
-                else gx->ExecTS+=33-3;
+                else gx->ExecTS+=DSClk33(33-3);
             }
             break;
         }
@@ -1084,9 +1085,9 @@ bool GX_RunCommand(Console* sys, const timestamp now)
                 if (gx->CurMatrixMode < Mtx_Tex)
                 {
                     gx->ClipDirty = true;
-                    gx->ExecTS+=35-3;
+                    gx->ExecTS+=DSClk33(35-3);
                 }
-                else gx->ExecTS+=33-3;
+                else gx->ExecTS+=DSClk33(33-3);
             }
             break;
         }
@@ -1206,7 +1207,7 @@ bool GX_RunCommand(Console* sys, const timestamp now)
             gx->AmbiColor.B = (param >> 26) & 0x1F;
 
             if (param & (1<<15)) gx->VertexColor = gx->DiffColor;
-            gx->ExecTS += 3;
+            gx->ExecTS += DSClk33(3);
             break;
         }
 
@@ -1221,7 +1222,7 @@ bool GX_RunCommand(Console* sys, const timestamp now)
             gx->EmisColor.B = (param >> 26) & 0x1F;
 
             gx->UseSpecTable = (param & (1<<15));
-            gx->ExecTS += 3;
+            gx->ExecTS += DSClk33(3);
             break;
         }
 
@@ -1241,7 +1242,7 @@ bool GX_RunCommand(Console* sys, const timestamp now)
 
             // Note: negate -> convert to s1.10; this is different than the reciprocal calc for some reason?
             gx->LightVec[param>>30].Vec = (-(gx->LightVec[param>>30].Vec>>12) << 53) >> 53;
-            gx->ExecTS += 5;
+            gx->ExecTS += DSClk33(5);
             break;
         }
 
@@ -1251,7 +1252,7 @@ bool GX_RunCommand(Console* sys, const timestamp now)
             gx->LightColor[param>>30].R = (param >>  0) & 0x1F;
             gx->LightColor[param>>30].G = (param >>  5) & 0x1F;
             gx->LightColor[param>>30].B = (param >> 10) & 0x1F;
-            gx->ExecTS += 3;
+            gx->ExecTS += DSClk33(3);
             break;
         }
 
@@ -1340,7 +1341,7 @@ void GX_Swap(Console* sys, const timestamp now)
 
     if (gx->SwapReq)
     {
-        gx->ExecTS = now + 325;
+        gx->ExecTS = now + DSClk33(325);
         gx->SwapReq = false;
 
         // sort polygon ram
@@ -1380,7 +1381,6 @@ void GX_Swap(Console* sys, const timestamp now)
         }
 
         // make sure to reschedule if needed, since we probably ended up getting this scheduled 5 years into the future, and that might cause problems.
-        if (sys->Sched.EventTimes[Evt_GX] > gx->ExecTS)
-            Schedule_Event(sys, GX_RunFIFO, Evt_GX, gx->ExecTS);
+        Sched_AddEventIfEarlier(sys, gx->ExecTS, Evt_GX);
     }
 }

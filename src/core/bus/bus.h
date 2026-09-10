@@ -138,18 +138,21 @@ typedef enum : u8
 {
     CB_None,
 
+
     CB9_BIU9InstrNormal,
     CB9_BIU9InstrStream,
-
     CB9_BIU9WriteBuffer,
-
     CB9_BIU9DataNormal,
     CB9_BIU9DataStream,
-
     CB9_BIU9Idle,
+
+    CB9_DMA,
+
 
     CB7_7TDMIInstr,
     CB7_7TDMIData,
+
+    CB7_DMA,
 } BusCallbacks;
 
 typedef struct
@@ -201,6 +204,8 @@ typedef struct
     // post data:
     u32 PostReadBus; // used by arm7 bus for open bus emulation
     BusCallbacks PostCB;
+    u8 PostMan;
+    bool PostLoad;
     bool PostNoPrev;
 } BusImpl;
 
@@ -297,7 +302,7 @@ void Bus7_A7Wake(Console* sys, const timestamp now);
 void Bus_Req(Console* sys, const BusReq* req, const timestamp now, const bool a9);
 void Bus_Run(Console* sys, const timestamp now, const bool a9);
 void Bus_TransferPost(Console* sys, const timestamp fin, const bool a9);
-void Bus_TransferPostSetup(Console* sys, const u32 rdata, const bool isread, const timestamp end, const bool noprev, const bool cb, const bool a9);
+void Bus_TransferPostSetup(Console* sys, const u32 rdata, const bool isread, const timestamp end, const bool noprev, const BusCallbacks cb, const u8 man, const bool a9);
 
 void MainRAM_Run(Console* sys, const timestamp now);
 void IO9_Handler(Console* sys, timestamp now);
@@ -305,6 +310,7 @@ void IO7_Handler(Console* sys, timestamp now);
 
 void IO9_FinishDiv(Console* sys);
 void IO9_FinishSqrt(Console* sys);
+void SPI_Finish(Console* sys, timestamp now);
 
 void WiFi_Init(Console* sys);
 void WiFi_Read(Console* sys, u32* rdata, timestamp* now, const u32 addr, const AHB_HSIZE size);

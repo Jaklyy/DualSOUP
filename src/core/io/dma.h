@@ -42,26 +42,26 @@ union DMA_CR
     };
 };
 
-constexpr int DMA7_NumSound = 16;
-constexpr int DMA7_NumSoundCap = 2;
-constexpr int DMA7_NumNormal = 4;
-constexpr int DMA7_NumNew = 4;
+constexpr u64 DMA7_NumSound = 16;
+constexpr u64 DMA7_NumSoundCap = 2;
+constexpr u64 DMA7_NumNormal = 4;
+constexpr u64 DMA7_NumNew = 4;
 
-constexpr int DMA7_Base = 0;
+constexpr u64 DMA7_Base = 0;
 
-constexpr int DMA7_SoundCapBase = DMA7_Base;
-constexpr int DMA7_SoundCapMax = DMA7_SoundCapBase + DMA7_NumSoundCap;
+constexpr u64 DMA7_SoundCapBase = DMA7_Base;
+constexpr u64 DMA7_SoundCapMax = DMA7_SoundCapBase + DMA7_NumSoundCap;
 
-constexpr int DMA7_SoundBase = DMA7_SoundCapMax;
-constexpr int DMA7_SoundMax = DMA7_SoundBase + DMA7_NumSound;
+constexpr u64 DMA7_SoundBase = DMA7_SoundCapMax;
+constexpr u64 DMA7_SoundMax = DMA7_SoundBase + DMA7_NumSound;
 
-constexpr int DMA7_NormalBase = DMA7_SoundMax;
-constexpr int DMA7_NormalMax = DMA7_NormalBase + DMA7_NumNormal;
+constexpr u64 DMA7_NormalBase = DMA7_SoundMax;
+constexpr u64 DMA7_NormalMax = DMA7_NormalBase + DMA7_NumNormal;
 
-constexpr int DMA7_NewBase = DMA7_NormalMax;
-constexpr int DMA7_NewMax = DMA7_NewBase + DMA7_NumNew;
+constexpr u64 DMA7_NewBase = DMA7_NormalMax;
+constexpr u64 DMA7_NewMax = DMA7_NewBase + DMA7_NumNew;
 
-constexpr int DMA7_Max = DMA7_NewMax;
+constexpr u64 DMA7_Max = DMA7_NewMax;
 
 
 struct DMA_Channel
@@ -70,15 +70,23 @@ struct DMA_Channel
     u32 DstAddr;
     union DMA_CR CR;
 
+    u32 RData; // Latched Word
+
     u32 SrcAddrMask;
     u32 DstAddrMask;
     u32 Latched_SrcAddr;
     u32 Latched_DstAddr;
     s32 NumWords;
     s32 Latched_NumWords;
+    s32 BurstMax;
+    s32 WriteCur;
+    s32 ReadCur;
     s8 SrcInc;
     s8 DstInc;
     u8 CurrentMode;
+    bool Latched_Width32;
+    bool DoBusy;
+    bool NeedsInit;
 };
 
 struct DMA_Controller
@@ -92,13 +100,14 @@ struct DMA_Controller
 
 typedef struct Console Console;
 
-void DMA_Schedule(Console* sys, const bool a9);
-void DMA_Run(Console* sys, const bool a9);
-void DMA7_IOWriteHandler(Console* sys, struct DMA_Channel* channels, u32 addr, u32 val, const u32 mask);
-void DMA9_IOWriteHandler(Console* sys, struct DMA_Channel* channels, u32 addr, u32 val, u32 mask);
+void DMA7_IOWriteHandler(Console* sys, timestamp now, struct DMA_Channel* channels, u32 addr, u32 val, const u32 mask);
+void DMA9_IOWriteHandler(Console* sys, timestamp now, struct DMA_Channel* channels, u32 addr, u32 val, u32 mask);
 u32 DMA_IOReadHandler(struct DMA_Channel* channels, u32 addr);
 void StartDMA9(Console* sys, timestamp start, u8 mode);
 void StartDMA7(Console* sys, timestamp start, u8 mode);
 void StartSoundCapDMA(Console* sys, u8 id, timestamp start);
 void StartSoundDMA(Console* sys, u8 id, timestamp start, bool matters);
 timestamp DMA_GetNext(Console* sys, const timestamp now, const bool sync, const bool a9);
+
+void DMA_CompPost(Console* sys, const u8 id, u32 rdata, const bool load, const bool a9);
+void DMA_Step(Console* sys, const u8 id, timestamp now, const bool a9);

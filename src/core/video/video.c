@@ -58,7 +58,7 @@ void LCD_HBlank(Console* sys, timestamp now)
         PPU_SetTarget(sys, now);
     if (sys->VCount < 192)
     {
-        StartDMA9(sys, now+2+1, DMAStart_HBlank); // checkme: delay?
+        StartDMA9(sys, now+DSClk33(2+1), DMAStart_HBlank); // checkme: delay?
         PPU_SetTarget(sys, now);
     }
     if (sys->VCount == 191)
@@ -75,8 +75,8 @@ void LCD_HBlank(Console* sys, timestamp now)
         {
             // TODO: this doesn't really work quite right if you take longer than a frame.
 
-            u64 target = sys->OldTime + ((((Frame_Cycles/2) * SDL_GetPerformanceFrequency()) + sys->TimeFrac) / Base_Clock);
-            sys->TimeFrac =              (((Frame_Cycles/2) * SDL_GetPerformanceFrequency()) + sys->TimeFrac) % Base_Clock;
+            u64 target = sys->OldTime + ((((Frame_Cycles/2) * SDL_GetPerformanceFrequency()) + sys->TimeFrac) / NTR_BaseClock);
+            sys->TimeFrac =              (((Frame_Cycles/2) * SDL_GetPerformanceFrequency()) + sys->TimeFrac) % NTR_BaseClock;
 
             double frametimeactual = (double)(SDL_GetPerformanceCounter() - sys->OldTimeActual) * 1000.0 / SDL_GetPerformanceFrequency();
             while(SDL_GetPerformanceCounter() < target) SDL_CPUPauseInstruction();
@@ -100,11 +100,12 @@ void LCD_HBlank(Console* sys, timestamp now)
         }
     }
     // schedule irq
-    if (sys->DispStatRW9.HBlankIRQ) Console_ScheduleIRQs(sys, IRQ_HBlank, true, now+2); // CHECKME: delay?
-    if (sys->DispStatRW7.HBlankIRQ) Console_ScheduleIRQs(sys, IRQ_HBlank, false, now+2); // CHECKME: delay?
+    if (sys->DispStatRW9.HBlankIRQ) Sched_AddEvent(sys, now+DSClk33(2), Evt_IRQ9_HBlank); // CHECKME: delay?
+    if (sys->DispStatRW7.HBlankIRQ) Sched_AddEvent(sys, now+DSClk33(2), Evt_IRQ7_HBlank); // CHECKME: delay?
 
     // schedule hblank
-    Schedule_Event(sys, LCD_Scanline, Evt_Scanline, now + HBlank_Cycles);
+    sys->TEMPHBLANK = false;
+    Sched_AddEvent(sys, now + DSClk33(HBlank_Cycles), Evt_Scanline);
 }
 
 void LCD_Scanline(Console* sys, timestamp now)
@@ -127,10 +128,10 @@ void LCD_Scanline(Console* sys, timestamp now)
         sys->DispStatRO7.Raw = 0b001;
 
         // schedule irq
-        if (sys->DispStatRW9.VBlankIRQ) Console_ScheduleIRQs(sys, IRQ_VBlank, true, now+2);
-        if (sys->DispStatRW7.VBlankIRQ) Console_ScheduleIRQs(sys, IRQ_VBlank, false, now+2); // CHECKME: delay correct for arm7 too?
-        StartDMA9(sys, now+2+1, DMAStart_VBlank); // checkme: delay?
-        StartDMA9(sys, now+2+1, DMAStart_VBlank); // checkme: delay?
+        if (sys->DispStatRW9.VBlankIRQ) Sched_AddEvent(sys, now+DSClk33(2), Evt_IRQ9_VBlank);
+        if (sys->DispStatRW7.VBlankIRQ) Sched_AddEvent(sys, now+DSClk33(2), Evt_IRQ7_VBlank); // CHECKME: delay correct for arm7 too?
+        StartDMA9(sys, now+DSClk33(2+1), DMAStart_VBlank); // checkme: delay?
+        StartDMA9(sys, now+DSClk33(2+1), DMAStart_VBlank); // checkme: delay?
 
 #ifndef SINGLETHREADRASTER
         SWRen_Sync(sys, now);
@@ -156,7 +157,7 @@ void LCD_Scanline(Console* sys, timestamp now)
         SWRen_RasterizerFrame(sys);
 #else
         SWRen_Init(sys, now);
-        SWRen_SetTarget(sys, now+Scanline_Cycles*263);
+        SWRen_SetTarget(sys, now+DSClk33(Scanline_Cycles*263));
 #endif
         //SWRen_RasterizerFrame(sys);
     }
@@ -177,10 +178,11 @@ void LCD_Scanline(Console* sys, timestamp now)
 
     // vcount match
     sys->DispStatRO7.VCountMatch = (sys->TargetVCount7 == sys->VCount);
-    if (sys->DispStatRW7.VCountMatchIRQ && (sys->TargetVCount7 == sys->VCount)) Console_ScheduleIRQs(sys, IRQ_VCount, false, now+2); // checkme: delay?
+    if (sys->DispStatRW7.VCountMatchIRQ && (sys->TargetVCount7 == sys->VCount)) Sched_AddEvent(sys, now+DSClk33(2), Evt_IRQ9_VCount); // checkme: delay?
     sys->DispStatRO9.VCountMatch = (sys->TargetVCount9 == sys->VCount);
-    if (sys->DispStatRW9.VCountMatchIRQ && (sys->TargetVCount9 == sys->VCount)) Console_ScheduleIRQs(sys, IRQ_VCount, true, now+2); // checkme: delay?
+    if (sys->DispStatRW9.VCountMatchIRQ && (sys->TargetVCount9 == sys->VCount)) Sched_AddEvent(sys, now+DSClk33(2), Evt_IRQ7_VCount); // checkme: delay?
 
     // schedule hblank
-    Schedule_Event(sys, LCD_HBlank, Evt_Scanline, now + ActiveRender_Cycles);
+    sys->TEMPHBLANK = true;
+    Sched_AddEvent(sys, now + DSClk33(ActiveRender_Cycles), Evt_Scanline);
 }
