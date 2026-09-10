@@ -270,7 +270,8 @@ void A946_CP15Write(ARM946ES* ARM9, const u16 cmd, const u32 val)
 
     case ARM_CoprocReg(0, 7, 0, 4): // wait for interrupt
     case ARM_CoprocReg(0, 15, 8, 2): // wait for interrupt
-        ARM9->ARM.WaitForInterrupt = true;
+        if (!ARM9->ARM.InterruptRequest)
+            ARM9->ARM.WaitForInterrupt = true;
         break;
 
     case ARM_CoprocReg(0, 7, 5, 0): // flush icache

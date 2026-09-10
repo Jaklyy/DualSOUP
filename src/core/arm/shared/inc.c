@@ -1,5 +1,7 @@
 #include <stdbit.h>
 #include <stdckdint.h>
+#include "core/scheduler.h"
+#include "core/arm/arm7/arm.h"
 #include "core/arm/arm9/arm.h"
 #include "core/utils.h"
 #include "arm.h"
@@ -124,12 +126,38 @@ void ARM_STR(ARM* cpu, u32 addr, u8 rd, bool priv, u8 rn, u32 wbaddr, u32 basere
 {
     u32 wrdata = ARM_GetReg(rd); // Rd is fetched before base writeback
 
+    if (size == ARMDataWidth_8)
+    {
+        wrdata &= 0xFF;
+        wrdata |= (wrdata << 8) | (wrdata << 16) | (wrdata << 24);
+    }
+    else if (size == ARMDataWidth_16)
+    {
+        wrdata &= 0xFFFF;
+        wrdata |= (wrdata << 16);
+    }
+
     if (cpu->CPUID == ARM7ID)
     {
+        ARM7TDMI* a7tdmi = ARM7Cast;
         // note: for some reason str doesn't get affected by the weird nonsense ldr does on arm7tdmi when using pc as base
         if (writeback) ARM_SetReg(rn, wbaddr);
 
         // schedule store
+        A7TDMI_PostMem pass = {
+            .WrData = {[0] = wrdata},
+            .Addr = addr,
+            .RListOrig = 1<<rd,
+            .RBase = 0,
+            .NumFetch = 1,
+            .NumFetchCompleted = 0,
+            .Size = size,
+            .SignExt = false,
+            .Priv = priv,
+            .DataCB = A7TDMIDataCB_StoreSingle,
+        };
+        a7tdmi->PostMem = pass;
+        A7TDMI_DataWrite(a7tdmi, cpu->Timestamp);
     }
     else // arm9e-s
     {
@@ -166,6 +194,11 @@ void ARM_STR(ARM* cpu, u32 addr, u8 rd, bool priv, u8 rn, u32 wbaddr, u32 basere
     }
 }
 
+void A7TDMI_STR_Post(ARM7TDMI* a7tdmi)
+{
+    A7TDMI_InstrRead(a7tdmi, a7tdmi->ARM.Timestamp);
+}
+
 void A9ES_STR_Post(ARM946ES* a9es)
 {
     A9ES_PostMem* pass = &a9es->PostMem;
@@ -184,6 +217,7 @@ void ARM_LDR(ARM* cpu, u32 addr, u8 rd, bool priv, u8 rn, u32 wbaddr, u32 basere
 {
     if (cpu->CPUID == ARM7ID)
     {
+        ARM7TDMI* a7tdmi = ARM7Cast;
         if (writeback)
         {
             if (rn == 15)
@@ -203,11 +237,24 @@ void ARM_LDR(ARM* cpu, u32 addr, u8 rd, bool priv, u8 rn, u32 wbaddr, u32 basere
                 // some insight might be able to be gained via ldm user bank quirks? since i believe those bug out reg reads only on the first cycle of an instruction? or at least that's how it works on gba...?
                 wbaddr += 4;
             }
-            ARM_SetReg(rn, wbaddr);
+            A7TDMI_SetReg(a7tdmi, rn, wbaddr);
         }
 
-        static_assert(false, "SCHEDULE LOAD\n");
         // schedule load
+        A7TDMI_PostMem pass = {
+            .RData = {},
+            .Addr = addr,
+            .RListOrig = 1<<rd,
+            .RBase = (writeback) ? rn : u8_max,
+            .NumFetch = 1,
+            .NumFetchCompleted = 0,
+            .Size = size,
+            .SignExt = signext,
+            .Priv = priv,
+            .DataCB = A7TDMIDataCB_LoadSingle,
+        };
+        a7tdmi->PostMem = pass;
+        A7TDMI_DataRead(a7tdmi, cpu->Timestamp);
     }
     else
     {
@@ -216,7 +263,7 @@ void ARM_LDR(ARM* cpu, u32 addr, u8 rd, bool priv, u8 rn, u32 wbaddr, u32 basere
         // base writeback doesn't work for pc on arm9e-s
         if (writeback && (rn != 15))
         {
-            ARM_SetReg(rn, wbaddr);
+            A9ES_SetReg(a9es, rn, wbaddr);
             base = rn;
         }
         else base = u8_max;
@@ -286,6 +333,22 @@ void A9ES_LDR_Post(ARM946ES* a9es)
         A9ES_SetTwoCycleInterlock(a9es, rd);
 }
 
+void A7TDMI_LDR_Post(ARM7TDMI* a7tdmi)
+{
+    A7TDMI_PostMem* pass = &a7tdmi->PostMem;
+
+    if (pass->RBase == 15) // buggy; skip wb cycle
+        return A7TDMI_InstrRead(a7tdmi, a7tdmi->ARM.Timestamp);
+
+    u32 rdata = pass->RData[0];
+    u8 rd = stdc_trailing_zeros(pass->RListOrig);
+    A7TDMI_RotateExtendUnit(&rdata, pass->Addr, pass->Size, pass->SignExt);
+
+    A7TDMI_SetReg(a7tdmi, rd, rdata);
+
+    A7TDMI_InstrRead(a7tdmi, a7tdmi->ARM.Timestamp+DSClk33(1));
+}
+
 #if 0
 void A7TDMI_LDR_Post(ARM7TDMI* a7tdmi)
 {
@@ -301,6 +364,54 @@ void ARM_STM(ARM* cpu, u32 addr, u16 rlist, u32 wbaddr, u32 baserestore, u8 rn, 
 {
     if (cpu->CPUID == ARM7ID)
     {
+        ARM7TDMI* a7tdmi = ARM7Cast;
+        u8 base = ((writeback) ? rn : u8_max);
+
+        // INTERLOCK NOTES:
+        // single reg case is not actually an interlock, but it functions similarly enough in practice
+        // two cycle interlocks dont need to be tested since stm is always at least 2 cycles long
+
+        A7TDMI_PostMem pass = {
+            .WrData = {},
+            .Addr = addr,
+            .RListOrig = rlist,
+            .RBase = base,
+            .NumFetch = stdc_count_ones(rlist),
+            .NumFetchCompleted = 0,
+            .Size = ARMDataWidth_32,
+            .Special = special,
+            .Priv = cpu->Privileged,
+            .DataCB = A7TDMIDataCB_StoreMultiple,
+        };
+
+        u8 oldmode = a7tdmi->ARM.CPSR.Mode;
+        if (special) ARM_SetMode(&a7tdmi->ARM, ARMMode_USR); // user regs stm; hacky
+
+        // add fetched words
+        u16 rlisttmp = rlist;
+        u8 count = 0;
+
+        if (rlisttmp)
+        {
+            u8 reg = stdc_trailing_zeros((u32)rlisttmp);
+            rlisttmp &= (~1)<<reg;
+            pass.WrData[count++] = A7TDMI_GetReg(a7tdmi, reg);
+        }
+
+        // ARM7TDMI performs base writeback after the first store register was fetched
+        if (base < 15) A7TDMI_SetReg(a7tdmi, base, wbaddr); // CHECKME: user regs?
+
+        while (rlisttmp)
+        {
+            u8 reg = stdc_trailing_zeros((u32)rlisttmp);
+            rlisttmp &= (~1)<<reg;
+            pass.WrData[count++] = A7TDMI_GetReg(a7tdmi, reg);
+        }
+
+        if (special) ARM_SetMode(&a7tdmi->ARM, oldmode); // user regs stm; hacky
+
+        a7tdmi->PostMem = pass;
+        A7TDMI_DataWrite(a7tdmi, cpu->Timestamp);
     }
     else
     {
@@ -322,7 +433,7 @@ void ARM_STM(ARM* cpu, u32 addr, u16 rlist, u32 wbaddr, u32 baserestore, u8 rn, 
             .NumFetchCompleted = 0,
             .Size = ARMDataWidth_32,
             .Special = special,
-            .Priv = true,
+            .Priv = cpu->Privileged,
             .ILDelay = (stdc_count_ones(rlist) <= 1), // see above interlock notes
             .DataCB = A9ESDataCB_StoreMultiple,
         };
@@ -373,10 +484,39 @@ void A9ES_STM_Post(ARM946ES* a9es)
         A9ES_InstrGo(a9es, false);
 }
 
+void A7TDMI_STM_Post(ARM7TDMI* a7tdmi)
+{
+    A7TDMI_InstrRead(a7tdmi, a7tdmi->ARM.Timestamp);
+}
+
 void ARM_LDM(ARM* cpu, u32 addr, u16 rlist, u32 wbaddr, u32 baserestore, u8 rn, bool writeback, bool special)
 {
     if (cpu->CPUID == ARM7ID)
     {
+        ARM7TDMI* a7tdmi = ARM7Cast;
+        u8 base;
+        if (writeback && (rn != 15))
+        {
+            A7TDMI_SetReg(a7tdmi, rn, wbaddr);
+            base = rn;
+        }
+        else base = u8_max;
+
+        A7TDMI_PostMem pass = {
+            .RData = {},
+            .Addr = addr,
+            .RListOrig = rlist, // checkme: empty rlist?
+            .RListRem = rlist,
+            .RBase = base,
+            .NumFetch = stdc_count_ones(rlist),
+            .NumFetchCompleted = 0,
+            .Size = ARMDataWidth_32,
+            .Special = special,
+            .Priv = cpu->Privileged,
+            .DataCB = A7TDMIDataCB_LoadMultiple,
+        };
+        a7tdmi->PostMem = pass;
+        A7TDMI_DataRead(a7tdmi, cpu->Timestamp);
     }
     else
     {
@@ -385,7 +525,7 @@ void ARM_LDM(ARM* cpu, u32 addr, u16 rlist, u32 wbaddr, u32 baserestore, u8 rn, 
         // checkme: base writeback pc on arm9e-s?
         if (writeback && (rn != 15))
         {
-            ARM_SetReg(rn, wbaddr);
+            A9ES_SetReg(a9es, rn, wbaddr);
             base = rn;
         }
         else base = u8_max;
@@ -401,7 +541,7 @@ void ARM_LDM(ARM* cpu, u32 addr, u16 rlist, u32 wbaddr, u32 baserestore, u8 rn, 
 
         A9ES_PostMem pass = {
             .RData = {},
-            .Addr = addr & ~3,
+            .Addr = addr,
             .BaseRestore = baserestore,
             .RListOrig = rlist, // checkme: empty rlist?
             .RListRem = rlist,
@@ -432,7 +572,7 @@ void A9ES_LDM_Post(ARM946ES* a9es)
         if (pass->Special && !(pass->RListOrig >> 15)) // user regs ldm; hacky
             ARM_SetMode(&a9es->ARM, ARMMode_USR);
 
-        for (int i = pass->NumFetchCompleted; i < pass->NumFetch; i++)
+        for (u8 i = pass->NumFetchCompleted; i < pass->NumFetch; i++)
         {
             u8 reg = stdc_trailing_zeros((u32)pass->RListRem);
             pass->RListRem &= (~1)<<reg;
@@ -478,4 +618,32 @@ void A9ES_LDM_Post(ARM946ES* a9es)
         A9ES_ExecuteCycles(a9es, pass->ILDelay-1);
         A9ES_InstrGo(a9es, false);
     }
+}
+
+void A7TDMI_LDM_Post(ARM7TDMI* a7tdmi)
+{
+    A7TDMI_PostMem* pass = &a7tdmi->PostMem;
+
+    u8 oldmode = a7tdmi->ARM.CPSR.Mode;
+    if (pass->Special && !(pass->RListOrig >> 15)) // user regs ldm; hacky
+        ARM_SetMode(&a7tdmi->ARM, ARMMode_USR);
+
+    for (u8 i = pass->NumFetchCompleted; i < pass->NumFetch; i++)
+    {
+        u8 reg = stdc_trailing_zeros((u32)pass->RListRem);
+        pass->RListRem &= (~1)<<reg;
+
+        u32 rdata = pass->RData[i];
+        // update cpsr
+        if ((reg == 15) && pass->Special) // exception return ldm
+                ARM_SetCPSR(&a7tdmi->ARM, A7TDMI_GetSPSR(a7tdmi).Raw);
+
+        // base writeback is done before the first load is written back, so no handling is needed
+        A7TDMI_SetReg(a7tdmi, reg, rdata);
+    }
+
+    if (pass->Special && !(pass->RListOrig >> 15)) // user regs ldm; hacky
+        ARM_SetMode(&a7tdmi->ARM, oldmode);
+
+    A7TDMI_InstrRead(a7tdmi, a7tdmi->ARM.Timestamp+DSClk33(1));
 }

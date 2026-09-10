@@ -114,7 +114,7 @@ void Sched_RunEvent(Console* sys)
     case Evt_Sqrt:          IO9_FinishSqrt(sys); break;
 
     case Evt_UpdateIRQ7:    IRQ7_Update(sys, now); break;
-    case Evt_ARM7:          A7TDMI_Run(&sys->A7TDMI); break;
+    case Evt_ARM7:          A7TDMI_Run(&sys->A7TDMI, now); break;
     case Evt_Bus7HReady:    Bus_TransferPost(sys, now, false); break;
     case Evt_Bus7:          Bus_Run(sys, now, false); break;
 

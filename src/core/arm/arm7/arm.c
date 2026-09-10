@@ -1,3 +1,4 @@
+#include "core/scheduler.h"
 #include "core/utils.h"
 #include "../shared/arm.h"
 #include "core/console.h"
@@ -94,28 +95,23 @@ void A7TDMI_SetPC(ARM7TDMI* a7tdmi, u32 val)
     // arm7 doesn't seem to implement bit0 of program counter
     // and doesn't enforce alignment in arm mode.
     val &= ~0x1;
-    if (val & 2 && cpu->CPSR.Thumb) LogPrint(LOG_ARM7|LOG_ODD, "ARM7: Misaligned branch in ARM mode.\n");
+    if ((val & 2) && !cpu->CPSR.Thumb) LogPrint(LOG_ARM7|LOG_ODD, "ARM7: Misaligned branch in ARM mode.\n");
     cpu->PC = val;
-    cpu->Prog = ARMProg_RefillStart;
+    cpu->FlushProg = 3;
 }
 
 void A7TDMI_SetReg(ARM7TDMI* a7tdmi, const int reg, u32 val)
 {
     // todo: ldm user mode bus contention?
-
     if (reg == 15) // writes to PC need special handling
-    {
         A7TDMI_SetPC(a7tdmi, val);
-    }
     else
-    {
         cpu->R[reg] = val;
-    }
 }
 
 void A7TDMI_ExecuteCycles(ARM7TDMI* a7tdmi, const u32 execute)
 {
-    cpu->Timestamp += execute;
+    cpu->Timestamp += DSClk33(execute);
     // NOTE: internally arm7tdmi instruction bursts are weird due to mixed sequential + idle cycles?
     // they seem to just be handled as nonsequential though...
     cpu->CodeSeq = (execute == 0);
@@ -123,37 +119,12 @@ void A7TDMI_ExecuteCycles(ARM7TDMI* a7tdmi, const u32 execute)
 
 [[nodiscard]] bool A7TDMI_CheckInterrupts(ARM7TDMI* a7tdmi)
 {
-    //Scheduler_Sync(cpu->Sys, cpu->Timestamp, Sync_Normal7);
-
-    // TODO: schedule this instead
-    if (cpu->Sys->IME7 && !cpu->CPSR.IRQDisable && (cpu->Sys->IE7 & cpu->Sys->IF7))
+    if (!cpu->CPSR.IRQDisable && cpu->InterruptRequest)
     {
-#if 0
-        if (cpu->FastInterruptRequest) // jakly why are you implementing this...
-        {
-            ARM9_FastInterruptRequest(ARM9);
-            return true;
-        }
-        else
-#endif
-        {
-            A7TDMI_InterruptRequest(a7tdmi);
-            return true;
-        }
+        A7TDMI_InterruptRequest(a7tdmi);
+        return true;
     }
     else return false;
-}
-
-void A7TDMI_Fetch(ARM7TDMI* a7tdmi)
-{
-    // step the pipeline.
-    ARM_PipelineStep(cpu);
-
-    // begin instruction fetch
-    if (cpu->CPSR.Thumb)
-        A7TDMI_InstrRead16(a7tdmi, cpu->PC);
-    else
-        A7TDMI_InstrRead32(a7tdmi, cpu->PC);
 }
 
 void A7TDMI_Exec(ARM7TDMI* a7tdmi)
@@ -177,61 +148,23 @@ void A7TDMI_Exec(ARM7TDMI* a7tdmi)
             if (ARM_ConditionLookup(condcode, cpu->CPSR.Flags))
                 A7TDMI_InstructionLUT[decode](cpu, instr);
             else // failed the condition check.
+            {
+                A7TDMI_ExecuteCycles(a7tdmi, 0);
                 ARM_StepPC(cpu, false);
+            }
         }
     }
-
-    cpu->Prog = ARMProg_SleepCheck;
 }
 
-void A7TDMI_Run(ARM7TDMI* a7tdmi)
+void A7TDMI_Run(ARM7TDMI* a7tdmi, timestamp now)
 {
-    switch(cpu->Prog)
-    {
-        case ARMProg_Sleep:
-        {
-                // TODO?
-            //if (!Console_CheckARM7Wake(cpu->Sys))
-            {
-                return;
-            }
-            //cpu->Prog = ARMProg_Fetch;
-            //[[fallthrough]]; // checkme?
-        }
-        case ARMProg_RefillStart:
-        case ARMProg_RefillMid:
-        case ARMProg_Fetch:
-        {
-            cpu->Prog += 1; static_assert((((ARMProg_RefillStart + 1) == ARMProg_RefillMid) && ((ARMProg_RefillMid + 1) == ARMProg_Fetch) && ((ARMProg_Fetch + 1) == ARMProg_Exec)), "ARM PROG NEEDS ADJUSTING HERE");
+    cpu->Timestamp = now;
 
-            A7TDMI_Fetch(a7tdmi);
-            break;
-        }
-        case ARMProg_Exec:
-        {
-            A7TDMI_Exec(a7tdmi);
-            break;
-        }
-        case ARMProg_BusWait:
-        {
-            break;
-        }
-        case ARMProg_SleepCheck:
-        {
-            if (cpu->CpuSleeping) // is it more correct to do this at the start of a step? does it even matter?
-            {
-                if (Console_CheckARM7Wake(cpu->Sys))
-                {
-                    cpu->CpuSleeping = 0;
-                }
-                else
-                {
-                    cpu->Prog = ARMProg_Sleep;
-                }
-            }
-            break;
-        }
-    }
+    A7TDMI_Exec(a7tdmi);
+
+    if (!a7tdmi->BusGo)
+        A7TDMI_InstrRead(a7tdmi, cpu->Timestamp);
+
+    ARM_PipelineStep(cpu);
 }
-
 #undef cpu

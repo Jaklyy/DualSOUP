@@ -17,11 +17,45 @@
     M: Fast Multiplier (it was so good they removed it from the ARM946E-S)
     I: Debugging but different
 */
+typedef enum : u8
+{
+    A7TDMIDataCB_LoadSingle,
+    A7TDMIDataCB_StoreSingle,
+    A7TDMIDataCB_LoadMultiple,
+    A7TDMIDataCB_StoreMultiple,
+    A7TDMIDataCB_SwapLoad,
+    A7TDMIDataCB_SwapStore,
+} A7TDMI_DataCB;
 
+typedef struct
+{
+    union {
+        u32 RData[16];
+        u32 WrData[16];
+    };
+    u32 Addr;
+    //u32 BaseRestore;
+    u16 RListOrig;
+    u16 RListRem;
+    u8 RBase;
+    //u8 DataPtr; // used by biu and cache streaming
+    //bool DataAbort;
+    u8 NumFetch;
+    u8 NumFetchCompleted;
+    ARM_DataWidth Size;
+    union {
+        bool Special; // ldm/stm
+        bool SignExt; // ldr
+    };
+    bool Priv;
+    A7TDMI_DataCB DataCB;
+} A7TDMI_PostMem;
 
 typedef struct
 {
     ARM ARM;
+    A7TDMI_PostMem PostMem;
+    bool BusGo;
 } ARM7TDMI;
 
 // ensure casting between the two types works as expected
@@ -36,7 +70,7 @@ extern void (*T7TDMI_InstructionLUT[64])(ARM*, ARM_Instr);
 void A7TDMI_Init(ARM7TDMI* a7tdmi, Console* console);
 
 // arm7 handler entrypoint
-void A7TDMI_Run(ARM7TDMI* a7tdmi);
+void A7TDMI_Run(ARM7TDMI* a7tdmi, timestamp now);
 
 // special exceptions
 void A7TDMI_Reset(ARM7TDMI* a7tdmi);
@@ -65,16 +99,18 @@ void A7TDMI_SetPC(ARM7TDMI* a7tdmi, u32 val);
 // add execute stage cycles, handle nonsequential code execution.
 void A7TDMI_ExecuteCycles(ARM7TDMI* a7tdmi, const u32 Execute);
 
+void A7TDMI_STR_Post(ARM7TDMI* a7tdmi);
+void A7TDMI_LDR_Post(ARM7TDMI* a7tdmi);
+void A7TDMI_STM_Post(ARM7TDMI* a7tdmi);
+void A7TDMI_LDM_Post(ARM7TDMI* a7tdmi);
+void A7TDMI_SWPLoad_Post(ARM7TDMI* a7tdmi);
+void A7TDMI_SWPStore_Post(ARM7TDMI* a7tdmi);
+
+void A7TDMI_DataRead(ARM7TDMI* a7tdmi, const timestamp now);
+void A7TDMI_InstrRead(ARM7TDMI* a7tdmi, const timestamp now);
+void A7TDMI_DataWrite(ARM7TDMI* a7tdmi, const timestamp now);
+
 void A7TDMI_RotateExtendUnit(u32* rdata, const u32 addr, const ARM_DataWidth size, const bool signext);
-[[nodiscard]] u32 A7TDMI_DataRead32(ARM7TDMI* a7tdmi, const u32 addr, bool* seq);
-[[nodiscard]] u32 A7TDMI_DataRead16(ARM7TDMI* a7tdmi, const u32 addr, bool* seq);
-[[nodiscard]] u32 A7TDMI_DataRead8(ARM7TDMI* a7tdmi, const u32 addr, bool* seq);
-void A7TDMI_BusWrite(ARM7TDMI* a7tdmi, const u32 addr, const u32 val, const u32 mask, const bool atomic, bool* seq);
-void A7TDMI_DataWrite32(ARM7TDMI* a7tdmi, const u32 addr, u32 val, const bool atomic, bool* seq);
-void A7TDMI_DataWrite16(ARM7TDMI* a7tdmi, const u32 addr, u32 val, bool* seq);
-void A7TDMI_DataWrite8(ARM7TDMI* a7tdmi, const u32 addr, u32 val, const bool atomic, bool* seq);
-void A7TDMI_InstrRead32(ARM7TDMI* a7tdmi, const u32 addr);
-void A7TDMI_InstrRead16(ARM7TDMI* a7tdmi, const u32 addr);
 
 // temp
 void A7TDMI_Log(ARM7TDMI* a7tdmi);

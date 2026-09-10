@@ -423,10 +423,10 @@ typedef struct
     {
         bool DataGo : 1;
         bool InstrGo : 1;
-        bool DataDone : 1;
-        bool InstrDone : 1;
         bool DataBusy : 1;
         bool InstrBusy : 1;
+        bool DataDone : 1;
+        bool InstrDone : 1;
         bool InstrLate : 1;
     } BusFlags;
     s8 IStreamWaitCur;
@@ -550,7 +550,7 @@ void A9ES_SetSPSR(ARM946ES* a9es, ARM_PSR psr); // NOTE: this has no sanity chec
 
 // interlock handlers
 [[nodiscard]] s8 A9ES_DecodeInterlocks(ARM946ES* a9es, const bool thumb, const s8 reg, const s8 len, const s8 len_c, bool* retry);
-inline void A9ES_SetTwoCycleInterlock(ARM946ES* a9es, const u8 reg);
+void A9ES_SetTwoCycleInterlock(ARM946ES* a9es, const u8 reg);
 [[nodiscard]] s8 A9ES_TestTwoCycleInterlocks(ARM946ES* a9es);
 
 // add execute stage cycles.

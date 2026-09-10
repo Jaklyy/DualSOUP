@@ -107,87 +107,69 @@ void A9ES_SetReg(ARM946ES* a9es, const u8 reg, u32 val)
 void A9ES_ExecuteCycles(ARM946ES* a9es, const u8 execute)
 {
     //if (execute) a9es->RegIL.Raw >>= 8; // step interlock tracker // actually i dont think i need this...?
-    cpu->Timestamp += execute;
+    cpu->Timestamp += DSClk67(execute);
 }
 
 void A9ES_DataGo(ARM946ES* a9es, const A9ES_PostMem* postmem)
 {
     a9es->PostMem = *postmem;
     a9es->BusFlags.DataGo = true;
+    a9es->BusFlags.DataBusy = false;
     a9es->BusFlags.DataDone = false;
-    a9es->BusFlags.DataBusy = false;
 }
-
-void A9ES_DataDone(ARM946ES* a9es)
-{
-    a9es->BusFlags.DataGo = false;
-    a9es->BusFlags.DataDone = true;
-    a9es->BusFlags.DataBusy = false;
-}
-
 void A9ES_DataBusy(ARM946ES* a9es)
 {
     a9es->BusFlags.DataGo = false;
-    a9es->BusFlags.DataDone = false;
     a9es->BusFlags.DataBusy = true;
+    a9es->BusFlags.DataDone = false;
 }
-
+void A9ES_DataDone(ARM946ES* a9es)
+{
+    a9es->BusFlags.DataGo = false;
+    a9es->BusFlags.DataBusy = false;
+    a9es->BusFlags.DataDone = true;
+}
 void A9ES_DataNone(ARM946ES* a9es)
 {
     a9es->BusFlags.DataGo = false;
-    a9es->BusFlags.DataDone = false;
     a9es->BusFlags.DataBusy = false;
+    a9es->BusFlags.DataDone = false;
 }
 
 void A9ES_InstrGo(ARM946ES* a9es, const bool late)
 {
     a9es->BusFlags.InstrGo = !late;
-    a9es->BusFlags.InstrDone = false;
     a9es->BusFlags.InstrBusy = false;
+    a9es->BusFlags.InstrDone = false;
     a9es->BusFlags.InstrLate = late;
 }
-
-void A9ES_InstrDone(ARM946ES* a9es)
-{
-    a9es->BusFlags.InstrGo = false;
-    a9es->BusFlags.InstrDone = true;
-    a9es->BusFlags.InstrBusy = false;
-    a9es->BusFlags.InstrLate = false;
-}
-
 void A9ES_InstrBusy(ARM946ES* a9es)
 {
     a9es->BusFlags.InstrGo = false;
-    a9es->BusFlags.InstrDone = false;
     a9es->BusFlags.InstrBusy = true;
+    a9es->BusFlags.InstrDone = false;
 }
-
+void A9ES_InstrDone(ARM946ES* a9es)
+{
+    a9es->BusFlags.InstrGo = false;
+    a9es->BusFlags.InstrBusy = false;
+    a9es->BusFlags.InstrDone = true;
+    a9es->BusFlags.InstrLate = false;
+}
 void A9ES_InstrNone(ARM946ES* a9es)
 {
     a9es->BusFlags.InstrGo = false;
-    a9es->BusFlags.InstrDone = false;
     a9es->BusFlags.InstrBusy = false;
+    a9es->BusFlags.InstrDone = false;
     a9es->BusFlags.InstrLate = false;
 }
 
 [[nodiscard]] bool A9ES_CheckInterrupts(ARM946ES* a9es)
 {
-
-    // todo: schedule this instead
-    if (cpu->Sys->IME9 && !cpu->CPSR.IRQDisable && (cpu->Sys->IE9 & cpu->Sys->IF9))
+    if (!cpu->CPSR.IRQDisable && cpu->InterruptRequest)
     {
-#if 0
-        if (cpu->FastInterruptRequest) // jakly why are you implementing this...
-        {
-            A9ES_FastInterruptRequest(a946);
-            return true;
-        }
-        else
-#endif
-        {
-            A9ES_InterruptRequest(a9es);
-            return true;
-        }
+        A9ES_InterruptRequest(a9es);
+        return true;
     }
     else return false;
 }
@@ -226,7 +208,7 @@ s8 A9ES_DecodeInterlocks(ARM946ES* a9es, const bool thumb, const s8 reg, const s
     }
 }
 
-inline void A9ES_SetTwoCycleInterlock(ARM946ES* a9es, const u8 reg)
+void A9ES_SetTwoCycleInterlock(ARM946ES* a9es, const u8 reg)
 {
     a9es->RegIL.Next = reg | 0x80;
 }
@@ -257,7 +239,6 @@ void A9ES_Exec(ARM946ES* a9es)
             const u8 condcode = instr.Arm >> 28;
             const u16 decode = ((instr.Arm >> 16) & 0xFF0) | ((instr.Arm >> 4) & 0xF);
 
-            // TODO: DATA ABORTS?????
             // first we need to check the condition code (should be part of decoding?)
             if (ARM_ConditionLookup(condcode, cpu->CPSR.Flags))
             {
@@ -267,13 +248,13 @@ void A9ES_Exec(ARM946ES* a9es)
             {
                 A9ES_Uncond(cpu, instr);
             }
-            else if (decode == 0x127) // BKPT; needs special handling, condition code is ignored (always passes)
+            else if (decode == 0x127) // BKPT is decoded weird and seemingly overrides condition code handling (always passes)
             {
-                // bkpt doesn't use registers and can't interlock.
                 A9ES_PrefetchAbort(cpu, instr);
             }
             else // actually an instruction that failed the condition check.
             {
+                A9ES_ExecuteCycles(a9es, 0);
                 ARM_StepPC(cpu, false);
             }
         }
@@ -284,7 +265,7 @@ void A9ES_Exec(ARM946ES* a9es)
 
 void A946_MainLoop(ARM946ES* a946, timestamp now)
 {
-    a946->ARM.Timestamp = now; // hacky: TODO: rework this
+    cpu->Timestamp = now; // hacky: TODO: rework this
     if (a946->BusFlags.DataGo || a946->BusFlags.InstrGo)
     {
         do
@@ -308,7 +289,7 @@ void A946_MainLoop(ARM946ES* a946, timestamp now)
     if (a946->BusFlags.InstrBusy || a946->BusFlags.DataBusy) return; // don't reschedule
     else if (a946->BusFlags.InstrDone || a946->BusFlags.DataDone)
     {
-        timestamp next = a946->ARM.Timestamp;
+        timestamp next = cpu->Timestamp;
         if (a946->BusFlags.InstrDone)
         {
             DS_CLAMP(next, <, a946->InstrTS)
@@ -325,22 +306,23 @@ void A946_MainLoop(ARM946ES* a946, timestamp now)
         if (a946->BusFlags.DataDone)
         {
             DS_CLAMP(next, <, a946->DataTS)
-            a946->ARM.Timestamp = next;
+            cpu->Timestamp = next;
             A9ES_MemCallbacks(a946);
         }
-        else a946->ARM.Timestamp = next;
+        else cpu->Timestamp = next;
     }
-    else
+    else if (!cpu->WaitForInterrupt)
     {
         A9ES_Exec(a946);// execute next instruction if no accesses are waiting
         if (!a946->BusFlags.DataGo && !a946->BusFlags.InstrGo) // hacky code fetch scheduling
         {
-            a946->ARM.Timestamp += A9ES_TestTwoCycleInterlocks(a946); // add interlocks
+            cpu->Timestamp += DSClk67(A9ES_TestTwoCycleInterlocks(a946)); // add interlocks
             A9ES_InstrGo(a946, false);
         }
         ARM_PipelineStep(cpu);
     }
 
-    Sched_AddEvent(a946->ARM.Sys, a946->ARM.Timestamp, Evt_ARM9);
+    if (!cpu->WaitForInterrupt)
+        Sched_AddEvent(cpu->Sys, cpu->Timestamp, Evt_ARM9);
 }
 #undef cpu

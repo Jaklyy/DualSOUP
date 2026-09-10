@@ -20,7 +20,8 @@ void Bus9_Init(BusImpl* bus)
 
 void Bus7_Init(BusImpl* bus)
 {
-    bus->PipeCycles = DSClk33(1);
+    // TODO: RE-ENABLE
+    bus->PipeCycles = 0;//DSClk33(1);
 }
 
 void MainRAM_Init(Console* sys, NTRFCRAM fcramsize)

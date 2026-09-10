@@ -1,3 +1,5 @@
+#include "core/arm/arm7/arm.h"
+#include "core/scheduler.h"
 #include "core/utils.h"
 #include "../arm.h"
 #include "../inc.h"
@@ -244,95 +246,6 @@ void ARM_LoadStoreMultiple(ARM* cpu, const ARM_Instr instr_data)
 
     if (instr.Load) ARM_LDM(cpu, addr, rlist, wbaddr, baserestore, instr.Rn, instr.Writeback, instr.S);
     else            ARM_STM(cpu, addr, rlist, wbaddr, baserestore, instr.Rn, instr.Writeback, instr.S);
-#if 0
-    {
-        while(rlist)
-        {
-            unsigned reg = stdc_trailing_zeros((u32)rlist);
-
-            // read
-            u32 val;
-            if (cpu->CPUID == ARM7ID)
-            {
-                //val = ARM7_DataRead32(ARM7Cast, addr, &seq);
-
-                // base writeback after first access
-                if (instr.Writeback && (reg == stdc_trailing_zeros((u32)instr.RList)))
-                {
-                    //ARM_SetReg(instr.Rn, wbaddr, true, 0, 0);
-                    if (instr.Rn == 15) flush = true;
-                }
-            }
-
-                if (instr.S && reg == 15)
-                {
-                    ARM_RestoreSPSR;
-                }
-
-                if (instr.S && !(instr.RList >> 15)) // dumb way to do this
-                    ARM_SetMode(cpu, ARMMode_USR);
-
-                if ((cpu->CPUID == ARM9ID) && (reg == 15))
-                {
-                    //ARM9_FixupLoadStore(ARM9Cast, truenregs, ARM9Cast->MemTimestamp - oldts);
-                    earlyfix = true;
-                }
-
-                //ARM_SetReg(reg, val, true, 1, 2);
-                //if (reg == 15) flush = true;
-
-                if (instr.S && !(instr.RList >> 15)) // dumb way to do this
-                    ARM_SetMode(cpu, oldmode);
-            }
-
-            // increment address
-            addr += 4;
-
-            rlist &= (~1)<<reg;
-        }
-    }
-    else
-    {
-        while(rlist)
-        {
-            unsigned reg = stdc_trailing_zeros((u32)rlist);
-
-            // write
-
-            if (instr.S && !(instr.RList >> 15)) // dumb way to do this
-                ARM_SetMode(cpu, ARMMode_USR);
-
-            u32 val = ARM_GetReg(reg);
-
-            if (instr.S && !(instr.RList >> 15)) // dumb way to do this
-                ARM_SetMode(cpu, oldmode);
-
-            if (cpu->CPUID == ARM7ID)
-            {
-                //ARM7_DataWrite32(ARM7Cast, addr, val, false, &seq);
-
-                // base writeback after first access
-                if (instr.Writeback && (reg == stdc_trailing_zeros((u32)instr.RList)))
-                {
-                    //ARM_SetReg(instr.Rn, wbaddr, true, 0, 0);
-                    if (instr.Rn == 15) flush = true;
-                }
-            }
-            // increment address
-            addr += 4;
-
-            rlist &= (~1)<<reg;
-        }
-    }
-
-
-    // clean up arm7 timings
-    if (cpu->CPUID == ARM7ID)
-    {
-        cpu->Timestamp += 1;
-        cpu->CodeSeq = false;
-    }
-#endif
 }
 
 s8 ARM9_LoadStoreMultiple_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c, bool* retry [[maybe_unused]])
@@ -366,20 +279,33 @@ void ARM_Swap(ARM* cpu, const ARM_Instr instr_data)
 
     u32 addr = ARM_GetReg(instr.Rn);
 
-    bool dabt = false;
-    bool seq = false;
-    u32 load;
-    int interlock = 0;
-
     ARM_ExeCycles(1, 1);
 
     ARM_StepPC(cpu, false);
 
     if (cpu->CPUID == ARM7ID)
     {
-        load = ((instr.Byte) ? ARM7_DataRead8(ARM7Cast, addr, &seq)
-                            : ARM7_DataRead32(ARM7Cast, addr, &seq));
-        cpu->CodeSeq = false;
+        ARM7TDMI* a7tdmi = ARM7Cast;
+
+        u32 wrdata = ARM_GetReg(instr.Rm);
+        if (instr.Byte)
+        {
+            wrdata &= 0xFF;
+            wrdata |= (wrdata << 8) | (wrdata << 16) | (wrdata << 24);
+        }
+
+        A7TDMI_PostMem pass = {
+            .WrData[1] = wrdata, // checkme: pc should be +12
+            .Addr = addr,
+            .RListOrig = 1<<instr.Rd,
+            .NumFetch = 1,
+            .NumFetchCompleted = 0,
+            .Size = (instr.Byte ? ARMDataWidth_8 : ARMDataWidth_32),
+            .Priv = cpu->Privileged,
+            .DataCB = A7TDMIDataCB_SwapLoad,
+        };
+        a7tdmi->PostMem = pass;
+        A7TDMI_DataRead(a7tdmi, cpu->Timestamp+DSClk33(1));
     }
     else
     {
@@ -397,8 +323,15 @@ void ARM_Swap(ARM* cpu, const ARM_Instr instr_data)
             if (ildelay) retry = false;
         }
 
+        u32 wrdata = ARM_GetReg(instr.Rm);
+        if (instr.Byte)
+        {
+            wrdata &= 0xFF;
+            wrdata |= (wrdata << 8) | (wrdata << 16) | (wrdata << 24);
+        }
+
         A9ES_PostMem pass = {
-            .WrData[1] = ARM_GetReg(instr.Rm), // checkme: pc should be +12
+            .WrData[1] = wrdata, // checkme: pc should be +12
             .Addr = addr,
             .RListOrig = 1<<instr.Rd,
             .DataAbort = false,
@@ -412,47 +345,6 @@ void ARM_Swap(ARM* cpu, const ARM_Instr instr_data)
         };
         A9ES_DataGo(a9es, &pass);
     }
-#if 0
-    if (!dabt)
-    {
-        if (cpu->CPUID == ARM7ID)
-        {
-            ((instr.Byte) ? ARM7_DataWrite8(ARM7Cast, addr, store, false, &seq)
-                          : ARM7_DataWrite32(ARM7Cast, addr, store, false, &seq));
-            cpu->CodeSeq = false;
-
-            // load writeback occurs here.
-            cpu->Timestamp += 1;
-        }
-        else
-        {
-            ((instr.Byte) ? ARM9_DataWrite8(ARM9Cast, addr, store, false, &seq, &dabt)
-                          : ARM9_DataWrite32(ARM9Cast, addr, store, false, true, &seq, &dabt));
-        }
-
-        // rotate result right based on lsb of address.
-        if (cpu->CPUID == ARM9ID && ARM9Cast->CP15.CR.BigEndian && instr.Byte)
-            load = ROR32(load, ((addr&3)^3) * 8);
-        else
-            load = ROR32(load, (addr&3) * 8);
-
-        if (instr.Byte)
-        {
-            load &= 0xFF;
-        }
-
-        // loads can interwork on arm9 when the disable bit is clear.
-        if ((instr.Rd == 15) && ARM_CanLoadInterwork)
-        {
-            ARM_SetThumb(cpu, load & 1);
-        }
-        ARM_SetReg(instr.Rd, load, false, interlock, interlock+1);
-    }
-    else
-    {
-        ARM9_DataAbort(ARM9Cast);
-    }
-#endif
 }
 
 void A9ES_SWPLoad_Post(ARM946ES* a9es)
@@ -464,12 +356,12 @@ void A9ES_SWPLoad_Post(ARM946ES* a9es)
     // schedule store
 
     // hacky way to keep store data in index 1 and read data in index 0
-    a9es->PostMem.NumFetch = 2;
-    a9es->PostMem.NumFetchCompleted = 1;
-    a9es->PostMem.DataCB = A9ESDataCB_SwapStore;
+    pass->NumFetch = 2;
+    pass->NumFetchCompleted = 1;
+    pass->DataCB = A9ESDataCB_SwapStore;
     A9ES_DataGo(a9es, &a9es->PostMem);
     // cursed note: an itcm instr load can be run between the load and store of a swp
-    if (!a9es->PostMem.ILDelay)
+    if (!pass->ILDelay)
         A9ES_InstrGo(a9es, false);
 }
 
@@ -497,6 +389,33 @@ void A9ES_SWPStore_Post(ARM946ES* a9es)
     }
     else if (pass->ILRetry)
         A9ES_SetTwoCycleInterlock(a9es, rd);
+}
+
+void A7TDMI_SWPLoad_Post(ARM7TDMI* a7tdmi)
+{
+    A7TDMI_PostMem* pass = &a7tdmi->PostMem;
+
+    // schedule store
+
+    // hacky way to keep store data in index 1 and read data in index 0
+    pass->NumFetch = 2;
+    pass->NumFetchCompleted = 1;
+    pass->DataCB = A7TDMIDataCB_SwapStore;
+    A7TDMI_DataWrite(a7tdmi, a7tdmi->ARM.Timestamp);
+}
+
+void A7TDMI_SWPStore_Post(ARM7TDMI* a7tdmi)
+{
+    A7TDMI_PostMem* pass = &a7tdmi->PostMem;
+
+    // load writeback occurs now
+    u32 rdata = pass->RData[0];
+    u8 rd = stdc_trailing_zeros(pass->RListOrig);
+    A7TDMI_RotateExtendUnit(&rdata, pass->Addr, pass->Size, false);
+
+    A7TDMI_SetReg(a7tdmi, rd, rdata);
+
+    A7TDMI_InstrRead(a7tdmi, a7tdmi->ARM.Timestamp+DSClk33(1));
 }
 
 s8 A9ES_Swap_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c [[maybe_unused]], bool* retry [[maybe_unused]])
