@@ -504,10 +504,16 @@ void IO9_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
         break;
 
     case 0x00'03'20 ... 0x00'03'FC:
-        if (sys->PowerCR9.GPURasterizerPower) GX_IOWrite(sys, addr, mask, wrdata);
+        if (sys->PowerCR9.GPURasterizerPower)
+        {
+            if (!GX_IOWrite(sys, addr, mask, wrdata, now)) return;
+        }
         break;
     case 0x00'04'00 ... 0x00'06'FC:
-        if (sys->PowerCR9.GPUGeometryPower) GX_IOWrite(sys, addr, mask, wrdata);
+        if (sys->PowerCR9.GPUGeometryPower)
+        {
+            if (!GX_IOWrite(sys, addr, mask, wrdata, now)) return;
+        }
         break;
 
     case 0x00'10'00 ... 0x00'10'6C:

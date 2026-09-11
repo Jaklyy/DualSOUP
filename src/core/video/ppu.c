@@ -1,5 +1,6 @@
 #include <stdckdint.h>
 #include "core/console.h"
+#include "core/scheduler.h"
 #include "video.h"
 #include "ppu.h"
 
@@ -518,19 +519,19 @@ void PPU_Composite(Console* sys, const bool b, const u16 y)
                 }
                 else
                 {
-                    AddBusContention(sys->AHBBusyTS, *time, Dev_Palette);
+                    AddBusContention(sys, *time, Dev_Palette);
                     color[j] = palbase[(index[j].Index & 0xFF) + ((bg[j] == 4) ? 256 : 0)];
                 }
                 color[j] = RGB565to666(color[j]);
             }
 
-            *time += (i == 2) ? 3 : 6;
+            *time += (i == 2) ? DSClk33(3) : DSClk33(6);
             PPU_Wait(sys, *time);
         }
 
         scanline[x] = PPU_Blend(ppu, index, color, bg, i, enablemask.EnableBlend);
     }
-    *time += 2+HBlank_Cycles;
+    *time += DSClk33(2+HBlank_Cycles);
 }
 
 void PPU_SpriteAffine(Console* sys, const bool b, const SprAttrs01 attr1, const SprAttrs2 attr2, const u8 width, const u8 height, u8 y)
@@ -917,7 +918,7 @@ void PPU_RenderScanline(Console* sys, const bool b, const s16 y)
         switch(ppu->DisplayCR.DisplayMode)
         {
             case 0:
-                *time += 1538 + HBlank_Cycles;
+                *time += DSClk33(1538 + HBlank_Cycles);
                 for (int x = 0; x < 256; x++)
                     scanline[x] = 0x3FFFF;
                 ApplyBrightnessModifier(scanline, ppu->Brightness);
@@ -927,7 +928,7 @@ void PPU_RenderScanline(Console* sys, const bool b, const s16 y)
             case 2:
             {
                 u32 addr = (ppu->DisplayCR.VRAMSel * KiB(128)) + (256*2*y);
-                *time += 1538 + HBlank_Cycles;
+                *time += DSClk33(1538 + HBlank_Cycles);
                 PPU_Wait(sys, *time);
                 for (int x = 0; x < 256; x++)
                 {
@@ -939,14 +940,14 @@ void PPU_RenderScanline(Console* sys, const bool b, const s16 y)
             }
             case 3:
                 LogPrint(LOG_PPU|LOG_UNIMP, "INVALID LCDC MODE 3\n");
-                *time += 1538 + HBlank_Cycles;
+                *time += DSClk33(1538 + HBlank_Cycles);
                 ApplyBrightnessModifier(scanline, ppu->Brightness);
                 return;
         }
 
         if (ppu->DisplayCR.ForceBlank)
         {
-            *time += 1538 + HBlank_Cycles;
+            *time += DSClk33(1538 + HBlank_Cycles);
             for (int x = 0; x < 256; x++)
                 scanline[x] = 0x3FFFF;
             return;
@@ -959,7 +960,7 @@ void PPU_RenderScanline(Console* sys, const bool b, const s16 y)
     if (y < 191)
     {
         if (y == -1)
-            *time += 1538 + HBlank_Cycles;
+            *time += DSClk33(1538 + HBlank_Cycles);
         PPU_BuildSprites(sys, b, y+1);
     }
 }
@@ -994,11 +995,11 @@ int SDLCALL PPUA_MainLoop(void* ptr)
     {
         for (int y = -1; y < 192; y++)
         {
-            sys->PPUATimestamp += 46;
+            sys->PPUATimestamp += DSClk33(46);
             PPU_Wait(sys, sys->PPUATimestamp);
             PPU_RenderScanline(sys, false, y);
         }
-        sys->PPUATimestamp += Scanline_Cycles*70;
+        sys->PPUATimestamp += DSClk33(Scanline_Cycles*70);
     }
     return 0;
 }
@@ -1012,11 +1013,11 @@ int SDLCALL PPUB_MainLoop(void* ptr)
     {
         for (int y = -1; y < 192; y++)
         {
-            sys->PPUBTimestamp += 46;
+            sys->PPUBTimestamp += DSClk33(46);
             PPU_Wait(sys, sys->PPUBTimestamp);
             PPU_RenderScanline(sys, true, y);
         }
-        sys->PPUBTimestamp += Scanline_Cycles*70;
+        sys->PPUBTimestamp += DSClk33(Scanline_Cycles*70);
     }
     return 0;
 }

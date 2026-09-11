@@ -165,10 +165,10 @@ int main()
 
     // TODO: do this at compile time?
     // init arm luts
-    ARM9_InitInstrLUT();
-    THUMB9_InitInstrLUT();
-    ARM7_InitInstrLUT();
-    THUMB7_InitInstrLUT();
+    A9ES_InitInstrLUT();
+    T9ES_InitInstrLUT();
+    A7TDMI_InitInstrLUT();
+    T7TDMI_InitInstrLUT();
 
     SDL_Event evts;
     while(true)

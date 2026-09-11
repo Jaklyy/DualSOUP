@@ -162,12 +162,12 @@ void A9ES_RaiseUDF(ARM* cpu, const ARM_Instr instr_data, const s32 execycles)
     A9ES_SetPC(a9es, A946_GetExceptionBase(a9es) + ARMVector_UND);
 }
 
-void ARM9_UndefinedInstruction(ARM* cpu, const ARM_Instr instr_data)
+void A9ES_UndefinedInstruction(ARM* cpu, const ARM_Instr instr_data)
 {
     A9ES_RaiseUDF(cpu, instr_data, 1);
 }
 
-void THUMB9_UndefinedInstruction(ARM* cpu, const ARM_Instr instr_data)
+void T9ES_UndefinedInstruction(ARM* cpu, const ARM_Instr instr_data)
 {
     A9ES_RaiseUDF(cpu, instr_data, 1);
 }

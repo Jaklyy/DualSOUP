@@ -3,6 +3,8 @@
 #include "core/arm/arm9/arm.h"
 #include "core/bus/bus.h"
 #include "core/io/timer.h"
+#include "core/video/3d.h"
+#include "core/video/video.h"
 #include "utils.h"
 #include <stdckdint.h>
 
@@ -112,7 +114,7 @@ void Sched_RunEvent(Console* sys)
      ... Evt_IRQ7_WiFi:     IF7_Set(sys, (evt - Evt_IRQ7_Lid), now); break;
 
     case Evt_UpdateIRQ9:    IRQ9_Update(sys, now); break;
-    case Evt_ARM9:          A946_Run(&sys->A946ES); break;
+    case Evt_ARM9:          A946_Run(&sys->A946ES, now); break;
     case Evt_ARM9WBFill:    A946_WriteBufferFillRun(&sys->A946ES, now); break;
     case Evt_ARM9BIU:       A946_BIURun(&sys->A946ES, now); break;
 
@@ -125,7 +127,7 @@ void Sched_RunEvent(Console* sys)
     case Evt_Divider:       IO9_FinishDiv(sys); break;
     case Evt_Sqrt:          IO9_FinishSqrt(sys); break;
 
-    //case Evt_GX:
+    case Evt_GX:            GX_RunFIFO(sys, now); break;
 
     case Evt_UpdateIRQ7:    IRQ7_Update(sys, now); break;
     case Evt_ARM7:          A7TDMI_Run(&sys->A7TDMI, now); break;
@@ -138,13 +140,13 @@ void Sched_RunEvent(Console* sys)
     case Evt_Bus7:          Bus_Run(sys, now, false); break;
 
     case Evt_SPI:           SPI_Finish(sys, now); break;
-    //case Evt_MixAudio:
+    case Evt_MixAudio:      AudioMixer_Sample(sys, now); break;
 
     case Evt_IO9:           IO9_Handler(sys, now); break;
     case Evt_IO7:           IO7_Handler(sys, now); break;
     case Evt_MainRAM:       MainRAM_Run(sys, now); break;
 
-    //case Evt_Scanline:
+    case Evt_Scanline:      (sys->TEMPHBLANK ? LCD_HBlank(sys, now) : LCD_Scanline(sys, now)); break;
     case Evt_CardROM:       GameCard_HandleSchedulingROM(sys, now); break;
     case Evt_CardSPI9:      GameCard_SPIFinish(sys, true); break;
     case Evt_CardSPI7:      GameCard_SPIFinish(sys, false); break;

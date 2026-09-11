@@ -61,8 +61,8 @@ typedef struct
 // ensure casting between the two types works as expected
 static_assert(offsetof(ARM7TDMI, ARM) == 0);
 
-extern void (*A7TDMI_InstructionLUT[0x1000])(ARM*, ARM_Instr);
-extern void (*T7TDMI_InstructionLUT[64])(ARM*, ARM_Instr);
+extern void (*A7TDMI_InstructionLUT[0x1000])(ARM*, const ARM_Instr);
+extern void (*T7TDMI_InstructionLUT[64])(ARM*, const ARM_Instr);
 
 // run to initialize the cpu.
 // assumes everything was zero'd out.

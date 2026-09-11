@@ -1,6 +1,7 @@
 #include "3d.h"
 #include "core/console.h"
 #include "core/io/dma.h"
+#include "core/scheduler.h"
 
 
 
@@ -15,11 +16,11 @@ void GX_UpdateIRQ(Console* sys, const timestamp time)
     {
         if (sys->GX3D.Status.FIFOHalfEmpty)
         {
-            Console_ScheduleHeldIRQs(sys, IRQ_3DFIFO, true, time);
+            Sched_AddEvent(sys, time, Evt_IRQ9_GXFIFO);
         }
         else 
         {
-            Console_ClearHeldIRQs(sys, IRQ_3DFIFO, true);
+            LevelIRQ9_Stop(sys, IRQ_3DFIFO);
         }
         break;
     }
@@ -27,16 +28,16 @@ void GX_UpdateIRQ(Console* sys, const timestamp time)
     {
         if (sys->GX3D.Status.FIFOEmpty)
         {
-            Console_ScheduleHeldIRQs(sys, IRQ_3DFIFO, true, time);
+            Sched_AddEvent(sys, time, Evt_IRQ9_GXFIFO);
         }
         else
         {
-            Console_ClearHeldIRQs(sys, IRQ_3DFIFO, true);
+            LevelIRQ9_Stop(sys, IRQ_3DFIFO);
         }
         break;
     }
     default: // checkme: mode 3?
-        Console_ClearHeldIRQs(sys, IRQ_3DFIFO, true);
+        LevelIRQ9_Stop(sys, IRQ_3DFIFO);
         break;
     }
 }
@@ -75,7 +76,7 @@ bool GXFIFO_Fill(Console* sys, const u8 cmd, const u32 param)
     return true;
 }
 
-bool GXPipe_Fill(Console* sys)
+bool GXPipe_Fill(Console* sys, timestamp now)
 {
     GX3D* gx = &sys->GX3D;
 
@@ -106,9 +107,11 @@ bool GXPipe_Fill(Console* sys)
     {
         gx->Status.FIFOHalfEmpty = true;
         GX_UpdateIRQ(sys, gx->Timestamp);
-        StartDMA9(sys, gx->Timestamp, DMAStart_3DFIFO); // TODO: everything involvind when and how this dma type triggers?
+        StartDMA9(sys, gx->Timestamp, DMAStart_3DFIFO); // TODO: everything involving when and how this dma type triggers?
         // checkme:?
     }
+
+    if (gx->FIFOWait) Sched_AddEvent(sys, now, Evt_IO9);
 
     return true;
 }
@@ -149,7 +152,7 @@ bool GX_FetchParams(Console* sys)
 }
 
 
-bool GXFIFO_Unpack(Console* sys)
+bool GXFIFO_Unpack(Console* sys, timestamp now)
 {
     GX3D* gx = &sys->GX3D;
 
@@ -168,6 +171,8 @@ bool GXFIFO_Unpack(Console* sys)
             }
             else
             {
+
+                if (gx->PackWait) Sched_AddEvent(sys, now, Evt_IO9);
                 gx->BufferFree = true;
                 return true;
             }
@@ -192,6 +197,7 @@ bool GXFIFO_Unpack(Console* sys)
         }
         return false;
     }
+    if (gx->PackWait) Sched_AddEvent(sys, now, Evt_IO9);
     return false;
 }
 
@@ -202,79 +208,65 @@ void GX_RunFIFO(Console* sys, const timestamp until)
     bool empty;
     bool test;
     empty =  test = !GX_RunCommand(sys, until);
-    empty &= test = !GXPipe_Fill(sys);
-    empty &= test = GXFIFO_Unpack(sys);
+    empty &= test = !GXPipe_Fill(sys, until);
+    empty &= test = GXFIFO_Unpack(sys, until);
 
     gx->Status.GXBusy = (gx->FIFOFullness != 0) || (gx->PipeWrPtr != 4) || (until < gx->ExecTS) || gx->CmdReady;
 
     if (empty)
     {
-        if (until < gx->ExecTS) Schedule_Event(sys, GX_RunFIFO, Evt_GX, gx->ExecTS);
-        else                    Schedule_Event(sys, nullptr, Evt_GX, timestamp_max);
+        if (until < gx->ExecTS) Sched_AddEvent(sys, gx->ExecTS, Evt_GX);
     }
-    else Schedule_Event(sys, GX_RunFIFO, Evt_GX, until+1);
+    else Sched_AddEvent(sys, until+DSClk33(1), Evt_GX);
 
     gx->Timestamp = until;
 }
 
-void GXFIFO_PackedSubmit(Console* sys, const u32 val)
+bool GXFIFO_PackedSubmit(Console* sys, const u32 val, const timestamp now)
 {
     GX3D* gx = &sys->GX3D;
-    timestamp* ts = &sys->AHB9.Timestamp;
 
     // loop until we can submit a new command.
-    while (true)
+    if (gx->ParamRem > 0) // submit a new parameter if needed.
     {
-        Scheduler_Sync(sys, *ts, Sync_Normal9);
-
-        if (gx->ParamRem > 0) // submit a new parameter if needed.
+        if (GXFIFO_Fill(sys, gx->PackBuffer.CurCmd, val))
         {
-            if (GXFIFO_Fill(sys, gx->PackBuffer.CurCmd, val))
+            gx->ParamRem -= 1;
+            if (gx->ParamRem <= 0)
             {
-                gx->ParamRem -= 1;
-                if (gx->ParamRem <= 0)
-                {
-                    gx->PackBuffer.All >>= 8;
-                    gx->ParamRem = ParamLUT[gx->PackBuffer.CurCmd];
-                }
-                Schedule_Event(sys, GX_RunFIFO, Evt_GX, *ts+DSClk33(1));
-                return;
+                gx->PackBuffer.All >>= 8;
+                gx->ParamRem = ParamLUT[gx->PackBuffer.CurCmd];
             }
+            Sched_AddEvent(sys, now+DSClk33(1), Evt_GX);
+            return true;
         }
-        else if (gx->BufferFree) // if the buffer is empty then add a new command.
-        {
-            gx->PackBuffer.All = val;
-            gx->FreshBuffer = true;
-            gx->BufferFree = false;
-
-            Schedule_Event(sys, GX_RunFIFO, Evt_GX, *ts+DSClk33(1));
-            return;
-        }
-        Scheduler_StallForEvent(sys, ts, Evt_GX, true);
     }
+    else if (gx->BufferFree) // if the buffer is empty then add a new command.
+    {
+        gx->PackBuffer.All = val;
+        gx->FreshBuffer = true;
+        gx->BufferFree = false;
+
+        Sched_AddEvent(sys, now+DSClk33(1), Evt_GX);
+        return true;
+    }
+    return false;
 }
 
-void GXFIFO_PortSubmit(Console* sys, const u32 addr, const u32 val)
+bool GXFIFO_PortSubmit(Console* sys, const u32 addr, const u32 val, const timestamp now)
 {
     GX3D* gx = &sys->GX3D;
-    timestamp* ts = &sys->AHB9.Timestamp;
 
-    // loop until we can submit a new command.
-    while (true)
+    if (GXFIFO_Fill(sys, addr/4, val))
     {
-        Scheduler_Sync(sys, *ts, Sync_Normal9);
-
-        if (GXFIFO_Fill(sys, addr/4, val))
-        {
-            Schedule_Event(sys, GX_RunFIFO, Evt_GX, *ts+DSClk33(1));
-            gx->Timestamp = *ts;
-            return;
-        }
-        Scheduler_StallForEvent(sys, ts, Evt_GX, true);
+        Sched_AddEvent(sys, now+DSClk33(1), Evt_GX);
+        gx->Timestamp = now;
+        return true;
     }
+    return false;
 }
 
-void GX_IOWrite(Console* sys, const u32 addr, const u32 mask, const u32 val)
+bool GX_IOWrite(Console* sys, const u32 addr, const u32 mask, const u32 val, const timestamp now)
 {
     GX3D* gx = &sys->GX3D;
 
@@ -316,15 +308,13 @@ void GX_IOWrite(Console* sys, const u32 addr, const u32 mask, const u32 val)
             //printf("subm2 %08X\n", val);
             if (mask != 0xFFFFFFFF) LogPrint(LOG_GX|LOG_UNIMP, "Non 32 bit packed command write?\n");
             //printf("pack %02X %08X\n", gx->PackBuffer.CurCmd, val);
-            GXFIFO_PackedSubmit(sys, val);
-            break;
+            return GXFIFO_PackedSubmit(sys, val, now);
 
         case 0x440 ... 0x5FC:
             //printf("subm %08X %08X\n", addr, val);
             if (mask != 0xFFFFFFFF) LogPrint(LOG_GX|LOG_UNIMP, "Non 32 bit command port write?\n");
             //printf("port %02X %08X\n", (addr/4) & 0xFF, val);
-            GXFIFO_PortSubmit(sys, addr, val);
-            break;
+            return GXFIFO_PortSubmit(sys, addr, val, now);
 
         case 0x600:
         {
@@ -336,7 +326,7 @@ void GX_IOWrite(Console* sys, const u32 addr, const u32 mask, const u32 val)
                 gx->ProjMtxStackPtr = 0;
                 gx->TexMtxStackPtr = 0;
             }
-            GX_UpdateIRQ(sys, sys->AHB9.Timestamp);
+            GX_UpdateIRQ(sys, now);
             break;
         }
 
@@ -344,6 +334,7 @@ void GX_IOWrite(Console* sys, const u32 addr, const u32 mask, const u32 val)
             LogPrint(LOG_GX|LOG_UNIMP, "UNIMPLEMENTED 3D WRITE %08X %08X\n", addr, val);
             break;
     }
+    return true;
 }
 
 u32 GX_IORead(Console* sys, const u32 addr)

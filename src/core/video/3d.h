@@ -323,6 +323,8 @@ typedef union
 
 typedef struct
 {
+    bool FIFOWait;
+    bool PackWait;
     GXCmd CurCmd;
     GXCmd Pipe[4];
     GXCmd FIFO[256];
@@ -505,5 +507,5 @@ void GX_Swap(Console* sys, const timestamp now);
 void GX_RunFIFO(Console* sys, const timestamp until);
 void SWRen_RasterizerFrame(Console* sys);
 
-void GX_IOWrite(Console* sys, const u32 addr, const u32 mask, const u32 val);
+bool GX_IOWrite(Console* sys, const u32 addr, const u32 mask, const u32 val, const timestamp now);
 u32 GX_IORead(Console* sys, const u32 addr);

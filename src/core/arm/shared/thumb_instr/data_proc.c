@@ -116,7 +116,7 @@ void THUMB_AddSub(ARM* cpu, const ARM_Instr instr_data)
     ARM_SetReg(instr.Rd, alu_out);
 }
 
-s8 THUMB9_AddSub_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c [[maybe_unused]], bool* retry)
+s8 T9ES_AddSub_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c [[maybe_unused]], bool* retry)
 {
     const union THUMB_AddSub_Decode instr = {.Raw = instr_data.Raw};
 
@@ -152,7 +152,7 @@ void THUMB_MovsImm8(ARM* cpu, const ARM_Instr instr_data)
     ARM_SetReg(instr.Rd, instr.Imm8);
 }
 
-s8 THUMB9_MovsImm8_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len [[maybe_unused]], const s8 len_c [[maybe_unused]], bool* retry)
+s8 T9ES_MovsImm8_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len [[maybe_unused]], const s8 len_c [[maybe_unused]], bool* retry)
 {
     const union THUMB_DataProcImm8_Decode instr = {.Raw = instr_data.Raw};
 
@@ -187,7 +187,7 @@ void THUMB_DataProcImm8(ARM* cpu, const ARM_Instr instr_data)
         ARM_SetReg(instr.Rd, rd_val);
 }
 
-s8 THUMB9_DataProcImm8_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c [[maybe_unused]], bool* retry)
+s8 T9ES_DataProcImm8_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c [[maybe_unused]], bool* retry)
 {
     const union THUMB_DataProcImm8_Decode instr = {.Raw = instr_data.Raw};
 
@@ -297,7 +297,7 @@ void THUMB_DataProcReg(ARM* cpu, const ARM_Instr instr_data)
         ARM_SetReg(instr.Rd, alu_out);
 }
 
-s8 THUMB9_DataProcReg_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c [[maybe_unused]], bool* retry)
+s8 T9ES_DataProcReg_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c [[maybe_unused]], bool* retry)
 {
     const union THUMB_DataProcReg_Decode instr = {.Raw = instr_data.Raw};
 
@@ -385,7 +385,7 @@ void THUMB_DataProcHiReg(ARM* cpu, const ARM_Instr instr_data)
     ARM_SetReg(rd, alu_out);
 }
 
-s8 THUMB9_DataProcHiReg_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c [[maybe_unused]], bool* retry)
+s8 T9ES_DataProcHiReg_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c [[maybe_unused]], bool* retry)
 {
     const union THUMB_DataProcHiReg_Decode instr = {.Raw = instr_data.Raw};
     u8 rd = instr.Rd | (instr.RdHi << 3);
@@ -429,7 +429,7 @@ void THUMB_AddPCSPRel(ARM* cpu, const ARM_Instr instr_data)
     ARM_SetReg(instr.Rd, alu_out);
 }
 
-s8 THUMB9_AddPCSPRel_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c [[maybe_unused]], bool* retry)
+s8 T9ES_AddPCSPRel_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c [[maybe_unused]], bool* retry)
 {
     const union THUMB_AddPCSPRel_Decode instr = {.Raw = instr_data.Raw};
 
@@ -464,7 +464,7 @@ void THUMB_AdjustSP(ARM* cpu, const ARM_Instr instr_data)
     ARM_SetReg(13, alu_out);
 }
 
-s8 THUMB9_AdjustSP_Interlocks(const ARM_Instr instr_data [[maybe_unused]], const s8 reg, const s8 len, const s8 len_c [[maybe_unused]], bool* retry)
+s8 T9ES_AdjustSP_Interlocks(const ARM_Instr instr_data [[maybe_unused]], const s8 reg, const s8 len, const s8 len_c [[maybe_unused]], bool* retry)
 {
     // im not sure if this interlock can actually be triggered but it should work in theory?
     if (13 == reg) return len;

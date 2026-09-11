@@ -263,7 +263,7 @@ void A9ES_Exec(ARM946ES* a9es)
 #undef cpu
 #define cpu (&a946->ARM)
 
-void A946_MainLoop(ARM946ES* a946, timestamp now)
+void A946_Run(ARM946ES* a946, timestamp now)
 {
     cpu->Timestamp = now; // hacky: TODO: rework this
     if (a946->BusFlags.DataGo || a946->BusFlags.InstrGo)

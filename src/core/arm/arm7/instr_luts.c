@@ -7,25 +7,25 @@
 
 
 // TODO: making this compile time generated might enable better compiler optimizations?
-void (*ARM7_InstructionLUT[0x1000])(ARM*, ARM_Instr);
-void (*THUMB7_InstructionLUT[64])(ARM*, ARM_Instr);
+void (*A7TDMI_InstructionLUT[0x1000])(ARM*, const ARM_Instr);
+void (*T7TDMI_InstructionLUT[64])(ARM*, const ARM_Instr);
 
 
 #define CHECK(cmp, mask, ptr) \
 if (PatternMatch((struct Pattern) {0b##cmp, 0b##mask}, i)) \
 { \
-    ARM7_InstructionLUT[i] = ARM_##ptr ; \
+    A7TDMI_InstructionLUT[i] = ARM_##ptr ; \
 } \
 else
 
 #define CHECK7(cmp, mask, ptr) \
 if (PatternMatch((struct Pattern) {0b##cmp, 0b##mask}, i)) \
 { \
-    ARM7_InstructionLUT[i] = ARM7_##ptr ; \
+    A7TDMI_InstructionLUT[i] = A7TDMI_##ptr ; \
 } \
 else
 
-void ARM7_InitInstrLUT()
+void A7TDMI_InitInstrLUT()
 {
     for (u16 i = 0; i <= 0xFFF; i++)
     {
@@ -55,7 +55,7 @@ void ARM7_InitInstrLUT()
         CHECK (1000'0000'0000, 1110'0000'0000, LoadStoreMultiple) // ldm/stm
         // branch
         CHECK (1010'0000'0000, 1110'0000'0000, Branch) // b/bl
-        CHECK7(1111'0000'0000, 1111'0000'0000, SoftwareInterrupt)
+        CHECK7(1111'0000'0000, 1111'0000'0000, SupervisorCall)
         // data processing
         CHECK (0000'0000'0000, 1100'0000'0000, DataProc)
         // load/store
@@ -71,37 +71,43 @@ void ARM7_InitInstrLUT()
 
 #define CHECK(cmp, mask, ptr) \
 if (PatternMatch((struct Pattern) {0b##cmp, 0b##mask}, decode)) \
-    THUMB##ptr(ARM, instr_data); \
+    THUMB_##ptr(ARM, instr_data); \
 else
 
-void THUMB7_Misc(ARM* ARM, const ARM_Instr instr_data)
+#define CHECK7(cmp, mask, ptr) \
+if (PatternMatch((struct Pattern) {0b##cmp, 0b##mask}, decode)) \
+    T7TDMI_##ptr(ARM, instr_data); \
+else
+
+void T7TDMI_Misc(ARM* ARM, const ARM_Instr instr_data)
 {
     const u16 decode = (instr_data.Raw >> 3) & 0x1FF;
 
-    CHECK(0000'0000'0, 1111'0000'0, _AdjustSP) // adjust sp
-    CHECK(0100'0000'0, 1110'0000'0, _Push) // push
-    CHECK(1100'0000'0, 1110'0000'0, _Pop) // pop
-    CHECK(0000'0000'0, 0000'0000'0, 7_UndefinedInstruction)
+    CHECK (0000'0000'0, 1111'0000'0, AdjustSP) // adjust sp
+    CHECK (0100'0000'0, 1110'0000'0, Push) // push
+    CHECK (1100'0000'0, 1110'0000'0, Pop) // pop
+    CHECK7(0000'0000'0, 0000'0000'0, UndefinedInstruction)
     unreachable();
 }
 
 #undef CHECK
+#undef CHECK7
 
 #define CHECK(cmp, mask, ptr) \
 if (PatternMatch((struct Pattern) {0b##cmp, 0b##mask}, i)) \
 { \
-    THUMB7_InstructionLUT[i] = THUMB_##ptr; \
+    T7TDMI_InstructionLUT[i] = THUMB_##ptr; \
 } \
 else
 
 #define CHECK7(cmp, mask, ptr) \
 if (PatternMatch((struct Pattern) {0b##cmp, 0b##mask}, i)) \
 { \
-    THUMB7_InstructionLUT[i] = THUMB7_##ptr ; \
+    T7TDMI_InstructionLUT[i] = T7TDMI_##ptr ; \
 } \
 else
 
-void THUMB7_InitInstrLUT()
+void T7TDMI_InitInstrLUT()
 {
     for (int i = 0; i <= 0x3F; i++)
     {

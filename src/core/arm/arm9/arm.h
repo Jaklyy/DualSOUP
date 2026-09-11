@@ -519,7 +519,7 @@ extern s8 (*T9ES_InterlockLUT[64])(const ARM_Instr, const s8, const s8, const s8
 void A946_Init(ARM946ES* a946, Console* sys);
 
 // ARM9 handler entrypoint
-void A946_Run(ARM946ES* a946);
+void A946_Run(ARM946ES* a946, timestamp now);
 void A946_BIURun(ARM946ES* a946, timestamp now);
 
 // TEMP: debugging

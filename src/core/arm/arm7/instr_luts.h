@@ -3,5 +3,5 @@
 
 
 
-void ARM7_InitInstrLUT();
-void THUMB7_InitInstrLUT();
+void A7TDMI_InitInstrLUT();
+void T7TDMI_InitInstrLUT();

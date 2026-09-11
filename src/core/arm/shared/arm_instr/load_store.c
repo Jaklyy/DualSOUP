@@ -248,7 +248,7 @@ void ARM_LoadStoreMultiple(ARM* cpu, const ARM_Instr instr_data)
     else            ARM_STM(cpu, addr, rlist, wbaddr, baserestore, instr.Rn, instr.Writeback, instr.S);
 }
 
-s8 ARM9_LoadStoreMultiple_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c, bool* retry [[maybe_unused]])
+s8 A9ES_LoadStoreMultiple_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c, bool* retry [[maybe_unused]])
 {
     const union ARM_LoadStoreMultiple_Decode instr = {.Raw = instr_data.Raw};
 
