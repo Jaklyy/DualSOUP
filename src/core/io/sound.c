@@ -482,7 +482,7 @@ void SoundChannel_TryStartAll(Console* sys, const timestamp now)
 
 u32 SoundChannel_IORead(Console* sys, const u32 addr)
 {
-    if ((addr & 0xF) != 0) return 0; // checkme: supposedly only each channel's control reg can be read?
+    if ((addr & 0xC) != 0) return 0; // checkme: supposedly only each channel's control reg can be read?
     u8 id = ((addr >> 4) & 0xF);
     SoundChannel* channel = &sys->SoundChannels[id];
 

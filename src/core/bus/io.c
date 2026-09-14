@@ -543,16 +543,11 @@ void IO7_Read(Console* sys, const u32 addr, const timestamp now, const BusCallba
 
     case 0x00'01'30:rdata = Input_PollMain(sys->Pad); break;
 
-    case 0x00'01'34:
-        rdata = sys->RCR | (Input_PollExtra(sys->TSC.State.Touched, sys->Pad) << 16); break;
+    case 0x00'01'34: rdata = sys->RCR | (Input_PollExtra(sys->TSC.State.Touched, sys->Pad) << 16); break;
 
     case 0x00'01'38: rdata = sys->RTC.CR.Raw; break;
 
-    case 0x00'01'80: // ipcsync
-        rdata = sys->IPCSyncDataTo7
-                | (sys->IPCSyncDataTo9 << 8)
-                | (sys->IPCSyncIRQEnableTo7 << 14);
-        break;
+    case 0x00'01'80: rdata = sys->IPCSyncDataTo7 | (sys->IPCSyncDataTo9 << 8) | (sys->IPCSyncIRQEnableTo7 << 14); break;
     case 0x00'01'84: rdata = sys->IPCFIFO7.CR.Raw; break;
 
     case 0x00'01'A0 ... 0x00'01'B8: rdata = GameCard_IOReadHandler(sys, addr, false); break;
@@ -614,9 +609,7 @@ void IO7_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
 
     case 0x00'01'34: MaskedWrite(sys->RCR, wrdata, mask & 0x83); break;
 
-    case 0x00'01'38:
-        if (mask & 0x0000FFFF) RTC_IOWriteHandler(sys, wrdata&0xFFFF,  mask&0xFFFF);
-        break;
+    case 0x00'01'38: if (mask & 0x0000FFFF) RTC_IOWriteHandler(sys, wrdata&0xFFFF,  mask&0xFFFF); break;
 
     case 0x00'01'80: // ipcsync
     {
@@ -685,9 +678,7 @@ void IO7_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
                     [[fallthrough]];
                 case 2: // halt; stop clocking arm7tdmi until IE & IF
                     if (!Console_CheckARM7Wake(sys)) // checkme: might still halt for a little?
-                    {
                         sys->A7ClkDisable = true;
-                    }
                     break;
                 case 3: // sleep
                     // this should be similar to halt but disabling a bunch more hardware...?
@@ -705,8 +696,9 @@ void IO7_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
             MaskedWrite(sys->Bios7Prot, wrdata, mask & 0x3FFC); // mask is a guess; in practice the only value ever written is "0x1205"
         break;
 
+#if 0
     case 0x00'04'00 ... 0x00'04'FC: SoundChannel_IOWrite(sys, addr, wrdata, mask, now); break;
-
+#endif
     case 0x00'05'00:
         if (!sys->PowerCR7.AudioPower) break; // read only
         //u16 old = sys->SoundCR.Raw;
@@ -731,6 +723,7 @@ void IO7_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
         MaskedWrite(sys->SoundBias, wrdata, mask & 0x3FF);
         break;
 
+#if 0
     case 0x00'05'08:
         if (!sys->PowerCR7.AudioPower) break; // read only
         if (mask & 0x00FF) SoundCapture_CRWrite(sys, wrdata & 0xFF, now, 0);
@@ -756,7 +749,7 @@ void IO7_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
         sys->DMA7.Channels[1+DMA7_SoundCapBase].NumWords = sys->SoundCaptures[1].Length + (sys->SoundCaptures[1].Length == 0);
         break;
 
-
+#endif
     default:
         LogPrint(LOG_ARM7 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO7 WRITE: %08"PRIX32" %08"PRIX32" %08"PRIX32" @ %08"PRIX32"\n", addr, wrdata, mask, sys->A7TDMI.ARM.PC);
         break;

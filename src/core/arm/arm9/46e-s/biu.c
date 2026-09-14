@@ -23,7 +23,10 @@ void A946_WriteBufferRun(ARM946ES* a946, const timestamp now)
         wbuf->Seq = false;
 
         if (!wbuf->Empty) // reschedule biu
+        {
             Sched_AddEvent(a946->ARM.Sys, now+DSClk67(1), Evt_ARM9BIU);
+        }
+        else a946->BIU.BIUBusy = false;
         break;
     default:
         BusReq req = {
@@ -42,6 +45,7 @@ void A946_WriteBufferRun(ARM946ES* a946, const timestamp now)
             .CB = CB9_BIU9WriteBuffer,
         };
         wbuf->Seq = true;
+        wbuf->Addr += 4;
         Bus_Req(a946->ARM.Sys, &req, DSClkAlign33(now), true);
 
         // TODO: improve hacky burst logic; hw doesn't split bursts if it can help it.
@@ -69,7 +73,7 @@ void A946_WriteBufferFill(ARM946ES* a946, const timestamp now, u32* datastart, c
     a946->BIU.WBFill = cause;
 
     wbuf->FIFOWaitList[0] = (A946_WBufferFIFO){addr, A946WB_Addr};
-    for (u8 i = 0; i < words+1; i++)
+    for (u8 i = 0; i < words; i++)
         wbuf->FIFOWaitList[i+1] = (A946_WBufferFIFO){datastart[i], (A946_WBufferFlags)size};
 
     wbuf->BufferInsCur = 0;
@@ -90,11 +94,12 @@ void A946_WriteBufferFillRun(ARM946ES* a946, const timestamp now)
 
     if (wbuf->BufferInsCur == wbuf->BufferInsMax) // done filling
     {
-        if (a946->BIU.WBFill == A946WBCause_DCache && (a946->DStreamWaitCur == 0))
+        if (a946->BIU.WBFill == A946WBCause_DCacheFixies)
         {
             a946->DataTS = now;
-            if (a946->BIU.wbfillstupidcont) A9ES_DataGo(a946, &a946->PostMem);
-            else A9ES_DataDone(a946);
+            a946->DStreamWaitCur = 0;
+            a946->DataWrStall = now + DSClk67(1); // idk
+            A9ES_DataGo(a946, &a946->PostMem);
             Sched_AddEvent(a946->ARM.Sys, now, Evt_ARM9);
         }
         else if (a946->BIU.WBFill == A946WBCause_DataDir)
@@ -109,6 +114,7 @@ void A946_WriteBufferFillRun(ARM946ES* a946, const timestamp now)
             A9ES_InstrGo(a946, false);
             Sched_AddEvent(a946->ARM.Sys, now, Evt_ARM9);
         }
+        a946->BIU.WBFill = A946WBCause_Inactive;
 
         wbuf->BufferInsCur = 0;
         wbuf->BufferInsMax = 0;
@@ -149,7 +155,7 @@ DSINT_BIURET A946_BIUData(ARM946ES* a946, timestamp now)
             .Prot = biu->DataProt,
             .Size = (AHB_HSIZE)biu->DataWidth,
             .Type = ((biu->DataSubmCur == 0) ? HTRANS_NONSEQ : HTRANS_SEQ),
-            .CB = (A946BIU_DataLoad ? CB9_BIU9DataNormal : CB9_BIU9DataStream),
+            .CB = ((biu->DataType == A946BIU_DataLoad) ? CB9_BIU9DataNormal : CB9_BIU9DataStream),
         };
         biu->DataSubmCur++;
         biu->DataAddr += 4;
@@ -197,7 +203,7 @@ DSINT_BIURET A946_BIUData(ARM946ES* a946, timestamp now)
             .Prot = biu->DataProt,
             .Size = (AHB_HSIZE)biu->DataWidth,
             .Type = ((biu->DataSubmCur == 0) ? HTRANS_NONSEQ : HTRANS_IDLE /* busy? */),
-            .CB = CB9_BIU9DataNormal,
+            .CB = ((biu->DataSubmCur == 0) ? CB9_BIU9DataNormal : CB9_BIU9Idle),
         };
         biu->DataSubmCur++;
         break;
@@ -295,7 +301,7 @@ void A946_BIURun(ARM946ES* a946, timestamp now)
             },
             .Size = HSIZE_32,
             .Type = ((biu->InstrSubmCur == 0) ? HTRANS_NONSEQ : HTRANS_SEQ),
-            .CB = (A946BIU_InstrSingle ? CB9_BIU9InstrNormal : CB9_BIU9InstrStream),
+            .CB = ((biu->InstrType == A946BIU_InstrSingle) ? CB9_BIU9InstrNormal : CB9_BIU9InstrStream),
         };
         biu->InstrSubmCur++;
         biu->InstrAddr += 4;
@@ -318,13 +324,16 @@ void A946_BIUSubmPost(ARM946ES* a946, timestamp now)
     A946_BIU* biu = &a946->BIU;
     if ((biu->DataType != A946BIU_DataNone) || (biu->InstrType != A946BIU_InstrNone) || (!biu->WBuffer.Empty))
         Sched_AddEvent(a946->ARM.Sys, now, Evt_ARM9BIU);
+    else biu->BIUBusy = false;
 }
 
 void A946_BIUInstrPost(ARM946ES* a946, u32 addr, u32 rdata, timestamp now)
 {
+    a946->BIU.InstrCompCur++;
     a946->InstrTS = now;
     a946->InstrLatch = rdata;
     A946_InstrRead_Post(a946, addr);
+    Sched_AddEvent(a946->ARM.Sys, now, Evt_ARM9);
 }
 
 void A946_BIUDataPost(ARM946ES* a946, u32 rdata, timestamp now)
@@ -346,6 +355,7 @@ void A946_BIUDataPost(ARM946ES* a946, u32 rdata, timestamp now)
             a946->DataWrStall = a946->DataTS+DSClk67(1);
 
         A9ES_DataDone(a946);
+        Sched_AddEvent(a946->ARM.Sys, now, Evt_ARM9);
     }
 }
 

@@ -33,12 +33,12 @@ u32 PPU_IORead(PPU* ppu, const u32 addr)
 
 void PPU_IOWrite(PPU* ppu, const u32 addr, const u32 val, u32 mask, const bool b, const bool ppuenable)
 {
-    if (!ppuenable && ((addr & 0x7F) >= 0x8) && ((addr & 0x7F) < 0x60))
+    if (!ppuenable && ((addr & 0x7C) >= 0x8) && ((addr & 0x7C) < 0x60))
     {
         LogPrint(LOG_PPU|LOG_ODD|LOG_IO, "Writing PPU Regs while PPU disabled? %08"PRIX32" %08"PRIX32" %08"PRIX32"\n", addr, val, mask);
         return;
     }
-    switch(addr & 0x7F)
+    switch(addr & 0x7C)
     {
     case 0x00: // ppu and lcdc control reg, so it isn't disabled with the ppu
         MaskedWrite(ppu->DisplayCR.Raw, val, mask & DispCRWrMasks[b]);

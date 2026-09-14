@@ -145,7 +145,7 @@ void ARM_STR(ARM* cpu, u32 addr, u8 rd, bool priv, u8 rn, u32 wbaddr, u32 basere
 
         // schedule store
         A7TDMI_PostMem pass = {
-            .WrData = {[0] = wrdata},
+            .WrData = {[0]=wrdata},
             .Addr = addr,
             .RListOrig = 1<<rd,
             .RBase = 0,
@@ -300,7 +300,7 @@ void ARM_LDR(ARM* cpu, u32 addr, u8 rd, bool priv, u8 rn, u32 wbaddr, u32 basere
         };
         A9ES_DataGo(a9es, &pass);
         // if interlock case detected delay fetch
-        if (ildelay == 0) A9ES_InstrGo(a9es, false);
+        if (!ildelay) A9ES_InstrGo(a9es, false);
     }
 }
 
@@ -338,7 +338,10 @@ void A7TDMI_LDR_Post(ARM7TDMI* a7tdmi)
     A7TDMI_PostMem* pass = &a7tdmi->PostMem;
 
     if (pass->RBase == 15) // buggy; skip wb cycle
+    {
+        printf("weird bullshit opcode\n");
         return A7TDMI_InstrRead(a7tdmi, a7tdmi->ARM.Timestamp);
+    }
 
     u32 rdata = pass->RData[0];
     u8 rd = stdc_trailing_zeros(pass->RListOrig);
@@ -349,37 +352,18 @@ void A7TDMI_LDR_Post(ARM7TDMI* a7tdmi)
     A7TDMI_InstrRead(a7tdmi, a7tdmi->ARM.Timestamp+DSClk33(1));
 }
 
-#if 0
-void A7TDMI_LDR_Post(ARM7TDMI* a7tdmi)
-{
-    bool ilext = A7TDMI_RotateExtendUnit(&rdata, addr, size, signext);
-    A9ES_SetReg(a9es, rd, rdata);
-
-    s8 il = A9ES_DecodeInterlocks(a9es, false, rd, 1+ilext, 2);
-    if (il) A9ES_SetTwoCycleInterlock(a9es, rd);
-}
-#endif
-
 void ARM_STM(ARM* cpu, u32 addr, u16 rlist, u32 wbaddr, u32 baserestore, u8 rn, bool writeback, bool special)
 {
     if (cpu->CPUID == ARM7ID)
     {
         ARM7TDMI* a7tdmi = ARM7Cast;
-        u8 base = ((writeback) ? rn : u8_max);
-
-        // INTERLOCK NOTES:
-        // single reg case is not actually an interlock, but it functions similarly enough in practice
-        // two cycle interlocks dont need to be tested since stm is always at least 2 cycles long
 
         A7TDMI_PostMem pass = {
             .WrData = {},
             .Addr = addr,
-            .RListOrig = rlist,
-            .RBase = base,
             .NumFetch = stdc_count_ones(rlist),
             .NumFetchCompleted = 0,
             .Size = ARMDataWidth_32,
-            .Special = special,
             .Priv = cpu->Privileged,
             .DataCB = A7TDMIDataCB_StoreMultiple,
         };
@@ -399,7 +383,7 @@ void ARM_STM(ARM* cpu, u32 addr, u16 rlist, u32 wbaddr, u32 baserestore, u8 rn, 
         }
 
         // ARM7TDMI performs base writeback after the first store register was fetched
-        if (base < 15) A7TDMI_SetReg(a7tdmi, base, wbaddr); // CHECKME: user regs?
+        if (writeback && (rn < 15)) A7TDMI_SetReg(a7tdmi, rn, wbaddr); // CHECKME: user regs?
 
         while (rlisttmp)
         {
@@ -456,6 +440,12 @@ void ARM_STM(ARM* cpu, u32 addr, u16 rlist, u32 wbaddr, u32 baserestore, u8 rn, 
         // ARM9E-S performs base writeback after the last store register was fetched
         if (base < 15) A9ES_SetReg(a9es, base, wbaddr);
 
+        if (stdc_count_ones(rlist) == 0) // checkme
+        {
+            a9es->PostMem = pass;
+            A9ES_DataDone(a9es);
+            return;
+        }
         A9ES_DataGo(a9es, &pass);
         if (!pass.ILDelay) A9ES_InstrGo(a9es, true);
     }
@@ -465,9 +455,11 @@ void A9ES_STM_Post(ARM946ES* a9es)
 {
     A9ES_PostMem* pass = &a9es->PostMem;
 
+    pass->Addr += (pass->NumFetchCompleted - pass->LDMPtr) * 4;
     // burst incomplete; schedule remainder
     if (pass->NumFetch != pass->NumFetchCompleted)
     {
+        pass->LDMPtr = pass->NumFetchCompleted;
         A9ES_DataGo(a9es, &a9es->PostMem);
         A9ES_InstrGo(a9es, true);
         return;
@@ -546,6 +538,7 @@ void ARM_LDM(ARM* cpu, u32 addr, u16 rlist, u32 wbaddr, u32 baserestore, u8 rn, 
             .RListOrig = rlist, // checkme: empty rlist?
             .RListRem = rlist,
             .RBase = base,
+            .LDMPtr = 0,
             .DataAbort = false,
             .NumFetch = stdc_count_ones(rlist),
             .NumFetchCompleted = 0,
@@ -556,14 +549,23 @@ void ARM_LDM(ARM* cpu, u32 addr, u16 rlist, u32 wbaddr, u32 baserestore, u8 rn, 
             .ILRetry = retry,
             .DataCB = A9ESDataCB_LoadMultiple,
         };
+
+        if (stdc_count_ones(rlist) == 0) // checkme
+        {
+            a9es->PostMem = pass;
+            A9ES_DataDone(a9es);
+            return;
+        }
+
         A9ES_DataGo(a9es, &pass);
-        A9ES_InstrGo(a9es, true);
+        if (!ildelay) A9ES_InstrGo(a9es, true);
     }
 }
 
 void A9ES_LDM_Post(ARM946ES* a9es)
 {
     A9ES_PostMem* pass = &a9es->PostMem;
+    pass->Addr += (pass->NumFetchCompleted - pass->LDMPtr) * 4;
 
     // process completed loads
     if (!pass->DataAbort)
@@ -572,12 +574,12 @@ void A9ES_LDM_Post(ARM946ES* a9es)
         if (pass->Special && !(pass->RListOrig >> 15)) // user regs ldm; hacky
             ARM_SetMode(&a9es->ARM, ARMMode_USR);
 
-        for (u8 i = pass->NumFetchCompleted; i < pass->NumFetch; i++)
+        for (; pass->LDMPtr < pass->NumFetchCompleted; pass->LDMPtr++)
         {
             u8 reg = stdc_trailing_zeros((u32)pass->RListRem);
             pass->RListRem &= (~1)<<reg;
 
-            u32 rdata = pass->RData[i];
+            u32 rdata = pass->RData[pass->LDMPtr];
             // update cpsr
             if (reg == 15)
             {
@@ -590,7 +592,7 @@ void A9ES_LDM_Post(ARM946ES* a9es)
             // base writeback is done after the second to last load is written back
             // so a loaded value will be overwritten by base writeback unless it is the last value loaded
             if ((pass->RBase >= 15) || (pass->RBase != reg) // no writeback or not the base
-            || ((i == pass->NumFetch) && (pass->NumFetch != 1))) // writeback has already occured
+            || ((pass->LDMPtr >= (pass->NumFetch-1)) && (pass->NumFetch != 1))) // writeback has already occured
                 A9ES_SetReg(a9es, reg, rdata);
         }
 
@@ -628,7 +630,7 @@ void A7TDMI_LDM_Post(ARM7TDMI* a7tdmi)
     if (pass->Special && !(pass->RListOrig >> 15)) // user regs ldm; hacky
         ARM_SetMode(&a7tdmi->ARM, ARMMode_USR);
 
-    for (u8 i = pass->NumFetchCompleted; i < pass->NumFetch; i++)
+    for (u8 i = 0; i < pass->NumFetchCompleted; i++)
     {
         u8 reg = stdc_trailing_zeros((u32)pass->RListRem);
         pass->RListRem &= (~1)<<reg;

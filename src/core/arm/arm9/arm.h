@@ -336,6 +336,7 @@ typedef struct
     u16 RListRem;
     u8 RBase;
     u8 DataPtr; // used by biu and cache streaming
+    u8 LDMPtr; // idk
     bool DataAbort;
     u8 NumFetch;
     u8 NumFetchCompleted;
@@ -378,6 +379,7 @@ typedef enum : u8
     A946WBCause_DataDir,
     A946WBCause_CP15,
     A946WBCause_DCache,
+    A946WBCause_DCacheFixies,
 } A946_WBCause;
 
 typedef struct
@@ -400,7 +402,6 @@ typedef struct
     // hacky bullshit zone: TODO: make this not stupid
     A946_WBCause WBFill;
     bool InstrFlushWriteBuffer;
-    bool wbfillstupidcont;
 
     bool BIUBusy;
     A946_BIUCurrentBurst BurstCur;

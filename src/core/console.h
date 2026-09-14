@@ -488,7 +488,6 @@ typedef struct Console
     u64 TimeFrac;
     volatile double FrameTime;
     volatile double FrameTimeActual;
-    bool CoreRunning;
     bool DirectBoot;
 
 
@@ -524,7 +523,7 @@ typedef struct Console
     void* Aud;
     SDL_Mutex* FrameBufferMutex[2];
 
-    volatile bool KillThread;
+    volatile bool CoreRunning;
     u64 dummy; // for debugging i guess
     FILE* log;
 

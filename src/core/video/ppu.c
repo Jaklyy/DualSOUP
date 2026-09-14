@@ -1,6 +1,7 @@
 #include <stdckdint.h>
 #include "core/console.h"
 #include "core/scheduler.h"
+#include "core/bus/vram.h"
 #include "video.h"
 #include "ppu.h"
 
@@ -22,72 +23,52 @@ u32 RGB555to666(u16 color)
         | ((((u32)color >> 10) & 0x1F) << 13); // b
 }
 
-extern u32 VRAM_LCD(Console* sys, const u32 addr, const u32 mask, const bool write, const u32 val, const bool timings);
-extern u32 VRAM_BGB(Console* sys, const u32 addr, const u32 mask, const bool write, const u32 val, const bool timings);
-extern u32 VRAM_BGA(Console* sys, const u32 addr, const u32 mask, const bool write, const u32 val, const bool timings);
-extern u32 VRAM_OBJB(Console* sys, const u32 addr, const u32 mask, const bool write, const u32 val, const bool timings);
-extern u32 VRAM_OBJA(Console* sys, const u32 addr, const u32 mask, const bool write, const u32 val, const bool timings);
-
-u16 VRAM_BGAExtPal(Console* sys, const u16 idx)
+u16 PPU_VRAMLookup(Console* sys, const u32 addr, u16 (*func)(Console*, const u32))
 {
-    u16 val = 0;
-    if (sys->VRAMCR[4].Raw == 0x84)
+    const struct
     {
-        val = sys->VRAM_E.b16[idx & ((VRAM_E_Size/sizeof(u16))-1)];
-    }
-    if ((sys->VRAMCR[5].Raw & 0x87) == 0x84)
+        u16* bank;
+        size_t size;
+    } vram[VRAMID_MAX] =
     {
-        if ((sys->VRAMCR[5].Offset * (KiB(16)/sizeof(u16))) == (idx & (0x4000/sizeof(u16))))
-        {
-            val |= sys->VRAM_F.b16[idx & ((VRAM_F_Size/sizeof(u16))-1)];
-        }
-    }
-    if ((sys->VRAMCR[6].Raw & 0x87) == 0x84)
-    {
-        if ((sys->VRAMCR[6].Offset * (KiB(16)/sizeof(u16))) == (idx & (0x4000/sizeof(u16))))
-        {
-            val |= sys->VRAM_G.b16[idx & ((VRAM_G_Size/sizeof(u16))-1)];
-        }
-    }
-    return val;
-}
+        {sys->VRAM_A.b16, VRAM_A_Size},
+        {sys->VRAM_B.b16, VRAM_B_Size},
+        {sys->VRAM_C.b16, VRAM_C_Size},
+        {sys->VRAM_D.b16, VRAM_D_Size},
+        {sys->VRAM_E.b16, VRAM_E_Size},
+        {sys->VRAM_F.b16, VRAM_F_Size},
+        {sys->VRAM_G.b16, VRAM_G_Size},
+        {sys->VRAM_H.b16, VRAM_H_Size},
+        {sys->VRAM_I.b16, VRAM_I_Size}
+    };
 
-u16 VRAM_BGBExtPal(Console* sys, const u16 idx)
-{
-    if (sys->VRAMCR[7].Raw == 0x82)
-    {
-        return sys->VRAM_H.b16[idx & ((VRAM_H_Size/sizeof(u16))-1)];
-    }
-    else return 0;
-}
+    u16 list = func(sys, addr);
 
-u16 VRAM_OBJAExtPal(Console* sys, const u16 idx)
-{
-    u16 val = 0;
-    if ((sys->VRAMCR[5].Raw & 0x87) == 0x85)
+    if (!list)
     {
-        //if ((sys->VRAMCR[5].Offset * KiB(16)) == (idx & KiB(16))) checkme?
+        return 0;
+    }
+    else if (stdc_count_ones(list) == 1)
+    {
+        u8 id = stdc_trailing_zeros(list);
+        u16* bank = vram[id].bank;
+        size_t size = vram[id].size;
+        return bank[(addr & (size-1))/2];
+    }
+    else
+    {
+        // todo: contention handling...?
+        u16 rdata = 0;
+        while (list)
         {
-            val = sys->VRAM_F.b16[idx & ((VRAM_F_Size/sizeof(u16))-1)];
+            u8 id = stdc_trailing_zeros(list);
+            u16* bank = vram[id].bank;
+            size_t size = vram[id].size;
+            rdata |= bank[(addr & (size-1))/2];
+            list &= (~1)<<id;
         }
+        return rdata;
     }
-    if ((sys->VRAMCR[6].Raw & 0x87) == 0x85)
-    {
-        //if ((sys->VRAMCR[6].Offset * KiB(16)) == (idx & KiB(16))) checkme?
-        {
-            val |= sys->VRAM_G.b16[idx & ((VRAM_G_Size/sizeof(u16))-1)];
-        }
-    }
-    return val;
-}
-
-u16 VRAM_OBJBExtPal(Console* sys, const u16 idx)
-{
-    if (sys->VRAMCR[8].Raw == 0x83)
-    {
-        return sys->VRAM_I.b16[idx & ((VRAM_I_Size/sizeof(u16))-1)];
-    }
-    else return 0;
 }
 
 
@@ -102,7 +83,7 @@ void PPU_None(Console* sys, const bool b, const u8 bg)
 void PPU_RenderText(Console* sys, const bool b, u16 y, const u8 bg)
 {
     PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
-    u32 (*BG)(Console*, const u32, const u32, const bool, const u32, const bool) = (b ? VRAM_BGB : VRAM_BGA);
+    u16 (*bgvram)(Console*, const u32) = (b ? VRAM_BGB : VRAM_BGA);
     CompositeBuffer* buffer = ppu->CompositeBuffer[bg];
 
     u32 tilebase = ppu->BGCR[bg].CharBase * KiB(16);
@@ -142,7 +123,7 @@ void PPU_RenderText(Console* sys, const bool b, u16 y, const u8 bg)
         if (((x%8) == 0) || (xf == 0))
         {
             tileaddr = screenbase + ((x / 8) * 2) + (xmsb << (8+3));
-            tile.Raw = (BG(sys, tileaddr&~3, u32_max, false, 0, false) >> ((tileaddr & 2)*8)) & 0xFFFF;
+            tile.Raw = PPU_VRAMLookup(sys, tileaddr, bgvram);
         }
 
         // get in tile coordinate component to index into the tiles
@@ -152,14 +133,14 @@ void PPU_RenderText(Console* sys, const bool b, u16 y, const u8 bg)
         if (ppu->BGCR[bg].Pal256) // 8 bpp
         {
             u32 pixeladdr = tilebase + (((tile.TileNum * (TileWidth*TileHeight)) + (yfrac*TileWidth)) + xfrac);
-            u8 idx = BG(sys, pixeladdr&~3, u32_max, false, 0, false) >> ((pixeladdr&3)*8);
+            u8 idx = PPU_VRAMLookup(sys, pixeladdr, bgvram) >> ((pixeladdr&0x1)*8);
 
             buffer[xf] = (CompositeBuffer){idx+(tile.Palette*256), 0, !idx, false, ppu->DisplayCR.BGExtPalEn, false, false};
         }
         else // pal 16 4bpp
         {
             u32 pixeladdr = tilebase + ((((tile.TileNum * (TileWidth*TileHeight)) + (yfrac*TileWidth)) / 2) + (xfrac/2));
-            u8 idx = BG(sys, pixeladdr&~3, u32_max, false, 0, false) >> ((pixeladdr&3)*8);
+            u8 idx = PPU_VRAMLookup(sys, pixeladdr, bgvram) >> ((pixeladdr&0x1)*8);
             idx = ((idx >> ((xfrac&1)*4)) & 0xF);
 
             // ext pal doesn't apply for 4bpp tilesets for w/e reason
@@ -173,7 +154,7 @@ void PPU_RenderText(Console* sys, const bool b, u16 y, const u8 bg)
 void PPU_RenderBitmap(Console* sys, const bool b, u16 y, const u8 bg, const bool dircolor)
 {
     PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
-    u32 (*BG)(Console*, const u32, const u32, const bool, const u32, const bool) = (b ? VRAM_BGB : VRAM_BGA);
+    u16 (*bgvram)(Console*, const u32) = (b ? VRAM_BGB : VRAM_BGA);
     CompositeBuffer* buffer = ppu->CompositeBuffer[bg];
 
     u32 screenbase = ppu->BGCR[bg].ScreenBase * KiB(16);
@@ -191,13 +172,13 @@ void PPU_RenderBitmap(Console* sys, const bool b, u16 y, const u8 bg, const bool
         if (dircolor)
         {
             u32 addr = screenbase + (x*2) + (y*(width*2));
-            u16 color = BG(sys, addr&~3, u32_max, false, 0, false) >> ((addr & 2) * 8);
+            u16 color = PPU_VRAMLookup(sys, addr, bgvram);
             buffer[x] = (CompositeBuffer){RGB565to666(color&0x7FFF), 0, !(color & 0x8000), true, false, false, false};
         }
         else // 8 bit index
         {
             u32 addr = screenbase + x + (y*width);
-            u8 idx = BG(sys, addr&~3, u32_max, false, 0, false) >> ((addr & 3) * 8);
+            u8 idx = PPU_VRAMLookup(sys, addr, bgvram) >> ((addr&0x1)*8);
             buffer[x] = (CompositeBuffer){idx, 0, !idx, false, false, false, false};
         }
     }
@@ -416,8 +397,8 @@ void PPU_Composite(Console* sys, const bool b, const u16 y)
 {
     PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
     volatile u16* palbase = (b ? &sys->Palette.b16[0x400/sizeof(u16)] : &sys->Palette.b16[0]);
-    u16 (*BGExtPal)(Console*, const u16) = (b ? VRAM_BGBExtPal : VRAM_BGAExtPal);
-    u16 (*OBJExtPal)(Console*, const u16) = (b ? VRAM_OBJBExtPal : VRAM_OBJAExtPal);
+    u16 (*bgextpalvram)(Console*, const u32) = (b ? VRAM_BGBExtPal : VRAM_BGAExtPal);
+    u16 (*objextpalvram)(Console*, const u32) = (b ? VRAM_OBJBExtPal : VRAM_OBJAExtPal);
     u32* scanline = sys->Framebuffer[sys->BackBuf][sys->PowerCR9.AOnBottom ? b : !b][y];
     volatile timestamp* time = (b ? (&sys->PPUBTimestamp) : (&sys->PPUATimestamp));
 
@@ -508,18 +489,18 @@ void PPU_Composite(Console* sys, const bool b, const u16 y)
                 {
                     if (bg[j] == 4)
                     {
-                        color[j] = OBJExtPal(sys, index[j].Index);
+                        color[j] = PPU_VRAMLookup(sys, index[j].Index*2, objextpalvram);
                     }
                     else
                     {
-                        u32 extpalbase = bg[j]*(KiB(8)/sizeof(u16));
-                        if ((bg[j] <= 1) && ppu->BGCR[bg[j]].ExtPalSlot) extpalbase += KiB(16)/sizeof(u16);
-                        color[j] = BGExtPal(sys, index[j].Index + extpalbase);
+                        u32 extpalbase = bg[j] * KiB(8);
+                        if ((bg[j] <= 1) && ppu->BGCR[bg[j]].ExtPalSlot) extpalbase += KiB(16);
+                        color[j] = PPU_VRAMLookup(sys, extpalbase + (index[j].Index*2), bgextpalvram);
                     }
                 }
                 else
                 {
-                    AddBusContention(sys, *time, Dev_Palette);
+                    //AddBusContention(sys, *time, Dev_Palette);
                     color[j] = palbase[(index[j].Index & 0xFF) + ((bg[j] == 4) ? 256 : 0)];
                 }
                 color[j] = RGB565to666(color[j]);
@@ -538,7 +519,7 @@ void PPU_SpriteAffine(Console* sys, const bool b, const SprAttrs01 attr1, const 
 {
     PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
     CompositeBuffer* buffer = ppu->CompositeBuffer[4];
-    u32 (*OBJ)(Console*, const u32, const u32, const bool, const u32, const bool) = (b ? VRAM_OBJB : VRAM_OBJA);
+    u16 (*objvram)(Console*, const u32) = (b ? VRAM_OBJB : VRAM_OBJA);
 
     // fetch rotation and scaling parameters
     volatile u32* oambase = (b ? &sys->OAM.b32[0x400/sizeof(u32)] : &sys->OAM.b32[0]);
@@ -620,7 +601,7 @@ void PPU_SpriteAffine(Console* sys, const bool b, const SprAttrs01 attr1, const 
             if ((rotx < (width*256)) && (roty < (height*256)))
             {
                 u32 addr = baseaddr + (((roty / 256) * ystep) + ((rotx / 256)) * 2);
-                u16 color = OBJ(sys, addr & ~3, 0xFFFFFFFF, false, 0, false) >> ((addr & 0x2) * 8);
+                u16 color = PPU_VRAMLookup(sys, addr, objvram);
 
                 if ((color & 0x8000) && (buffer[x].Empty || (buffer[x].SprPrio > attr2.Priority)))
                     buffer[x] = (CompositeBuffer){RGB565to666(color & 0x7FFF) | (alpha<<18), attr2.Priority, false, true, false, true, true};
@@ -663,7 +644,7 @@ void PPU_SpriteAffine(Console* sys, const bool b, const SprAttrs01 attr1, const 
                 }
 
                 u32 addr = baseaddr + ytile + ypixel + xtile + xpixel;
-                u16 index = OBJ(sys, addr & ~3, 0xFFFFFFFF, false, 0, false) >> ((addr & 0x3) * 8);
+                u16 index = PPU_VRAMLookup(sys, addr, objvram) >> ((addr&0x1)*8);
 
                 if (attr1.Pal256)
                 {
@@ -691,7 +672,7 @@ void PPU_SpriteNormal(Console* sys, const bool b, const SprAttrs01 attr1, const 
 {
     PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
     CompositeBuffer* buffer = ppu->CompositeBuffer[4];
-    u32 (*OBJ)(Console*, const u32, const u32, const bool, const u32, const bool) = (b ? VRAM_OBJB : VRAM_OBJA);
+    u16 (*objvram)(Console*, const u32) = (b ? VRAM_OBJB : VRAM_OBJA);
 
     // vertical flip flag means we start from the bottom of the sprite
     if (attr1.VFlip) y = ((height-1) - y);
@@ -753,7 +734,7 @@ void PPU_SpriteNormal(Console* sys, const bool b, const SprAttrs01 attr1, const 
         {
             u32 addr = baseaddr + (sx*2);
 
-            u16 color = OBJ(sys, addr&~3, 0xFFFFFFFF, false, 0, false) >> ((addr&2)*8);
+            u16 color = PPU_VRAMLookup(sys, addr, objvram);
 
             if ((color & 0x8000) && (buffer[x].Empty || (buffer[x].SprPrio > attr2.Priority)))
                 buffer[x] = (CompositeBuffer){RGB565to666(color & 0x7FFF) | (alpha<<18), attr2.Priority, false, true, false, true, true};
@@ -780,7 +761,7 @@ void PPU_SpriteNormal(Console* sys, const bool b, const SprAttrs01 attr1, const 
         for (; ((attr1.HFlip) ? (sx >= 0) : (sx < width)) && (x < 256); ((attr1.HFlip) ? (sx-=1) : (sx+=1)), x++)
         {
             u32 addr = baseaddr + ((sx/8*8) << (2+attr1.Pal256)) + ((sx%8) >> !attr1.Pal256);
-            u16 index = OBJ(sys, addr&~3, 0xFFFFFFFF, false, 0, false) >> ((addr&3)*8);
+            u16 index = PPU_VRAMLookup(sys, addr, objvram) >> ((addr&0x1)*8);
 
             if (attr1.Pal256)
             {
@@ -932,7 +913,7 @@ void PPU_RenderScanline(Console* sys, const bool b, const s16 y)
                 PPU_Wait(sys, *time);
                 for (int x = 0; x < 256; x++)
                 {
-                    scanline[x] = RGB555to666(VRAM_LCD(sys, addr&~3, u32_max, false, 0, false) >> ((addr & 2)*8));
+                    scanline[x] = RGB555to666(PPU_VRAMLookup(sys, addr, VRAM_LCD));
                     addr += 2;
                 }
                 ApplyBrightnessModifier(scanline, ppu->Brightness);

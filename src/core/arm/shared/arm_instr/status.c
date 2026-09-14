@@ -131,6 +131,7 @@ void ARM_MSR(ARM* cpu, const ARM_Instr instr_data)
         // no i dont know why it cares about the extension or status bits?
         // CHECKME: ...it might also care about none set actually...?
         A9ES_ExecuteCycles(ARM9Cast, 2);
+        cpu->CodeSeq = false; // checkme
     }
     else
     {

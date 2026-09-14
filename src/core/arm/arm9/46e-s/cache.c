@@ -51,7 +51,7 @@ bool A946_ICacheLookup(ARM946ES* a946, const u32 addr, timestamp now, u32* instr
     a946->BIU.InstrSubmCur = 0;
     a946->BIU.InstrCompCur = 0;
 
-    a946->IStreamWaitCur = ((addr/4) & 0x7) + 1;
+    a946->IStreamWaitCur = ((addr/4)&0x7)+1;
     a946->IStreamPtr = (index+set) * A946_ICacheLineLength;
     A946_BIUSched(a946, now);
     return false;
@@ -220,6 +220,7 @@ void A946_DCacheCleanLine(ARM946ES* a946, timestamp now, const u32 idxset, const
     if (num == 0) return; // already clean
 
     A946_WriteBufferFill(a946, now, buf, baseaddr, ARMDataWidth_32, num, cp15 ? A946WBCause_CP15 : A946WBCause_DCache);
+    if (cp15) A9ES_InstrBusy(a946);
     a946->DTagRAM[idxset].DirtyLo = false;
     a946->DTagRAM[idxset].DirtyHi = false;
 }
@@ -293,38 +294,36 @@ void A946_DCacheStream_Post(ARM946ES* a946, u32 rdata, timestamp now)
     if (a946->BIU.DataCompCur == a946->DStreamWaitCur) // cpu was waiting for this word!!
     {
         post->RData[post->DataPtr++] = rdata;
-        a946->DStreamWaitCur++;
         a946->DataTS = now;
 
         if (a946->DStreamWaitCur == a946->DStreamWaitEnd) // finished waiting
         {
             a946->DStreamWaitCur = 0;
-            if (a946->BIU.WBFill != A946WBCause_DCache)
-            {
-                A9ES_DataDone(a946);
-                Sched_AddEvent(a946->ARM.Sys, now, Evt_ARM9);
-            }
+            A9ES_DataDone(a946);
+            Sched_AddEvent(a946->ARM.Sys, now, Evt_ARM9);
         }
+        else a946->DStreamWaitCur++;
     }
 
     if (a946->BIU.DataCompCur == a946->BIU.DataMax) // stream over
     {
         if (a946->DStreamWaitCur) // let cpu go if it was waiting
         {
-            a946->DStreamWaitCur = 0;
-            A9ES_DataGo(a946, &a946->PostMem);
-            Sched_AddEvent(a946->ARM.Sys, now, Evt_ARM9);
+            if (a946->BIU.WBFill != A946WBCause_DCache) // write buffer fill completed
+            {
+                a946->DStreamWaitCur = 0;
+                A9ES_DataGo(a946, &a946->PostMem);
+                Sched_AddEvent(a946->ARM.Sys, now, Evt_ARM9);
+            }
+            else a946->BIU.WBFill = A946WBCause_DCacheFixies;
         }
-
-        a946->BIU.BurstCur = A946BIUBurst_None;
-        a946->BIU.DataType = A946BIU_DataNone; // free up biu's data path
     }
 }
 
 void A946_ICacheStream_Post(ARM946ES* a946, u32 rdata, timestamp now)
 {
-    a946->ICache.b32[a946->IStreamPtr] = rdata;
-    a946->IStreamPtr++;
+    a946->ICache.b32[a946->IStreamPtr++] = rdata;
+    a946->BIU.InstrCompCur++;
 
     if (a946->BIU.InstrCompCur == a946->IStreamWaitCur) // cpu was waiting for this word!!
     {

@@ -65,7 +65,7 @@ u16 VRAM_BGB(Console* sys, const u32 addr)
     return list;
 }
 
-u16 VRAM_OBJB(Console* sys, const u32 addr [[maybe_unused]])
+u16 VRAM_OBJB(Console* sys, const u32 addr)
 {
     u16 list = 0;
     VRAMCHECKDirect(VRAMID_D, 4, 0, 0)
@@ -78,6 +78,38 @@ u16 VRAM_ARM7(Console* sys, const u32 addr)
     u16 list = 0;
     VRAMCHECK(VRAMID_C, 2, 0x20000, 0x20000)
     VRAMCHECK(VRAMID_D, 2, 0x20000, 0x20000)
+    return list;
+}
+
+u16 VRAM_BGAExtPal(Console* sys, const u32 addr)
+{
+    u16 list = 0;
+    VRAMCHECKDirect(VRAMID_E, 4, 0, 0)
+    VRAMCHECK(VRAMID_F, 4, 0x4000, KiB(16))
+    VRAMCHECK(VRAMID_G, 4, 0x4000, KiB(16))
+    return list;
+}
+
+u16 VRAM_BGBExtPal(Console* sys, const u32 addr)
+{
+    u16 list = 0;
+    VRAMCHECKDirect(VRAMID_H, 2, 0, 0)
+    return list;
+}
+
+u16 VRAM_OBJAExtPal(Console* sys, const u32 addr)
+{
+    u16 list = 0;
+    // checkme: is offset unused?
+    VRAMCHECKDirect(VRAMID_F, 5, 0, 0)
+    VRAMCHECKDirect(VRAMID_G, 5, 0, 0)
+    return list;
+}
+
+u16 VRAM_OBJBExtPal(Console* sys, const u32 addr)
+{
+    u16 list = 0;
+    VRAMCHECKDirect(VRAMID_I, 3, 0, 0)
     return list;
 }
 

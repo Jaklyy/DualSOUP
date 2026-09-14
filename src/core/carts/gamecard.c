@@ -334,7 +334,7 @@ void Key1_Apply(GameCard* card, u32* code, u32 mod)
 // this is just ripped from melonds
 void GameCardMisc_InitKey1(GameCard* card)
 {
-    u32 code[3] = {card->ROM[0xC/sizeof(u32)], card->ROM[0xC/sizeof(u32)]>>1 ,card->ROM[0xC/sizeof(u32)]<<1};
+    u32 code[3] = {card->ROM[0xC/4], card->ROM[0xC/4]>>1 ,card->ROM[0xC/4]<<1};
     Key1_Apply(card, code, 2);
     Key1_Apply(card, code, 2);
     card->Mode = Key1;
@@ -342,7 +342,7 @@ void GameCardMisc_InitKey1(GameCard* card)
 
 u32 GameCardMisc_ROMReadHandler(GameCard* card)
 {
-    u32 ret = card->ROM[card->Address/sizeof(u32)];
+    u32 ret = card->ROM[card->Address/4];
     card->Address += 4;
     // force it to stay within one 4 KiB area.
     if (!(card->Address & (KiB(4)-1)))
@@ -356,7 +356,7 @@ u32 GameCardMisc_ROMReadHandler(GameCard* card)
 
 u32 GameCardMisc_ROMReadSecureAreaHandler(GameCard* card)
 {
-    u32 ret = card->ROM[(0x8000+card->Address)/sizeof(u32)];
+    u32 ret = card->ROM[(0x8000+card->Address)/4];
     card->Address += 4;
     card->Address &= 0x1FF;
 
@@ -366,7 +366,7 @@ u32 GameCardMisc_ROMReadSecureAreaHandler(GameCard* card)
 u32 GameCardMisc_ReadSecureAreaHandler(GameCard* card)
 {
     // TODO: what does this actually do???
-    u32 ret = card->ROM[card->Address/sizeof(u32)];
+    u32 ret = card->ROM[card->Address/4];
     card->Address += 4;
     return ret;
 }
@@ -379,7 +379,7 @@ u32 GameCardMisc_UnencIDReadHandler(GameCard* card)
 u32 GameCardMisc_UnencHeaderHandler(GameCard* card)
 {
     card->Address &= 0xFFF;
-    u32 ret = card->ROM[card->Address/sizeof(u32)];
+    u32 ret = card->ROM[card->Address/4];
     card->Address += 4;
     return ret;
 }
@@ -520,7 +520,7 @@ u32 GameCard_ROMDataRead(Console* sys, timestamp cur, const bool a9)
         sys->GCROMData[a9] = card->WordBuffer;
         card->Buffered = false;
         if (a9) StartDMA9(sys, cur+DSClk33(1), DMAStart_NTRCard); // checkme: delay?
-        else StartDMA7(sys, cur+DSClk33(1), DMAStart_NTRCard); // checkme: delay?
+        else    StartDMA7(sys, cur+DSClk33(1), DMAStart_NTRCard); // checkme: delay?
     }
     else
     {
@@ -585,7 +585,7 @@ void GameCard_ROMCommandSubmit(Console* sys, timestamp cur, const bool a9)
     transfertime *= ((sys->GCROMCR[a9].ClockDivider) ? 8 : 5);
     transfertime += 3;
 
-    Sched_AddEvent(sys, cur+transfertime, Evt_CardROM);
+    Sched_AddEvent(sys, cur+DSClk33(transfertime), Evt_CardROM);
 }
 
 void GameCard_SPIFinish(Console* sys, const bool a9)

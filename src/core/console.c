@@ -21,9 +21,19 @@
 
 void Console_DebugLog(Console* sys)
 {
-    if (!SDL_GetGamepadButton(sys->Pad, SDL_GAMEPAD_BUTTON_LEFT_STICK)) return;
-
 #if 0
+    printf("%i %i\n", sys->A946ES.BIU.WBuffer.Empty, sys->A946ES.BIU.WBuffer.Full);
+#elif 1
+    A946_Log(&sys->A946ES);
+    A946_DumpMPU(&sys->A946ES);
+    Sched_Log(sys);
+//#elif 0
+    printf("Dumping\n");
+    FILE* file = fopen("logfcram.bin", "wb");
+    fwrite(sys->MainRAM.b8, sizeof(sys->MainRAM), 1, file);
+    fclose(file);
+    printf("Done.\n");
+#elif 0
     for (int i = 0; i < 16; i++)
     {
         printf("channel %i: dmacr:%08X dmats:%08lX dmasa:%08X dmaln%08X dmamd%i\nchraw: %08X cen:%i cfm:%i crm:%i chln%i chlp%i chpr:%08X chmx:%08lX\ntimercr:%06X fifd:%i fiff:%i fifs:%i\n", i, \
@@ -138,7 +148,6 @@ Console* Console_Init(Console* sys, CoreCfg* cfg, void* pad, void* aud)
 
     // wipe entire emulator state
     memset(sys, 0, sizeof(*sys));
-    CR_Start = false;
 
     sys->SysCfg = cfg->SysCfg;
 
@@ -253,57 +262,7 @@ Console* Console_Init(Console* sys, CoreCfg* cfg, void* pad, void* aud)
     for (s32 i = 0; i < IRQ_Max; i++)
         sys->IRQSched7[i] = timestamp_max;
 
-    for (u32 i = 0; i < countof(sys->DMA9.ChannelTimestamps); i++)
-    {
-        sys->DMA9.ChannelTimestamps[i] = timestamp_max;
-        sys->DMA7.ChannelTimestamps[i] = timestamp_max;
-    }
-
-    sys->DMA9.NextTime = timestamp_max;
-    sys->DMA7.NextTime = timestamp_max;
-
-    for (u32 i = DMA7_SoundBase; i < DMA7_SoundMax; i++)
-    {
-        sys->DMA7.Channels[i].CurrentMode = DMAStart_Audio;
-        sys->DMA7.Channels[i].CR.Width32 = true;
-        sys->DMA7.Channels[i].SrcInc = 4;
-        sys->DMA7.Channels[i].SrcAddrMask = 0x07FFFFFC;
-    }
-    for (u32 i = DMA7_SoundCapBase; i < DMA7_SoundCapMax; i++)
-    {
-        sys->DMA7.Channels[i].CurrentMode = DMAStart_AudioCap;
-        sys->DMA7.Channels[i].CR.Width32 = true;
-        sys->DMA7.Channels[i].DstInc = 4;
-        sys->DMA7.Channels[i].CR.DestCR = 3;
-        sys->DMA7.Channels[i].DstAddrMask = 0x07FFFFFC;
-        sys->DMA7.Channels[i].CR.Enable = true;
-        sys->DMA7.Channels[i].CR.Repeat = true;
-    }
-
-    sys->DMA7.Channels[0+DMA7_NormalBase].SrcAddrMask = 0x07FFFFFE;
-    sys->DMA7.Channels[1+DMA7_NormalBase].SrcAddrMask = 0x0FFFFFFE;
-    sys->DMA7.Channels[2+DMA7_NormalBase].SrcAddrMask = 0x0FFFFFFE;
-    sys->DMA7.Channels[3+DMA7_NormalBase].SrcAddrMask = 0x0FFFFFFE;
-
-    sys->DMA7.Channels[0+DMA7_NormalBase].DstAddrMask = 0x0FFFFFFE;
-    sys->DMA7.Channels[1+DMA7_NormalBase].DstAddrMask = 0x0FFFFFFE;
-    sys->DMA7.Channels[2+DMA7_NormalBase].DstAddrMask = 0x0FFFFFFE;
-    sys->DMA7.Channels[3+DMA7_NormalBase].DstAddrMask = 0x07FFFFFE;
-
-    sys->DMA9.Channels[0].SrcAddrMask = 0x0FFFFFFE;
-    sys->DMA9.Channels[1].SrcAddrMask = 0x0FFFFFFE;
-    sys->DMA9.Channels[2].SrcAddrMask = 0x0FFFFFFE;
-    sys->DMA9.Channels[3].SrcAddrMask = 0x0FFFFFFE;
-
-    sys->DMA9.Channels[0].DstAddrMask = 0x0FFFFFFE;
-    sys->DMA9.Channels[1].DstAddrMask = 0x0FFFFFFE;
-    sys->DMA9.Channels[2].DstAddrMask = 0x0FFFFFFE;
-    sys->DMA9.Channels[3].DstAddrMask = 0x0FFFFFFE;
-
-    sys->DMA9.CurMask = 0xFFFFFFF'0;
-    sys->DMA7.CurMask = u32_max << DMA7_Max;
-    sys->DMA9.NextID = DMA7_Max;
-    sys->DMA7.NextID = DMA7_Max;
+    DMA_Init(sys);
 
     IPC_FIFOInit(&sys->IPCFIFO7);
     IPC_FIFOInit(&sys->IPCFIFO9);
@@ -327,6 +286,7 @@ Console* Console_Init(Console* sys, CoreCfg* cfg, void* pad, void* aud)
 
     Bus9_Init(&sys->Bus9);
     Bus7_Init(&sys->Bus7);
+    MainRAM_Init(sys, cfg->SysCfg.NTRFCRAM);
 
     RTC_Init(&sys->RTC);
 
@@ -461,6 +421,7 @@ void Console_DirectBoot(Console* sys)
 
     A9ES_SetPC(&sys->A946ES, arm9_entryaddr);
     A7TDMI_SetPC(&sys->A7TDMI, arm7_entryaddr);
+    A7TDMI_InstrRead(&sys->A7TDMI, 0);
     sys->DirectBoot = true;
 }
 
@@ -469,6 +430,11 @@ void Console_Reset(Console* sys)
     A946_Reset(&sys->A946ES, false /*unverified I guess?*/, true);
     A7TDMI_Reset(&sys->A7TDMI);
 
+    // todo: move into actual reset handlers
+    A9ES_InstrGo(&sys->A946ES, false);
+    Sched_AddEvent(sys, 0, Evt_ARM9);
+
+    A7TDMI_InstrRead(&sys->A7TDMI, 0);
     // TODO: reset dma?
 }
 
@@ -479,7 +445,10 @@ void IRQ9_Update(Console* sys, const timestamp now)
 
     // arm946e-s wakes when interrupt is raised, regardless of cpsr bit
     if (sys->A946ES.ARM.InterruptRequest && sys->A946ES.ARM.WaitForInterrupt)
+    {
+        sys->A946ES.ARM.WaitForInterrupt = false;
         Sched_AddEvent(sys, now, Evt_ARM9);
+    }
 }
 
 void IF9_Clear(Console* sys, u32 wrdata, const timestamp now)
@@ -513,7 +482,8 @@ void IRQ7_Update(Console* sys, const timestamp now)
     sys->A7TDMI.ARM.InterruptRequest = (sys->IME7 && (sys->IF7 & sys->IE7));
 
     // gba/nds uses an external mechanism for power saving for the arm7tdmi
-    if (sys->A7ClkDisable && Console_CheckARM7Wake(sys)) Bus7_A7Wake(sys, now);
+    if (sys->A7ClkDisable && Console_CheckARM7Wake(sys))
+        Bus7_A7Wake(sys, now);
 }
 
 void IF7_Clear(Console* sys, u32 wrdata, const timestamp now)
@@ -537,6 +507,7 @@ void Console_MainLoop(Console* sys)
     sys->log = fopen("audioout.bin", "wb");
 #endif
 
+    sys->CoreRunning = true;
     while(sys->CoreRunning)
     {
         Sched_RunEvent(sys);

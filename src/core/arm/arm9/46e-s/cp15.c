@@ -12,6 +12,8 @@ void A946_DumpMPU(const ARM946ES* ARM9)
 
 void A946_ConfigureITCM(ARM946ES* ARM9)
 {
+    ARM9->ARM.CodeSeq = false; // checkme
+
     u32 size = ARM9->CP15.ITCMCR.Size + 9;
     if (size < 12) size = 12; // 4KiB min
     // CHECKME does anything interesting happen with a size >32 aka 4GiB?
@@ -49,6 +51,8 @@ void A946_ConfigureDTCM(ARM946ES* ARM9)
 
 void A946_ConfigureMPURegionSize(ARM946ES* ARM9, const u8 rgn)
 {
+    ARM9->ARM.CodeSeq = false; // checkme
+
     if (!ARM9->CP15.CR.MPUEnable) return;
     if (!ARM9->CP15.MPURegionCR[rgn].Enable)
     {
@@ -69,6 +73,7 @@ void A946_ConfigureMPURegionSize(ARM946ES* ARM9, const u8 rgn)
 
 void A946_ConfigureMPURegionPerms(ARM946ES* ARM9)
 {
+    ARM9->ARM.CodeSeq = false; // checkme
     for (s32 rgn = 0; rgn < 8; rgn++)
     {
         if (!ARM9->CP15.CR.MPUEnable) continue;
@@ -293,8 +298,11 @@ void A946_CP15Write(ARM946ES* ARM9, const u16 cmd, const u32 val)
         A946_DCacheCleanIdxSet(ARM9, ARM9->ARM.Timestamp, val);
         break;
     case ARM_CoprocReg(0, 7, 10, 4): // drain write buffer
-        ARM9->BIU.InstrFlushWriteBuffer = true;
-        A9ES_InstrBusy(ARM9);
+        if (!ARM9->BIU.WBuffer.Empty)
+        {
+            ARM9->BIU.InstrFlushWriteBuffer = true;
+            A9ES_InstrBusy(ARM9);
+        }
         break;
     case ARM_CoprocReg(0, 7, 13, 1): // prefetch icache line
         A946_ICachePrefetch(ARM9, ARM9->ARM.Timestamp, val);

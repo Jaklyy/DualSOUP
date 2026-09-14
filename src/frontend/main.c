@@ -63,7 +63,7 @@ int SDLCALL Core_Init(void* pass)
 #endif
     Console_MainLoop(sys);
 
-    sys->KillThread = false;
+    sys->CoreRunning = false;
 
     return EXIT_SUCCESS;
 }
@@ -72,8 +72,8 @@ void CoreThread_Shutdown(volatile Console* sys, bool* thrdrunning)
 {
     if (*thrdrunning)
     {
-        sys->KillThread = true;
-        while(sys->KillThread); // todo: add timeout
+        sys->CoreRunning = false;
+        while(sys->CoreRunning); // todo: add timeout
         *thrdrunning = false;
     }
 }
@@ -111,8 +111,10 @@ int main()
         printf("%s\n", SDL_GetError());
     if (!SDL_SetHint(SDL_HINT_NO_SIGNAL_HANDLERS, "1"))
         printf("%s\n", SDL_GetError());
+#if SDL_VERSION_ATLEAST(3, 4, 0)
     if (!SDL_SetHint(SDL_HINT_AUDIO_DEVICE_RAW_STREAM, "1"))
         printf("%s\n", SDL_GetError());
+#endif
 
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD | SDL_INIT_EVENTS | SDL_INIT_AUDIO))
     {

@@ -10,21 +10,15 @@
 #define cpu ((ARM*)a7tdmi)
 
 // TEMP: debugging
-void A7TDMI_Log(ARM7TDMI* a7tdmi [[maybe_unused]])
+void A7TDMI_Log(ARM7TDMI* a7tdmi)
 {
-#if 0
     LogPrint(LOG_ARM7, "DUMPING ARM7 STATE:\n");
     for (int i = 0; i < 16; i++)
     {
-        LogPrint(LOG_ARM7, "R%2i: %08X ", i, cpu->R[i]);
+        LogPrint(LOG_ARM7, "R%2i: %08"PRIX32" ", i, cpu->R[i]);
     }
-    //LogPrint(LOG_ARM9, "R2:%08X\n", cpu->R[2]);
-    LogPrint(LOG_ARM7, "CPSR:%08X\n", cpu->CPSR.Raw);
-    LogPrint(LOG_ARM7, "INSTR: %08X ", cpu->Instr[0].Raw);
-    LogPrint(LOG_ARM7, "EXE:%li\n\n", cpu->Timestamp);
-    LogPrint(LOG_ARM7, "%08X %08X %i\n", cpu->Sys->IF7, cpu->Sys->IE7, cpu->Sys->IME7);
-    LogPrint(LOG_ARM7, "%08X\n", cpu->Sys->Timers7[3].CR.Raw);
-#endif
+    LogPrint(LOG_ARM7, "CPSR: %08"PRIX32" ", cpu->CPSR.Raw);
+    LogPrint(LOG_ARM7, "INSTR: %08"PRIX32"\n", cpu->Instr[0].Raw);
 }
 
 void A7TDMI_Init(ARM7TDMI* a7tdmi, Console* sys)
@@ -94,10 +88,10 @@ void A7TDMI_SetPC(ARM7TDMI* a7tdmi, u32 val)
 {
     // arm7 doesn't seem to implement bit0 of program counter
     // and doesn't enforce alignment in arm mode.
-    val &= ~0x1;
     if ((val & 2) && !cpu->CPSR.Thumb) LogPrint(LOG_ARM7|LOG_ODD, "ARM7: Misaligned branch in ARM mode.\n");
+    val &= ~0x1;
     cpu->PC = val;
-    cpu->FlushProg = 3;
+    cpu->FlushProg = 2;
 }
 
 void A7TDMI_SetReg(ARM7TDMI* a7tdmi, const int reg, u32 val)

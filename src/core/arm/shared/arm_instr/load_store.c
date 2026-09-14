@@ -193,7 +193,7 @@ s8 A9ES_LoadStoreMisc_Interlocks(const ARM_Instr instr_data, const s8 reg, const
     if (((opcode == 0b001) || (opcode == 0b011)) && (reg == instr.Rd)) return len_c-1; // strh + strd
 
     // dont test rn since its an input already
-    if (!(((opcode == 0b010) && (reg == (instr.Rd+1))) // ldrd 
+    if ((len > 1) && !(((opcode == 0b010) && (reg == (instr.Rd+1))) // ldrd 
        || ((opcode >= 0b101) && (reg == instr.Rd)))) // ldrh + ldrsb + ldrsh
         *retry = true;
     return 0;

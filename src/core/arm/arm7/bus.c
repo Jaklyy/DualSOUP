@@ -33,6 +33,7 @@ void A7TDMI_DataRead(ARM7TDMI* a7tdmi, const timestamp now)
         .Type = ((pass->NumFetchCompleted == 0) ? HTRANS_NONSEQ : HTRANS_SEQ),
         .CB = CB7_7TDMIData,
     };
+    a7tdmi->BusGo = true;
     Bus_Req(a7tdmi->ARM.Sys, &req, now, false);
 }
 
@@ -60,6 +61,7 @@ void A7TDMI_InstrRead(ARM7TDMI* a7tdmi, const timestamp now)
         .Type = (nseq ? HTRANS_NONSEQ : HTRANS_SEQ),
         .CB = CB7_7TDMIInstr,
     };
+    a7tdmi->BusGo = true;
     Bus_Req(a7tdmi->ARM.Sys, &req, now, false);
 }
 
@@ -86,6 +88,7 @@ void A7TDMI_DataWrite(ARM7TDMI* a7tdmi, const timestamp now)
         .Type = ((pass->NumFetchCompleted == 0) ? HTRANS_NONSEQ : HTRANS_SEQ),
         .CB = CB7_7TDMIData,
     };
+    a7tdmi->BusGo = true;
     Bus_Req(a7tdmi->ARM.Sys, &req, now, false);
 }
 
@@ -115,6 +118,7 @@ void A7TDMI_DataPost(ARM7TDMI* a7tdmi, const timestamp now, u32 rdata)
     }
     else
     {
+        a7tdmi->BusGo = false;
         switch(pass->DataCB)
         {
             case A7TDMIDataCB_LoadSingle: A7TDMI_LDR_Post(a7tdmi); break;
@@ -134,8 +138,8 @@ void A7TDMI_InstrReadPost(ARM7TDMI* a7tdmi, const timestamp now, u32 rdata)
     if (cpu->CPSR.Thumb && (cpu->PC & 2)) rdata = ROR32(rdata, 16);
 
     cpu->Instr[2] = (ARM_Instr){.Raw = rdata,
-                                            .Aborted = false, // only used in theory
-                                            .CoprocPriv = false}; // this is for an arm9 specific bug
+                                .Aborted = false, // only used in theory
+                                .CoprocPriv = false}; // this is for an arm9 specific bug
 
     if (cpu->FlushProg > 0)
     {
@@ -146,6 +150,7 @@ void A7TDMI_InstrReadPost(ARM7TDMI* a7tdmi, const timestamp now, u32 rdata)
     }
     else
     {
+        a7tdmi->BusGo = false;
         Sched_AddEvent(cpu->Sys, now, Evt_ARM7);
     }
 }
@@ -156,7 +161,7 @@ void A7TDMI_RotateExtendUnit(u32* rdata, const u32 addr, const ARM_DataWidth siz
     {
     case ARMDataWidth_8:
     {
-        *rdata = ROR32(*rdata, ((addr & 0x3) * 8));
+        *rdata = ROR32(*rdata, ((addr&0x3)*8));
 
         if (signext) *rdata = (s32)(s8)*rdata;
         else *rdata &= 0xFF; // zero extend
@@ -183,7 +188,7 @@ void A7TDMI_RotateExtendUnit(u32* rdata, const u32 addr, const ARM_DataWidth siz
         }
         break;
     }
-    case ARMDataWidth_32:  *rdata = ROR32(*rdata, ((addr & 0x3) * 8)); break;
+    case ARMDataWidth_32: *rdata = ROR32(*rdata, ((addr&0x3)*8)); break;
     default: unreachable();
     }
 }

@@ -11,20 +11,17 @@
 #define cpu (&a946->ARM)
 
 // TEMP: debugging
-void A946_Log(ARM946ES* a946[[maybe_unused]])
+void A946_Log(ARM946ES* a946)
 {
-#if 0
     LogPrint(LOG_ARM9, "DUMPING ARM9 STATE:\n");
     for (int i = 0; i < 16; i++)
     {
-        LogPrint(LOG_ARM9, "R%2i: %08X ", i, cpu->R[i]);
+        LogPrint(LOG_ARM9, "R%2i: %08"PRIX32" ", i, cpu->R[i]);
     }
-    //LogPrint(LOG_ARM9, "R2:%08X\n", cpu->R[2]);
-    LogPrint(LOG_ARM9, "CPSR:%08X\n", cpu->CPSR.Raw);
-    LogPrint(LOG_ARM9, "INSTR: %08X ", cpu->Instr[0].Raw);
-    LogPrint(LOG_ARM9, "DTCM: %08lX %08lX %i ITCM: %i %i %i\n", a946->CP15.DTCMReadBase, a946->CP15.DTCMWriteBase, a946->CP15.DTCMShift, a946->CP15.ITCMShift, a946->CP15.CR.ITCMEnable, a946->CP15.CR.ITCMLoadMode);
-    LogPrint(LOG_ARM9, "EXE:%li MEM:%li\n\n", cpu->Timestamp, a946->MemTimestamp);
-#endif
+    LogPrint(LOG_ARM9, "CPSR: %08"PRIX32" ", cpu->CPSR.Raw);
+    LogPrint(LOG_ARM9, "INSTR: %08"PRIX32"\n", cpu->Instr[0].Raw);
+    LogPrint(LOG_ARM9, "DTCM: Start:%08"PRIX32" End:%08"PRIX32"\n", (u32)(a946->CP15.DTCMWriteBase << a946->CP15.DTCMShift), (u32)((a946->CP15.DTCMWriteBase+1) << a946->CP15.DTCMShift)-1);
+    LogPrint(LOG_ARM9, "ITCM: End:%08"PRIX32"\n", ((u32)1 << a946->CP15.ITCMShift)-1);
 }
 
 void A946_Init(ARM946ES* a946, Console* sys)
@@ -93,8 +90,9 @@ void A9ES_SetPC(ARM946ES* a9es, u32 addr)
     // arm9 enforces pc alignment properly in arm mode.
     addr &= ~(cpu->CPSR.Thumb ? 0x1 : 0x3);
 
+    cpu->CodeSeq = false;
     cpu->PC = addr;
-    cpu->FlushProg = 3;
+    cpu->FlushProg = 2;
 }
 
 void A9ES_SetReg(ARM946ES* a9es, const u8 reg, u32 val)
@@ -266,24 +264,22 @@ void A9ES_Exec(ARM946ES* a9es)
 void A946_Run(ARM946ES* a946, timestamp now)
 {
     cpu->Timestamp = now; // hacky: TODO: rework this
-    if (a946->BusFlags.DataGo || a946->BusFlags.InstrGo)
+    while (a946->BusFlags.DataGo || a946->BusFlags.InstrGo)
     {
-        do
+        if (a946->BusFlags.InstrGo)
+            A946_InstrRead(a946, now);
+        else
         {
-            if (a946->BusFlags.InstrGo)
-                A946_InstrRead(a946, now);
+            if ((a946->PostMem.DataCB == A9ESDataCB_LoadSingle)
+             || (a946->PostMem.DataCB == A9ESDataCB_LoadMultiple)
+             || (a946->PostMem.DataCB == A9ESDataCB_SwapLoad))
+                A946_DataRead(a946, now);
             else
-            {
-                if (a946->PostMem.DataCB == A9ESDataCB_LoadSingle || a946->PostMem.DataCB == A9ESDataCB_LoadMultiple)
-                    A946_DataRead(a946, now);
-                else
-                    A946_DataWrite(a946, now);
+                A946_DataWrite(a946, now);
 
-                if (a946->BusFlags.InstrLate && (a946->PostMem.NumFetchCompleted == a946->PostMem.NumFetch))
-                    a946->BusFlags.InstrGo = true;
-            }
+            if (a946->BusFlags.InstrLate && (a946->PostMem.NumFetchCompleted == a946->PostMem.NumFetch))
+                a946->BusFlags.InstrGo = true;
         }
-        while (a946->BusFlags.DataGo || a946->BusFlags.InstrGo);
     }
 
     if (a946->BusFlags.InstrBusy || a946->BusFlags.DataBusy) return; // don't reschedule
@@ -305,6 +301,7 @@ void A946_Run(ARM946ES* a946, timestamp now)
 
         if (a946->BusFlags.DataDone)
         {
+            A9ES_DataNone(a946);
             DS_CLAMP(next, <, a946->DataTS)
             cpu->Timestamp = next;
             A9ES_MemCallbacks(a946);
@@ -313,9 +310,11 @@ void A946_Run(ARM946ES* a946, timestamp now)
     }
     else if (!cpu->WaitForInterrupt)
     {
-        A9ES_Exec(a946);// execute next instruction if no accesses are waiting
-        if (!a946->BusFlags.DataGo && !a946->BusFlags.InstrGo) // hacky code fetch scheduling
+        A9ES_Exec(a946); // execute next instruction if no accesses are waiting
+        if (!a946->BusFlags.DataGo  && !a946->BusFlags.DataBusy  && !a946->BusFlags.DataDone
+         && !a946->BusFlags.InstrGo && !a946->BusFlags.InstrBusy && !a946->BusFlags.InstrDone && !a946->BusFlags.InstrLate)
         {
+            // hacky code fetch scheduling
             cpu->Timestamp += DSClk67(A9ES_TestTwoCycleInterlocks(a946)); // add interlocks
             A9ES_InstrGo(a946, false);
         }

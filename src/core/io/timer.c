@@ -2,6 +2,7 @@
 #include "core/console.h"
 #include "timer.h"
 #include "core/scheduler.h"
+#include "core/utils.h"
 #include "sound.h"
 
 
@@ -70,7 +71,7 @@ void Timer_CalcNextIRQ(Console* sys, timestamp now, bool a9)
             next = nextirq[i];
     }
 
-    Sched_AddEvent(sys, now+DSClk33(1), (a9 ? Evt_Timer9 : Evt_Timer7));
+    Sched_AddEvent(sys, next, (a9 ? Evt_Timer9 : Evt_Timer7));
     if (a9) sys->timertemp9 = TIMER_SCHEDRUN;
     else sys->timertemp7 = TIMER_SCHEDRUN;
 }
@@ -165,7 +166,8 @@ void Timer_UpdateCRs(Console* sys, timestamp now, bool a9)
 
             if (i >= 4) timer->DividerShift = 1;
             else timer->DividerShift = (((timer->CR.Divider == 0) || timer->CR.OverflowTick) ? 0 : ((timer->CR.Divider * 2) + 4));
-            timer->DividerShift *= (Sched_Clock / NTR_BaseClock);
+            timer->DividerShift += CTZ_CONSTEXPR(Sched_Clock / NTR_SysClock);
+            static_assert(POPCNT_CONSTEXPR(Sched_Clock / NTR_SysClock) == 1, "this code no longer works, mate\n");
 
             if (!oldenable && timer->CR.Enable)
             {
@@ -214,7 +216,7 @@ void Timer7_UpdateCRs(Console* sys, timestamp now)
 
 void Timer_IOWriteHandler(Console* sys, const timestamp curts, const u32 addr, const u32 val, const u32 mask, const bool a9)
 {
-    unsigned timerno = ((addr & 0xF) / 4) % 4;
+    unsigned timerno = ((addr & 0xC) / 4) % 4;
     struct Timer* timer = &(a9 ? sys->Timers9 : sys->Timers7)[timerno];
 
     u32 mask2 = ((timerno == 0) ? 0xC3'FFFF : 0xC7'FFFF);
@@ -229,7 +231,7 @@ void Timer_IOWriteHandler(Console* sys, const timestamp curts, const u32 addr, c
 
 u32 Timer_IOReadHandler(Console* sys, const timestamp curts, const u32 addr, const bool a9)
 {
-    unsigned timerno = ((addr & 0xF) / 4) % 4;
+    unsigned timerno = ((addr & 0xC) / 4) % 4;
     struct Timer* timer = &(a9 ? sys->Timers9 : sys->Timers7)[timerno];
 
     Timer_Run(sys, (a9 ? sys->Timers9 : sys->Timers7), curts, a9, false);

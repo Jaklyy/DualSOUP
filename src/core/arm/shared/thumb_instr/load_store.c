@@ -127,7 +127,7 @@ void THUMB_LoadPCRel(ARM* cpu, const ARM_Instr instr_data)
 
     ARM_StepPC(cpu, true);
 
-    ARM_LDR(cpu, addr, instr.Rd, cpu->Privileged, ARMDataWidth_32, false, u8_max, 0, 0, false);
+    ARM_LDR(cpu, addr, instr.Rd, cpu->Privileged, u8_max, 0, 0, false, ARMDataWidth_32, false);
 }
 
 void THUMB_LoadStoreSPRel(ARM* cpu, const ARM_Instr instr_data)

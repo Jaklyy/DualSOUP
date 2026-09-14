@@ -170,6 +170,7 @@ timestamp DSClk67(timestamp ts);
 timestamp DSClkAlign33(timestamp ts);
 
 
+void Sched_Log(Console* sys);
 void Sched_RemoveEvent(Sched* sched, Scheduler_Events id);
 timestamp Sched_GetTime(Sched* sched, Scheduler_Events id);
 bool Sched_CheckEventScheduled(Console* sys, Scheduler_Events id);

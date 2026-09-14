@@ -91,15 +91,12 @@ struct DMA_Channel
 
 struct DMA_Controller
 {
-    alignas(HOST_CACHEALIGN) timestamp ChannelTimestamps[DMA7_Max+1];
-    timestamp NextTime;
     struct DMA_Channel Channels[DMA7_Max];
-    u32 CurMask;
-    u8 NextID;
 };
 
 typedef struct Console Console;
 
+void DMA_Init(Console* sys);
 void DMA7_IOWriteHandler(Console* sys, timestamp now, struct DMA_Channel* channels, u32 addr, u32 val, const u32 mask);
 void DMA9_IOWriteHandler(Console* sys, timestamp now, struct DMA_Channel* channels, u32 addr, u32 val, u32 mask);
 u32 DMA_IOReadHandler(struct DMA_Channel* channels, u32 addr);

@@ -17,12 +17,14 @@
 void Bus9_Init(BusImpl* bus)
 {
     bus->PipeCycles = DSClk33(3);
+    bus->HLockGeneric = MAN_NONE; // todo: put in a reset handler
 }
 
 void Bus7_Init(BusImpl* bus)
 {
     // TODO: RE-ENABLE
     bus->PipeCycles = 0;//DSClk33(1);
+    bus->HLockGeneric = MAN_NONE; // todo: put in a reset handler
 }
 
 void MainRAM_Init(Console* sys, NTRFCRAM fcramsize)
@@ -34,6 +36,7 @@ void MainRAM_Init(Console* sys, NTRFCRAM fcramsize)
     case NTRFCRAM_16MiB: sys->BusMR.AddrSubmMask = (sys->BusMR.AddrLatchMask = (MiB(16)-1)); break;
     case NTRFCRAM_32MiB: sys->BusMR.AddrSubmMask = (sys->BusMR.AddrLatchMask = (MiB(32)-1)); break;
     }
+    sys->BusMR.AddrLatchMask >>= 1; // latched addresses are halfword addrs, not byte
 }
 
 timestamp BusContention(Console* sys, timestamp cur, const NTRAHB_Devices device)
@@ -88,7 +91,7 @@ void MainRAM_Run(Console* sys, timestamp now)
     BusMainRAM* mr = &sys->BusMR;
     MainRAM_Buses grant = MainRAM_None;
 
-    if (now > mr->BurstLimitTs) { MainRAM_KillBurst(sys, now); return; }
+    if (now > mr->BurstLimitTs && MainRAM_KillBurst(sys, now)) return;
 
     if (mr->Locked != MainRAM_None) // main ram interface respects atomic lock signals
     {
@@ -126,6 +129,7 @@ void MainRAM_Run(Console* sys, timestamp now)
     bool nseq = r->Type == HTRANS_NONSEQ;
     bool write = r->Write;
     bool lock = r->Lock;
+    u8 man = r->Man;
     u32 wrval; if (write) wrval = r->WrVal;
 
     if (write && (addr & 2)) wrval >>= 16;
@@ -134,6 +138,8 @@ void MainRAM_Run(Console* sys, timestamp now)
     mr->PrevWrite = write;
     if (grant != mr->CurReq) nseq = true; // split burst if switching which bus has grant
     mr->CurReq = grant;
+    if (man != mr->CurMan) nseq = true; // split burst if switching manager TODO: handle this elsewhere?
+    mr->CurMan = man;
     if (now > mr->BurstLimitTs) nseq = true; // TODO: this should probably be regardless of an access occuring
 
     // this is presumably enforced by the SoC main ram interface?
@@ -155,6 +161,11 @@ void MainRAM_Run(Console* sys, timestamp now)
         mr->BurstLimitTs = now + DSClk33(241);
     }
     else MRStepAddr
+
+    //mr->AddrLatch = (addr & mr->AddrSubmMask) >> 1;
+
+    if (mr->AddrLatch != (addr & mr->AddrSubmMask) >> 1)
+        LogPrint(LOG_FCRAM, "MR ADDR MISMATCH: %08X %08X %i %i %i\n", mr->AddrLatch << 1, addr, grant == MainRAM_A9, r->Man, r->CB);
 
     u32 rdata;
     if (write)
@@ -248,13 +259,13 @@ void Bus_VRAM(Console* sys, u32* rdata, timestamp* now, u32 addr, const BusReq* 
         *now += DSClk33(1);
         if (!req->Write) *rdata = 0;
     }
-    else if (stdc_count_ones(list) <= 1)
+    else if (stdc_count_ones(list) == 1)
     {
+        // 1 region, use simpler logic
+        // TODO: just use lut for this case?
         u8 id = stdc_trailing_zeros(list);
         u16* bank = vram[id].bank;
         size_t size = vram[id].size;
-        // 1 region, use simpler logic
-        // TODO: just use lut for this case?
         if (req->Write)
         {
             u32 wrdata = req->WrVal;
@@ -268,7 +279,7 @@ void Bus_VRAM(Console* sys, u32* rdata, timestamp* now, u32 addr, const BusReq* 
                 {
                     MaskedWrite(bank[(addr & (size-1))/2], wrdata, 0xFF << ((addr&1)*8));
                 }
-                bank[addr & (size-1)/2] = wrdata;
+                else bank[(addr & (size-1))/2] = wrdata;
             }
             else
             {
@@ -332,7 +343,7 @@ void Bus_VRAM(Console* sys, u32* rdata, timestamp* now, u32 addr, const BusReq* 
                     {
                         MaskedWrite(bank[(addr & (size-1))/2], tmpwrdata, 0xFF << ((addr&1)*8));
                     }
-                    bank[addr & (size-1)/2] = tmpwrdata;
+                    else bank[(addr & (size-1))/2] = tmpwrdata;
                 }
                 else
                 {
@@ -469,7 +480,7 @@ void Bus9_Read(Console* sys, BusReq* req, timestamp now)
         // checkme: does all of IO have write contention at the same time?
         // checkme: does all of IO have the exact same timings?
         // checkme: contention would be first here, yes?
-        return Sched_AddEvent(sys, now + BusContention(sys, now, Dev_IO9), Evt_IO9); // io is in a separate handler for simplicity's sake
+        return Sched_AddEvent(sys, now + BusContention(sys, now, Dev_IO9), Evt_IO9); // io is in a separate event for simplicity's sake
 
     case 0x05: // 2D GPU Palette
         // TODO: 2d gpu contention timings
@@ -587,7 +598,7 @@ void Bus9_Write(Console* sys, BusReq* req, timestamp now)
         break;
 
     case 0x04: // Memory Mapped IO
-        return Sched_AddEvent(sys, now + DSClk33(1), Evt_IO9); // io is in a separate handler for simplicity's sake
+        return Sched_AddEvent(sys, now + DSClk33(1), Evt_IO9); // io is in a separate event for simplicity's sake
 
     case 0x05: // 2D GPU Palette
         // TODO: 2d gpu contention timings
@@ -681,10 +692,11 @@ void Bus7_Read(Console* sys, BusReq* req, timestamp now)
         // set bios protection level depending on if bios is selected by arbiter and word address sent to bios rom interface
         if (addr >= 0x4000) sys->Bios7ProtCur = 0x4000; // bios fully protected
         else if (addr >= sys->Bios7Prot) sys->Bios7ProtCur = sys->Bios7Prot;
+        else sys->Bios7ProtCur = 0;
     }
 
     u32 rdata;
-    switch(addr >> 20 & 0xFF8) // check most signficant byte (and msb of second byte)
+    switch((addr>>20) & 0xFF8) // check most signficant 9 bits
     {
     case 0x000: // ARM7 BIOS
         if (addr < 0x4000)
@@ -736,7 +748,7 @@ void Bus7_Read(Console* sys, BusReq* req, timestamp now)
         break;
 
     case 0x040: // Memory Mapped IO
-        return Sched_AddEvent(sys, now + BusContention(sys, now, Dev_IO7), Evt_IO7); // io is in a separate handler for simplicity's sake
+        return Sched_AddEvent(sys, now + BusContention(sys, now, Dev_IO7), Evt_IO7); // io is in a separate event for simplicity's sake
 
     case 0x048: // WiFi
         WiFi_Read(sys, &rdata, &now, addr, size); break;
@@ -762,7 +774,7 @@ void Bus7_Write(Console* sys, BusReq* req, timestamp now)
     const u32 mask = MakeWriteMask(addr, size);
 
     // disgusting hack
-    if (req->Man7 >= MAN7_SCAPDMA0 && req->Man7 <= MAN7_NDMA3)
+    if (req->Man7 >= MAN7_SNDDMA0 && req->Man7 <= MAN7_NDMA3)
     {
         req->WrVal = sys->DMA7.Channels[req->Man7-MAN7_SCAPDMA0].RData;
         if (!sys->DMA7.Channels[req->Man7-MAN7_SCAPDMA0].Latched_Width32)
@@ -776,17 +788,8 @@ void Bus7_Write(Console* sys, BusReq* req, timestamp now)
     const u32 wrdata = req->WrVal;
     // checkme: are there any devices on the bus with weird handling of addr misalignment or weird access widths?
 
-    switch(addr >> 20 & 0xFF8) // check most signficant byte (and msb of second byte)
+    switch((addr>>20) & 0xFF8) // check most signficant 9 bits
     {
-    /*case 0x000: // ARM7 BIOS
-        if (timings && (addr < 0x4000))
-        {
-            // CHECKME: does bios7 write contention work weirdly with bios prot?
-            Timing32(&sys->AHB7);
-            AddBusContention(sys->AHBBusyTS, sys->AHB7.Timestamp, Dev_Bios7);
-        }
-        break;*/
-
     case 0x020 ... 0x028: // Main RAM
         return MainRAM_Request(sys, now, false); // defer completion of req to main ram handler
 
@@ -810,7 +813,7 @@ void Bus7_Write(Console* sys, BusReq* req, timestamp now)
         break;
 
     case 0x040: // Memory Mapped IO
-        return Sched_AddEvent(sys, now + DSClk33(1), Evt_IO7); // io is in a separate handler for simplicity's sake
+        return Sched_AddEvent(sys, now + DSClk33(1), Evt_IO7); // io is in a separate event for simplicity's sake
 
     case 0x048: // WiFi
         WiFi_Write(sys, &now, addr, wrdata, mask); break;
@@ -833,12 +836,32 @@ void Bus7_Write(Console* sys, BusReq* req, timestamp now)
     Bus_TransferPostSetup(sys, 0, false, now, false, req->CB, req->Man, false);
 }
 
-void Bus9_Idle(Console* sys, const timestamp now)
+void Bus9_Idle(Console* sys, BusReq* req, const timestamp now)
 {
     // no access performed this cycle
     // speculation: treat as signal to kill bursts
     if (sys->BusMR.CurReq == MainRAM_A9)
+    {
         MainRAM_KillBurst(sys, now);
+
+        if (req != nullptr)
+        {
+            // hacky complete guess idk
+            switch(req->Addr >> 24) // check most signficant byte
+            {
+            case 0x02:
+                if (sys->BusMR.Locked == MainRAM_A9) sys->BusMR.Locked = (req->Lock ? MainRAM_A9 : MainRAM_None); break;
+            default:
+                if (sys->BusMR.Locked == MainRAM_A9) sys->BusMR.Locked = MainRAM_None; break;
+            }
+        }
+        else if (sys->BusMR.Locked == MainRAM_A9)
+        {
+            LogPrint(LOG_ARM9|LOG_FCRAM, "Locked fcram but no access?\n");
+            sys->BusMR.Locked = MainRAM_None;
+        }
+
+    }
 
     // TODO: kill gba rom/ram chipsel
 }
@@ -877,6 +900,7 @@ void Bus_Req(Console* sys, const BusReq* req, const timestamp now, const bool a9
 
 void Bus7_A7Wake(Console* sys, const timestamp now)
 {
+    sys->A7ClkDisable = false;
     if (!sys->Bus7.LockSched && (sys->Bus7.ReqList & (1<<MAN7_ARM7))) Sched_AddEventIfEarlier(sys, now, Evt_Bus7);
 }
 
@@ -899,7 +923,8 @@ void Bus_TransferPost(Console* sys, const timestamp fin, const bool a9)
     const timestamp len = (bus->PostNoPrev ? DSClk33(1) : (fin - bus->PipeExitTs[bus->FIFODrainPtr]));
     // ahb pipeline steps once every HREADY
 
-    bus->FIFODrainPtr = (bus->FIFODrainPtr + 1) % countof(bus->PipeFIFO);
+    if (!bus->PostNoPrev)
+        bus->FIFODrainPtr = (bus->FIFODrainPtr + 1) % countof(bus->PipeFIFO);
 
     if (bus->FIFODrainPtr == bus->FIFOFillPtr)
         bus->FIFOEmpty = true;
@@ -912,8 +937,7 @@ void Bus_TransferPost(Console* sys, const timestamp fin, const bool a9)
     }
 
     // speculative method of implementing arm7 halt
-#define reqlista7deny (((!a9 && sys->A7ClkDisable) ? ((1<<MAN7_ARM7)-1) : u32_max) & bus->ReqList)
-
+#define reqlista7deny (((a9 || !sys->A7ClkDisable) ? u32_max : ~(1<<MAN7_ARM7)) & bus->ReqList)
 
     BusCallbacks ackcb = CB_None;
     u8 ackman;
@@ -951,7 +975,7 @@ void Bus_TransferPost(Console* sys, const timestamp fin, const bool a9)
     // schedule next event
     timestamp new;
     // check if something is still in req list
-    if (bus->HLockGeneric ? (bus->ReqList & (1<<bus->HLockGeneric)) : reqlista7deny)
+    if ((bus->HLockGeneric == MAN_NONE) ? (bus->ReqList & (1<<bus->HLockGeneric)) : reqlista7deny)
     {
         // step pipeline 1 cycle
         new = fin + DSClk33(1);
@@ -1017,20 +1041,27 @@ void Bus_Run(Console* sys, const timestamp now, const bool a9)
                     if (req->Write) Bus7_Write(sys, req, now);
                     else            Bus7_Read(sys, req, now);
                 }
-                return; // rest of logic is for handling 
+                return; // rest of logic is for handling idle/busy cycles
             }
             else if (req->Type == HTRANS_BUSY)
             {
                 if (a9) Bus9_Busy(sys, now);
                 else    Bus7_Busy(sys, now);
             }
-            else goto idle; // explicit idle transfer
+            else
+            {
+                // explicit idle transfer
+                if (a9) Bus9_Idle(sys, req, now);
+                else    Bus7_Idle(sys, now);
+            }
+            Bus_TransferPostSetup(sys, 0, false, now + DSClk33(1), false, req->CB, req->Man, a9);
+            return;
         }
         else goto idle; // not time yet; implied idle transfer
     }
     else // nothing running; implied idle transfer
     { idle:
-        if (a9) Bus9_Idle(sys, now);
+        if (a9) Bus9_Idle(sys, nullptr, now);
         else    Bus7_Idle(sys, now);
     }
 

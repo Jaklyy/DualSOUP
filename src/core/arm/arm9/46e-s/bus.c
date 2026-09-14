@@ -137,17 +137,16 @@ void A946_InstrRead(ARM946ES* a946, timestamp now)
 
     // supposedly arm9 only checks mpu perms on non-sequentials or when crossing 4KiB boundaries (the min region granularity)
     // its supposed to forcibly split bursts on 4KiB boundaries as a result.
-    // note: im checking for sequential here
-    if (!(addr & (KiB(4)-1)) && a946->ARM.CodeSeq)
+    if (!(addr & (KiB(4)-1)) || !a946->ARM.CodeSeq)
     {
         a946->ARM.CodeSeq = false;
         A946_UpdateInstrRegion(a946);
     }
 
-    if (a946->BIU.InstrType == A946BIU_InstrCache)
+    if (a946->BIU.InstrCompCur != a946->BIU.InstrMax)
     {
         if (!a946->ARM.CodeSeq) a946->IStreamWaitCur = -1; // nonsequential; wait for cache streaming to complete fully.
-        else a946->IStreamWaitCur = ((addr&0x1F)/4)+1; // sequential; wait for addr to be fetched.
+        else a946->IStreamWaitCur = ((addr/4)&0x7)+1; // sequential; wait for addr to be fetched.
         return A9ES_InstrBusy(a946);
     }
 
@@ -198,9 +197,9 @@ void A946_InstrRead_Post(ARM946ES* a946, const u32 addr)
                                          .Aborted = false,
                                          .CoprocPriv = a946->ARM.Privileged};
     }
+    a946->ARM.CodeSeq = true;
     A9ES_InstrDone(a946);
     a946->ITCMMultiplexData = false;
-    Sched_AddEvent(a946->ARM.Sys, a946->InstrTS, Evt_ARM9);
 }
 
 #define AddMem(x) (a946->DataTS = now + (DSClk67(1) * numfetch))
@@ -208,7 +207,7 @@ void A946_DataRead(ARM946ES* a946, timestamp now)
 {
     A9ES_PostMem* pass = &a946->PostMem;
 
-    u32 addr = pass->Addr + (pass->NumFetchCompleted*4);
+    u32 addr = pass->Addr;
     u8 numfetch = pass->NumFetch - pass->NumFetchCompleted;
 
     const A946_MPUPerms perms = A946_RegionLookup(a946, addr, pass->Priv);
@@ -234,13 +233,15 @@ void A946_DataRead(ARM946ES* a946, timestamp now)
         AddMem(1);
         pass->NumFetchCompleted += numfetch;
         A9ES_DataDone(a946);
+        return;
     }
 
     // if data cache is streaming
-    if (a946->BIU.DataType == A946BIU_DataCache)
+    if (a946->BIU.DataCompCur != a946->BIU.DataMax)
     {
         // nonsequentials must wait for dcache streaming to complete fully
         a946->DStreamWaitCur = -1;
+        A9ES_DataBusy(a946);
         return;
     }
 
@@ -304,6 +305,7 @@ void A946_DataRead(ARM946ES* a946, timestamp now)
         a946->BIU.DataCompCur = 0;
         a946->BIU.DataProt = (AHB_HPROT){.Data=true, .Privileged=pass->Priv, .Bufferable=perms.Buffer, .Cacheable=perms.DCache};
         a946->BIU.DataWidth = size;
+        A9ES_DataBusy(a946);
         A946_BIUSched(a946, now);
     }
 }
@@ -312,7 +314,7 @@ void A946_DataWrite(ARM946ES* a946, timestamp now)
 {
     A9ES_PostMem* pass = &a946->PostMem;
 
-    u32 addr = pass->Addr + (pass->NumFetchCompleted*4);
+    u32 addr = pass->Addr;
     u8 numfetch = pass->NumFetch - pass->NumFetchCompleted;
     const ARM_DataWidth size = pass->Size;
 
@@ -338,10 +340,11 @@ void A946_DataWrite(ARM946ES* a946, timestamp now)
         pass->DataAbort = true;
         pass->NumFetchCompleted += numfetch;
         A9ES_DataDone(a946);
+        return;
     }
 
     // if data cache is streaming
-    if (a946->BIU.DataType == A946BIU_DataCache)
+    if (a946->BIU.DataCompCur != a946->BIU.DataMax)
     {
         // nonsequentials must wait for dcache streaming to complete fully
         a946->DStreamWaitCur = -1;
@@ -429,6 +432,7 @@ void A946_DataWrite(ARM946ES* a946, timestamp now)
         a946->BIU.DataCompCur = 0;
         a946->BIU.DataProt = (AHB_HPROT){.Data=true, .Privileged=pass->Priv, .Bufferable=perms.Buffer, .Cacheable=perms.DCache};
         a946->BIU.DataWidth = size;
+        A9ES_DataBusy(a946);
         A946_BIUSched(a946, now);
     }
 }

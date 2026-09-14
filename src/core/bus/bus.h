@@ -238,6 +238,7 @@ typedef struct
     bool BurstActive;
     MainRAM_Buses CurReq;
     MainRAM_Buses Locked;
+    u8 CurMan;
     // Internal control reg for the FCRAM chip on the NDS.
     // NTR/USG ARM9 BIOS has init code for mainRAM @ offset 0x180.
     // Should be initialized using halfword r/w to the most significant halfword of mainRAM.
@@ -292,6 +293,7 @@ typedef struct
 
 void Bus9_Init(BusImpl* bus);
 void Bus7_Init(BusImpl* bus);
+void MainRAM_Init(Console* sys, NTRFCRAM fcramsize);
 
 // shared handlers
 void AddBusContention(Console* sys, const timestamp cur, const NTRAHB_Devices device);

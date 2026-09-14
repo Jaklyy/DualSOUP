@@ -270,7 +270,7 @@ bool GX_IOWrite(Console* sys, const u32 addr, const u32 mask, const u32 val, con
 {
     GX3D* gx = &sys->GX3D;
 
-    switch(addr & 0x7FF)
+    switch(addr & 0x7FC)
     {
         case 0x330 ... 0x33C:
             MemoryWrite(32, gx->EdgeTable, addr, sizeof(gx->EdgeTable), val, mask);
@@ -341,7 +341,7 @@ u32 GX_IORead(Console* sys, const u32 addr)
 {
     GX3D* gx = &sys->GX3D;
 
-    switch(addr & 0x7FF)
+    switch(addr & 0x7FC)
     {
         case 0x600:
             //printf("stat %08X\n", gx->Status.Raw | (gx->FIFOFullness << 16));

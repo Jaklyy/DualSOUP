@@ -115,5 +115,4 @@ void A7TDMI_DataPost(ARM7TDMI* a7tdmi, const timestamp now, u32 rdata);
 
 void A7TDMI_RotateExtendUnit(u32* rdata, const u32 addr, const ARM_DataWidth size, const bool signext);
 
-// temp
 void A7TDMI_Log(ARM7TDMI* a7tdmi);

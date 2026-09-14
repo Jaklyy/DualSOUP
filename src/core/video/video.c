@@ -1,5 +1,6 @@
 #include <SDL3/SDL_audio.h>
 #include <SDL3/SDL_timer.h>
+#include <SDL3/SDL_gamepad.h>
 #include "video.h"
 #include "core/scheduler.h"
 #include "core/console.h"
@@ -63,7 +64,8 @@ void LCD_HBlank(Console* sys, timestamp now)
     }
     if (sys->VCount == 191)
     {
-        Console_DebugLog(sys);
+        if (SDL_GetGamepadButton(sys->Pad, SDL_GAMEPAD_BUTTON_LEFT_STICK))
+            Console_DebugLog(sys);
 
         PPU_Sync(sys, now);
         sys->RenderedLines = 0;
