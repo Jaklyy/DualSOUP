@@ -90,6 +90,7 @@ void A7TDMI_SetPC(ARM7TDMI* a7tdmi, u32 val)
     // and doesn't enforce alignment in arm mode.
     if ((val & 2) && !cpu->CPSR.Thumb) LogPrint(LOG_ARM7|LOG_ODD, "ARM7: Misaligned branch in ARM mode.\n");
     val &= ~0x1;
+    cpu->CodeSeq = false;
     cpu->PC = val;
     cpu->FlushProg = 2;
 }

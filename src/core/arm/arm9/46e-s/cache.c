@@ -43,7 +43,7 @@ bool A946_ICacheLookup(ARM946ES* a946, const u32 addr, timestamp now, u32* instr
     a946->ITagRAM[index+set].Valid = true;
     a946->ITagRAM[index+set].TagBits = (tagcmp >> 1);
 
-    A9ES_InstrBusy(a946);
+
     // setup biu for cache streaming
     a946->BIU.InstrAddr = addr & ~0x1F; // a94646E-S does not implement wrapping bursts; must always start at beginning of cacheline
     a946->BIU.InstrType = A946BIU_InstrCache;
@@ -53,6 +53,8 @@ bool A946_ICacheLookup(ARM946ES* a946, const u32 addr, timestamp now, u32* instr
 
     a946->IStreamWaitCur = ((addr/4)&0x7)+1;
     a946->IStreamPtr = (index+set) * A946_ICacheLineLength;
+
+    A9ES_InstrBusy(a946);
     A946_BIUSched(a946, now);
     return false;
 }
@@ -79,10 +81,16 @@ void A946_ICachePrefetch(ARM946ES* a946, const u32 addr, timestamp now)
 {
     // TODO: TIMINGS
     // TODO: IMPROVE CACHE STREAMING HANDLING
-    u32 dummy;
-    A946_ICacheLookup(a946, addr, now /* idfk how to pass this along */, &dummy);
-    a946->IStreamWaitCur = 0; // hacky; override icache stream wait
-    a946->ARM.CodeSeq = false; // hacky
+    if (a946->BIU.InstrCompCur != a946->BIU.InstrMax) // hacky; should (?) wait for istream to complete
+    {
+        u32 dummy;
+        if (!A946_ICacheLookup(a946, addr, now /* idfk how to pass this along */, &dummy))
+        {
+            a946->IStreamWaitCur = -1; // hacky; override icache stream wait
+            a946->ARM.CodeSeq = false; // hacky
+        }
+    }
+    else LogPrint(LOG_ARM9|LOG_UNIMP, "ISTREAM PREFETCH WHILE STREAM BUSY\n");
 }
 
 void A946_DCacheReadLookup(ARM946ES* a946, const AHB_HPROT prot, const u32 addr, const timestamp now, const u8 numfetch)
@@ -94,12 +102,11 @@ void A946_DCacheReadLookup(ARM946ES* a946, const AHB_HPROT prot, const u32 addr,
     {
         u32 cachebase = ((index | set)<<3) | ((addr/4) & 0x7);
         for (u8 i = 0; i < numfetch; i++)
-            a946->PostMem.RData[i+a946->PostMem.NumFetchCompleted] = a946->DCache.b32[cachebase + i];
+            a946->PostMem.RData[i+a946->PostMem.SubmCur] = a946->DCache.b32[cachebase + i];
 
         a946->DataTS = now + DSClk67(numfetch);
-        a946->PostMem.NumFetchCompleted += numfetch;
+        a946->PostMem.SubmCur += numfetch;
         A9ES_DataDone(a946);
-
         return;
     }
 
@@ -126,9 +133,8 @@ void A946_DCacheReadLookup(ARM946ES* a946, const AHB_HPROT prot, const u32 addr,
 
 
     // progress memory transfer
-    a946->PostMem.DataPtr = a946->PostMem.NumFetchCompleted;
-    a946->PostMem.NumFetchCompleted += numfetch;
-    A9ES_DataBusy(a946);
+    a946->PostMem.CompCur = a946->PostMem.SubmCur;
+    a946->PostMem.SubmCur += numfetch;
 
     // biu req
     a946->BIU.DataAddr = addr & ~0x1F; // a94646E-S does not implement wrapping bursts; must always start at beginning of cacheline
@@ -144,6 +150,7 @@ void A946_DCacheReadLookup(ARM946ES* a946, const AHB_HPROT prot, const u32 addr,
     a946->DStreamWaitEnd = ((addr/4) & 0x7) + numfetch;
     a946->DStreamPtr = (index+set) * A946_DCacheLineLength;
 
+    A9ES_DataBusy(a946);
     A946_BIUSched(a946, now);
 }
 
@@ -158,18 +165,18 @@ bool A946_DCacheWriteLookup(ARM946ES* a946, const u32 addr, const timestamp now,
         u32 dcachebase = ((index | set)<<3) | ((addr/4) & 0x7);
 
         if (wrlanes != 0xFFFFFFFF) // handle halfword/byte writes
-            MaskedWrite(a946->DCache.b32[dcachebase], a946->PostMem.WrData[a946->PostMem.NumFetchCompleted], wrlanes);
+            MaskedWrite(a946->DCache.b32[dcachebase], a946->PostMem.WrData[a946->PostMem.SubmCur], wrlanes);
         else for (u8 i = 0; i < numfetch; i++)
-            a946->DCache.b32[dcachebase+i] = a946->PostMem.WrData[i+a946->PostMem.NumFetchCompleted];
+            a946->DCache.b32[dcachebase+i] = a946->PostMem.WrData[i+a946->PostMem.SubmCur];
 
         if (bufferable) // write-back cache: does not write back to memory until line is cleaned
         {
             if (addr & 0x10) a946->DTagRAM[index|set].DirtyHi = true;
             else             a946->DTagRAM[index|set].DirtyLo = true;
 
-            a946->PostMem.NumFetchCompleted += numfetch;
             a946->DataTS = now + DSClk67(numfetch);
             a946->DataWrStall = a946->DataTS+DSClk67(1);
+            a946->PostMem.SubmCur += numfetch;
             A9ES_DataDone(a946);
             return true;
         }
@@ -288,16 +295,16 @@ void A946_DCacheStream_Post(ARM946ES* a946, u32 rdata, timestamp now)
 {
     A9ES_PostMem* post = &a946->PostMem;
 
-    a946->BIU.DataCompCur++;
     a946->DCache.b32[a946->DStreamPtr++] = rdata;
+    a946->BIU.DataCompCur++;
 
     if (a946->BIU.DataCompCur == a946->DStreamWaitCur) // cpu was waiting for this word!!
     {
-        post->RData[post->DataPtr++] = rdata;
-        a946->DataTS = now;
+        post->RData[post->CompCur++] = rdata;
 
         if (a946->DStreamWaitCur == a946->DStreamWaitEnd) // finished waiting
         {
+            a946->DataTS = now;
             a946->DStreamWaitCur = 0;
             A9ES_DataDone(a946);
             Sched_AddEvent(a946->ARM.Sys, now, Evt_ARM9);
@@ -309,13 +316,10 @@ void A946_DCacheStream_Post(ARM946ES* a946, u32 rdata, timestamp now)
     {
         if (a946->DStreamWaitCur) // let cpu go if it was waiting
         {
-            if (a946->BIU.WBFill != A946WBCause_DCache) // write buffer fill completed
-            {
-                a946->DStreamWaitCur = 0;
-                A9ES_DataGo(a946, &a946->PostMem);
-                Sched_AddEvent(a946->ARM.Sys, now, Evt_ARM9);
-            }
-            else a946->BIU.WBFill = A946WBCause_DCacheFixies;
+            a946->DataTS = now;
+            a946->DStreamWaitCur = 0;
+            A9ES_DataGo(a946, &a946->PostMem);
+            Sched_AddEvent(a946->ARM.Sys, now, Evt_ARM9);
         }
     }
 }
@@ -330,9 +334,8 @@ void A946_ICacheStream_Post(ARM946ES* a946, u32 rdata, timestamp now)
         // arm946e-s has a fast path for this case
         a946->InstrLatch = rdata;
         a946->InstrTS = now;
-        A946_InstrRead_Post(a946, a946->ARM.PC);
-
         a946->IStreamWaitCur = 0;
+        A946_InstrRead_Post(a946, a946->ARM.PC);
         Sched_AddEvent(a946->ARM.Sys, now, Evt_ARM9);
     }
 

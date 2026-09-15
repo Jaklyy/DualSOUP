@@ -310,6 +310,7 @@ void ARM_Swap(ARM* cpu, const ARM_Instr instr_data)
     else
     {
         ARM946ES* a9es = ARM9Cast;
+
         // test rd interlocks; has to be done now so we can know if an instruction can occur in sync with the store. (this might not actually matter? it is more similar to hw so...)
         u8 illen = 1+(instr.Byte || (addr & 3));
         s8 ildelay;
@@ -333,89 +334,24 @@ void ARM_Swap(ARM* cpu, const ARM_Instr instr_data)
         A9ES_PostMem pass = {
             .WrData[1] = wrdata, // checkme: pc should be +12
             .Addr = addr,
-            .RListOrig = 1<<instr.Rd,
+            .BaseRestore = 0, // no writeback
+            .Rd = instr.Rd,
+            .RBase = 0, // no writeback
             .DataAbort = false,
-            .NumFetch = 1,
-            .NumFetchCompleted = 0,
             .Size = (instr.Byte ? ARMDataWidth_8 : ARMDataWidth_32),
+            .SignExt = false, // unused
             .Priv = cpu->Privileged,
             .ILDelay = ildelay,
             .ILRetry = retry,
+            .Write = false,
             .DataCB = A9ESDataCB_SwapLoad,
+            .SubmMax = 1,
+            .SubmCur = 0,
+            .CompCur = 0,
+            .InstrPtr = 0, // unused
         };
         A9ES_DataGo(a9es, &pass);
     }
-}
-
-void A9ES_SWPLoad_Post(ARM946ES* a9es)
-{
-    A9ES_PostMem* pass = &a9es->PostMem;
-    if (pass->DataAbort) // store does not occur if load was aborted
-        return A9ES_DataAbort(a9es);
-
-    // schedule store
-
-    // hacky way to keep store data in index 1 and read data in index 0
-    pass->NumFetch = 2;
-    pass->NumFetchCompleted = 1;
-    pass->DataCB = A9ESDataCB_SwapStore;
-    A9ES_DataGo(a9es, &a9es->PostMem);
-    // cursed note: an itcm instr load can be run between the load and store of a swp
-    if (!pass->ILDelay)
-        A9ES_InstrGo(a9es, false);
-}
-
-void A9ES_SWPStore_Post(ARM946ES* a9es)
-{
-    A9ES_PostMem* pass = &a9es->PostMem;
-    if (pass->DataAbort) // mission failed
-        return A9ES_DataAbort(a9es);
-
-    // load writeback occurs now
-    u32 rdata = pass->RData[0];
-    u8 rd = stdc_trailing_zeros(pass->RListOrig);
-    A9ES_RotateExtendUnit(&rdata, pass->Addr, pass->Size, false, a9es->CP15.CR.BigEndian);
-
-    // loads can interwork on arm9 when the disable bit is clear.
-    if ((rd == 15) && !a9es->CP15.CR.NoLoadTBit)
-        ARM_SetThumb(&a9es->ARM, rdata & 1);
-
-    A9ES_SetReg(a9es, rd, rdata);
-
-    if (pass->ILDelay) // interlock condition was detected; clean up
-    {
-        A9ES_ExecuteCycles(a9es, pass->ILDelay-1);
-        A9ES_InstrGo(a9es, false); // schedule fetch
-    }
-    else if (pass->ILRetry)
-        A9ES_SetTwoCycleInterlock(a9es, rd);
-}
-
-void A7TDMI_SWPLoad_Post(ARM7TDMI* a7tdmi)
-{
-    A7TDMI_PostMem* pass = &a7tdmi->PostMem;
-
-    // schedule store
-
-    // hacky way to keep store data in index 1 and read data in index 0
-    pass->NumFetch = 2;
-    pass->NumFetchCompleted = 1;
-    pass->DataCB = A7TDMIDataCB_SwapStore;
-    A7TDMI_DataWrite(a7tdmi, a7tdmi->ARM.Timestamp);
-}
-
-void A7TDMI_SWPStore_Post(ARM7TDMI* a7tdmi)
-{
-    A7TDMI_PostMem* pass = &a7tdmi->PostMem;
-
-    // load writeback occurs now
-    u32 rdata = pass->RData[0];
-    u8 rd = stdc_trailing_zeros(pass->RListOrig);
-    A7TDMI_RotateExtendUnit(&rdata, pass->Addr, pass->Size, false);
-
-    A7TDMI_SetReg(a7tdmi, rd, rdata);
-
-    A7TDMI_InstrRead(a7tdmi, a7tdmi->ARM.Timestamp+DSClk33(1));
 }
 
 s8 A9ES_Swap_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len, const s8 len_c [[maybe_unused]], bool* retry [[maybe_unused]])

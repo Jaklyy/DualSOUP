@@ -134,6 +134,8 @@ void MainRAM_Run(Console* sys, timestamp now)
 
     if (write && (addr & 2)) wrval >>= 16;
 
+    u8 prevman = mr->CurMan;
+
     if (write != mr->PrevWrite) nseq = true; // split burst if switching from read to write
     mr->PrevWrite = write;
     if (grant != mr->CurReq) nseq = true; // split burst if switching which bus has grant
@@ -165,7 +167,7 @@ void MainRAM_Run(Console* sys, timestamp now)
     //mr->AddrLatch = (addr & mr->AddrSubmMask) >> 1;
 
     if (mr->AddrLatch != (addr & mr->AddrSubmMask) >> 1)
-        LogPrint(LOG_FCRAM, "MR ADDR MISMATCH: %08X %08X %i %i %i\n", mr->AddrLatch << 1, addr, grant == MainRAM_A9, r->Man, r->CB);
+        LogPrint(LOG_FCRAM, "MR ADDR MISMATCH: %08X %08X %i %i %i %i %i\n", mr->AddrLatch << 1, addr, grant == MainRAM_A9, r->Man, r->CB, prevman, r->Type);
 
     u32 rdata;
     if (write)

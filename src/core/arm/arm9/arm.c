@@ -264,26 +264,24 @@ void A9ES_Exec(ARM946ES* a9es)
 void A946_Run(ARM946ES* a946, timestamp now)
 {
     cpu->Timestamp = now; // hacky: TODO: rework this
-    while (a946->BusFlags.DataGo || a946->BusFlags.InstrGo)
+    while (a946->BusFlags.DataGo || a946->BusFlags.InstrGo) // accesses need to be handled
     {
         if (a946->BusFlags.InstrGo)
             A946_InstrRead(a946, now);
         else
         {
-            if ((a946->PostMem.DataCB == A9ESDataCB_LoadSingle)
-             || (a946->PostMem.DataCB == A9ESDataCB_LoadMultiple)
-             || (a946->PostMem.DataCB == A9ESDataCB_SwapLoad))
+            if (!a946->PostMem.Write)
                 A946_DataRead(a946, now);
             else
                 A946_DataWrite(a946, now);
 
-            if (a946->BusFlags.InstrLate && (a946->PostMem.NumFetchCompleted == a946->PostMem.NumFetch))
+            if (a946->BusFlags.InstrLate && (a946->PostMem.SubmCur == a946->PostMem.SubmMax))
                 a946->BusFlags.InstrGo = true;
         }
     }
 
-    if (a946->BusFlags.InstrBusy || a946->BusFlags.DataBusy) return; // don't reschedule
-    else if (a946->BusFlags.InstrDone || a946->BusFlags.DataDone)
+    if (a946->BusFlags.InstrBusy || a946->BusFlags.DataBusy) return; // bus is busy; don't reschedule
+    else if (a946->BusFlags.InstrDone || a946->BusFlags.DataDone) // accesses are complete.
     {
         timestamp next = cpu->Timestamp;
         if (a946->BusFlags.InstrDone)
@@ -310,7 +308,9 @@ void A946_Run(ARM946ES* a946, timestamp now)
     }
     else if (!cpu->WaitForInterrupt)
     {
-        A9ES_Exec(a946); // execute next instruction if no accesses are waiting
+        A9ES_Exec(a946);
+
+        // if the instruction did any manual handling of the bus logic, skip automatic handling
         if (!a946->BusFlags.DataGo  && !a946->BusFlags.DataBusy  && !a946->BusFlags.DataDone
          && !a946->BusFlags.InstrGo && !a946->BusFlags.InstrBusy && !a946->BusFlags.InstrDone && !a946->BusFlags.InstrLate)
         {
@@ -321,7 +321,7 @@ void A946_Run(ARM946ES* a946, timestamp now)
         ARM_PipelineStep(cpu);
     }
 
-    if (!cpu->WaitForInterrupt)
+    if (!cpu->WaitForInterrupt) // schedule if we aren't waiting for an irq
         Sched_AddEvent(cpu->Sys, cpu->Timestamp, Evt_ARM9);
 }
 #undef cpu

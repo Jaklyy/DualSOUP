@@ -147,6 +147,7 @@ void A946_InstrRead(ARM946ES* a946, timestamp now)
     {
         if (!a946->ARM.CodeSeq) a946->IStreamWaitCur = -1; // nonsequential; wait for cache streaming to complete fully.
         else a946->IStreamWaitCur = ((addr/4)&0x7)+1; // sequential; wait for addr to be fetched.
+
         return A9ES_InstrBusy(a946);
     }
 
@@ -208,7 +209,7 @@ void A946_DataRead(ARM946ES* a946, timestamp now)
     A9ES_PostMem* pass = &a946->PostMem;
 
     u32 addr = pass->Addr;
-    u8 numfetch = pass->NumFetch - pass->NumFetchCompleted;
+    u8 numfetch = pass->SubmMax - pass->SubmCur;
 
     const A946_MPUPerms perms = A946_RegionLookup(a946, addr, pass->Priv);
 
@@ -231,7 +232,7 @@ void A946_DataRead(ARM946ES* a946, timestamp now)
         LogPrint(LOG_ARM9|LOG_EXCEP, "DATA ABORT: READ FROM: %08"PRIX32"\n", addr);
         pass->DataAbort = true;
         AddMem(1);
-        pass->NumFetchCompleted += numfetch;
+        pass->SubmCur += numfetch;
         A9ES_DataDone(a946);
         return;
     }
@@ -262,20 +263,22 @@ void A946_DataRead(ARM946ES* a946, timestamp now)
             a946->ITCMMultiplexData = true;
         }
         for (u8 i = 0; i < numfetch; i++)
-            pass->RData[i+pass->NumFetchCompleted] = MemoryRead(32, a946->ITCM, addr + (i*4), A946_ITCMSize);
+            pass->RData[i+pass->SubmCur] = MemoryRead(32, a946->ITCM, addr + (i*4), A946_ITCMSize);
 
         AddMem(1);
-        pass->NumFetchCompleted += numfetch;
+        pass->SubmCur += numfetch;
         A9ES_DataDone(a946);
+        return;
     }
     else if (A946_DTCMTryRead(a946, addr))
     {
         for (u8 i = 0; i < numfetch; i++)
-            pass->RData[i+pass->NumFetchCompleted] = MemoryRead(32, a946->DTCM, addr + (i*4), A946_DTCMSize);
+            pass->RData[i+pass->SubmCur] = MemoryRead(32, a946->DTCM, addr + (i*4), A946_DTCMSize);
 
         AddMem(1);
-        pass->NumFetchCompleted += numfetch;
+        pass->SubmCur += numfetch;
         A9ES_DataDone(a946);
+        return;
     }
     else if (perms.DCache)
     {
@@ -289,14 +292,15 @@ void A946_DataRead(ARM946ES* a946, timestamp now)
                 numfetch = (end & ~(A946_DCacheLineLength-1)) - start;
         }
 
-        return A946_DCacheReadLookup(a946, (AHB_HPROT){.Data=true, .Privileged=pass->Priv, .Bufferable=perms.Buffer, .Cacheable=perms.DCache}, addr, now, numfetch);
+        A946_DCacheReadLookup(a946, (AHB_HPROT){.Data=true, .Privileged=pass->Priv, .Bufferable=perms.Buffer, .Cacheable=perms.DCache}, addr, now, numfetch);
+        return;
     }
     else
     {
         const ARM_DataWidth size = pass->Size;
 
-        a946->PostMem.DataPtr = pass->NumFetchCompleted;
-        pass->NumFetchCompleted += numfetch;
+        pass->CompCur = pass->SubmCur;
+        pass->SubmCur += numfetch;
 
         a946->BIU.DataAddr = (addr >> size) << size;
         a946->BIU.DataType = (pass->DataCB == A9ESDataCB_SwapLoad) ? A946BIU_DataSwapLoad : A946BIU_DataLoad;
@@ -307,6 +311,7 @@ void A946_DataRead(ARM946ES* a946, timestamp now)
         a946->BIU.DataWidth = size;
         A9ES_DataBusy(a946);
         A946_BIUSched(a946, now);
+        return;
     }
 }
 
@@ -315,7 +320,7 @@ void A946_DataWrite(ARM946ES* a946, timestamp now)
     A9ES_PostMem* pass = &a946->PostMem;
 
     u32 addr = pass->Addr;
-    u8 numfetch = pass->NumFetch - pass->NumFetchCompleted;
+    u8 numfetch = pass->SubmMax - pass->SubmCur;
     const ARM_DataWidth size = pass->Size;
 
     // ldm/stm (and presumably ldrd/strd too) are forcibly split when crossing 4 KiB boundaries to perform a permission look up again.
@@ -338,7 +343,7 @@ void A946_DataWrite(ARM946ES* a946, timestamp now)
         LogPrint(LOG_ARM9|LOG_EXCEP, "DATA ABORT: WRITE TO: %08X\n", addr);
         AddMem(1);
         pass->DataAbort = true;
-        pass->NumFetchCompleted += numfetch;
+        pass->SubmCur += numfetch;
         A9ES_DataDone(a946);
         return;
     }
@@ -372,58 +377,73 @@ void A946_DataWrite(ARM946ES* a946, timestamp now)
             a946->ITCMMultiplexData = true;
         }
         for (u8 i = 0; i < numfetch; i++)
-            MemoryWrite(32, a946->ITCM, addr+(i*4), A946_ITCMSize, pass->WrData[i+pass->NumFetchCompleted], wrlanes);
+            MemoryWrite(32, a946->ITCM, addr+(i*4), A946_ITCMSize, pass->WrData[i+pass->SubmCur], wrlanes);
 
         AddMem(1);
         a946->DataWrStall = a946->DataTS+DSClk67(1);
-        pass->NumFetchCompleted += numfetch;
+        pass->SubmCur += numfetch;
         A9ES_DataDone(a946);
         return;
     }
     else if (A946_DTCMTryWrite(a946, addr))
     {
         for (u8 i = 0; i < numfetch; i++)
-            MemoryWrite(32, a946->DTCM, addr+(i*4), A946_DTCMSize, pass->WrData[i+pass->NumFetchCompleted], wrlanes);
+            MemoryWrite(32, a946->DTCM, addr+(i*4), A946_DTCMSize, pass->WrData[i+pass->SubmCur], wrlanes);
 
         AddMem(1);
         a946->DataWrStall = a946->DataTS+DSClk67(1);
-        pass->NumFetchCompleted += numfetch;
+        pass->SubmCur += numfetch;
         A9ES_DataDone(a946);
         return;
     }
     else if (perms.DCache)
     {
-        // dcache needs to be split further into cache lines
-        // CHECKME: this implementation results in it doing a ns access on the start of the next cache line, this might matter.
-        if (numfetch > 1) // CHECKME: is this check faster?
+        if (!a946->BIU.DCacheSkip)
         {
-            u32 start = addr / 4;
-            u32 end = start + (numfetch-1);
-            if ((end & A946_DCacheLineLength) != (start & A946_DCacheLineLength))
-                numfetch = (end & ~(A946_DCacheLineLength-1)) - start;
+            // dcache needs to be split further into cache lines
+            // CHECKME: this implementation results in it doing a ns access on the start of the next cache line, this might matter.
+            if (numfetch > 1) // CHECKME: is this check faster?
+            {
+                u32 start = addr / 4;
+                u32 end = start + (numfetch-1);
+                if ((end & A946_DCacheLineLength) != (start & A946_DCacheLineLength))
+                    numfetch = (end & ~(A946_DCacheLineLength-1)) - start;
+            }
+
+            if (A946_DCacheWriteLookup(a946, addr, now, wrlanes, numfetch, perms.Buffer))
+                return;
         }
-        if (A946_DCacheWriteLookup(a946, addr, now, wrlanes, numfetch, perms.Buffer))
-            return;
+        else a946->BIU.DCacheSkip = false;
     }
 
-    // swp doesn't use the write buffer.
+    // NOTE: swp doesn't use the write buffer.
+    // CHECKME: does that still apply after writing to write-through cache?
     if ((perms.DCache || perms.Buffer) && (pass->DataCB != A9ESDataCB_SwapStore))
     {
         // checkme: how does write buffer work with big endian toggle?
         // how does it work if you toggle it before it begins writing?
         // how does it work if you toggle it while its writing?
-        A946_WriteBufferFill(a946, now, &pass->WrData[pass->NumFetchCompleted], addr, size, numfetch, A946WBCause_DataDir);
-        pass->NumFetchCompleted += numfetch;
-        A9ES_DataBusy(a946);
+        if (a946->BIU.WBuffer.BufferInsMax == 0)
+        {
+            A946_WriteBufferFill(a946, now, &pass->WrData[pass->SubmCur], addr, size, numfetch, A946WBCause_DataDir);
+            pass->SubmCur += numfetch;
+            A9ES_DataBusy(a946);
+        }
+        else
+        {
+            a946->BIU.WBWait = true;
+            A9ES_DataBusy(a946);
+        }
+        return;
     }
     else
     {
         const ARM_DataWidth size = pass->Size;
 
         for (u8 i = 0; i < numfetch; i++)
-            a946->BIU.WriteVal[i] = pass->WrData[i+pass->NumFetchCompleted];
+            a946->BIU.WriteVal[i] = pass->WrData[i+pass->SubmCur];
 
-        pass->NumFetchCompleted += numfetch;
+        pass->SubmCur += numfetch;
 
         a946->BIU.DataAddr = (addr >> size) << size;
         a946->BIU.DataType = (pass->DataCB == A9ESDataCB_SwapStore) ? A946BIU_DataSwapStore : A946BIU_DataStore;
@@ -434,6 +454,7 @@ void A946_DataWrite(ARM946ES* a946, timestamp now)
         a946->BIU.DataWidth = size;
         A9ES_DataBusy(a946);
         A946_BIUSched(a946, now);
+        return;
     }
 }
 

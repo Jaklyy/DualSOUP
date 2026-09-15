@@ -332,14 +332,15 @@ typedef struct
     };
     u32 Addr;
     u32 BaseRestore;
-    u16 RListOrig;
-    u16 RListRem;
+    union {
+        u8 Rd;
+        struct {
+            u16 RListOrig;
+            u16 RListRem;
+        };
+    };
     u8 RBase;
-    u8 DataPtr; // used by biu and cache streaming
-    u8 LDMPtr; // idk
     bool DataAbort;
-    u8 NumFetch;
-    u8 NumFetchCompleted;
     ARM_DataWidth Size;
     union {
         bool Special; // ldm/stm
@@ -348,7 +349,14 @@ typedef struct
     bool Priv;
     u8 ILDelay;
     bool ILRetry;
+    bool Write;
     A9ES_DataCB DataCB;
+
+    // progress trackers
+    u8 SubmMax; // total accesses to submit
+    u8 SubmCur; // submissions
+    u8 CompCur; // completed accesses
+    u8 InstrPtr; // access completions processed by instr
 } A9ES_PostMem;
 
 typedef struct
@@ -379,7 +387,7 @@ typedef enum : u8
     A946WBCause_DataDir,
     A946WBCause_CP15,
     A946WBCause_DCache,
-    A946WBCause_DCacheFixies,
+    A946WBCause_DCacheCanFin,
 } A946_WBCause;
 
 typedef struct
@@ -402,6 +410,8 @@ typedef struct
     // hacky bullshit zone: TODO: make this not stupid
     A946_WBCause WBFill;
     bool InstrFlushWriteBuffer;
+    bool WBWait;
+    bool DCacheSkip;
 
     bool BIUBusy;
     A946_BIUCurrentBurst BurstCur;
