@@ -310,7 +310,6 @@ void DMA_CompPost(Console* sys, timestamp now, const u8 id, u32 rdata, const boo
         channel->RData &= 0xFFFF;
         channel->RData |= channel->RData << 16;
     }
-    if (!a9) printf("dma read: %08X\n", channel->RData);
 }
 
 void DMA_Step(Console* sys, const u8 id, timestamp now, const bool a9)

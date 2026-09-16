@@ -71,11 +71,14 @@ void A946_WriteBufferFill(ARM946ES* a946, const timestamp now, u32* datastart, c
 
     if (wbuf->BufferInsMax != 0) // fark
     {
+        // idk if this path ever gets triggered in practice?
+        if (wbuf->FillDelay) CrashSpectacularly("WBUFF FILL OVERRUN\n");
         wbuf->DelayData = datastart;
         wbuf->DelayAddr = addr;
         wbuf->DelaySize = size;
         wbuf->DelayCount = words;
         wbuf->DelayCause = cause;
+        wbuf->FillDelay = true;
         return;
     }
 
@@ -120,7 +123,10 @@ void A946_WriteBufferFillRun(ARM946ES* a946, const timestamp now)
         wbuf->FillCause = A946WBCause_Inactive;
 
         if (wbuf->FillDelay)
+        {
+            wbuf->FillDelay = false;
             A946_WriteBufferFill(a946, now, wbuf->DelayData, wbuf->DelayAddr, wbuf->DelaySize, wbuf->DelayCount, wbuf->DelayCause);
+        }
         else
         {
             wbuf->BufferInsCur = 0;

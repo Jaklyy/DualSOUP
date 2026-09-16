@@ -171,8 +171,12 @@ bool A946_DCacheWriteLookup(ARM946ES* a946, const u32 addr, const timestamp now,
 
         if (bufferable) // write-back cache: does not write back to memory until line is cleaned
         {
-            if (addr & 0x10) a946->DTagRAM[index|set].DirtyHi = true;
-            else             a946->DTagRAM[index|set].DirtyLo = true;
+            u32 start = addr;
+            u32 end = addr + (4*(numfetch-1));
+            if (start & 0x10) a946->DTagRAM[index|set].DirtyHi = true;
+            else              a946->DTagRAM[index|set].DirtyLo = true;
+            if (end   & 0x10) a946->DTagRAM[index|set].DirtyHi = true;
+            else              a946->DTagRAM[index|set].DirtyLo = true;
 
             a946->DataTS = now + DSClk67(numfetch);
             a946->DataWrStall = a946->DataTS+DSClk67(1);

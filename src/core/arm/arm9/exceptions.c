@@ -1,6 +1,7 @@
 #include "arm.h"
 #include "core/utils.h"
 
+#include "core/console.h"
 
 
 
@@ -146,6 +147,9 @@ void A9ES_RaiseUDF(ARM* cpu, const ARM_Instr instr_data, const s32 execycles)
     else
         LogPrint(LOG_ARM9 | LOG_EXCEP, "ARM9 - UNDEF INSTR: %08X @ %08X\n", instr_data.Raw, cpu->PC);
 
+    Console_DebugLog(cpu->Sys);
+    CrashSpectacularly("const char *str, ...");
+
     // addr of next instr
     u32 oldpc = cpu->PC - (cpu->CPSR.Thumb ? 2 : 4);
     ARM_PSR oldcpsr = cpu->CPSR;
@@ -211,6 +215,9 @@ void A9ES_PrefetchAbort(ARM* cpu, const ARM_Instr instr_data)
             LogPrint(LOG_ARM9 | LOG_EXCEP, "ARM9 - BKPT: %08X @ %08X\n", instr_data.Raw, cpu->PC);
     }
 
+    Console_DebugLog(cpu->Sys);
+    CrashSpectacularly("const char *str, ...");
+
     // lr is aborted instruction + 4
     u32 oldpc = cpu->PC - ((cpu->CPSR.Thumb) ? 0 : 4);
     ARM_PSR oldcpsr = cpu->CPSR;
@@ -236,6 +243,9 @@ void A9ES_DataAbort(ARM946ES* a9es)
     ARM* cpu = &a9es->ARM;
 
     LogPrint(LOG_ARM9 | LOG_EXCEP, "%s9 - DATA ABT @ %08X\n", (cpu->CPSR.Thumb ? "THUMB" : "ARM"), cpu->PC);
+
+    Console_DebugLog(cpu->Sys);
+    CrashSpectacularly("const char *str, ...");
 
     // lr is aborted instr + 8
     // CHECKME: what happens if the abort was from an exception return LDM? (SPSR was restored?)

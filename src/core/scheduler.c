@@ -47,12 +47,11 @@ void Sched_Log(Console* sys)
 #if 1
     Sched* sched = &sys->Sched;
     Scheduler_Events evt = sched->Next[Evt_Null];
-    timestamp now = sched->Times[evt];
     printf("sched dump:\n");
     do
     {
         evt = sched->Next[evt];
-        printf("%02i: %016lX\n", evt, now);
+        printf("%02i: %016lX\n", evt, sched->Times[evt]);
     } while(sched->Next[evt] != Evt_Invalid);
 #endif
 }
