@@ -270,6 +270,7 @@ void DMA_CompPost(Console* sys, timestamp now, const u8 id, u32 rdata, const boo
     channel->CompCur++;
     if (channel->CompCur == channel->CompMax) // burst complete
     {
+        MainRAM_TestKillBurst(sys, now, a9);
         bool dmaqueued = false;
         if (channel->Latched_NumWords <= 0)
         {

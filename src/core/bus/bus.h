@@ -306,6 +306,7 @@ void Bus_Run(Console* sys, const timestamp now, const bool a9);
 void Bus_TransferPost(Console* sys, const timestamp fin, const bool a9);
 void Bus_TransferPostSetup(Console* sys, const u32 rdata, const bool isread, const timestamp end, const bool noprev, const BusCallbacks cb, const u8 man, const bool a9);
 
+void MainRAM_TestKillBurst(Console* sys, timestamp now, bool a9);
 void MainRAM_Run(Console* sys, const timestamp now);
 void IO9_Handler(Console* sys, timestamp now);
 void IO7_Handler(Console* sys, timestamp now);

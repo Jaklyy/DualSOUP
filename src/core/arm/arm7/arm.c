@@ -19,6 +19,7 @@ void A7TDMI_Log(ARM7TDMI* a7tdmi)
     }
     LogPrint(LOG_ARM7, "CPSR: %08"PRIX32" ", cpu->CPSR.Raw);
     LogPrint(LOG_ARM7, "INSTR: %08"PRIX32"\n", cpu->Instr[0].Raw);
+    LogPrint(LOG_ARM9, "NoClk: %i IME: %i IE:%08"PRIX64"\n", a7tdmi->ARM.Sys->A7ClkDisable, a7tdmi->ARM.Sys->IME7, a7tdmi->ARM.Sys->IE7);
 }
 
 void A7TDMI_Init(ARM7TDMI* a7tdmi, Console* sys)

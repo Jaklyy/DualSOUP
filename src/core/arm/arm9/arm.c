@@ -22,6 +22,7 @@ void A946_Log(ARM946ES* a946)
     LogPrint(LOG_ARM9, "INSTR: %08"PRIX32"\n", cpu->Instr[0].Raw);
     LogPrint(LOG_ARM9, "DTCM: Start:%08"PRIX32" End:%08"PRIX32"\n", (u32)(a946->CP15.DTCMWriteBase << a946->CP15.DTCMShift), (u32)((a946->CP15.DTCMWriteBase+1) << a946->CP15.DTCMShift)-1);
     LogPrint(LOG_ARM9, "ITCM: End:%08"PRIX32"\n", ((u32)1 << a946->CP15.ITCMShift)-1);
+    LogPrint(LOG_ARM9, "WFI: %i IME: %i IE:%08"PRIX32"\n", a946->ARM.WaitForInterrupt, a946->ARM.Sys->IME9, a946->ARM.Sys->IE9);
 }
 
 void A946_Init(ARM946ES* a946, Console* sys)

@@ -73,8 +73,8 @@ bool MainRAM_KillBurst(Console* sys, timestamp now)
     if (mr->BurstActive)
     {
         // stop main ram burst if still running
-        if (mr->PrevWrite) now += DSClk33(5); // stores: 5 cycle cooldown period
-        else               now += DSClk33(3); // loads:  3 cycle cooldown period
+        if (mr->PrevWrite) now += DSClk33(4); // stores: 5 cycle cooldown period
+        else               now += DSClk33(2); // loads:  3 cycle cooldown period
 
         if (mr->IsReq9 || mr->IsReq7) Sched_AddEvent(sys, now, Evt_MainRAM);
         mr->BurstLimitTs = timestamp_max;
@@ -84,6 +84,14 @@ bool MainRAM_KillBurst(Console* sys, timestamp now)
         return true;
     }
     return false; // burst was already terminated
+}
+
+void MainRAM_TestKillBurst(Console* sys, timestamp now, bool a9)
+{
+    BusMainRAM* mr = &sys->BusMR;
+    if (a9) { if (mr->CurReq != MainRAM_A9) return; }
+    else    { if (mr->CurReq != MainRAM_A7) return; }
+    MainRAM_KillBurst(sys, now+DSClk33(1));
 }
 
 void MainRAM_Run(Console* sys, timestamp now)
@@ -178,7 +186,7 @@ void MainRAM_Run(Console* sys, timestamp now)
             if (!nseq) CrashSpectacularly("SEQUENTIAL 8 BIT MAIN RAM WRITE????????????\n");
             MaskedWrite(sys->MainRAM.b16[mr->AddrLatch], wrdata, 0xFF << ((addr & 1)*8));
             now += DSClk33(4); // takes longer for some reason
-            MainRAM_KillBurst(sys, now + DSClk33(3)); // CHECKME: it takes less time for it to cooldown, so i assume it does it early somehow??
+            //MainRAM_KillBurst(sys, now - DSClk33(1)); // CHECKME: it takes less time for it to cooldown, so i assume it does it early somehow??
         }
         else
         {
@@ -213,12 +221,21 @@ void MainRAM_Run(Console* sys, timestamp now)
 
     mr->LastFetchTs = now;
 
-    if (grant == MainRAM_A9) mr->IsReq9 = false;
-    else                     mr->IsReq7 = false;
     Bus_TransferPostSetup(sys, rdata, !write, now, false, r->CB, r->Man, (grant == MainRAM_A9));
 
-    if (size != HSIZE_8) // this special casing is stupid but i dont wanna fix it
-        Sched_AddEvent(sys, mr->BurstLimitTs, Evt_MainRAM); // schedule an event to enforce burst limit
+    if (grant == MainRAM_A9)
+    {
+        mr->IsReq9 = false;
+        if (mr->CurMan <= MAN9_NDMA3) return Sched_AddEvent(sys, mr->BurstLimitTs, Evt_MainRAM);
+    }
+    else
+    {
+        mr->IsReq7 = false;
+        if (mr->CurMan <= MAN7_NDMA3) return Sched_AddEvent(sys, mr->BurstLimitTs, Evt_MainRAM);
+    }
+
+    //if (size != HSIZE_8) // this special casing is stupid but i dont wanna fix it
+        Sched_AddEvent(sys, now+DSClk33(1), Evt_MainRAM); // schedule an event to enforce burst limit
 }
 #undef MRStepAddr
 
