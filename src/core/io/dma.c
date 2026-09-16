@@ -328,12 +328,6 @@ void DMA_Step(Console* sys, const u8 id, timestamp now, const bool a9)
 
             channel->Latched_NumWords = channel->NumWords;
             channel->Latched_Width32 = channel->CR.Width32; // idk
-
-            channel->BurstMax = channel->Latched_NumWords;
-            channel->ReadCur = 0;
-            channel->WriteCur = 0;
-            channel->CompCur = 0;
-            channel->CompMax = channel->BurstMax*2;
         }
 
         if (channel->WriteCur == channel->BurstMax) // burst complete
@@ -348,6 +342,8 @@ void DMA_Step(Console* sys, const u8 id, timestamp now, const bool a9)
 
             channel->ReadCur = 0;
             channel->WriteCur = 0;
+            channel->CompCur = 0;
+            channel->CompMax = channel->BurstMax*2;
         }
         channel->NeedsInit = false;
     }

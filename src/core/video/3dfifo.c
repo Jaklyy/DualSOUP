@@ -171,7 +171,6 @@ bool GXFIFO_Unpack(Console* sys, timestamp now)
             }
             else
             {
-
                 if (gx->PackWait) Sched_AddEvent(sys, now, Evt_IO9);
                 gx->BufferFree = true;
                 return true;
