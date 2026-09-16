@@ -359,6 +359,15 @@ typedef struct
     u8 InstrPtr; // access completions processed by instr
 } A9ES_PostMem;
 
+typedef enum : u8
+{
+    A946WBCause_Inactive,
+    A946WBCause_DataDir,
+    A946WBCause_CP15,
+    A946WBCause_DCache,
+    A946WBCause_DCacheCanFin,
+} A946_WBCause;
+
 typedef struct
 {
     alignas(u64)
@@ -379,16 +388,19 @@ typedef struct
     A946_WBufferFIFO FIFOWaitList[17];
     u8 BufferInsCur;
     u8 BufferInsMax;
-} A946_WBuffer; // Write Buffer
 
-typedef enum : u8
-{
-    A946WBCause_Inactive,
-    A946WBCause_DataDir,
-    A946WBCause_CP15,
-    A946WBCause_DCache,
-    A946WBCause_DCacheCanFin,
-} A946_WBCause;
+    // hacky bullshit zone: TODO: make this not stupid
+    A946_WBCause FillCause;
+    bool InstrFlush;
+
+    bool FillDelay;
+
+    u32* DelayData;
+    u32 DelayAddr;
+    ARM_DataWidth DelaySize;
+    u8 DelayCount;
+    A946_WBCause DelayCause;
+} A946_WBuffer; // Write Buffer
 
 typedef struct
 {
@@ -406,12 +418,6 @@ typedef struct
     u8 InstrMax;
     u8 InstrSubmCur;
     u8 InstrCompCur;
-
-    // hacky bullshit zone: TODO: make this not stupid
-    A946_WBCause WBFill;
-    bool InstrFlushWriteBuffer;
-    bool WBWait;
-    bool DCacheSkip;
 
     bool BIUBusy;
     A946_BIUCurrentBurst BurstCur;

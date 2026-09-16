@@ -159,7 +159,7 @@ typedef struct
 {
     //timestamp Time; // when request occurs
     u32 Addr; // address bus value
-    u32 WrVal; // write bus value
+    u32 WrData; // write bus value
     //u32 writemask; // lanes to update write bus with (unk if anything doesn't update all lanes?)
     bool Write; // is operation a write
     bool Lock; // part of locked sequence

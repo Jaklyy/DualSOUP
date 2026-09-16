@@ -81,6 +81,8 @@ struct DMA_Channel
     s32 BurstMax;
     s32 WriteCur;
     s32 ReadCur;
+    s32 CompCur;
+    s32 CompMax;
     s8 SrcInc;
     s8 DstInc;
     u8 CurrentMode;
@@ -106,5 +108,5 @@ void StartSoundCapDMA(Console* sys, u8 id, timestamp start);
 void StartSoundDMA(Console* sys, u8 id, timestamp start, bool matters);
 timestamp DMA_GetNext(Console* sys, const timestamp now, const bool sync, const bool a9);
 
-void DMA_CompPost(Console* sys, const u8 id, u32 rdata, const bool load, const bool a9);
+void DMA_CompPost(Console* sys, timestamp now, const u8 id, u32 rdata, const bool load, const bool a9);
 void DMA_Step(Console* sys, const u8 id, timestamp now, const bool a9);

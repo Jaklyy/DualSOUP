@@ -1,4 +1,5 @@
 #include "arm.h"
+#include "core/utils.h"
 
 
 
@@ -144,7 +145,6 @@ void A9ES_RaiseUDF(ARM* cpu, const ARM_Instr instr_data, const s32 execycles)
         LogPrint(LOG_ARM9 | LOG_EXCEP, "THUMB9 - UNDEF INSTR: %04X @ %08X\n", instr_data.Raw, cpu->PC);
     else
         LogPrint(LOG_ARM9 | LOG_EXCEP, "ARM9 - UNDEF INSTR: %08X @ %08X\n", instr_data.Raw, cpu->PC);
-
 
     // addr of next instr
     u32 oldpc = cpu->PC - (cpu->CPSR.Thumb ? 2 : 4);

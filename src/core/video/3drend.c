@@ -1184,7 +1184,7 @@ int SDLCALL SWRen_MainLoop(void* ptr)
     {
         SWRen_Wait(sys, sys->SWRenTimestamp);
         SWRen_RasterizerFrame(sys);
-        sys->SWRenTimestamp += Scanline_Cycles*263;
+        sys->SWRenTimestamp += DSClk33(Scanline_Cycles*263);
     }
     return 0;
 }

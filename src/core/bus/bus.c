@@ -130,9 +130,9 @@ void MainRAM_Run(Console* sys, timestamp now)
     bool write = r->Write;
     bool lock = r->Lock;
     u8 man = r->Man;
-    u32 wrval; if (write) wrval = r->WrVal;
+    u32 wrdata; if (write) wrdata = r->WrData;
 
-    if (write && (addr & 2)) wrval >>= 16;
+    if (write && (addr & 2)) wrdata >>= 16;
 
     u8 prevman = mr->CurMan;
 
@@ -176,17 +176,17 @@ void MainRAM_Run(Console* sys, timestamp now)
         if (size == HSIZE_8)
         {
             if (!nseq) CrashSpectacularly("SEQUENTIAL 8 BIT MAIN RAM WRITE????????????\n");
-            MaskedWrite(sys->MainRAM.b16[mr->AddrLatch], wrval, 0xFF << ((addr & 1)*8));
+            MaskedWrite(sys->MainRAM.b16[mr->AddrLatch], wrdata, 0xFF << ((addr & 1)*8));
             now += DSClk33(4); // takes longer for some reason
             MainRAM_KillBurst(sys, now + DSClk33(3)); // CHECKME: it takes less time for it to cooldown, so i assume it does it early somehow??
         }
         else
         {
-            sys->MainRAM.b16[mr->AddrLatch] = wrval & 0xFFFF;
+            sys->MainRAM.b16[mr->AddrLatch] = wrdata & 0xFFFF;
             if (size == HSIZE_32)
             {
                 MRStepAddr
-                sys->MainRAM.b16[mr->AddrLatch] = wrval >> 16;
+                sys->MainRAM.b16[mr->AddrLatch] = wrdata >> 16;
                 now += DSClk33(4);
             }
             else now += DSClk33(3);
@@ -270,7 +270,7 @@ void Bus_VRAM(Console* sys, u32* rdata, timestamp* now, u32 addr, const BusReq* 
         size_t size = vram[id].size;
         if (req->Write)
         {
-            u32 wrdata = req->WrVal;
+            u32 wrdata = req->WrData;
             // TODO: PPU contention
             *now += DSClk33(1);
             PPU_Sync(sys, *now); // TODO: DO THIS BETTER
@@ -329,7 +329,7 @@ void Bus_VRAM(Console* sys, u32* rdata, timestamp* now, u32 addr, const BusReq* 
         // TODO: This is probably all wrong and going to need a rewrite to fix a lot of shit. especially writes and ppu interaction
         if (req->Write)
         {
-            const u32 wrdata = req->WrVal;
+            const u32 wrdata = req->WrData;
             *now += DSClk33((req->Size < HSIZE_32) ? 1 : 2); // dumb
             PPU_Sync(sys, *now); // no!
             while (list2)
@@ -565,17 +565,9 @@ void Bus9_Write(Console* sys, BusReq* req, timestamp now)
 
     // disgusting hack
     if (req->Man9 >= MAN9_DMA0 && req->Man9 <= MAN9_NDMA3)
-    {
-        req->WrVal = sys->DMA9.Channels[req->Man9-MAN9_DMA0].RData;
-        if (!sys->DMA9.Channels[req->Man9-MAN9_DMA0].Latched_Width32)
-        {
-            req->WrVal = ROR32(req->WrVal, ((req->Addr & 2) * 8));
-            req->WrVal &= 0xFFFF;
-            req->WrVal |= req->WrVal << 16;
-        }
-    }
+        req->WrData = sys->DMA9.Channels[req->Man9-MAN9_DMA0].RData;
 
-    const u32 wrdata = req->WrVal;
+    const u32 wrdata = req->WrData;
     // checkme: are there any devices on the bus with weird handling of addr misalignment or weird access widths?
 
     if (size > HSIZE_32) CrashSpectacularly("ARM9 BUS READ TOO WIDE: %"PRIu32"\n", width);
@@ -777,17 +769,9 @@ void Bus7_Write(Console* sys, BusReq* req, timestamp now)
 
     // disgusting hack
     if (req->Man7 >= MAN7_SNDDMA0 && req->Man7 <= MAN7_NDMA3)
-    {
-        req->WrVal = sys->DMA7.Channels[req->Man7-MAN7_SCAPDMA0].RData;
-        if (!sys->DMA7.Channels[req->Man7-MAN7_SCAPDMA0].Latched_Width32)
-        {
-            req->WrVal = ROR32(req->WrVal, ((req->Addr & 2) * 8));
-            req->WrVal &= 0xFFFF;
-            req->WrVal |= req->WrVal << 16;
-        }
-    }
+        req->WrData = sys->DMA7.Channels[req->Man7-MAN7_SCAPDMA0].RData;
 
-    const u32 wrdata = req->WrVal;
+    const u32 wrdata = req->WrData;
     // checkme: are there any devices on the bus with weird handling of addr misalignment or weird access widths?
 
     switch((addr>>20) & 0xFF8) // check most signficant 9 bits
@@ -1012,10 +996,10 @@ void Bus_TransferPost(Console* sys, const timestamp fin, const bool a9)
     {
     case CB_None: break;
     case CB9_BIU9InstrNormal ... CB9_BIU9Idle: A946_BIUCompPost(&sys->A946ES, fin, rdata, cmpcb); break;
-    case CB9_DMA: DMA_CompPost(sys, bus->PostMan-MAN9_DMA0, rdata, bus->PostLoad, true); break;
+    case CB9_DMA: DMA_CompPost(sys, fin, bus->PostMan-MAN9_DMA0, rdata, bus->PostLoad, true); break;
     case CB7_7TDMIData: A7TDMI_DataPost(&sys->A7TDMI, fin, rdata); break;
     case CB7_7TDMIInstr: A7TDMI_InstrReadPost(&sys->A7TDMI, fin, rdata); break;
-    case CB7_DMA: DMA_CompPost(sys, bus->PostMan-MAN7_SCAPDMA0, rdata, bus->PostLoad, false); break;
+    case CB7_DMA: DMA_CompPost(sys, fin, bus->PostMan-MAN7_SCAPDMA0, rdata, bus->PostLoad, false); break;
     }
 }
 

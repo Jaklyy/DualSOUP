@@ -203,6 +203,16 @@ void A946_InstrRead_Post(ARM946ES* a946, const u32 addr)
     a946->ITCMMultiplexData = false;
 }
 
+#define BurstSplit(boundary) \
+if (numfetch > 1) /* CHECKME: is this check faster?*/ \
+{ \
+    u32 start = addr / 4; \
+    u32 end = start + (numfetch-1); \
+    constexpr u32 boundmask = (u32)(~((boundary/4)-1)); \
+    if ((end & boundmask) != (start & boundmask)) \
+        numfetch = ((start & boundmask) + (boundary/4)) - start; \
+}
+
 #define AddMem(x) (a946->DataTS = now + (DSClk67(1) * numfetch))
 void A946_DataRead(ARM946ES* a946, timestamp now)
 {
@@ -211,20 +221,13 @@ void A946_DataRead(ARM946ES* a946, timestamp now)
     u32 addr = pass->Addr;
     u8 numfetch = pass->SubmMax - pass->SubmCur;
 
-    const A946_MPUPerms perms = A946_RegionLookup(a946, addr, pass->Priv);
-
     // ldm/stm (and presumably ldrd/strd too) are forcibly split when crossing 4 KiB boundaries to perform a permission look up again.
     // CHECKME: Does it impact abort/itcm/dtcm/cache timings?
     // NOTE: this is probably done somewhere in the arm946e-s memory interface?
     // it doesn't seem to be implemented in the arm9e-s core spec
-    if (numfetch > 1) // CHECKME: is this check faster?
-    {
-        u32 start = addr / 4;
-        u32 end = start + (numfetch-1);
-        constexpr u32 mpu = (KiB(4)/4);
-        if ((end & mpu) != (start & mpu))
-            numfetch = (end & ~(mpu-1)) - start;
-    }
+    BurstSplit(KiB(4))
+
+    const A946_MPUPerms perms = A946_RegionLookup(a946, addr, pass->Priv);
 
     // data abort
     if (!perms.Read)
@@ -284,13 +287,7 @@ void A946_DataRead(ARM946ES* a946, timestamp now)
     {
         // dcache needs to be split further into cache lines
         // CHECKME: this implementation results in it doing a ns access on the start of the next cache line, this might matter.
-        if (numfetch > 1) // CHECKME: is this check faster?
-        {
-            u32 start = addr / 4;
-            u32 end = start + (numfetch-1);
-            if ((end & A946_DCacheLineLength) != (start & A946_DCacheLineLength))
-                numfetch = (end & ~(A946_DCacheLineLength-1)) - start;
-        }
+        BurstSplit(A946_DCacheLineBytes)
 
         A946_DCacheReadLookup(a946, (AHB_HPROT){.Data=true, .Privileged=pass->Priv, .Bufferable=perms.Buffer, .Cacheable=perms.DCache}, addr, now, numfetch);
         return;
@@ -327,14 +324,8 @@ void A946_DataWrite(ARM946ES* a946, timestamp now)
     // CHECKME: Does it impact abort/itcm/dtcm/cache timings?
     // NOTE: this is probably done somewhere in the arm946e-s memory interface?
     // it doesn't seem to be implemented in the arm9e-s core spec
-    if (numfetch > 1) // CHECKME: is this check faster?
-    {
-        u32 start = addr / 4;
-        u32 end = start + (numfetch-1);
-        constexpr u32 mpu = (KiB(4)/4);
-        if ((end & mpu) != (start & mpu))
-            numfetch = (end & ~(mpu-1)) - start;
-    }
+    BurstSplit(KiB(4))
+
     const A946_MPUPerms perms = A946_RegionLookup(a946, addr, pass->Priv);
 
     // data abort
@@ -398,22 +389,12 @@ void A946_DataWrite(ARM946ES* a946, timestamp now)
     }
     else if (perms.DCache)
     {
-        if (!a946->BIU.DCacheSkip)
-        {
-            // dcache needs to be split further into cache lines
-            // CHECKME: this implementation results in it doing a ns access on the start of the next cache line, this might matter.
-            if (numfetch > 1) // CHECKME: is this check faster?
-            {
-                u32 start = addr / 4;
-                u32 end = start + (numfetch-1);
-                if ((end & A946_DCacheLineLength) != (start & A946_DCacheLineLength))
-                    numfetch = (end & ~(A946_DCacheLineLength-1)) - start;
-            }
+        // dcache needs to be split further into cache lines
+        // CHECKME: this implementation results in it doing a ns access on the start of the next cache line, this might matter.
+        BurstSplit(A946_DCacheLineBytes)
 
-            if (A946_DCacheWriteLookup(a946, addr, now, wrlanes, numfetch, perms.Buffer))
-                return;
-        }
-        else a946->BIU.DCacheSkip = false;
+        if (A946_DCacheWriteLookup(a946, addr, now, wrlanes, numfetch, perms.Buffer))
+            return;
     }
 
     // NOTE: swp doesn't use the write buffer.
@@ -423,17 +404,9 @@ void A946_DataWrite(ARM946ES* a946, timestamp now)
         // checkme: how does write buffer work with big endian toggle?
         // how does it work if you toggle it before it begins writing?
         // how does it work if you toggle it while its writing?
-        if (a946->BIU.WBuffer.BufferInsMax == 0)
-        {
-            A946_WriteBufferFill(a946, now, &pass->WrData[pass->SubmCur], addr, size, numfetch, A946WBCause_DataDir);
-            pass->SubmCur += numfetch;
-            A9ES_DataBusy(a946);
-        }
-        else
-        {
-            a946->BIU.WBWait = true;
-            A9ES_DataBusy(a946);
-        }
+        A946_WriteBufferFill(a946, now, &pass->WrData[pass->SubmCur], addr, size, numfetch, A946WBCause_DataDir);
+        pass->SubmCur += numfetch;
+        A9ES_DataBusy(a946);
         return;
     }
     else

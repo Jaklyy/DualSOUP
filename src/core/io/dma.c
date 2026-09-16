@@ -8,7 +8,6 @@
 
 void DMA_Init(Console* sys)
 {
-
     for (u32 i = DMA7_SoundBase; i < DMA7_SoundMax; i++)
     {
         sys->DMA7.Channels[i].CurrentMode = DMAStart_Audio;
@@ -109,6 +108,7 @@ void DMA7_Enable(Console* sys, struct DMA_Channel* channel, timestamp now)
 {
     channel->Latched_SrcAddr = channel->SrcAddr;
     channel->Latched_DstAddr = channel->DstAddr;
+    channel->Latched_NumWords = 0;
 
     switch(channel->CR.StartMode7)
     {
@@ -175,6 +175,7 @@ void DMA9_Enable(Console* sys, struct DMA_Channel* channel, timestamp now)
 {
     channel->Latched_SrcAddr = channel->SrcAddr;
     channel->Latched_DstAddr = channel->DstAddr;
+    channel->Latched_NumWords = 0;
 
     switch(channel->CR.StartMode9)
     {
@@ -262,30 +263,22 @@ void DMA9_Enable(Console* sys, struct DMA_Channel* channel, timestamp now)
     }
 }
 
-void DMA_CompPost(Console* sys, const u8 id, u32 rdata, const bool load, const bool a9)
+void DMA_CompPost(Console* sys, timestamp now, const u8 id, u32 rdata, const bool load, const bool a9)
 {
     struct DMA_Channel* channel = (a9 ? &sys->DMA9.Channels[id] : &sys->DMA7.Channels[id]);
 
-    if (!load) return;
-    channel->RData = rdata;
-}
-
-void DMA_Step(Console* sys, const u8 id, timestamp now, const bool a9)
-{
-    struct DMA_Channel* channel = (a9 ? &sys->DMA9.Channels[id] : &sys->DMA7.Channels[id]);
-
-    if (!channel->NeedsInit && (channel->WriteCur == channel->BurstMax)) // burst complete
+    channel->CompCur++;
+    if (channel->CompCur == channel->CompMax) // burst complete
     {
         bool dmaqueued = false;
         if (channel->Latched_NumWords <= 0)
         {
             if (channel->CR.Repeat && (channel->CurrentMode != DMAStart_Immediate /*checkme?*/))
             {
-                if (channel->CurrentMode == DMAStart_NTRCard)
-                {
-                    if ((sys->ExtMemCR_Shared.NDSCardA7Access == !a9) && sys->GCROMCR[a9].DataReady)
-                        dmaqueued = true;
-                }
+                if ((channel->CurrentMode == DMAStart_NTRCard)
+                && (sys->ExtMemCR_Shared.NDSCardA7Access == !a9)
+                && sys->GCROMCR[a9].DataReady)
+                    dmaqueued = true;
             }
             else channel->CR.Enable = false;
 
@@ -301,9 +294,30 @@ void DMA_Step(Console* sys, const u8 id, timestamp now, const bool a9)
         if ((channel->CurrentMode == DMAStart_Audio) && (sys->SoundChannels[id-DMA7_SoundBase].FIFO_Bytes <= 16) && channel->CR.Enable)
             dmaqueued = true;
 
-        if (dmaqueued) channel->NeedsInit = true;
-        else return;
+        if (dmaqueued)
+        {
+            channel->NeedsInit = true;
+            Sched_AddEvent(sys, now, Evt_SCapDMA70 + id);
+        }
     }
+
+    if (!load) return;
+
+    channel->RData = rdata;
+    if (!channel->Latched_Width32)
+    {
+        channel->RData = ROR32(channel->RData , (((channel->Latched_SrcAddr - channel->SrcInc) & 2) * 8));
+        channel->RData &= 0xFFFF;
+        channel->RData |= channel->RData << 16;
+    }
+    if (!a9) printf("dma read: %08X\n", channel->RData);
+}
+
+void DMA_Step(Console* sys, const u8 id, timestamp now, const bool a9)
+{
+    struct DMA_Channel* channel = (a9 ? &sys->DMA9.Channels[id] : &sys->DMA7.Channels[id]);
+
+    if (!channel->NeedsInit && (channel->WriteCur == channel->BurstMax)) return;
 
     if (channel->NeedsInit)
     {
@@ -319,6 +333,8 @@ void DMA_Step(Console* sys, const u8 id, timestamp now, const bool a9)
             channel->BurstMax = channel->Latched_NumWords;
             channel->ReadCur = 0;
             channel->WriteCur = 0;
+            channel->CompCur = 0;
+            channel->CompMax = channel->BurstMax*2;
         }
 
         if (channel->WriteCur == channel->BurstMax) // burst complete
@@ -338,12 +354,12 @@ void DMA_Step(Console* sys, const u8 id, timestamp now, const bool a9)
     }
 
     BusReq req;
-    #if 0
+#if 0
     if (channel->DoBusy)
     {
         req = (BusReq){
             .Addr = channel->Latched_DstAddr, // guess
-            .WrVal = 0,
+            .WrData = 0,
             .Write = false,
             .Lock = false,
             .Man9 = MAN9_DMA0+id,
@@ -360,14 +376,14 @@ void DMA_Step(Console* sys, const u8 id, timestamp now, const bool a9)
         channel->DoBusy = false;
     }
     else 
-    #endif
+#endif
     if (channel->ReadCur == channel->WriteCur) // read
     {
         if (channel->CurrentMode == DMAStart_AudioCap)
         {
             req = (BusReq){
                 .Addr = channel->Latched_DstAddr, // idk
-                .WrVal = 0,
+                .WrData = 0,
                 .Write = false,
                 .Lock = false,
                 .Man = MAN7_SCAPDMA0 + id,
@@ -389,7 +405,7 @@ void DMA_Step(Console* sys, const u8 id, timestamp now, const bool a9)
         {
             req = (BusReq){
                 .Addr = channel->Latched_SrcAddr,
-                .WrVal = 0,
+                .WrData = 0,
                 .Write = false,
                 .Lock = false,
                 .Man = (a9 ? MAN9_DMA0 : MAN7_SCAPDMA0) + id,
@@ -415,7 +431,7 @@ void DMA_Step(Console* sys, const u8 id, timestamp now, const bool a9)
         {
             req = (BusReq){
                 .Addr = channel->Latched_SrcAddr, // idk
-                .WrVal = 0,
+                .WrData = 0,
                 .Write = false,
                 .Lock = false,
                 .Man = MAN7_SCAPDMA0 + id,
@@ -435,7 +451,7 @@ void DMA_Step(Console* sys, const u8 id, timestamp now, const bool a9)
         {
             req = (BusReq){
                 .Addr = channel->Latched_DstAddr,
-                .WrVal = (channel->CurrentMode == DMAStart_AudioCap) ? channel->RData : 0, // this is gonna get hacky as fuck
+                .WrData = (channel->CurrentMode == DMAStart_AudioCap) ? channel->RData : 0, // this is gonna get hacky as fuck
                 .Write = true,
                 .Lock = false,
                 .Man = (a9 ? MAN9_DMA0 : MAN7_SCAPDMA0) + id,

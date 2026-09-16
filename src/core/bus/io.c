@@ -263,7 +263,7 @@ void IO9_Read(Console* sys, const u32 addr, const timestamp now, const BusCallba
     case 0x00'00'04: rdata = (sys->VCount << 16) | sys->DispStatRO9.Raw | sys->DispStatRW9.Raw; break;
     case 0x00'00'60: rdata = sys->GX3D.RasterCR.Raw; break;
 
-    case 0x00'00'B0 ... 0x00'00'E0-1: rdata = DMA_IOReadHandler(sys->DMA9.Channels, addr); break;
+    case 0x00'00'B0 ... 0x00'00'DC: rdata = DMA_IOReadHandler(sys->DMA9.Channels, addr); break;
     case 0x00'00'E0 ... 0x00'00'EC: rdata = sys->DMAFill[(addr & 0xF) / 4]; break;
     case 0x00'01'00 ... 0x00'01'0C: rdata = Timer_IOReadHandler(sys, now, addr, true); break;
     case 0x00'01'30: rdata = Input_PollMain(sys->Pad); break;
@@ -366,7 +366,7 @@ void IO9_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
     case 0x00'00'60: MaskedWrite(sys->GX3D.RasterCR.Raw, wrdata, mask & 0x4FFF); break;
 
     // DMA
-    case 0x00'00'B0 ... 0x00'00'E0-1: DMA9_IOWriteHandler(sys, now, sys->DMA9.Channels, addr, wrdata, mask); break;
+    case 0x00'00'B0 ... 0x00'00'DC: DMA9_IOWriteHandler(sys, now, sys->DMA9.Channels, addr, wrdata, mask); break;
     case 0x00'00'E0 ... 0x00'00'EC: MaskedWrite(sys->DMAFill[(addr & 0xF) / 4], wrdata, mask); break;
 
     case 0x00'01'00 ... 0x00'01'0C: Timer_IOWriteHandler(sys, now, addr, wrdata, mask, true); break;
@@ -566,16 +566,19 @@ void IO7_Read(Console* sys, const u32 addr, const timestamp now, const BusCallba
 
     case 0x00'03'04: rdata = sys->PowerCR7.Raw; break;
 
-
+    case 0x00'04'00 ... 0x00'05'00:
+    case 0x00'05'08 ... 0x00'05'1C: rdata = 0; break;
+#if 0
     case 0x00'04'00 ... 0x00'04'FC: rdata = SoundChannel_IORead(sys, addr); break;
 
     case 0x00'05'00: rdata = sys->SoundCR.Raw; break;
+#endif
     case 0x00'05'04: rdata = sys->SoundBias; break;
-
+#if 0
     case 0x00'05'08: rdata = sys->SoundCaptures[0].CR.Raw | (sys->SoundCaptures[1].CR.Raw << 8); break;
     case 0x00'05'10: rdata = sys->SoundCaptures[0].DstAddr; break;
     case 0x00'05'18: rdata = sys->SoundCaptures[1].DstAddr; break;
-
+#endif
     case 0x10'00'00: rdata = IPC_FIFORead(sys, now, false); break;
 
     case 0x10'00'10: rdata = GameCard_ROMDataRead(sys, now, false); break;
@@ -603,7 +606,7 @@ void IO7_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
         }
         break;
 
-    case 0x00'00'B0 ... 0x00'00'E0-1: DMA7_IOWriteHandler(sys, now, &sys->DMA7.Channels[DMA7_NormalBase], addr, wrdata, mask); break;
+    case 0x00'00'B0 ... 0x00'00'DC: DMA7_IOWriteHandler(sys, now, &sys->DMA7.Channels[DMA7_NormalBase], addr, wrdata, mask); break;
 
     case 0x00'01'00 ... 0x00'01'0C: Timer_IOWriteHandler(sys, now, addr, wrdata, mask, false); break;
 
@@ -696,9 +699,10 @@ void IO7_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
             MaskedWrite(sys->Bios7Prot, wrdata, mask & 0x3FFC); // mask is a guess; in practice the only value ever written is "0x1205"
         break;
 
+    case 0x00'04'00 ... 0x00'05'00:
+    case 0x00'05'08 ... 0x00'05'1C: break;
 #if 0
     case 0x00'04'00 ... 0x00'04'FC: SoundChannel_IOWrite(sys, addr, wrdata, mask, now); break;
-#endif
     case 0x00'05'00:
         if (!sys->PowerCR7.AudioPower) break; // read only
         //u16 old = sys->SoundCR.Raw;
@@ -717,6 +721,7 @@ void IO7_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
             }
         }*/
         break;
+#endif
 
     case 0x00'05'04:
         if (!sys->PowerCR7.AudioPower) break; // read only
@@ -764,7 +769,7 @@ void IO9_Handler(Console* sys, timestamp now)
     BusReq* req = &sys->Bus9.PipeFIFO[sys->Bus9.FIFODrainPtr];
     const u32 addr = req->Addr;
 
-    if (req->Write) IO9_Write(sys, addr, now, req->WrVal, MakeWriteMask(addr, req->Size), req->CB, req->Man);
+    if (req->Write) IO9_Write(sys, addr, now, req->WrData, MakeWriteMask(addr, req->Size), req->CB, req->Man);
     else            IO9_Read (sys, addr, now, req->CB, req->Man);
 }
 
@@ -773,6 +778,6 @@ void IO7_Handler(Console* sys, timestamp now)
     BusReq* req = &sys->Bus7.PipeFIFO[sys->Bus7.FIFODrainPtr];
     const u32 addr = req->Addr;
 
-    if (req->Write) IO7_Write(sys, addr, now, req->WrVal, MakeWriteMask(addr, req->Size), req->CB, req->Man);
+    if (req->Write) IO7_Write(sys, addr, now, req->WrData, MakeWriteMask(addr, req->Size), req->CB, req->Man);
     else            IO7_Read (sys, addr, now, req->CB, req->Man);
 }

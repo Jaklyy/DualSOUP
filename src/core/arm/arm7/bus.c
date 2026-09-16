@@ -21,7 +21,7 @@ void A7TDMI_DataRead(ARM7TDMI* a7tdmi, const timestamp now)
 
     BusReq req = {
         .Addr = addr,
-        .WrVal = 0,
+        .WrData = 0,
         .Write = false,
         .Lock = (pass->DataCB == A7TDMIDataCB_SwapLoad),
         .Man7 = MAN7_ARM7,
@@ -49,7 +49,7 @@ void A7TDMI_InstrRead(ARM7TDMI* a7tdmi, const timestamp now)
 
     BusReq req = {
         .Addr = addr,
-        .WrVal = 0,
+        .WrData = 0,
         .Write = false,
         .Lock = false,
         .Man7 = MAN7_ARM7,
@@ -76,7 +76,7 @@ void A7TDMI_DataWrite(ARM7TDMI* a7tdmi, const timestamp now)
 
     BusReq req = {
         .Addr = addr,
-        .WrVal = pass->WrData[pass->NumFetchCompleted],
+        .WrData = pass->WrData[pass->NumFetchCompleted],
         .Write = true,
         .Lock = false, // bus takes this as a signal its the last locked fetch //(pass->DataCB == A7TDMIDataCB_SwapStore),
         .Man7 = MAN7_ARM7,

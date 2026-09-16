@@ -29,7 +29,7 @@ void A946_WriteBufferRun(ARM946ES* a946, const timestamp now)
     default:
         BusReq req = {
             .Addr = wbuf->Addr,
-            .WrVal = entry.Data,
+            .WrData = entry.Data,
             .Write = true,
             .Lock = false, // swp doesn't use write buffer
             .Man9 = MAN9_ARM9,
@@ -49,9 +49,9 @@ void A946_WriteBufferRun(ARM946ES* a946, const timestamp now)
         // TODO: improve hacky burst logic; hw doesn't split bursts if it can help it.
         if (wbuf->Empty || (wbuf->FIFOEntry[wbuf->FIFODrainPtr].Flags == A946WB_Addr))
         {
-            if (wbuf->Empty && a946->BIU.InstrFlushWriteBuffer)
+            if (wbuf->Empty && a946->BIU.WBuffer.InstrFlush)
             {
-                a946->BIU.InstrFlushWriteBuffer = false;
+                a946->BIU.WBuffer.InstrFlush = false;
                 A9ES_InstrGo(a946, false);
                 Sched_AddEvent(a946->ARM.Sys, now, Evt_ARM9);
             }
@@ -68,8 +68,18 @@ void A946_WriteBufferRun(ARM946ES* a946, const timestamp now)
 void A946_WriteBufferFill(ARM946ES* a946, const timestamp now, u32* datastart, const u32 addr, const ARM_DataWidth size, const u8 words, const A946_WBCause cause)
 {
     A946_WBuffer* wbuf = &a946->BIU.WBuffer;
-    a946->BIU.WBFill = cause;
 
+    if (wbuf->BufferInsMax != 0) // fark
+    {
+        wbuf->DelayData = datastart;
+        wbuf->DelayAddr = addr;
+        wbuf->DelaySize = size;
+        wbuf->DelayCount = words;
+        wbuf->DelayCause = cause;
+        return;
+    }
+
+    wbuf->FillCause = cause;
     wbuf->FIFOWaitList[0] = (A946_WBufferFIFO){(addr >> size) << size, A946WB_Addr};
     for (u8 i = 0; i < words; i++)
         wbuf->FIFOWaitList[i+1] = (A946_WBufferFIFO){datastart[i], (A946_WBufferFlags)size};
@@ -92,32 +102,30 @@ void A946_WriteBufferFillRun(ARM946ES* a946, const timestamp now)
 
     if (wbuf->BufferInsCur == wbuf->BufferInsMax) // done filling
     {
-        if (a946->BIU.WBFill == A946WBCause_DCache)
+        if (wbuf->FillCause == A946WBCause_DCache)
         {
         }
-        else if (a946->BIU.WBFill == A946WBCause_DataDir)
+        else if (wbuf->FillCause == A946WBCause_DataDir)
         {
             a946->DataTS = now;
             a946->DataWrStall = now + DSClk67(1);
             A9ES_DataDone(a946);
             Sched_AddEvent(a946->ARM.Sys, now, Evt_ARM9);
         }
-        else if (a946->BIU.WBFill == A946WBCause_CP15)
+        else if (wbuf->FillCause == A946WBCause_CP15)
         {
             A9ES_InstrGo(a946, false);
             Sched_AddEvent(a946->ARM.Sys, now, Evt_ARM9);
         }
-        a946->BIU.WBFill = A946WBCause_Inactive;
+        wbuf->FillCause = A946WBCause_Inactive;
 
-        if (a946->BIU.WBWait)
+        if (wbuf->FillDelay)
+            A946_WriteBufferFill(a946, now, wbuf->DelayData, wbuf->DelayAddr, wbuf->DelaySize, wbuf->DelayCount, wbuf->DelayCause);
+        else
         {
-            a946->BIU.WBWait = false;
-            a946->BIU.DCacheSkip = true;
-            A9ES_DataGo(a946, &a946->PostMem);
+            wbuf->BufferInsCur = 0;
+            wbuf->BufferInsMax = 0;
         }
-
-        wbuf->BufferInsCur = 0;
-        wbuf->BufferInsMax = 0;
     }
     else if (!wbuf->Full) // reschedule this
         Sched_AddEvent(a946->ARM.Sys, now+DSClk67(1), Evt_ARM9WBFill);
@@ -148,7 +156,7 @@ DSINT_BIURET A946_BIUData(ARM946ES* a946, timestamp now)
 
         req = (BusReq){
             .Addr = biu->DataAddr,
-            .WrVal = 0,
+            .WrData = 0,
             .Write = false,
             .Lock = false,
             .Man9 = MAN9_ARM9,
@@ -172,7 +180,7 @@ DSINT_BIURET A946_BIUData(ARM946ES* a946, timestamp now)
 
         req = (BusReq){
             .Addr = biu->DataAddr,
-            .WrVal = biu->WriteVal[biu->DataSubmCur],
+            .WrData = biu->WriteVal[biu->DataSubmCur],
             .Write = true,
             .Lock = false,
             .Man9 = MAN9_ARM9,
@@ -196,7 +204,7 @@ DSINT_BIURET A946_BIUData(ARM946ES* a946, timestamp now)
 
         req = (BusReq){
             .Addr = biu->DataAddr,
-            .WrVal = 0,
+            .WrData = 0,
             .Write = false,
             .Lock = true,
             .Man9 = MAN9_ARM9,
@@ -212,7 +220,7 @@ DSINT_BIURET A946_BIUData(ARM946ES* a946, timestamp now)
         // CHECKME: this really shouldn't drain writebuffer
         req = (BusReq){
             .Addr = biu->DataAddr,
-            .WrVal = biu->WriteVal[biu->DataSubmCur],
+            .WrData = biu->WriteVal[biu->DataSubmCur],
             .Write = true,
             .Lock = true,
             .Man9 = MAN9_ARM9,
@@ -237,7 +245,7 @@ DSINT_BIURET A946_BIUData(ARM946ES* a946, timestamp now)
         // but i (foolishly?) assume the nds doesn't use them
         req = (BusReq){
             .Addr = 0,
-            .WrVal = 0,
+            .WrData = 0,
             .Write = false,
             .Lock = false, // signal that the next access unlocks the bus (NOTE: hw implements this access as locked, and the next will signal to unlock the bus; this is significantly simpler to handle though)
             .Man9 = MAN9_ARM9,
@@ -291,7 +299,7 @@ void A946_BIURun(ARM946ES* a946, timestamp now)
         biu->BurstCur = A946BIUBurst_Instr;
         BusReq req = {
             .Addr = biu->InstrAddr,
-            .WrVal = 0,
+            .WrData = 0,
             .Write = false,
             .Lock = false,
             .Man9 = MAN9_ARM9,

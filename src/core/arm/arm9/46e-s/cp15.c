@@ -300,7 +300,7 @@ void A946_CP15Write(ARM946ES* ARM9, const u16 cmd, const u32 val)
     case ARM_CoprocReg(0, 7, 10, 4): // drain write buffer
         if (!ARM9->BIU.WBuffer.Empty)
         {
-            ARM9->BIU.InstrFlushWriteBuffer = true;
+            ARM9->BIU.WBuffer.InstrFlush = true;
             A9ES_InstrBusy(ARM9);
         }
         break;

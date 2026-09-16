@@ -26,12 +26,31 @@ void Console_DebugLog(Console* sys)
 #elif 1
     A946_Log(&sys->A946ES);
     A946_DumpMPU(&sys->A946ES);
+    A7TDMI_Log(&sys->A7TDMI);
     Sched_Log(sys);
 //#elif 0
     printf("Dumping\n");
+
     FILE* file = fopen("logfcram.bin", "wb");
     fwrite(sys->MainRAM.b8, sizeof(sys->MainRAM), 1, file);
     fclose(file);
+
+    file = fopen("logdtcm.bin", "wb");
+    fwrite(sys->A946ES.DTCM.b8, sizeof(sys->A946ES.DTCM.b8), 1, file);
+    fclose(file);
+
+    file = fopen("logitcm.bin", "wb");
+    fwrite(sys->A946ES.ITCM.b8, sizeof(sys->A946ES.ITCM.b8), 1, file);
+    fclose(file);
+
+    file = fopen("logswram.bin", "wb");
+    fwrite(sys->SharedWRAM.b8, sizeof(sys->SharedWRAM.b8), 1, file);
+    fclose(file);
+
+    file = fopen("log7wram.bin", "wb");
+    fwrite(sys->ARM7WRAM.b8, sizeof(sys->ARM7WRAM.b8), 1, file);
+    fclose(file);
+
     printf("Done.\n");
 #elif 0
     for (int i = 0; i < 16; i++)

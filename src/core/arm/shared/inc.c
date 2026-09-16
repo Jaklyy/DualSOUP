@@ -1,8 +1,5 @@
 #include <stdbit.h>
 #include <stdckdint.h>
-#include "core/scheduler.h"
-#include "core/arm/arm7/arm.h"
-#include "core/arm/arm9/arm.h"
 #include "core/utils.h"
 #include "arm.h"
 #include "inc.h"
