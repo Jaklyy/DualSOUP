@@ -393,7 +393,7 @@ void IO9_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
 
     case 0x00'02'08: MaskedWrite(sys->IME9, wrdata, mask & 1); IRQ9_Update(sys, now); break;
     case 0x00'02'10: MaskedWrite(sys->IE9, wrdata, mask & 0x003F3F7F); IRQ9_Update(sys, now); break;
-    case 0x00'02'14: IF9_Clear(sys, wrdata, now); break;
+    case 0x00'02'14: IF9_Clear(sys, wrdata & mask, now); break;
 
     // VRAM/WRAM Control
     // TODO: Does disabling a VRAM Bank actually decay bits? Test that pls.
@@ -651,7 +651,7 @@ void IO7_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
 
     case 0x00'02'08: MaskedWrite(sys->IME7, wrdata, mask & 1); IRQ7_Update(sys, now); break;
     case 0x00'02'10: MaskedWrite(sys->IE7, wrdata, mask & 0x01DF3FFF); IRQ7_Update(sys, now); break;
-    case 0x00'02'14: IF7_Clear(sys, wrdata, now); break;
+    case 0x00'02'14: IF7_Clear(sys, wrdata & mask, now); break;
 
     case 0x00'03'00:
         if (sys->Bios7ProtCur < 0x4000) // can only be written from bios. for... some reason?

@@ -175,7 +175,7 @@ void MainRAM_Run(Console* sys, timestamp now)
     //mr->AddrLatch = (addr & mr->AddrSubmMask) >> 1;
 
     if (mr->AddrLatch != (addr & mr->AddrSubmMask) >> 1)
-        LogPrint(LOG_FCRAM, "MR ADDR MISMATCH: %08X %08X %i %i %i %i %i\n", mr->AddrLatch << 1, addr, grant == MainRAM_A9, r->Man, r->CB, prevman, r->Type);
+        LogPrint(LOG_FCRAM, "MR ADDR MISMATCH: %08X %08X %i %i %i %i %i\n", mr->AddrLatch << 1, addr, grant == MainRAM_A9, mr->CurMan, prevman, r->CB, r->Type);
 
     u32 rdata;
     if (write)

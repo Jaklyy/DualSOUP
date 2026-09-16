@@ -309,6 +309,8 @@ Console* Console_Init(Console* sys, CoreCfg* cfg, void* pad, void* aud)
 
     RTC_Init(&sys->RTC);
 
+    WiFi_Init(sys);
+
     // TODO: are these always running?
     Sched_AddEvent(sys, 0, Evt_MixAudio);
     Sched_AddEvent(sys, 0, Evt_Scanline);

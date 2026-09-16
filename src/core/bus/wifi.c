@@ -36,29 +36,29 @@ void WiFi_Read(Console* sys, u32* rdata, timestamp* now, const u32 addr, const A
     // io junk
     switch (addr & 0xFFC)
     {
-        case 0x034:
-            *rdata = sys->WiFiPowerUS.Raw << 16;
-            break;
-        case 0x03C:
-            *rdata = 0x0200;
-            break;
-        case 0x158:
-            *rdata = 0;
-            break;
-        case 0x15C:
-            *rdata = (sys->WiFiPowerUS.PowerOff ? 0 : sys->WiFiBBRdBuf);
-            break;
-        case 0x180:
-            *rdata = 0;
-            break;
-        case 0x214:
-            *rdata = 9;
-            break;
-        default:
-            *rdata = MemoryRead(32, sys->WifiIO, addr, 0x1000); // TODO
-            LogPrint(LOG_UNIMP|LOG_WIFI, "NTR Bus7: Unimplemented READ%"PRIu32": WiFi IO %08"PRIX32" %08"PRIX32"\n", (8<<size), addr, *rdata);
-            break;
+    case 0x034:
+        *rdata = sys->WiFiPowerUS.Raw << 16;
+        break;
+    case 0x03C:
+        *rdata = 0x0200;
+        break;
+    case 0x158:
+        *rdata = 0;
+        break;
+    case 0x15C:
+        *rdata = (sys->WiFiPowerUS.PowerOff ? 0 : sys->WiFiBBRdBuf);
+        break;
+    case 0x180:
+        *rdata = 0;
+        break;
+    case 0x214:
+        *rdata = 9;
+        break;
+    default:
+        *rdata = MemoryRead(32, sys->WifiIO, addr, 0x1000); // TODO
+        break;
     }
+    LogPrint(LOG_UNIMP|LOG_WIFI, "NTR Bus7: Unimplemented READ%"PRIu32": WiFi IO %08"PRIX32" %08"PRIX32"\n", (8<<size), addr, *rdata);
 }
 
 void WiFi_Write(Console* sys, timestamp* now, const u32 addr, const u32 wrdata, const u32 mask)
@@ -93,56 +93,56 @@ void WiFi_Write(Console* sys, timestamp* now, const u32 addr, const u32 wrdata, 
     // io junk
     switch (addr & 0xFFC)
     {
-        case 0x034:
-            if (mask & 0xFFFF0000)
-            {
-                MaskedWrite(sys->WiFiPowerUS.Raw, wrdata >> 16, 0x3);
-            }
-            break;
+    case 0x034:
+        if (mask & 0xFFFF0000)
+        {
+            MaskedWrite(sys->WiFiPowerUS.Raw, wrdata >> 16, 0x3);
+        }
+        break;
 
-        case 0x158:
-            if (sys->WiFiPowerUS.PowerOff) break; // checkme
-            if (mask & 0x0000FFFF)
+    case 0x158:
+        if (sys->WiFiPowerUS.PowerOff) break; // checkme
+        if (mask & 0x0000FFFF)
+        {
+            u8 idx = (wrdata & 0xFF);
+            if (((wrdata >> 12) & 0xF) == 0x5)
             {
-                u8 idx = (wrdata & 0xFF);
-                if ((wrdata >> 12) == 5)
+                bool pass;
+                if (idx < 0x40)
                 {
-                    bool pass;
-                    if (idx < 0x40)
-                    {
-                        pass = (!(((u64)1 << idx) & 0x0000'0080'07C7'E001));
-                    } 
-                    else if (idx < 0x69)
-                    {
-                        pass = (!(((u64)1 << (idx-0x40)) & 0xFFFF'FE52'E000'2000));
-                    }
-                    else pass = false;
-
-                    if (pass)
-                    {
-                        sys->WiFiBB[idx] = sys->WiFiBBWrBuf;
-                    }
-                    else
-                    {
-                        LogPrint(LOG_WIFI, "Invalid ");
-                    }
-                    LogPrint(LOG_WIFI, "BB WR: %02"PRIX8" %02"PRIX8"\n", idx, sys->WiFiBBWrBuf);
-                }
-                else if ((wrdata >> 12) == 6)
+                    pass = (!(((u64)1 << idx) & 0x0000'0080'07C7'E001));
+                } 
+                else if (idx < 0x69)
                 {
-                    sys->WiFiBBRdBuf = sys->WiFiBB[idx];
-                    LogPrint(LOG_WIFI, "BB RD: %02"PRIX8" %02"PRIX8"\n", idx, sys->WiFiBBRdBuf);
+                    pass = (!(((u64)1 << (idx-0x40)) & 0xFFFF'FE52'E000'2000));
                 }
-            }
-            if (mask & 0xFFFF0000)
-            {
-                sys->WiFiBBWrBuf = (wrdata >> 16) & 0xFF;
-            }
-            break;
+                else pass = false;
 
-        default:
-            LogPrint(LOG_UNIMP|LOG_WIFI, "NTR Bus7: Unimplemented WRITE%"PRIu32": WiFi IO %08"PRIX32" %08"PRIX32"\n", width, addr, wrdata);
-            MemoryWrite(32, sys->WifiIO, addr, 0x1000, wrdata, mask); // TODO
-            break;
+                if (pass)
+                {
+                    sys->WiFiBB[idx] = sys->WiFiBBWrBuf;
+                }
+                else
+                {
+                    LogPrint(LOG_WIFI, "Invalid ");
+                }
+                LogPrint(LOG_WIFI, "BB WR: %02"PRIX8" %02"PRIX8"\n", idx, sys->WiFiBBWrBuf);
+            }
+            else if (((wrdata >> 12) & 0xF) == 0x6)
+            {
+                sys->WiFiBBRdBuf = sys->WiFiBB[idx];
+                LogPrint(LOG_WIFI, "BB RD: %02"PRIX8" %02"PRIX8"\n", idx, sys->WiFiBBRdBuf);
+            }
+        }
+        if (mask & 0xFFFF0000)
+        {
+            sys->WiFiBBWrBuf = (wrdata >> 16) & 0xFF;
+        }
+        break;
+
+    default:
+        MemoryWrite(32, sys->WifiIO, addr, 0x1000, wrdata, mask); // TODO
+        break;
     }
+    LogPrint(LOG_UNIMP|LOG_WIFI, "NTR Bus7: Unimplemented WRITE%"PRIu32": WiFi IO %08"PRIX32" %08"PRIX32"\n", width, addr, wrdata);
 }
