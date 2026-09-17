@@ -373,6 +373,8 @@ void A946_BIUDataPost(ARM946ES* a946, u32 rdata, timestamp now)
 
 void A946_BIUCompPost(ARM946ES* a946, timestamp now, u32 rdata, const BusCallbacks cb)
 {
+    now -= DSClk33(1);
+    now += DSClk67(1);
     switch (cb)
     {
     case CB9_BIU9InstrNormal: A946_BIUInstrPost(a946, a946->ARM.PC, rdata, now); break;

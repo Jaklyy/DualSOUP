@@ -93,7 +93,7 @@ void ARM_MCR(ARM* cpu, const ARM_Instr instr_data)
     }
 }
 
-s8 A9ES_MCR_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len [[maybe_unused]], const s8 len_c)
+s8 A9ES_MCR_Interlocks(const ARM_Instr instr_data, const s8 reg, const s8 len [[maybe_unused]], const s8 len_c, bool* retry [[maybe_unused]])
 {
     const union ARM_MCR_MRC_Decode instr = {.Raw = instr_data.Raw};
     // ARM9E-S docs specify it as needing data during it's decode stage...?

@@ -276,8 +276,15 @@ void A946_Run(ARM946ES* a946, timestamp now)
             else
                 A946_DataWrite(a946, now);
 
-            if (a946->BusFlags.InstrLate && (a946->PostMem.SubmCur == a946->PostMem.SubmMax))
-                a946->BusFlags.InstrGo = true;
+            if (a946->PostMem.SubmCur == a946->PostMem.SubmMax)
+            {
+                if (a946->BusFlags.InstrLate)
+                {
+                    now = a946->DataTS - 1;
+                    a946->BusFlags.InstrGo = true;
+                }
+                else if (!a946->PostMem.Write) a946->ITCMMultiplexData = false;
+            }
         }
     }
 

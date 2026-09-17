@@ -85,7 +85,7 @@ void A946_InstrFetchITCM(ARM946ES* a946, timestamp now)
     const u32 addr = a946->ARM.PC;
 
     u32 fetch = MemoryRead(32, a946->ITCM, addr, A946_ITCMSize);
-    a946->InstrTS = now + DSClk67(1 + a946->ITCMMultiplexData);
+    a946->InstrTS = now + DSClk67(1) + DSClk67(a946->ITCMMultiplexData);
     a946->InstrLatch = fetch;
 }
 
@@ -364,14 +364,19 @@ void A946_DataWrite(ARM946ES* a946, timestamp now)
     {
         if (!a946->ITCMMultiplexData)
         {
-            now += DSClk67(1);
+            if (a946->BusFlags.InstrLate) now += DSClk67(1);
+            AddMem(1);
+            //a946->DataWrStall = a946->DataTS+DSClk67(1);
             a946->ITCMMultiplexData = true;
+        }
+        else
+        {
+            AddMem(1);
+            a946->DataWrStall = a946->DataTS+DSClk67(1);
         }
         for (u8 i = 0; i < numfetch; i++)
             MemoryWrite(32, a946->ITCM, addr+(i*4), A946_ITCMSize, pass->WrData[i+pass->SubmCur], wrlanes);
 
-        AddMem(1);
-        a946->DataWrStall = a946->DataTS+DSClk67(1);
         pass->SubmCur += numfetch;
         A9ES_DataDone(a946);
         return;

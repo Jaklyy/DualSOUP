@@ -67,12 +67,13 @@ typedef struct
     char* ManualKey1Path;
 } GameCardConfig;
 
-typedef struct
+typedef struct GameCard GameCard;
+struct GameCard
 {
     u8 Mode;
     bool Buffered;
     void* (*CmdHandler) (Console*, bool);
-    u32 (*ReadHandler) (void*);
+    u32 (*ReadHandler) (struct GameCard*);
     u32 Address;
     s32 NumWords;
     u32 RomSize;
@@ -83,7 +84,7 @@ typedef struct
     void (*SPI_Cleanup)(void*);
     void* SPI;
     u32 Key1[4168/sizeof(u32)];
-} GameCard;
+};
 
 
 bool GameCard_Init(GameCard* card, const char* romname, u8* bios7);

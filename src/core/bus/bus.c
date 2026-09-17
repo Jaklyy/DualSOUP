@@ -16,7 +16,7 @@
 
 void Bus9_Init(BusImpl* bus)
 {
-    bus->PipeCycles = DSClk33(3);
+    bus->PipeCycles = DSClk33(2);
     bus->HLockGeneric = MAN_NONE; // todo: put in a reset handler
 }
 
@@ -978,10 +978,10 @@ void Bus_TransferPost(Console* sys, const timestamp fin, const bool a9)
     // schedule next event
     timestamp new;
     // check if something is still in req list
-    if ((bus->HLockGeneric == MAN_NONE) ? (bus->ReqList & (1<<bus->HLockGeneric)) : reqlista7deny)
+    if ((bus->HLockGeneric != MAN_NONE) ? (bus->ReqList & (1<<bus->HLockGeneric)) : reqlista7deny)
     {
-        // step pipeline 1 cycle
-        new = fin + DSClk33(1);
+        // step pipeline
+        new = fin;
     }
     else if (!bus->FIFOEmpty)
     {
