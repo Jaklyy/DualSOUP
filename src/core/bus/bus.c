@@ -107,7 +107,7 @@ void MainRAM_Run(Console* sys, timestamp now)
         if (mr->Locked == MainRAM_A9)
         {
             if (mr->IsReq9) grant = MainRAM_A9;
-            else LogPrint(LOG_ARM9|LOG_FCRAM, "ARM9 Atomic access to fcram but no req?\n");
+            //else LogPrint(LOG_ARM9|LOG_FCRAM, "ARM9 Atomic access to fcram but no req?\n"); checkme: i dont think this is actually an issue?
         }
         else // arm7
         {
@@ -164,6 +164,7 @@ void MainRAM_Run(Console* sys, timestamp now)
 
 #define MRStepAddr mr->AddrLatch = (mr->AddrLatch + 1) & mr->AddrLatchMask;
 
+    u32 fauxaddr = (addr & mr->AddrSubmMask) >> 1;
     if (nseq)
     {
         mr->AddrLatch = (addr & mr->AddrSubmMask) >> 1;
@@ -174,9 +175,16 @@ void MainRAM_Run(Console* sys, timestamp now)
 
     //mr->AddrLatch = (addr & mr->AddrSubmMask) >> 1;
 
-    if (mr->AddrLatch != (addr & mr->AddrSubmMask) >> 1)
+    if (mr->AddrLatch != fauxaddr)
+    {
         LogPrint(LOG_FCRAM, "MR ADDR MISMATCH: %08X %08X %i %i %i %i %i\n", mr->AddrLatch << 1, addr, grant == MainRAM_A9, mr->CurMan, prevman, r->CB, r->Type);
-
+#ifdef MRTURBOLOG
+        for (size_t i = 0; i < countof(mr->REQLOG); i++)
+        {
+            printf("%02zu: %016lX%016lX\n", i, ((u64*)&mr->REQLOG[i])[1], ((u64*)&mr->REQLOG[i])[0]);
+        }
+#endif
+    }
     u32 rdata;
     if (write)
     {
@@ -220,6 +228,12 @@ void MainRAM_Run(Console* sys, timestamp now)
     }
 
     mr->LastFetchTs = now;
+
+#ifdef MRTURBOLOG
+    mr->REQLOG[mr->REQLOGPTR++] = ((grant == MainRAM_A9) ? (sys->Bus9.PipeFIFO[sys->Bus9.FIFODrainPtr])
+                                                         : (sys->Bus7.PipeFIFO[sys->Bus7.FIFODrainPtr]));\
+    mr->REQLOGPTR %= countof(mr->REQLOG);
+#endif
 
     Bus_TransferPostSetup(sys, rdata, !write, now, false, r->CB, r->Man, (grant == MainRAM_A9));
 
@@ -935,7 +949,7 @@ void Bus_TransferPost(Console* sys, const timestamp fin, const bool a9)
     // apply waitstate delays
     if (len > DSClk33(1))
     {
-        for (s32 i = 0; i < 4; i++)
+        for (size_t i = 0; i < countof(bus->PipeExitTs); i++)
             bus->PipeExitTs[i] += (len-DSClk33(1));
     }
 
@@ -991,11 +1005,11 @@ void Bus_TransferPost(Console* sys, const timestamp fin, const bool a9)
     else
     {
         // nothing to do; ahb go nini
+        bus->LockSched = false; // fetch completed; we can allow scheduling again
         goto noresched;
     }
     Sched_AddEvent(sys, new, a9 ? Evt_Bus9 : Evt_Bus7);
     noresched:
-    bus->LockSched = false; // fetch completed; we can allow scheduling again
 
     // ack callback
     switch(ackcb)

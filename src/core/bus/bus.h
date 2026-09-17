@@ -192,7 +192,7 @@ typedef struct
     u8 FIFODrainPtr;
     bool FIFOEmpty;
     bool LockSched;
-    timestamp PipeExitTs[4];
+    timestamp PipeExitTs[8];
     union
     {
         Bus9_Managers HLock9; // which manager is locking the bus
@@ -216,6 +216,8 @@ typedef enum : u8
     MainRAM_A7,
 } MainRAM_Buses;
 
+//#define MRTURBOLOG
+
 // MainRAM is a type of FCRAM.
 // gbatek lists the following chips as being used in retail DS models:
 // Fujitsu 82DBS02163C-70L
@@ -226,6 +228,10 @@ typedef enum : u8
 // seem to always perform a rotate right and bit masking operation on byte reads
 typedef struct
 {
+#ifdef MRTURBOLOG
+    BusReq REQLOG[32];
+    u8 REQLOGPTR;
+#endif
     timestamp BurstLimitTs;
     timestamp LastFetchTs;
     u32 AddrLatch; // fcram chip internally latched address
