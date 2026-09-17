@@ -28,6 +28,7 @@ void Console_DebugLog(Console* sys)
     A946_DumpMPU(&sys->A946ES);
     A7TDMI_Log(&sys->A7TDMI);
     Sched_Log(sys);
+    printf("fcram: %i %i\n", sys->BusMR.CurReq, sys->BusMR.Locked);
 //#elif 0
     printf("Dumping\n");
 

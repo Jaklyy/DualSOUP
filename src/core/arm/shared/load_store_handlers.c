@@ -112,7 +112,7 @@ void ARM_LDR(ARM* cpu, u32 addr, u8 rd, bool priv, u8 rn, u32 wbaddr, u32 basere
                 // the address used for the load is still +8 but the writeback value is +12 for some reason...?
                 // the loaded value is also not properly written back afterwards for some reason
                 //      my best guess is that the "Rd writeback cycle" gets overridden by the pipeline refill cycles
-                //      i'm currently speculating the cpu uses a form of microcode internally, and encoding a list of things to do one each cycle of an instruction
+                //      i'm currently speculating the cpu uses a form of microcode internally, and encoding a list of things to do on each cycle of an instruction
                 //      and the cycle that should writeback the load gets replaced by the base writeback's pipeline refill cycles due to an "oversight" in decoding (in quotes since this behavior is already out of spec)
                 //      so this part actually kinda makes sense i think
                 // this only applies to Rn and not Rm

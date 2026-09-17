@@ -338,6 +338,7 @@ void IO9_Read(Console* sys, const u32 addr, const timestamp now, const BusCallba
         rdata = 0;
         break;
     }
+
     Bus_TransferPostSetup(sys, rdata, true, now + DSClk33(1), false, cb, man, true);
 }
 
@@ -391,8 +392,14 @@ void IO9_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
         sys->ExtMemCR_Shared.Raw |= wrdata & mask & 0x6000; // Main RAM Bits; these are probably write once...?
         break;
 
-    case 0x00'02'08: MaskedWrite(sys->IME9, wrdata, mask & 1); IRQ9_Update(sys, now); break;
-    case 0x00'02'10: MaskedWrite(sys->IE9, wrdata, mask & 0x003F3F7F); IRQ9_Update(sys, now); break;
+    case 0x00'02'08:
+        MaskedWrite(sys->IME9, wrdata, mask & 1); 
+        Sched_AddEvent(sys, now+DSClk33(1), Evt_UpdateIRQ9);
+        break;
+    case 0x00'02'10:
+        MaskedWrite(sys->IE9, wrdata, mask & 0x003F3F7F); 
+        Sched_AddEvent(sys, now+DSClk33(1), Evt_UpdateIRQ9);
+        break;
     case 0x00'02'14: IF9_Clear(sys, wrdata & mask, now); break;
 
     // VRAM/WRAM Control
@@ -525,7 +532,7 @@ void IO9_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
         LogPrint(LOG_ARM9 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO9 WRITE: %08"PRIX32" %08"PRIX32" %08"PRIX32" @ %08"PRIX32"\n", addr, wrdata, mask, sys->A946ES.ARM.PC);
         break;
     }
-    now += DSClk33(1);
+
     AddBusContention(sys, now, Dev_IO9);
     Bus_TransferPostSetup(sys, 0, false, now, false, cb, man, true);
 }
@@ -588,6 +595,7 @@ void IO7_Read(Console* sys, const u32 addr, const timestamp now, const BusCallba
         rdata = 0;
         break;
     }
+
     Bus_TransferPostSetup(sys, rdata, true, now + DSClk33(1), false, cb, man, false);
 }
 
@@ -649,8 +657,14 @@ void IO7_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
 
     case 0x00'02'04: MaskedWrite(sys->ExtMemCR_7.Raw, wrdata, mask & 0x7F); break;
 
-    case 0x00'02'08: MaskedWrite(sys->IME7, wrdata, mask & 1); IRQ7_Update(sys, now); break;
-    case 0x00'02'10: MaskedWrite(sys->IE7, wrdata, mask & 0x01DF3FFF); IRQ7_Update(sys, now); break;
+    case 0x00'02'08:
+        MaskedWrite(sys->IME7, wrdata, mask & 1);
+        Sched_AddEvent(sys, now+DSClk33(1), Evt_UpdateIRQ7);
+        break;
+    case 0x00'02'10:
+        MaskedWrite(sys->IE7, wrdata, mask & 0x01DF3FFF);
+        Sched_AddEvent(sys, now+DSClk33(1), Evt_UpdateIRQ7);
+        break;
     case 0x00'02'14: IF7_Clear(sys, wrdata & mask, now); break;
 
     case 0x00'03'00:
@@ -759,14 +773,14 @@ void IO7_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
         LogPrint(LOG_ARM7 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO7 WRITE: %08"PRIX32" %08"PRIX32" %08"PRIX32" @ %08"PRIX32"\n", addr, wrdata, mask, sys->A7TDMI.ARM.PC);
         break;
     }
-    now += DSClk33(1);
+
     AddBusContention(sys, now, Dev_IO7);
     Bus_TransferPostSetup(sys, 0, false, now, false, cb, man, false);
 }
 
 void IO9_Handler(Console* sys, timestamp now)
 {
-    BusReq* req = &sys->Bus9.PipeFIFO[sys->Bus9.FIFODrainPtr];
+    BusReq* req = &sys->Bus9.PipeFIFO[sys->Bus9.ReqActivePtr];
     const u32 addr = req->Addr;
 
     if (req->Write) IO9_Write(sys, addr, now, req->WrData, MakeWriteMask(addr, req->Size), req->CB, req->Man);
@@ -775,7 +789,7 @@ void IO9_Handler(Console* sys, timestamp now)
 
 void IO7_Handler(Console* sys, timestamp now)
 {
-    BusReq* req = &sys->Bus7.PipeFIFO[sys->Bus7.FIFODrainPtr];
+    BusReq* req = &sys->Bus7.PipeFIFO[sys->Bus7.ReqActivePtr];
     const u32 addr = req->Addr;
 
     if (req->Write) IO7_Write(sys, addr, now, req->WrData, MakeWriteMask(addr, req->Size), req->CB, req->Man);

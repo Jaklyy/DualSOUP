@@ -157,6 +157,7 @@ typedef enum : u8
 
 typedef struct
 {
+    alignas(16)
     //timestamp Time; // when request occurs
     u32 Addr; // address bus value
     u32 WrData; // write bus value
@@ -192,7 +193,7 @@ typedef struct
     u8 FIFODrainPtr;
     bool FIFOEmpty;
     bool LockSched;
-    timestamp PipeExitTs[8];
+    timestamp PipeExitTs[4];
     union
     {
         Bus9_Managers HLock9; // which manager is locking the bus
@@ -200,6 +201,7 @@ typedef struct
         u8 HLockGeneric;
     };
     u8 PipeCycles;
+    u8 ReqActivePtr;
     u32 ReqList;
     // post data:
     u32 PostReadBus; // used by arm7 bus for open bus emulation
@@ -309,7 +311,6 @@ void Bus7_A7Wake(Console* sys, const timestamp now);
 // handlers
 void Bus_Req(Console* sys, const BusReq* req, const timestamp now, const bool a9);
 void Bus_Run(Console* sys, const timestamp now, const bool a9);
-void Bus_TransferPost(Console* sys, const timestamp fin, const bool a9);
 void Bus_TransferPostSetup(Console* sys, const u32 rdata, const bool isread, const timestamp end, const bool noprev, const BusCallbacks cb, const u8 man, const bool a9);
 
 void MainRAM_TestKillBurst(Console* sys, timestamp now, bool a9);
