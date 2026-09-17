@@ -24,9 +24,6 @@ endif
 ifeq ($(AUDMP), 1) # dump raw 2 channel 16 bit pcm audio to audioout.bin
 	CFLAGS += -DDUMPAUDIO
 endif
-ifeq ($(THRD), 1) # use threads instead of coroutines -- UNSTABLE - NOT RECOMMENDED
-	CFLAGS += -DREALTHREAD
-endif
 ifeq ($(GPUST), 1) # disable multithreaded ppus and gpu for testing purposes -- also disables per-pixel ppu & gpu emulation and vram timings
 	CFLAGS += -DSINGLETHREADRASTER
 endif
@@ -72,7 +69,6 @@ endif
 endif
 
 OBJS := $(shell find $(SRCDIR) -name '*.c')
-OBJS += libs/libco/libco.c
 OBJS += $(shell find libs/imgui -maxdepth 1 -name '*.cpp')
 OBJS := $(OBJS:%=$(BUILDDIR)$(OBJDIR)/%.o)
 

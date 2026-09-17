@@ -144,9 +144,6 @@ Console* Console_Init(Console* sys, CoreCfg* cfg, void* pad, void* aud)
         // TODO: dont do this?
         SDL_DestroyMutex(sys->FrameBufferMutex[0]);
         SDL_DestroyMutex(sys->FrameBufferMutex[1]);
-#ifdef REALTHREAD
-        mtx_destroy(&sys->Sched.SchedulerMtx);
-#endif
         Flash_Cleanup(&sys->Firmware);
         //nvram = sys->Firmware.RAM;
         GameCard_Cleanup(&sys->GameCard);
@@ -198,11 +195,6 @@ Console* Console_Init(Console* sys, CoreCfg* cfg, void* pad, void* aud)
 
     bool mtxinit = ((sys->FrameBufferMutex[0] = SDL_CreateMutex()) != NULL);
     bool mtxinit3 = ((sys->FrameBufferMutex[1] = SDL_CreateMutex()) != NULL);
-#ifdef REALTHREAD
-    bool mtxinit2 = (mtx_init(&sys->Sched.SchedulerMtx, mtx_recursive) == thrd_success);
-#else
-    bool mtxinit2 = true;
-#endif
 #ifndef SINGLETHREADRASTER
     bool thrdinit1 = ((sys->PPUAThread = SDL_CreateThread(PPUA_MainLoop, "SOUP_PPUA", sys)) != NULL);
     bool thrdinit2 = ((sys->PPUAThread = SDL_CreateThread(PPUB_MainLoop, "SOUP_PPUB", sys)) != NULL);
@@ -211,10 +203,10 @@ Console* Console_Init(Console* sys, CoreCfg* cfg, void* pad, void* aud)
     bool thrdinit1 = true, thrdinit2 = true, thrdinit3 = true;
 #endif
 
-    if (!ntr9init || !ntr7init || !firminit || !gcinit || !mtxinit || !mtxinit2|| !mtxinit3 || !thrdinit1 || !thrdinit2)
+    if (!ntr9init || !ntr7init || !firminit || !gcinit || !mtxinit || !mtxinit3 || !thrdinit1 || !thrdinit2 || !thrdinit3)
     {
         // return error messages
-        if (!mtxinit || !mtxinit2|| !mtxinit3)
+        if (!mtxinit || !mtxinit3)
             LogPrint(LOG_ALWAYS, "FATAL: Mutex init failed.\n");
         if (!ntr9init)
             LogPrint(LOG_ALWAYS, "FATAL: ARM9 BIOS did not load properly.\n");
@@ -235,9 +227,6 @@ Console* Console_Init(Console* sys, CoreCfg* cfg, void* pad, void* aud)
         if (gcinit) GameCard_Cleanup(&sys->GameCard);
         if (mtxinit) SDL_DestroyMutex(sys->FrameBufferMutex[0]);
         if (mtxinit3) SDL_DestroyMutex(sys->FrameBufferMutex[1]);
-#ifdef REALTHREAD
-        if (mtxinit2) mtx_destroy(&sys->Sched.SchedulerMtx);
-#endif
         int dummy;
 #ifndef SINGLETHREADRASTER
         sys->KillSWRen = true;

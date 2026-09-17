@@ -8,8 +8,6 @@
 
 #include <SDL3/SDL_mutex.h>
 
-#include "frontend/coroutine.h"
-
 
 
 
@@ -53,11 +51,7 @@ typedef s32 s32x4 __attribute__ ((vector_size(sizeof(u32)*4)));
 // this might incur a noticeable performance penalty on every single timestamp increment.
 // but it would allow for the system to be infinitely running (mind you 727 years is probably a long enough time already)
 // it may also allow for faster scheduling by being able to pack more scheduler timestamps into a single simd reg?
-#ifdef REALTHREAD
-typedef volatile uint64_t timestamp;
-#else
 typedef uint64_t timestamp;
-#endif
 #define timestamp_max (UINT64_MAX)
 
 #define KiB(x) ((u64)(x) * 1024)
@@ -450,16 +444,3 @@ typedef struct
         char* Boot11;
     } CTR; // CTR+
 } CoreCfg;
-
-// coroutine stuff
-#ifdef REALTHREAD
-extern volatile bool CR_Kill;
-#else
-constexpr bool CR_Kill = false;
-#endif
-extern volatile bool CR_Start;
-
-bool CR_Create(coroutine* handle, void (*func)(void*), void* param);
-void CR_Free(coroutine handle);
-void CR_Switch(coroutine handle);
-coroutine CR_Active();

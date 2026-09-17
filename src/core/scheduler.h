@@ -1,7 +1,4 @@
 #pragma once
-#ifdef REALTHREAD
-    #include <threads.h>
-#endif
 #include "utils.h"
 
 
@@ -126,35 +123,6 @@ typedef struct
     Scheduler_Events Next[Evt_Max];
     Scheduler_Events Prev[Evt_Max];
 } Sched;
-
-typedef struct
-{
-    alignas(HOST_CACHEALIGN) timestamp EventTimes[Evt_Max];
-    void (*EventCallbacks[Evt_Max]) (Console*, timestamp);
-
-#ifdef REALTHREAD
-    mtx_t SchedulerMtx;
-#endif
-} OldSched;
-
-typedef union
-{
-    Sched Neo;
-    OldSched Old;
-} Scheduler;
-
-typedef enum : u8
-{
-    Sync_7 = 0x00,
-    Sync_Normal7 = 0x00,
-    Sync_MainRAM7 = 0x01,
-    Sync_Sleep7 = 0x02,
-
-    Sync_9 = 0x80,
-    Sync_Normal9 = 0x80,
-    Sync_MainRAM9 = 0x81,
-    Sync_Sleep9 = 0x82,
-} SyncMode;
 
 
 // clock conversion helpers
