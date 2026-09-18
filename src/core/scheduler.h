@@ -10,6 +10,8 @@ typedef enum : u8
 {
     Evt_Null,
 
+    Evt_DebugBreak,
+
     Evt_IRQ9_VBlank,
     Evt_IRQ9_HBlank,
     Evt_IRQ9_VCount,
@@ -143,3 +145,5 @@ bool Sched_CheckEventScheduled(Console* sys, Scheduler_Events id);
 void Sched_AddEvent(Console* sys, timestamp time, Scheduler_Events id);
 void Sched_AddEventIfEarlier(Console* sys, timestamp time, Scheduler_Events id);
 void Sched_RunEvent(Console* sys);
+
+void DS_BREAK(Console* sys);

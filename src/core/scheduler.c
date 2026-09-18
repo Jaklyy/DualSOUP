@@ -10,6 +10,11 @@
 #include <stdckdint.h>
 
 
+void DS_BREAK(Console* sys)
+{
+    Sched_AddEvent(sys, 0, Evt_DebugBreak);
+}
+
 inline timestamp DSClk16(timestamp ts)
 {
     return ts * (Sched_Clock / NTR_BaseClock);
