@@ -339,7 +339,7 @@ void IO9_Read(Console* sys, const u32 addr, const timestamp now, const BusCallba
         break;
     }
 
-    Bus_TransferPostSetup(sys, rdata, true, now + DSClk33(1), false, cb, man, true);
+    Bus_TransferPostSetup(sys, rdata, true, now, false, cb, man, true);
 }
 
 void IO9_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, const u32 mask, const BusCallbacks cb, u8 man)
@@ -596,7 +596,7 @@ void IO7_Read(Console* sys, const u32 addr, const timestamp now, const BusCallba
         break;
     }
 
-    Bus_TransferPostSetup(sys, rdata, true, now + DSClk33(1), false, cb, man, false);
+    Bus_TransferPostSetup(sys, rdata, true, now, false, cb, man, false);
 }
 
 void IO7_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, const u32 mask, const BusCallbacks cb, u8 man)

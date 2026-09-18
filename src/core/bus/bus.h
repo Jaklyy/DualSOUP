@@ -209,6 +209,7 @@ typedef struct
     u8 PostMan;
     bool PostLoad;
     bool PostNoPrev;
+    s8 PipeNum;
 } BusImpl;
 
 typedef enum : u8

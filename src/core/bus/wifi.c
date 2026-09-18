@@ -22,7 +22,7 @@ void WiFi_Read(Console* sys, u32* rdata, timestamp* now, const u32 addr, const A
         return;
     }
 
-    *now += DSClk33(1); // TODO
+    *now += DSClk33(0); // TODO
 
     switch (addr & 0x6000)
     {
@@ -74,7 +74,7 @@ void WiFi_Write(Console* sys, timestamp* now, const u32 addr, const u32 wrdata, 
         return;
     }
 
-    *now += DSClk33(1); // TODO
+    *now += DSClk33(0); // TODO
 
     switch (addr & 0x6000)
     {

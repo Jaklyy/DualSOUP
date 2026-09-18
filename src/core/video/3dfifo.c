@@ -111,7 +111,11 @@ bool GXPipe_Fill(Console* sys, timestamp now)
         // checkme:?
     }
 
-    if (gx->FIFOWait) Sched_AddEvent(sys, now, Evt_IO9);
+    if (gx->FIFOWait)
+    {
+        gx->FIFOWait = true;
+        Sched_AddEvent(sys, now, Evt_IO9);
+    }
 
     return true;
 }
@@ -171,7 +175,11 @@ bool GXFIFO_Unpack(Console* sys, timestamp now)
             }
             else
             {
-                if (gx->PackWait) Sched_AddEvent(sys, now, Evt_IO9);
+                if (gx->PackWait)
+                {
+                    gx->PackWait = false;
+                    Sched_AddEvent(sys, now, Evt_IO9);
+                }
                 gx->BufferFree = true;
                 return true;
             }
@@ -196,7 +204,11 @@ bool GXFIFO_Unpack(Console* sys, timestamp now)
         }
         return false;
     }
-    if (gx->PackWait) Sched_AddEvent(sys, now, Evt_IO9);
+    if (gx->PackWait)
+    {
+        gx->PackWait = false;
+        Sched_AddEvent(sys, now, Evt_IO9);
+    }
     return false;
 }
 
@@ -249,6 +261,7 @@ bool GXFIFO_PackedSubmit(Console* sys, const u32 val, const timestamp now)
         Sched_AddEvent(sys, now+DSClk33(1), Evt_GX);
         return true;
     }
+    gx->PackWait = true;
     return false;
 }
 
@@ -262,6 +275,7 @@ bool GXFIFO_PortSubmit(Console* sys, const u32 addr, const u32 val, const timest
         gx->Timestamp = now;
         return true;
     }
+    gx->FIFOWait = true;
     return false;
 }
 

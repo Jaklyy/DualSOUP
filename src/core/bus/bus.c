@@ -78,8 +78,8 @@ bool MainRAM_KillBurst(Console* sys, timestamp now)
     if (mr->BurstActive)
     {
         // stop main ram burst if still running
-        if (mr->PrevWrite) now += DSClk33(4); // stores: 5 cycle cooldown period
-        else               now += DSClk33(2); // loads:  3 cycle cooldown period
+        if (mr->PrevWrite) now += DSClk33(5); // stores: 5 cycle cooldown period
+        else               now += DSClk33(3); // loads:  3 cycle cooldown period
 
         if (mr->IsReq9 || mr->IsReq7)
         {
@@ -204,7 +204,7 @@ void MainRAM_Run(Console* sys, timestamp now)
         {
             if (!nseq) CrashSpectacularly("SEQUENTIAL 8 BIT MAIN RAM WRITE????????????\n");
             MaskedWrite(sys->MainRAM.b16[mr->AddrLatch], wrdata, 0xFF << ((addr & 1)*8));
-            now += DSClk33(4); // takes longer for some reason
+            now += DSClk33(3); // takes longer for some reason
             //MainRAM_KillBurst(sys, now - DSClk33(1)); // CHECKME: it takes less time for it to cooldown, so i assume it does it early somehow??
         }
         else
@@ -214,9 +214,9 @@ void MainRAM_Run(Console* sys, timestamp now)
             {
                 MRStepAddr
                 sys->MainRAM.b16[mr->AddrLatch] = wrdata >> 16;
-                now += DSClk33(4);
+                now += DSClk33(3);
             }
-            else now += DSClk33(3);
+            else now += DSClk33(2);
         }
     }
     else // read
@@ -224,15 +224,15 @@ void MainRAM_Run(Console* sys, timestamp now)
         rdata = sys->MainRAM.b16[mr->AddrLatch];
         if (size < HSIZE_32)
         {
-            now += (nseq) ? DSClk33(5) : DSClk33(1);
+            now += (nseq) ? DSClk33(4) : DSClk33(0);
             rdata |= rdata << 16; // mirror onto both halves of word
         }
         else // 32 bit; do another fetch for high bytes
         {
-            now += ((nseq)  ? DSClk33(6)
+            now += ((nseq)  ? DSClk33(5)
                             : ((now <= mr->LastFetchTs) // questionably emulate read prefetching
-                                ? DSClk33(2)
-                                : DSClk33(1)));
+                                ? DSClk33(1)
+                                : DSClk33(0)));
             MRStepAddr
             rdata |= sys->MainRAM.b16[mr->AddrLatch] << 16;
         }
@@ -300,7 +300,6 @@ void Bus_VRAM(Console* sys, u32* rdata, timestamp* now, u32 addr, const BusReq* 
     if (!list)
     {
         // nobody's home
-        *now += DSClk33(1);
         if (!req->Write) *rdata = 0;
     }
     else if (stdc_count_ones(list) == 1)
@@ -314,7 +313,6 @@ void Bus_VRAM(Console* sys, u32* rdata, timestamp* now, u32 addr, const BusReq* 
         {
             u32 wrdata = req->WrData;
             // TODO: PPU contention
-            *now += DSClk33(1);
             PPU_Sync(sys, *now); // TODO: DO THIS BETTER
             if (req->Size < HSIZE_32)
             {
@@ -338,7 +336,7 @@ void Bus_VRAM(Console* sys, u32* rdata, timestamp* now, u32 addr, const BusReq* 
         else
         {
             // TODO: PPU contention
-            *now += DSClk33(1) + BusContention(sys, *now, Dev_VRAM_A + id);
+            *now += BusContention(sys, *now, Dev_VRAM_A + id);
             if (req->Size < HSIZE_32)
             {
                 *rdata = bank[(addr & (size-1))/2];
@@ -372,7 +370,7 @@ void Bus_VRAM(Console* sys, u32* rdata, timestamp* now, u32 addr, const BusReq* 
         if (req->Write)
         {
             const u32 wrdata = req->WrData;
-            *now += DSClk33((req->Size < HSIZE_32) ? 1 : 2); // dumb
+            *now += DSClk33((req->Size < HSIZE_32) ? 0 : 1); // dumb
             PPU_Sync(sys, *now); // no!
             while (list2)
             {
@@ -401,7 +399,7 @@ void Bus_VRAM(Console* sys, u32* rdata, timestamp* now, u32 addr, const BusReq* 
         }
         else
         {
-            *now += DSClk33((req->Size < HSIZE_32) ? 1 : 2); // dumb
+            *now += DSClk33((req->Size < HSIZE_32) ? 0 : 1); // dumb
             if (contlist)
             {
                 *now += 1; // TODO: this is handled differently than other contention causes; fix that.
@@ -434,7 +432,7 @@ void GamePakBus_ROMRead(Console* sys, u32* rdata, timestamp* now, const u32 addr
 {
     if (a9 != sys->ExtMemCR_Shared.GBAPakA7Access)
     {
-        *now += DSClk33(1); // TODO
+        *now += DSClk33(0); // TODO
         if (size == HSIZE_32)
         {
             *rdata = GamePak_ROMRead(&sys->GamePak, addr & ~3);
@@ -448,7 +446,7 @@ void GamePakBus_ROMRead(Console* sys, u32* rdata, timestamp* now, const u32 addr
     }
     else // unmapped
     {
-        *now += DSClk33(1); // checkme: should this use configured waitstates?
+        *now += DSClk33(0); // checkme: should this use configured waitstates?
         *rdata = 0;
     }
 }
@@ -456,12 +454,12 @@ void GamePakBus_ROMWrite(Console* sys, const u32 wrdata, timestamp* now, const u
 {
     if (a9 != sys->ExtMemCR_Shared.GBAPakA7Access)
     {
-        *now += DSClk33(1); // TODO
+        *now += DSClk33(0); // TODO
         GamePak_ROMWrite(&sys->GamePak, addr, wrdata);
         if (size == HSIZE_32) // TODO: how does this actually work?
             GamePak_ROMWrite(&sys->GamePak, addr+2, wrdata);
     }
-    else *now += DSClk33(1); // unmapped; checkme: should this use configured waitstates?
+    else *now += DSClk33(0); // unmapped; checkme: should this use configured waitstates?
 }
 
 void GamePakBus_RAMRead(Console* sys, u32* rdata, timestamp* now, const u32 addr, const AHB_HSIZE size, const bool a9)
@@ -470,12 +468,12 @@ void GamePakBus_RAMRead(Console* sys, u32* rdata, timestamp* now, const u32 addr
     if (a9 != sys->ExtMemCR_Shared.GBAPakA7Access)
     {
         if (size != HSIZE_8) LogPrint((a9 ? LOG_ARM9 : LOG_ARM7)|LOG_ODD|LOG_PAK, "NTR_Bus%"PRIu8": %"PRIu32" bit read from GBA Game Pak SRAM, width > 8 bit are weird, probably not correct?\n", 7+(a9*2), 8<<size);
-        *now += DSClk33(1); // TODO
+        *now += DSClk33(0); // TODO
         *rdata = GamePak_SRAMRead(&sys->GamePak, addr);
     }
     else // unmapped
     {
-        *now += DSClk33(1); // checkme: should this use configured waitstates?
+        *now += DSClk33(0); // checkme: should this use configured waitstates?
         *rdata = 0; // always returns 0
     }
     *rdata = *rdata | (*rdata << 8) | (*rdata << 16) | (*rdata << 24); // byte is mirrored across all bus lanes.
@@ -485,10 +483,10 @@ void GamePakBus_RAMWrite(Console* sys, const u32 wrdata, timestamp* now, const u
     if (a9 != sys->ExtMemCR_Shared.GBAPakA7Access)
     {
         //if (size != HSIZE_8) LogPrint((a9 ? LOG_ARM9 : LOG_ARM7)|LOG_ODD|LOG_PAK, "NTR_Bus%"PRIu8": %"PRIu32" bit write to GBA Game Pak SRAM, width > 8 bit are weird, probably not correct?\n", 7+(a9*2), 8<<size);
-        *now += DSClk33(1); // TODO
+        *now += DSClk33(0); // TODO
         GamePak_SRAMWrite(&sys->GamePak, addr, ROR32(wrdata, 8*addr) /* select proper byte lanes */); // CHECKME
     }
-    else *now += DSClk33(1); // unmapped; checkme: should this use configured waitstates?
+    else *now += DSClk33(0); // unmapped; checkme: should this use configured waitstates?
 }
 
 void Bus9_Read(Console* sys, BusReq* req, timestamp now)
@@ -509,7 +507,7 @@ void Bus9_Read(Console* sys, BusReq* req, timestamp now)
     case 0x03: // Shared WRAM
         // NOTE: it seems to still have write contention even if unmapped?
         // Speculation: like still writing the wram interface? and that's just swallowing the read/write?
-        now += DSClk33(1) + BusContention(sys, now, Dev_WRAM9);
+        now += BusContention(sys, now, Dev_WRAM9);
         switch(sys->WRAMCR)
         {
             case 0: rdata = MemoryRead(32, sys->SharedWRAM,   addr, SharedWRAM_Size  ); break;
@@ -531,13 +529,12 @@ void Bus9_Read(Console* sys, BusReq* req, timestamp now)
         if (!((addr & 0x400) ? sys->PowerCR9.PPUBPower : sys->PowerCR9.PPUAPower))
         {
             LogPrint(LOG_ARM9|LOG_ODD, "DISABLED PALETTE READ?\n");
-            now += DSClk33(1);
             rdata = 0;
         }
         else
         {
             PPU_Sync(sys, now); // TODO: rework this shit
-            now += DSClk33(1) + BusContention(sys, now, Dev_Palette);
+            now += BusContention(sys, now, Dev_Palette);
             if (size >= HSIZE_32)
             {
                 PPU_Sync(sys, now);
@@ -562,12 +559,11 @@ void Bus9_Read(Console* sys, BusReq* req, timestamp now)
         if (!((addr & 0x400) ? sys->PowerCR9.PPUBPower : sys->PowerCR9.PPUAPower))
         {
             LogPrint(LOG_ARM9|LOG_ODD, "DISABLED OAM READ?\n");
-            now += DSClk33(1);
             rdata = 0;
         }
         else
         {
-            now += DSClk33(1) + BusContention(sys, now, Dev_Palette);
+            now += BusContention(sys, now, Dev_Palette);
             rdata = MemoryRead(32, sys->OAM, addr, OAM_Size);
         }
         break;
@@ -582,7 +578,6 @@ void Bus9_Read(Console* sys, BusReq* req, timestamp now)
         if ((addr & 0xFFFFF000) == 0xFFFF0000)
         {
             // bios does not have contention, interestingly enough.
-            now += DSClk33(1);
             rdata = MemoryRead(32, sys->NTRBios9, addr, NTRBios9_Size);
             break;
         }
@@ -590,7 +585,6 @@ void Bus9_Read(Console* sys, BusReq* req, timestamp now)
 
     default: // Unmapped Device;
         LogPrint(LOG_ODD|LOG_ARM9,"NTR_AHB9: %"PRIu32" bit read from unmapped memory at 0x%08"PRIX32"? Something went wrong?\n", width, addr);
-        now += DSClk33(1);
         rdata = 0; // always reads 0
         break;
     }
@@ -621,7 +615,6 @@ void Bus9_Write(Console* sys, BusReq* req, timestamp now)
 
     case 0x03: // Shared WRAM
         // NOTE: it seems to still have write contention even if unmapped?
-        now += DSClk33(1);
         AddBusContention(sys, now, Dev_WRAM9);
         switch(sys->WRAMCR)
         {
@@ -634,7 +627,7 @@ void Bus9_Write(Console* sys, BusReq* req, timestamp now)
         break;
 
     case 0x04: // Memory Mapped IO
-        return Sched_AddEvent(sys, now + DSClk33(1), Evt_IO9); // io is in a separate event for simplicity's sake
+        return Sched_AddEvent(sys, now, Evt_IO9); // io is in a separate event for simplicity's sake
 
     case 0x05: // 2D GPU Palette
         // TODO: 2d gpu contention timings
@@ -642,14 +635,12 @@ void Bus9_Write(Console* sys, BusReq* req, timestamp now)
         {
             if (size == HSIZE_8) LogPrint(LOG_ARM9|LOG_ODD, "8 BIT PALETTE WRITE?\n");
             else                 LogPrint(LOG_ARM9|LOG_ODD, "DISABLED PALETTE WRITE?\n");
-            now += DSClk33(1);
             // CHECKME: contention for bytes?
         }
         else
         {
             if (mask & 0x0000FFFF)
             {
-                now += DSClk33(1);
                 PPU_Sync(sys, now);
                 //BusContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_Palette);
                 //AddBusContention(sys->AHBBusyTS, sys->AHB9.Timestamp, Dev_Palette);
@@ -658,7 +649,7 @@ void Bus9_Write(Console* sys, BusReq* req, timestamp now)
             }
             if (mask & 0xFFFF0000)
             {
-                now += DSClk33(1);
+                if (size >= HSIZE_32) now += DSClk33(1);
                 PPU_Sync(sys, now);
                 //BusContention(sys->AHBBusyTS, &sys->AHB9.Timestamp, Dev_Palette);
                 //AddBusContention(sys->AHBBusyTS, sys->AHB9.Timestamp, Dev_Palette);
@@ -673,7 +664,6 @@ void Bus9_Write(Console* sys, BusReq* req, timestamp now)
         if (size == HSIZE_8)
         {
             LogPrint(LOG_ARM9|LOG_ODD, "ARM9: 8 BIT VRAM WRITE?\n");
-            now += DSClk33(1);
             // CHECKME: contention for bytes?
         }
         else Bus_VRAM(sys, nullptr, &now, addr, req, true);
@@ -687,12 +677,10 @@ void Bus9_Write(Console* sys, BusReq* req, timestamp now)
             // CHECKME: does it support halfwords?
             if (size == HSIZE_8) LogPrint(LOG_ARM9|LOG_ODD, "8 BIT OAM WRITE?\n");
             else                 LogPrint(LOG_ARM9|LOG_ODD, "DISABLED OAM WRITE?\n");
-            now += DSClk33(1);
             // CHECKME: contention for bytes?
         }
         else
         {
-            now += DSClk33(1);
             PPU_Sync(sys, now);
             AddBusContention(sys, now, Dev_OAM);
             MemoryWrite(32, sys->OAM, addr, OAM_Size, wrdata, mask);
@@ -707,7 +695,6 @@ void Bus9_Write(Console* sys, BusReq* req, timestamp now)
 
     default: // Unmapped Device;
         LogPrint(LOG_ODD|LOG_ARM9,"NTR_AHB9: %"PRIu32" bit write to unmapped memory at 0x%08"PRIX32"? Something went wrong?\n", width, addr);
-        now += DSClk33(1);
         break;
     }
 
@@ -740,7 +727,6 @@ void Bus7_Read(Console* sys, BusReq* req, timestamp now)
             // CHECKME: does bios7 write contention work weirdly with bios prot?
             // CHECKME: does bios7 write contention exist?
             //BusContention(sys->AHBBusyTS, &sys->AHB7.Timestamp, Dev_Bios7);
-            now += DSClk33(1);
 
             // a7 bios reads have protection
             // TODO: contemplate exact bios protection mechanism further
@@ -758,7 +744,6 @@ void Bus7_Read(Console* sys, BusReq* req, timestamp now)
 
     default: // Unmapped Device;
         LogPrint(LOG_ODD|LOG_ARM7, "NTR Bus7: %"PRIu32" bit read from unmapped memory at %08"PRIX32"? Something went wrong?\n", width, addr);
-        now += DSClk33(1);
         rdata = 0; // always reads 0
         break;
 
@@ -766,7 +751,7 @@ void Bus7_Read(Console* sys, BusReq* req, timestamp now)
         return MainRAM_Request(sys, now, false); // defer completion of req to main ram handler
 
     case 0x030: // Shared WRAM
-        now += DSClk33(1) + BusContention(sys, now, Dev_WRAM7);
+        now += BusContention(sys, now, Dev_WRAM7);
         // CHECKME: it might be possible that contention could delay wram access until after its remapped by arm9?
         switch(sys->WRAMCR)
         {
@@ -779,7 +764,7 @@ void Bus7_Read(Console* sys, BusReq* req, timestamp now)
         break;
 
     case 0x038: // ARM7 WRAM
-        now += DSClk33(1) + BusContention(sys, now, Dev_WRAM7 /* checkme: i think this is wrong actually...? */);
+        now += BusContention(sys, now, Dev_WRAM7 /* checkme: i think this is wrong actually...? */);
         rdata = MemoryRead(32, sys->ARM7WRAM, addr, ARM7WRAM_Size);
         break;
 
@@ -822,7 +807,6 @@ void Bus7_Write(Console* sys, BusReq* req, timestamp now)
         return MainRAM_Request(sys, now, false); // defer completion of req to main ram handler
 
     case 0x030: // Shared WRAM
-        now += DSClk33(1);
         AddBusContention(sys, now, Dev_WRAM7);
         switch(sys->WRAMCR)
         {
@@ -835,13 +819,12 @@ void Bus7_Write(Console* sys, BusReq* req, timestamp now)
         break;
 
     case 0x038: // ARM7 WRAM
-        now += DSClk33(1);
         AddBusContention(sys, now, Dev_WRAM7 /* checkme: probably wrong? */);
         MemoryWrite(32, sys->ARM7WRAM, addr, ARM7WRAM_Size, wrdata, mask);
         break;
 
     case 0x040: // Memory Mapped IO
-        return Sched_AddEvent(sys, now + DSClk33(1), Evt_IO7); // io is in a separate event for simplicity's sake
+        return Sched_AddEvent(sys, now, Evt_IO7); // io is in a separate event for simplicity's sake
 
     case 0x048: // WiFi
         WiFi_Write(sys, &now, addr, wrdata, mask); break;
@@ -857,7 +840,6 @@ void Bus7_Write(Console* sys, BusReq* req, timestamp now)
 
     default: // Unmapped Device;
         LogPrint(LOG_ODD|LOG_ARM7,"NTR_AHB7: %"PRIu32" bit write to unmapped memory at 0x%08"PRIX32"? Something went wrong?\n", width, addr);
-        now += DSClk33(1);
         break;
     }
 
@@ -966,6 +948,8 @@ void Bus_Run(Console* sys, timestamp now, const bool a9)
     BusImpl* bus = (a9 ? &sys->Bus9 : &sys->Bus7);
     u32 rdata = bus->PostReadBus;
     BusCallbacks cmpcb = CB_None;
+
+    now += DSClk33(1);
     timestamp len = DSClk33(1);
 
     // process last completion
@@ -1010,6 +994,12 @@ void Bus_Run(Console* sys, timestamp now, const bool a9)
 
         // step fill ptr
         bus->FIFOFillPtr = (bus->FIFOFillPtr + 1) % countof(bus->PipeFIFO);
+        bus->PipeNum++;
+        if (bus->PipeNum > (s8)countof(bus->PipeFIFO))
+        {
+            Console_DebugLog(sys);
+            CrashSpectacularly("PIPE OVERFILL!!!\n");
+        }
         bus->FIFOEmpty = false;
     }
     nvm:
@@ -1044,6 +1034,12 @@ void Bus_Run(Console* sys, timestamp now, const bool a9)
 
         bus->FIFODrainPtr = (bus->FIFODrainPtr + 1) % countof(bus->PipeFIFO);
         if (bus->FIFODrainPtr == bus->FIFOFillPtr) bus->FIFOEmpty = true;
+        bus->PipeNum--;
+        if (bus->PipeNum < 0)
+        {
+            Console_DebugLog(sys);
+            CrashSpectacularly("PIPE OVERFILL!!!\n");
+        }
 
         if (req->Type >= HTRANS_NONSEQ)
         {
@@ -1071,7 +1067,7 @@ void Bus_Run(Console* sys, timestamp now, const bool a9)
             if (a9) Bus9_Idle(sys, req, now);
             else    Bus7_Idle(sys, now);
         }
-        Bus_TransferPostSetup(sys, 0, false, now + DSClk33(1), false, req->CB, req->Man, a9);
+        Bus_TransferPostSetup(sys, 0, false, now, false, req->CB, req->Man, a9);
         return;
     }
 
@@ -1081,7 +1077,7 @@ void Bus_Run(Console* sys, timestamp now, const bool a9)
         if (a9) Bus9_Idle(sys, nullptr, now);
         else    Bus7_Idle(sys, now);
 
-        Bus_TransferPostSetup(sys, 0, false, now + DSClk33(1), true, CB_None, 0, a9);
+        Bus_TransferPostSetup(sys, 0, false, now, true, CB_None, 0, a9);
         return;
     }
 
@@ -1089,11 +1085,11 @@ void Bus_Run(Console* sys, timestamp now, const bool a9)
     timestamp new;
     if ((bus->HLockGeneric != MAN_NONE) ? (bus->ReqList & (1<<bus->HLockGeneric)) : reqlista7deny) // check if something can be granted bus
     {
-        new = now + DSClk33(1);
+        new = now;
     }
     else if (!bus->FIFOEmpty) // if something is progressing through the pipeline just wait for it's time
     {
-        new = now + DSClk33(1);
+        new = now;
         //bus->LockSched = false;
         //new = bus->PipeExitTs[bus->FIFODrainPtr]
     }
