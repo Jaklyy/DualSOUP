@@ -1,4 +1,4 @@
-// dear imgui, v1.92.9b
+// dear imgui, v1.93.0 WIP
 // (headers)
 
 // Help:
@@ -29,8 +29,8 @@
 
 // Library Version
 // (Integer encoded as XYYZZ for use in #if preprocessor conditionals, e.g. '#if IMGUI_VERSION_NUM >= 12345')
-#define IMGUI_VERSION       "1.92.9b"
-#define IMGUI_VERSION_NUM   19291
+#define IMGUI_VERSION       "1.93.0 WIP"
+#define IMGUI_VERSION_NUM   19297
 #define IMGUI_HAS_TABLE             // Added BeginTable() - from IMGUI_VERSION_NUM >= 18000
 #define IMGUI_HAS_TEXTURES          // Added ImGuiBackendFlags_RendererHasTextures - from IMGUI_VERSION_NUM >= 19198
 #define IMGUI_HAS_VIEWPORT          // In 'docking' WIP branch.
@@ -128,6 +128,16 @@ Index of this file:
 #else
 #define IM_MSVC_RUNTIME_CHECKS_OFF
 #define IM_MSVC_RUNTIME_CHECKS_RESTORE
+#endif
+
+// Alternative to using a .natstepfilter file or other scripts in misc/debuggers/ to skip debug-stepping selected trivial functions.
+// If you get a compiler error or warning related to use, please report it to us!
+#if (defined(__clang__) && (__clang_major__ >= 7)) || (defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 8)))
+#define IM_NODEBUGSTEP      [[gnu::artificial]]
+#elif defined(_MSC_VER) && (_MSC_VER >= 1915)
+#define IM_NODEBUGSTEP      __declspec(non_user_code)
+#else
+#define IM_NODEBUGSTEP
 #endif
 
 // Warnings
@@ -299,11 +309,11 @@ typedef void    (*ImGuiMemFreeFunc)(void* ptr, void* user_data);                
 IM_MSVC_RUNTIME_CHECKS_OFF
 struct ImVec2
 {
-    float                                   x, y;
-    constexpr ImVec2()                      : x(0.0f), y(0.0f) { }
-    constexpr ImVec2(float _x, float _y)    : x(_x), y(_y) { }
-    float& operator[] (size_t idx)          { IM_ASSERT(idx == 0 || idx == 1); return ((float*)(void*)(char*)this)[idx]; } // We very rarely use this [] operator, so the assert overhead is fine.
-    float  operator[] (size_t idx) const    { IM_ASSERT(idx == 0 || idx == 1); return ((const float*)(const void*)(const char*)this)[idx]; }
+    float x, y;
+    IM_NODEBUGSTEP constexpr inline ImVec2()                    : x(0.0f), y(0.0f) { }
+    IM_NODEBUGSTEP constexpr inline ImVec2(float _x, float _y)  : x(_x), y(_y) { }
+    float& operator[] (size_t idx)                              { IM_ASSERT(idx == 0 || idx == 1); return ((float*)(void*)(char*)this)[idx]; } // We very rarely use this [] operator, so the assert overhead is fine.
+    float  operator[] (size_t idx) const                        { IM_ASSERT(idx == 0 || idx == 1); return ((const float*)(const void*)(const char*)this)[idx]; }
 #ifdef IM_VEC2_CLASS_EXTRA
     IM_VEC2_CLASS_EXTRA     // Define additional constructors and implicit cast operators in imconfig.h to convert back and forth between your math types and ImVec2.
 #endif
@@ -312,9 +322,9 @@ struct ImVec2
 // ImVec4: 4D vector used to store clipping rectangles, colors etc. [Compile-time configurable type]
 struct ImVec4
 {
-    float                                                     x, y, z, w;
-    constexpr ImVec4()                                        : x(0.0f), y(0.0f), z(0.0f), w(0.0f) { }
-    constexpr ImVec4(float _x, float _y, float _z, float _w)  : x(_x), y(_y), z(_z), w(_w) { }
+    float x, y, z, w;
+    IM_NODEBUGSTEP constexpr inline ImVec4()                                        : x(0.0f), y(0.0f), z(0.0f), w(0.0f) { }
+    IM_NODEBUGSTEP constexpr inline ImVec4(float _x, float _y, float _z, float _w)  : x(_x), y(_y), z(_z), w(_w) { }
 #ifdef IM_VEC4_CLASS_EXTRA
     IM_VEC4_CLASS_EXTRA     // Define additional constructors and implicit cast operators in imconfig.h to convert back and forth between your math types and ImVec4.
 #endif
@@ -1136,7 +1146,7 @@ namespace ImGui
     // - Reminder ImGuiKey enum include access to mouse buttons and gamepad, so key ownership can apply to them.
     // - The return value of SetItemKeyOwner() says if ownership has been requested for the item, which is a shortcut to calling yet non-public TestKeyOwner() function.
     // - Many related features are still in imgui_internal.h. For instance, most IsKeyXXX()/IsMouseXXX() functions have an owner-id-aware version.
-    IMGUI_API bool          SetItemKeyOwner(ImGuiKey key);                                      // Set key owner to last item ID if it is hovered or active. Return true when ownership has been set. Roughly equivalent to 'if (TestKeyOwner(key, GetItemID()) && (IsItemHovered() || IsItemActive())) { SetKeyOwner(key, GetItemID());'. 
+    IMGUI_API bool          SetItemKeyOwner(ImGuiKey key);                                      // Set key owner to last item ID if it is hovered or active. Return true when ownership has been set. Roughly equivalent to 'if (TestKeyOwner(key, GetItemID()) && (IsItemHovered() || IsItemActive())) { SetKeyOwner(key, GetItemID());'.
 
     // Inputs Utilities: Mouse
     // - To refer to a mouse button, you may use named enums in your code e.g. ImGuiMouseButton_Left, ImGuiMouseButton_Right.
@@ -1308,6 +1318,17 @@ enum ImGuiItemFlags_
     ImGuiItemFlags_LiveEditOnInputText      = 1 << 7,   // true     // InputText: apply keyboard edits to backing value while typing. Otherwise, edits are applied when validating, tabbing out or losing focus.
     ImGuiItemFlags_LiveEditOnInputScalar    = 1 << 8,   // false    // DragXXX, SliderXXX, InputScalar: apply keyboard edits to backing value while typing. Otherwise, edits are applied when validating, tabbing out or losing focus.
     ImGuiItemFlags_LiveEditOnInput          = ImGuiItemFlags_LiveEditOnInputText | ImGuiItemFlags_LiveEditOnInputScalar,
+
+    //---------------------------------------------------------------------------------
+    // [BETA] MixedValue mode used to represent a mixed/indeterminate state, typically for multi-selection.
+    // - Replace value display with "-" or a custom label.
+    // - Enter key validation apply an edit and return true even if value hasn't changed (in order to apply to all).
+    // - Supported by selected widgets: Checkbox, RadioButton, Sliders, Drags, Inputs, Combo.
+    // - Note: InputText-side Undo cannot be reliably combined with MixedValue + LiveEdit On:
+    //   - Both the initial edit and subsequent undo/revert will typically make your app code write to all backing objects.
+    //   - If you use MixedMode and the simplest solution is to ensure LiveEdit is off but widgets where this applies.
+    //---------------------------------------------------------------------------------
+    ImGuiItemFlags_MixedValue               = 1 << 9,   // false    // [BETA] Represent a mixed/indeterminate value. Replace value label with "-" and apply edits on validation.
 };
 
 // Flags for ImGui::InputText()
@@ -2345,13 +2366,13 @@ struct ImVector
     inline int          size_in_bytes() const               { return Size * (int)sizeof(T); }
     inline int          max_size() const                    { return 0x7FFFFFFF / (int)sizeof(T); }
     inline int          capacity() const                    { return Capacity; }
-    inline T&           operator[](int i)                   { IM_ASSERT(i >= 0 && i < Size); return Data[i]; }
-    inline const T&     operator[](int i) const             { IM_ASSERT(i >= 0 && i < Size); return Data[i]; }
+    IM_NODEBUGSTEP inline T&        operator[](int i)       { IM_ASSERT(i >= 0 && i < Size); return Data[i]; }
+    IM_NODEBUGSTEP inline const T&  operator[](int i) const { IM_ASSERT(i >= 0 && i < Size); return Data[i]; }
 
-    inline T*           begin()                             { return Data; }
-    inline const T*     begin() const                       { return Data; }
-    inline T*           end()                               { return Data + Size; }
-    inline const T*     end() const                         { return Data + Size; }
+    IM_NODEBUGSTEP inline T* begin() { return Data; }
+    IM_NODEBUGSTEP inline const T* begin() const { return Data; }
+    IM_NODEBUGSTEP inline T* end() { return Data + Size; }
+    IM_NODEBUGSTEP inline const T* end() const { return Data + Size; }
     inline T&           front()                             { IM_ASSERT(Size > 0); return Data[0]; }
     inline const T&     front() const                       { IM_ASSERT(Size > 0); return Data[0]; }
     inline T&           back()                              { IM_ASSERT(Size > 0); return Data[Size - 1]; }
@@ -2442,7 +2463,7 @@ struct ImGuiStyle
     ImGuiTreeNodeFlags TreeLinesFlags;      // Default way to draw lines connecting TreeNode hierarchy. ImGuiTreeNodeFlags_DrawLinesNone or ImGuiTreeNodeFlags_DrawLinesFull or ImGuiTreeNodeFlags_DrawLinesToNodes.
     float       TreeLinesSize;              // Thickness of outlines when using ImGuiTreeNodeFlags_DrawLines.
     float       TreeLinesRounding;          // Radius of lines connecting child nodes to the vertical line.
-    float       MenuItemRounding;           // Radius of MenuItem, BeginMenu rounding. 
+    float       MenuItemRounding;           // Radius of MenuItem, BeginMenu rounding.
     float       SelectableRounding;         // Radius of Selectable rounding. MODIFYING THIS IS DISCOURAGED. CONTIGUOUS SELECTIONS WILL NOT LOOK RIGHT. (#7589)
     float       DragDropTargetRounding;     // Radius of the drag and drop target frame. When <0.0f: use FrameRounding.
     float       DragDropTargetBorderSize;   // Thickness of the drag and drop target border.
@@ -2461,10 +2482,12 @@ struct ImGuiStyle
     bool        DockingNodeHasCloseButton;  // Docking node has their own CloseButton() to close all docked windows.
     float       DockingSeparatorSize;       // Thickness of resizing border between docked windows
     float       MouseCursorScale;           // Scale software rendered mouse cursor (when io.MouseDrawCursor is enabled). We apply per-monitor DPI scaling over this scale. May be removed later.
+
+    // Rendering & Tessellation
     bool        AntiAliasedLines;           // Enable anti-aliased lines/borders. Disable if you are really tight on CPU/GPU. Latched at the beginning of the frame (copied to ImDrawList).
     bool        AntiAliasedLinesUseTex;     // Enable anti-aliased lines/borders using textures where possible. Require backend to render with bilinear filtering (NOT point/nearest filtering). Latched at the beginning of the frame (copied to ImDrawList).
     bool        AntiAliasedFill;            // Enable anti-aliased edges around filled shapes (rounded rectangles, circles, etc.). Disable if you are really tight on CPU/GPU. Latched at the beginning of the frame (copied to ImDrawList).
-    float       CurveTessellationTol;       // Tessellation tolerance when using PathBezierCurveTo() without a specific number of segments. Decrease for highly tessellated curves (higher quality, more polygons), increase to reduce quality.
+    float       CurveTessellationMaxError;  // Maximum error (in pixels) when using PathBezierCurveTo() without a specific number of segments. Decrease for highly tessellated curves (higher quality, more polygons), increase to reduce quality.
     float       CircleTessellationMaxError; // Maximum error (in pixels) allowed when using AddCircle()/AddCircleFilled() or drawing rounded corner rectangles with no explicit segment count specified. Decrease for higher quality but more geometry.
 
     // Colors
@@ -2488,6 +2511,7 @@ struct ImGuiStyle
 
     // Obsolete names
 #ifndef IMGUI_DISABLE_OBSOLETE_FUNCTIONS
+    float       CurveTessellationTol;       // [OBSOLETE] Old CurveTessellationTol = New CurveTessellationMaxError*CurveTessellationMaxError. // Changed in 1.93.0
     // TabMinWidthForCloseButton = TabCloseButtonMinWidthUnselected // Renamed in 1.91.9.
 #endif
 };
@@ -2895,30 +2919,37 @@ struct ImGuiOnceUponAFrame
     operator bool() const { int current_frame = ImGui::GetFrameCount(); if (RefFrame == current_frame) return false; RefFrame = current_frame; return true; }
 };
 
-// Helper: Parse and apply text filters. In format "aaaaa[,bbbb][,ccccc]"
+// Helper: Parse and apply text filters e.g. 'aaa bbb -ccc'.
 struct ImGuiTextFilter
 {
     IMGUI_API           ImGuiTextFilter(const char* default_filter = "");
-    IMGUI_API bool      Draw(const char* label = "Filter (inc,-exc)", float width = 0.0f);  // Helper calling InputText+Build
     IMGUI_API bool      PassFilter(const char* text, const char* text_end = NULL) const;
-    IMGUI_API void      Build();
-    void                Clear()          { InputBuf[0] = 0; Build(); }
-    bool                IsActive() const { return !Filters.empty(); }
+    IMGUI_API void      Build();                                        // Update internal data when filter changes
+    inline void         Clear()          { InputBuf[0] = 0; Build(); }  // Clear filter
+    inline bool         IsActive() const { return _Items.Size != 0; }   // Useful if you need e.g. an alternative code-path when there are no filters
 
-    // [Internal]
-    struct ImGuiTextRange
+    // Helper to call InputText() + Build() when buffer is changed.
+    IMGUI_API bool      Draw(const char* label = "Filter");
+    IMGUI_API bool      DrawWithHint(const char* label = "Filter", const char* hint = "incl -excl");
+#ifndef IMGUI_DISABLE_OBSOLETE_FUNCTIONS
+    inline bool         Draw(const char* label, float width)            { if (width != 0.0f) ImGui::SetNextItemWidth(width); return Draw(label); }
+#endif
+
+    // [Internal] Don't use! Will be replaced with ImStrv.
+    struct ImGuiTextFilterItem
     {
-        const char*     b;
-        const char*     e;
-
-        ImGuiTextRange()                                { b = e = NULL; }
-        ImGuiTextRange(const char* _b, const char* _e)  { b = _b; e = _e; }
-        bool            empty() const                   { return b == e; }
-        IMGUI_API void  split(char separator, ImVector<ImGuiTextRange>* out) const;
+        const char*     Begin;
+        const char*     End;
+        ImGuiTextFilterItem(const char* b, const char* e) { Begin = b; End = e; }
     };
-    char                    InputBuf[256];
-    ImVector<ImGuiTextRange>Filters;
-    int                     CountGrep;
+
+    // [Internal] Members
+    char                InputBuf[256];      // User input buffer
+    char                FilterOp;           // == '|' (any) pr '&' (all)
+    ImU8                MinWordSize;        // == 1
+    int                 _CountExclude;      // >= 0
+    int                 _CountInclude;      // >= 0
+    ImVector<ImGuiTextFilterItem> _Items;   // Pre-parsed, trimmed, reordered items
 };
 
 // Helper: Growable text buffer for logging/accumulating text
@@ -3071,41 +3102,41 @@ struct ImGuiListClipper
 #define IMGUI_DEFINE_MATH_OPERATORS_IMPLEMENTED
 IM_MSVC_RUNTIME_CHECKS_OFF
 // ImVec2 operators
-inline ImVec2  operator*(const ImVec2& lhs, const float rhs)    { return ImVec2(lhs.x * rhs, lhs.y * rhs); }
-inline ImVec2  operator*(const float lhs, const ImVec2& rhs)    { return ImVec2(lhs * rhs.x, lhs * rhs.y); }
-inline ImVec2  operator/(const ImVec2& lhs, const float rhs)    { return ImVec2(lhs.x / rhs, lhs.y / rhs); }
-inline ImVec2  operator+(const ImVec2& lhs, const ImVec2& rhs)  { return ImVec2(lhs.x + rhs.x, lhs.y + rhs.y); }
-inline ImVec2  operator-(const ImVec2& lhs, const ImVec2& rhs)  { return ImVec2(lhs.x - rhs.x, lhs.y - rhs.y); }
-inline ImVec2  operator*(const ImVec2& lhs, const ImVec2& rhs)  { return ImVec2(lhs.x * rhs.x, lhs.y * rhs.y); }
-inline ImVec2  operator/(const ImVec2& lhs, const ImVec2& rhs)  { return ImVec2(lhs.x / rhs.x, lhs.y / rhs.y); }
-inline ImVec2  operator+(const ImVec2& lhs)                     { return lhs; }
-inline ImVec2  operator-(const ImVec2& lhs)                     { return ImVec2(-lhs.x, -lhs.y); }
-inline ImVec2& operator*=(ImVec2& lhs, const float rhs)         { lhs.x *= rhs; lhs.y *= rhs; return lhs; }
-inline ImVec2& operator/=(ImVec2& lhs, const float rhs)         { lhs.x /= rhs; lhs.y /= rhs; return lhs; }
-inline ImVec2& operator+=(ImVec2& lhs, const ImVec2& rhs)       { lhs.x += rhs.x; lhs.y += rhs.y; return lhs; }
-inline ImVec2& operator-=(ImVec2& lhs, const ImVec2& rhs)       { lhs.x -= rhs.x; lhs.y -= rhs.y; return lhs; }
-inline ImVec2& operator*=(ImVec2& lhs, const ImVec2& rhs)       { lhs.x *= rhs.x; lhs.y *= rhs.y; return lhs; }
-inline ImVec2& operator/=(ImVec2& lhs, const ImVec2& rhs)       { lhs.x /= rhs.x; lhs.y /= rhs.y; return lhs; }
-inline bool    operator==(const ImVec2& lhs, const ImVec2& rhs) { return lhs.x == rhs.x && lhs.y == rhs.y; }
-inline bool    operator!=(const ImVec2& lhs, const ImVec2& rhs) { return lhs.x != rhs.x || lhs.y != rhs.y; }
+IM_NODEBUGSTEP inline ImVec2  operator*(const ImVec2& lhs, const float rhs)    { return ImVec2(lhs.x * rhs, lhs.y * rhs); }
+IM_NODEBUGSTEP inline ImVec2  operator*(const float lhs, const ImVec2& rhs)    { return ImVec2(lhs * rhs.x, lhs * rhs.y); }
+IM_NODEBUGSTEP inline ImVec2  operator/(const ImVec2& lhs, const float rhs)    { return ImVec2(lhs.x / rhs, lhs.y / rhs); }
+IM_NODEBUGSTEP inline ImVec2  operator+(const ImVec2& lhs, const ImVec2& rhs)  { return ImVec2(lhs.x + rhs.x, lhs.y + rhs.y); }
+IM_NODEBUGSTEP inline ImVec2  operator-(const ImVec2& lhs, const ImVec2& rhs)  { return ImVec2(lhs.x - rhs.x, lhs.y - rhs.y); }
+IM_NODEBUGSTEP inline ImVec2  operator*(const ImVec2& lhs, const ImVec2& rhs)  { return ImVec2(lhs.x * rhs.x, lhs.y * rhs.y); }
+IM_NODEBUGSTEP inline ImVec2  operator/(const ImVec2& lhs, const ImVec2& rhs)  { return ImVec2(lhs.x / rhs.x, lhs.y / rhs.y); }
+IM_NODEBUGSTEP inline ImVec2  operator+(const ImVec2& lhs)                     { return lhs; }
+IM_NODEBUGSTEP inline ImVec2  operator-(const ImVec2& lhs)                     { return ImVec2(-lhs.x, -lhs.y); }
+IM_NODEBUGSTEP inline ImVec2& operator*=(ImVec2& lhs, const float rhs)         { lhs.x *= rhs; lhs.y *= rhs; return lhs; }
+IM_NODEBUGSTEP inline ImVec2& operator/=(ImVec2& lhs, const float rhs)         { lhs.x /= rhs; lhs.y /= rhs; return lhs; }
+IM_NODEBUGSTEP inline ImVec2& operator+=(ImVec2& lhs, const ImVec2& rhs)       { lhs.x += rhs.x; lhs.y += rhs.y; return lhs; }
+IM_NODEBUGSTEP inline ImVec2& operator-=(ImVec2& lhs, const ImVec2& rhs)       { lhs.x -= rhs.x; lhs.y -= rhs.y; return lhs; }
+IM_NODEBUGSTEP inline ImVec2& operator*=(ImVec2& lhs, const ImVec2& rhs)       { lhs.x *= rhs.x; lhs.y *= rhs.y; return lhs; }
+IM_NODEBUGSTEP inline ImVec2& operator/=(ImVec2& lhs, const ImVec2& rhs)       { lhs.x /= rhs.x; lhs.y /= rhs.y; return lhs; }
+IM_NODEBUGSTEP inline bool    operator==(const ImVec2& lhs, const ImVec2& rhs) { return lhs.x == rhs.x && lhs.y == rhs.y; }
+IM_NODEBUGSTEP inline bool    operator!=(const ImVec2& lhs, const ImVec2& rhs) { return lhs.x != rhs.x || lhs.y != rhs.y; }
 // ImVec4 operators
-inline ImVec4  operator*(const ImVec4& lhs, const float rhs)    { return ImVec4(lhs.x * rhs, lhs.y * rhs, lhs.z * rhs, lhs.w * rhs); }
-inline ImVec4  operator*(const float lhs, const ImVec4& rhs)    { return ImVec4(lhs * rhs.x, lhs * rhs.y, lhs * rhs.z, lhs * rhs.w); }
-inline ImVec4  operator/(const ImVec4& lhs, const float rhs)    { return ImVec4(lhs.x / rhs, lhs.y / rhs, lhs.z / rhs, lhs.w / rhs); }
-inline ImVec4  operator+(const ImVec4& lhs, const ImVec4& rhs)  { return ImVec4(lhs.x + rhs.x, lhs.y + rhs.y, lhs.z + rhs.z, lhs.w + rhs.w); }
-inline ImVec4  operator-(const ImVec4& lhs, const ImVec4& rhs)  { return ImVec4(lhs.x - rhs.x, lhs.y - rhs.y, lhs.z - rhs.z, lhs.w - rhs.w); }
-inline ImVec4  operator*(const ImVec4& lhs, const ImVec4& rhs)  { return ImVec4(lhs.x * rhs.x, lhs.y * rhs.y, lhs.z * rhs.z, lhs.w * rhs.w); }
-inline ImVec4  operator/(const ImVec4& lhs, const ImVec4& rhs)  { return ImVec4(lhs.x / rhs.x, lhs.y / rhs.y, lhs.z / rhs.z, lhs.w / rhs.w); }
-inline ImVec4  operator+(const ImVec4& lhs)                     { return lhs; }
-inline ImVec4  operator-(const ImVec4& lhs)                     { return ImVec4(-lhs.x, -lhs.y, -lhs.z, -lhs.w); }
-inline ImVec4& operator*=(ImVec4& lhs, const float rhs)         { lhs.x *= rhs; lhs.y *= rhs; lhs.z *= rhs; lhs.w *= rhs; return lhs; }
-inline ImVec4& operator/=(ImVec4& lhs, const float rhs)         { lhs.x /= rhs; lhs.y /= rhs; lhs.z /= rhs; lhs.w /= rhs; return lhs; }
-inline ImVec4& operator+=(ImVec4& lhs, const ImVec4& rhs)       { lhs.x += rhs.x; lhs.y += rhs.y; lhs.z += rhs.z; lhs.w += rhs.w; return lhs; }
-inline ImVec4& operator-=(ImVec4& lhs, const ImVec4& rhs)       { lhs.x -= rhs.x; lhs.y -= rhs.y; lhs.z -= rhs.z; lhs.w -= rhs.w; return lhs; }
-inline ImVec4& operator*=(ImVec4& lhs, const ImVec4& rhs)       { lhs.x *= rhs.x; lhs.y *= rhs.y; lhs.z *= rhs.z; lhs.w *= rhs.w; return lhs; }
-inline ImVec4& operator/=(ImVec4& lhs, const ImVec4& rhs)       { lhs.x /= rhs.x; lhs.y /= rhs.y; lhs.z /= rhs.z; lhs.w /= rhs.w; return lhs; }
-inline bool    operator==(const ImVec4& lhs, const ImVec4& rhs) { return lhs.x == rhs.x && lhs.y == rhs.y && lhs.z == rhs.z && lhs.w == rhs.w; }
-inline bool    operator!=(const ImVec4& lhs, const ImVec4& rhs) { return lhs.x != rhs.x || lhs.y != rhs.y || lhs.z != rhs.z || lhs.w != rhs.w; }
+IM_NODEBUGSTEP inline ImVec4  operator*(const ImVec4& lhs, const float rhs)    { return ImVec4(lhs.x * rhs, lhs.y * rhs, lhs.z * rhs, lhs.w * rhs); }
+IM_NODEBUGSTEP inline ImVec4  operator*(const float lhs, const ImVec4& rhs)    { return ImVec4(lhs * rhs.x, lhs * rhs.y, lhs * rhs.z, lhs * rhs.w); }
+IM_NODEBUGSTEP inline ImVec4  operator/(const ImVec4& lhs, const float rhs)    { return ImVec4(lhs.x / rhs, lhs.y / rhs, lhs.z / rhs, lhs.w / rhs); }
+IM_NODEBUGSTEP inline ImVec4  operator+(const ImVec4& lhs, const ImVec4& rhs)  { return ImVec4(lhs.x + rhs.x, lhs.y + rhs.y, lhs.z + rhs.z, lhs.w + rhs.w); }
+IM_NODEBUGSTEP inline ImVec4  operator-(const ImVec4& lhs, const ImVec4& rhs)  { return ImVec4(lhs.x - rhs.x, lhs.y - rhs.y, lhs.z - rhs.z, lhs.w - rhs.w); }
+IM_NODEBUGSTEP inline ImVec4  operator*(const ImVec4& lhs, const ImVec4& rhs)  { return ImVec4(lhs.x * rhs.x, lhs.y * rhs.y, lhs.z * rhs.z, lhs.w * rhs.w); }
+IM_NODEBUGSTEP inline ImVec4  operator/(const ImVec4& lhs, const ImVec4& rhs)  { return ImVec4(lhs.x / rhs.x, lhs.y / rhs.y, lhs.z / rhs.z, lhs.w / rhs.w); }
+IM_NODEBUGSTEP inline ImVec4  operator+(const ImVec4& lhs)                     { return lhs; }
+IM_NODEBUGSTEP inline ImVec4  operator-(const ImVec4& lhs)                     { return ImVec4(-lhs.x, -lhs.y, -lhs.z, -lhs.w); }
+IM_NODEBUGSTEP inline ImVec4& operator*=(ImVec4& lhs, const float rhs)         { lhs.x *= rhs; lhs.y *= rhs; lhs.z *= rhs; lhs.w *= rhs; return lhs; }
+IM_NODEBUGSTEP inline ImVec4& operator/=(ImVec4& lhs, const float rhs)         { lhs.x /= rhs; lhs.y /= rhs; lhs.z /= rhs; lhs.w /= rhs; return lhs; }
+IM_NODEBUGSTEP inline ImVec4& operator+=(ImVec4& lhs, const ImVec4& rhs)       { lhs.x += rhs.x; lhs.y += rhs.y; lhs.z += rhs.z; lhs.w += rhs.w; return lhs; }
+IM_NODEBUGSTEP inline ImVec4& operator-=(ImVec4& lhs, const ImVec4& rhs)       { lhs.x -= rhs.x; lhs.y -= rhs.y; lhs.z -= rhs.z; lhs.w -= rhs.w; return lhs; }
+IM_NODEBUGSTEP inline ImVec4& operator*=(ImVec4& lhs, const ImVec4& rhs)       { lhs.x *= rhs.x; lhs.y *= rhs.y; lhs.z *= rhs.z; lhs.w *= rhs.w; return lhs; }
+IM_NODEBUGSTEP inline ImVec4& operator/=(ImVec4& lhs, const ImVec4& rhs)       { lhs.x /= rhs.x; lhs.y /= rhs.y; lhs.z /= rhs.z; lhs.w /= rhs.w; return lhs; }
+IM_NODEBUGSTEP inline bool    operator==(const ImVec4& lhs, const ImVec4& rhs) { return lhs.x == rhs.x && lhs.y == rhs.y && lhs.z == rhs.z && lhs.w == rhs.w; }
+IM_NODEBUGSTEP inline bool    operator!=(const ImVec4& lhs, const ImVec4& rhs) { return lhs.x != rhs.x || lhs.y != rhs.y || lhs.z != rhs.z || lhs.w != rhs.w; }
 IM_MSVC_RUNTIME_CHECKS_RESTORE
 #endif
 
@@ -3477,7 +3508,8 @@ struct ImDrawList
     ImVector<ImVec4>        _ClipRectStack;     // [Internal]
     ImVector<ImTextureRef>  _TextureStack;      // [Internal]
     ImVector<ImU8>          _CallbacksDataBuf;  // [Internal]
-    float                   _FringeScale;       // [Internal] anti-alias fringe is scaled by this value, this helps to keep things sharp while zooming at vertex buffer content
+    float                   _FringeScale;       // [Internal] anti-alias fringe is scaled by this value, this helps to keep things sharp while zooming at vertex buffer content.
+    float                   _InvFringeScale;    // [internal] 1.0 / _FringeScale // FIXME: Consider renaming to _PixelDensity.
     const char*             _OwnerName;         // Pointer to owner window's name for debugging
 
     // If you want to create ImDrawList instances, pass them ImGui::GetDrawListSharedData().
@@ -3611,6 +3643,7 @@ struct ImDrawList
     // [Internal helpers]
     IMGUI_API void  _SetDrawListSharedData(ImDrawListSharedData* data);
     IMGUI_API void  _ResetForNewFrame();
+    IMGUI_API void  _SetPixelDensity(float pixel_density);
     IMGUI_API void  _ClearFreeMemory();
     IMGUI_API void  _PopUnusedDrawCmd();
     IMGUI_API void  _TryMergeDrawCmds();
@@ -3875,8 +3908,8 @@ struct ImFontAtlas
     IMGUI_API void              CompactCache();                                 // Compact cached glyphs and texture.
     IMGUI_API void              SetFontLoader(const ImFontLoader* font_loader); // Change font loader at runtime.
 
-    // Clearing the atlas/fonts has little use nowadays, unless you want to batch remove all fonts. 
-    // - Since 1.92, you can call ClearFonts() mid-frame, if you load new fonts afterwards. 
+    // Clearing the atlas/fonts has little use nowadays, unless you want to batch remove all fonts.
+    // - Since 1.92, you can call ClearFonts() mid-frame, if you load new fonts afterwards.
     // - As we are transitioning toward our new font system the semantic for those functions gets increasingly misleading and are often a source of issues.
     //   TL;DR; most likely, don't use any of those functions. We expect to obsolete/rework them.
     IMGUI_API void              Clear();                    // Clear everything (fonts + textures). Don't call mid-frame!
@@ -4298,6 +4331,7 @@ struct ImGuiPlatformIO
     ImDrawCallback  DrawCallback_ResetRenderState;      // Request to reset the graphics/render state.
     ImDrawCallback  DrawCallback_SetSamplerLinear;      // Request backend to set texture sampling to Linear.
     ImDrawCallback  DrawCallback_SetSamplerNearest;     // Request backend to set texture sampling to Nearest/Point.
+    ImDrawCallback  DrawCallback_SetSamplerFromTex;     // Request backend to use sampler associated to texture - only available in some backends: OpenGL2/3 and SDLRenderer3.
     //ImDrawCallback  DrawCallback_SetSamplerCustom;    // Request backend to set texture sampling using Backend Specific data.
 
     //------------------------------------------------------------------

@@ -2,7 +2,7 @@
 // **DO NOT EDIT DIRECTLY**
 // https://github.com/dearimgui/dear_bindings
 
-// dear imgui, v1.92.9b
+// dear imgui, v1.93.0 WIP
 // (headers)
 
 // Help:
@@ -34,10 +34,10 @@
 // Library Version
 // (Integer encoded as XYYZZ for use in #if preprocessor conditionals, e.g. '#if IMGUI_VERSION_NUM >= 12345')
 #ifndef DEAR_BINDINGS_INTERNAL_GLUE_CODE
-#define IMGUI_VERSION       "1.92.9b"
+#define IMGUI_VERSION       "1.93.0 WIP"
 #endif // #ifndef DEAR_BINDINGS_INTERNAL_GLUE_CODE
 #ifndef DEAR_BINDINGS_INTERNAL_GLUE_CODE
-#define IMGUI_VERSION_NUM   19291
+#define IMGUI_VERSION_NUM   19297
 #endif // #ifndef DEAR_BINDINGS_INTERNAL_GLUE_CODE
 #define IMGUI_HAS_TABLE              // Added BeginTable() - from IMGUI_VERSION_NUM >= 18000
 #define IMGUI_HAS_TEXTURES           // Added ImGuiBackendFlags_RendererHasTextures - from IMGUI_VERSION_NUM >= 19198
@@ -141,6 +141,17 @@ extern "C"
 #define IM_MSVC_RUNTIME_CHECKS_OFF
 #define IM_MSVC_RUNTIME_CHECKS_RESTORE
 #endif // #if defined(_MSC_VER)&&!defined(__clang__)&&!defined(__INTEL_COMPILER)&&!defined(IMGUI_DEBUG_PARANOID)
+// Alternative to using a .natstepfilter file or other scripts in misc/debuggers/ to skip debug-stepping selected trivial functions.
+// If you get a compiler error or warning related to use, please report it to us!
+#if (defined(__clang__)&&(__clang_major__ >= 7))||(defined(__GNUC__)&&(__GNUC__>4 ||(__GNUC__ == 4 && __GNUC_MINOR__ >= 8)))
+#define IM_NODEBUGSTEP      [[gnu::artificial]]
+#else
+#if defined(_MSC_VER)&&(_MSC_VER >= 1915)
+#define IM_NODEBUGSTEP      __declspec(non_user_code)
+#else
+#define IM_NODEBUGSTEP
+#endif // #if defined(_MSC_VER)&&(_MSC_VER >= 1915)
+#endif // #if (defined(__clang__)&&(__clang_major__ >= 7))||(defined(__GNUC__)&&(__GNUC__>4 ||(__GNUC__ == 4 && __GNUC_MINOR__ >= 8)))
 // Warnings
 #ifdef _MSC_VER
 #pragma warning (push)
@@ -172,7 +183,7 @@ extern "C"
 typedef struct ImVec2_t ImVec2;
 typedef struct ImVec4_t ImVec4;
 typedef struct ImTextureRef_t ImTextureRef;
-typedef struct ImVector_ImGuiTextRange_t ImVector_ImGuiTextRange;
+typedef struct ImVector_ImGuiTextFilterItem_t ImVector_ImGuiTextFilterItem;
 typedef struct ImVector_char_t ImVector_char;
 typedef struct ImVector_ImGuiStoragePair_t ImVector_ImGuiStoragePair;
 typedef struct ImVector_ImGuiSelectionRequest_t ImVector_ImGuiSelectionRequest;
@@ -198,7 +209,7 @@ typedef struct ImVector_ImFontConfigPtr_t ImVector_ImFontConfigPtr;
 typedef struct ImVector_ImGuiPlatformMonitor_t ImVector_ImGuiPlatformMonitor;
 typedef struct ImVector_ImTextureDataPtr_t ImVector_ImTextureDataPtr;
 typedef struct ImVector_ImGuiViewportPtr_t ImVector_ImGuiViewportPtr;
-typedef struct ImGuiTextFilter_ImGuiTextRange_t ImGuiTextFilter_ImGuiTextRange;
+typedef struct ImGuiTextFilter_ImGuiTextFilterItem_t ImGuiTextFilter_ImGuiTextFilterItem;
 typedef struct ImDrawCmdHeader_t ImDrawCmdHeader;
 // ImDrawIdx: vertex index. [Compile-time configurable type]
 // - To use 16-bit indices + allow large meshes: backend need to set 'io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset' and handle ImDrawCmd::VtxOffset (recommended).
@@ -661,19 +672,14 @@ CIMGUI_API void ImGui_TextUnformattedEx(const char* text, const char* text_end /
 CIMGUI_API void ImGui_Text(const char* fmt, ...) IM_FMTARGS(1);                                    // formatted text
 CIMGUI_API void ImGui_TextV(const char* fmt, va_list args) IM_FMTLIST(1);
 CIMGUI_API void ImGui_TextColored(ImVec4 col, const char* fmt, ...) IM_FMTARGS(2);                 // shortcut for PushStyleColor(ImGuiCol_Text, col); Text(fmt, ...); PopStyleColor();
-CIMGUI_API void ImGui_TextColoredUnformatted(ImVec4 col, const char* text);                        // shortcut for PushStyleColor(ImGuiCol_Text, col); Text(fmt, ...); PopStyleColor();
 CIMGUI_API void ImGui_TextColoredV(ImVec4 col, const char* fmt, va_list args) IM_FMTLIST(2);
 CIMGUI_API void ImGui_TextDisabled(const char* fmt, ...) IM_FMTARGS(1);                            // shortcut for PushStyleColor(ImGuiCol_Text, style.Colors[ImGuiCol_TextDisabled]); Text(fmt, ...); PopStyleColor();
-CIMGUI_API void ImGui_TextDisabledUnformatted(const char* text);                                   // shortcut for PushStyleColor(ImGuiCol_Text, style.Colors[ImGuiCol_TextDisabled]); Text(fmt, ...); PopStyleColor();
 CIMGUI_API void ImGui_TextDisabledV(const char* fmt, va_list args) IM_FMTLIST(1);
 CIMGUI_API void ImGui_TextWrapped(const char* fmt, ...) IM_FMTARGS(1);                             // shortcut for PushTextWrapPos(0.0f); Text(fmt, ...); PopTextWrapPos();. Note that this won't work on an auto-resizing window if there's no other widgets to extend the window width, yoy may need to set a size using SetNextWindowSize().
-CIMGUI_API void ImGui_TextWrappedUnformatted(const char* text);                                    // shortcut for PushTextWrapPos(0.0f); Text(fmt, ...); PopTextWrapPos();. Note that this won't work on an auto-resizing window if there's no other widgets to extend the window width, yoy may need to set a size using SetNextWindowSize().
 CIMGUI_API void ImGui_TextWrappedV(const char* fmt, va_list args) IM_FMTLIST(1);
 CIMGUI_API void ImGui_LabelText(const char* label, const char* fmt, ...) IM_FMTARGS(2);            // display text+label aligned the same way as value+label widgets
-CIMGUI_API void ImGui_LabelTextUnformatted(const char* label, const char* text);                   // display text+label aligned the same way as value+label widgets
 CIMGUI_API void ImGui_LabelTextV(const char* label, const char* fmt, va_list args) IM_FMTLIST(2);
 CIMGUI_API void ImGui_BulletText(const char* fmt, ...) IM_FMTARGS(1);                              // shortcut for Bullet()+Text()
-CIMGUI_API void ImGui_BulletTextUnformatted(const char* text);                                     // shortcut for Bullet()+Text()
 CIMGUI_API void ImGui_BulletTextV(const char* fmt, va_list args) IM_FMTLIST(1);
 CIMGUI_API void ImGui_SeparatorText(const char* label);                                            // currently: formatted text with a horizontal line
 
@@ -835,28 +841,24 @@ CIMGUI_API bool ImGui_ColorButtonEx(const char* desc_id, ImVec4 col, ImGuiColorE
 // Widgets: Trees
 // - TreeNode functions return true when the node is open, in which case you need to also call TreePop() when you are finished displaying the tree node contents.
 CIMGUI_API bool  ImGui_TreeNode(const char* label);
-CIMGUI_API bool  ImGui_TreeNodeStr(const char* str_id, const char* fmt, ...) IM_FMTARGS(2);                                        // helper variation to easily decorrelate the id from the displayed string. Read the FAQ about why and how to use ID. to align arbitrary text at the same level as a TreeNode() you can use Bullet().
-CIMGUI_API bool  ImGui_TreeNodeStrUnformatted(const char* str_id, const char* text);                                               // helper variation to easily decorrelate the id from the displayed string. Read the FAQ about why and how to use ID. to align arbitrary text at the same level as a TreeNode() you can use Bullet().
-CIMGUI_API bool  ImGui_TreeNodePtr(const void* ptr_id, const char* fmt, ...) IM_FMTARGS(2);                                        // "
-CIMGUI_API bool  ImGui_TreeNodePtrUnformatted(const void* ptr_id, const char* text);                                               // "
+CIMGUI_API bool  ImGui_TreeNodeStr(const char* str_id, const char* fmt, ...) IM_FMTARGS(2);                                     // helper variation to easily decorrelate the id from the displayed string. Read the FAQ about why and how to use ID. to align arbitrary text at the same level as a TreeNode() you can use Bullet().
+CIMGUI_API bool  ImGui_TreeNodePtr(const void* ptr_id, const char* fmt, ...) IM_FMTARGS(2);                                     // "
 CIMGUI_API bool  ImGui_TreeNodeV(const char* str_id, const char* fmt, va_list args) IM_FMTLIST(2);
 CIMGUI_API bool  ImGui_TreeNodeVPtr(const void* ptr_id, const char* fmt, va_list args) IM_FMTLIST(2);
 CIMGUI_API bool  ImGui_TreeNodeEx(const char* label, ImGuiTreeNodeFlags flags /* = 0 */);
 CIMGUI_API bool  ImGui_TreeNodeExStr(const char* str_id, ImGuiTreeNodeFlags flags, const char* fmt, ...) IM_FMTARGS(3);
-CIMGUI_API bool  ImGui_TreeNodeExStrUnformatted(const char* str_id, ImGuiTreeNodeFlags flags, const char* text);
 CIMGUI_API bool  ImGui_TreeNodeExPtr(const void* ptr_id, ImGuiTreeNodeFlags flags, const char* fmt, ...) IM_FMTARGS(3);
-CIMGUI_API bool  ImGui_TreeNodeExPtrUnformatted(const void* ptr_id, ImGuiTreeNodeFlags flags, const char* text);
 CIMGUI_API bool  ImGui_TreeNodeExV(const char* str_id, ImGuiTreeNodeFlags flags, const char* fmt, va_list args) IM_FMTLIST(3);
 CIMGUI_API bool  ImGui_TreeNodeExVPtr(const void* ptr_id, ImGuiTreeNodeFlags flags, const char* fmt, va_list args) IM_FMTLIST(3);
-CIMGUI_API void  ImGui_TreePush(const char* str_id);                                                                               // ~ Indent()+PushID(). Already called by TreeNode() when returning true, but you can call TreePush/TreePop yourself if desired.
-CIMGUI_API void  ImGui_TreePushPtr(const void* ptr_id);                                                                            // "
-CIMGUI_API void  ImGui_TreePop(void);                                                                                              // ~ Unindent()+PopID()
-CIMGUI_API float ImGui_GetTreeNodeToLabelSpacing(void);                                                                            // horizontal distance preceding label when using TreeNode*() or Bullet() == (g.FontSize + style.FramePadding.x*2) for a regular unframed TreeNode
-CIMGUI_API bool  ImGui_CollapsingHeader(const char* label, ImGuiTreeNodeFlags flags /* = 0 */);                                    // if returning 'true' the header is open. doesn't indent nor push on ID stack. user doesn't have to call TreePop().
-CIMGUI_API bool  ImGui_CollapsingHeaderBoolPtr(const char* label, bool* p_visible, ImGuiTreeNodeFlags flags /* = 0 */);            // when 'p_visible != NULL': if '*p_visible==true' display an additional small close button on upper right of the header which will set the bool to false when clicked, if '*p_visible==false' don't display the header.
-CIMGUI_API void  ImGui_SetNextItemOpen(bool is_open, ImGuiCond cond /* = 0 */);                                                    // set next TreeNode/CollapsingHeader open state.
-CIMGUI_API void  ImGui_SetNextItemStorageID(ImGuiID storage_id);                                                                   // set id to use for open/close storage (default to same as item id).
-CIMGUI_API bool  ImGui_TreeNodeGetOpen(ImGuiID storage_id);                                                                        // retrieve tree node open/close state.
+CIMGUI_API void  ImGui_TreePush(const char* str_id);                                                                            // ~ Indent()+PushID(). Already called by TreeNode() when returning true, but you can call TreePush/TreePop yourself if desired.
+CIMGUI_API void  ImGui_TreePushPtr(const void* ptr_id);                                                                         // "
+CIMGUI_API void  ImGui_TreePop(void);                                                                                           // ~ Unindent()+PopID()
+CIMGUI_API float ImGui_GetTreeNodeToLabelSpacing(void);                                                                         // horizontal distance preceding label when using TreeNode*() or Bullet() == (g.FontSize + style.FramePadding.x*2) for a regular unframed TreeNode
+CIMGUI_API bool  ImGui_CollapsingHeader(const char* label, ImGuiTreeNodeFlags flags /* = 0 */);                                 // if returning 'true' the header is open. doesn't indent nor push on ID stack. user doesn't have to call TreePop().
+CIMGUI_API bool  ImGui_CollapsingHeaderBoolPtr(const char* label, bool* p_visible, ImGuiTreeNodeFlags flags /* = 0 */);         // when 'p_visible != NULL': if '*p_visible==true' display an additional small close button on upper right of the header which will set the bool to false when clicked, if '*p_visible==false' don't display the header.
+CIMGUI_API void  ImGui_SetNextItemOpen(bool is_open, ImGuiCond cond /* = 0 */);                                                 // set next TreeNode/CollapsingHeader open state.
+CIMGUI_API void  ImGui_SetNextItemStorageID(ImGuiID storage_id);                                                                // set id to use for open/close storage (default to same as item id).
+CIMGUI_API bool  ImGui_TreeNodeGetOpen(ImGuiID storage_id);                                                                     // retrieve tree node open/close state.
 
 // Widgets: Selectables
 // - A selectable highlights when hovered, and can display another color when selected.
@@ -926,7 +928,6 @@ CIMGUI_API bool ImGui_MenuItemBoolPtr(const char* label, const char* shortcut, b
 CIMGUI_API bool ImGui_BeginTooltip(void);                                        // begin/append a tooltip window.
 CIMGUI_API void ImGui_EndTooltip(void);                                          // only call EndTooltip() if BeginTooltip()/BeginItemTooltip() returns true!
 CIMGUI_API void ImGui_SetTooltip(const char* fmt, ...) IM_FMTARGS(1);            // set a text-only tooltip. Often used after a ImGui::IsItemHovered() check. Override any previous call to SetTooltip().
-CIMGUI_API void ImGui_SetTooltipUnformatted(const char* text);                   // set a text-only tooltip. Often used after a ImGui::IsItemHovered() check. Override any previous call to SetTooltip().
 CIMGUI_API void ImGui_SetTooltipV(const char* fmt, va_list args) IM_FMTLIST(1);
 
 // Tooltips: helpers for showing a tooltip when hovering an item
@@ -935,7 +936,6 @@ CIMGUI_API void ImGui_SetTooltipV(const char* fmt, va_list args) IM_FMTLIST(1);
 // - Where 'ImGuiHoveredFlags_ForTooltip' itself is a shortcut to use 'style.HoverFlagsForTooltipMouse' or 'style.HoverFlagsForTooltipNav' depending on active input type. For mouse it defaults to 'ImGuiHoveredFlags_Stationary | ImGuiHoveredFlags_DelayShort'.
 CIMGUI_API bool ImGui_BeginItemTooltip(void);                                        // begin/append a tooltip window if preceding item was hovered.
 CIMGUI_API void ImGui_SetItemTooltip(const char* fmt, ...) IM_FMTARGS(1);            // set a text-only tooltip if preceding item was hovered. override any previous call to SetTooltip().
-CIMGUI_API void ImGui_SetItemTooltipUnformatted(const char* text);                   // set a text-only tooltip if preceding item was hovered. override any previous call to SetTooltip().
 CIMGUI_API void ImGui_SetItemTooltipV(const char* fmt, va_list args) IM_FMTLIST(1);
 
 // Popups, Modals
@@ -1108,7 +1108,6 @@ CIMGUI_API void ImGui_LogToClipboard(int auto_open_depth /* = -1 */);           
 CIMGUI_API void ImGui_LogFinish(void);                                                               // stop logging (close file, etc.)
 CIMGUI_API void ImGui_LogButtons(void);                                                              // helper to display buttons for logging to tty/file/clipboard
 CIMGUI_API void ImGui_LogText(const char* fmt, ...) IM_FMTARGS(1);                                   // pass text data straight to log (without being displayed)
-CIMGUI_API void ImGui_LogTextUnformatted(const char* text);                                          // pass text data straight to log (without being displayed)
 CIMGUI_API void ImGui_LogTextV(const char* fmt, va_list args) IM_FMTLIST(1);
 
 // Drag and Drop
@@ -1300,7 +1299,6 @@ CIMGUI_API void  ImGui_DebugStartItemPicker(void);
 CIMGUI_API bool  ImGui_DebugCheckVersionAndDataLayout(const char* version_str, size_t sz_io, size_t sz_style, size_t sz_vec2, size_t sz_vec4, size_t sz_drawvert, size_t sz_drawidx); // This is called by IMGUI_CHECKVERSION() macro.
 #ifndef IMGUI_DISABLE_DEBUG_TOOLS
 CIMGUI_API void ImGui_DebugLog(const char* fmt, ...) IM_FMTARGS(1);            // Call via IMGUI_DEBUG_LOG() for maximum stripping in caller code!
-CIMGUI_API void ImGui_DebugLogUnformatted(const char* text);                   // Call via IMGUI_DEBUG_LOG() for maximum stripping in caller code!
 CIMGUI_API void ImGui_DebugLogV(const char* fmt, va_list args) IM_FMTLIST(1);
 #endif // #ifndef IMGUI_DISABLE_DEBUG_TOOLS
 // Memory Allocators
@@ -1412,6 +1410,17 @@ typedef enum
     ImGuiItemFlags_LiveEditOnInputText   = 1<<7,  // true     // InputText: apply keyboard edits to backing value while typing. Otherwise, edits are applied when validating, tabbing out or losing focus.
     ImGuiItemFlags_LiveEditOnInputScalar = 1<<8,  // false    // DragXXX, SliderXXX, InputScalar: apply keyboard edits to backing value while typing. Otherwise, edits are applied when validating, tabbing out or losing focus.
     ImGuiItemFlags_LiveEditOnInput       = ImGuiItemFlags_LiveEditOnInputText | ImGuiItemFlags_LiveEditOnInputScalar,
+
+    //---------------------------------------------------------------------------------
+    // [BETA] MixedValue mode used to represent a mixed/indeterminate state, typically for multi-selection.
+    // - Replace value display with "-" or a custom label.
+    // - Enter key validation apply an edit and return true even if value hasn't changed (in order to apply to all).
+    // - Supported by selected widgets: Checkbox, RadioButton, Sliders, Drags, Inputs, Combo.
+    // - Note: InputText-side Undo cannot be reliably combined with MixedValue + LiveEdit On:
+    //   - Both the initial edit and subsequent undo/revert will typically make your app code write to all backing objects.
+    //   - If you use MixedMode and the simplest solution is to ensure LiveEdit is off but widgets where this applies.
+    //---------------------------------------------------------------------------------
+    ImGuiItemFlags_MixedValue            = 1<<9,  // false    // [BETA] Represent a mixed/indeterminate value. Replace value label with "-" and apply edits on validation.
 } ImGuiItemFlags_;
 
 // Flags for ImGui::InputText()
@@ -2465,7 +2474,7 @@ CIMGUI_API void ImGuiPlatformIO_SetPlatform_GetWindowSize(void (*getWindowSizeFu
 
 #if defined(IMGUI_HAS_IMSTR)
 #if IMGUI_HAS_IMSTR
-CIMGUI_API ImStr ImStr_FromCharStr(const char* b);  // Build an ImStr from a regular const char* (no data is copied, so you need to make sure the original char* isn't altered as long as you are using the ImStr).
+CIMGUI_API ImStrv ImStrv_FromCharStr(const char* b);  // Build an ImStrv from a regular const char* (no data is copied, so you need to make sure the original char* isn't altered as long as you are using the ImStrv).
 #endif // #if IMGUI_HAS_IMSTR
 #endif // #if defined(IMGUI_HAS_IMSTR)
 
@@ -2503,7 +2512,7 @@ CIMGUI_API ImStr ImStr_FromCharStr(const char* b);  // Build an ImStr from a reg
 //-----------------------------------------------------------------------------
 
 IM_MSVC_RUNTIME_CHECKS_OFF
-struct ImVector_ImGuiTextRange_t { int Size; int Capacity; ImGuiTextFilter_ImGuiTextRange* Data; };  // Instantiation of ImVector<ImGuiTextRange>
+struct ImVector_ImGuiTextFilterItem_t { int Size; int Capacity; ImGuiTextFilter_ImGuiTextFilterItem* Data; };  // Instantiation of ImVector<ImGuiTextFilterItem>
 struct ImVector_char_t { int Size; int Capacity; char* Data; };  // Instantiation of ImVector<char>
 struct ImVector_ImGuiStoragePair_t { int Size; int Capacity; ImGuiStoragePair* Data; };  // Instantiation of ImVector<ImGuiStoragePair>
 struct ImVector_ImGuiSelectionRequest_t { int Size; int Capacity; ImGuiSelectionRequest* Data; };  // Instantiation of ImVector<ImGuiSelectionRequest>
@@ -2609,10 +2618,12 @@ struct ImGuiStyle_t
     bool               DockingNodeHasCloseButton;         // Docking node has their own CloseButton() to close all docked windows.
     float              DockingSeparatorSize;              // Thickness of resizing border between docked windows
     float              MouseCursorScale;                  // Scale software rendered mouse cursor (when io.MouseDrawCursor is enabled). We apply per-monitor DPI scaling over this scale. May be removed later.
+
+    // Rendering & Tessellation
     bool               AntiAliasedLines;                  // Enable anti-aliased lines/borders. Disable if you are really tight on CPU/GPU. Latched at the beginning of the frame (copied to ImDrawList).
     bool               AntiAliasedLinesUseTex;            // Enable anti-aliased lines/borders using textures where possible. Require backend to render with bilinear filtering (NOT point/nearest filtering). Latched at the beginning of the frame (copied to ImDrawList).
     bool               AntiAliasedFill;                   // Enable anti-aliased edges around filled shapes (rounded rectangles, circles, etc.). Disable if you are really tight on CPU/GPU. Latched at the beginning of the frame (copied to ImDrawList).
-    float              CurveTessellationTol;              // Tessellation tolerance when using PathBezierCurveTo() without a specific number of segments. Decrease for highly tessellated curves (higher quality, more polygons), increase to reduce quality.
+    float              CurveTessellationMaxError;         // Maximum error (in pixels) when using PathBezierCurveTo() without a specific number of segments. Decrease for highly tessellated curves (higher quality, more polygons), increase to reduce quality.
     float              CircleTessellationMaxError;        // Maximum error (in pixels) allowed when using AddCircle()/AddCircleFilled() or drawing rounded corner rectangles with no explicit segment count specified. Decrease for higher quality but more geometry.
 
     // Colors
@@ -2629,6 +2640,12 @@ struct ImGuiStyle_t
     // [Internal]
     float              _MainScale;                        // FIXME-WIP: Reference scale, as applied by ScaleAllSizes(). PLEASE DO NOT USE THIS FOR NOW.
     float              _NextFrameFontSizeBase;            // FIXME: Temporary hack until we finish remaining work.
+
+    // Obsolete names
+#ifndef IMGUI_DISABLE_OBSOLETE_FUNCTIONS
+    float              CurveTessellationTol;              // [OBSOLETE] Old CurveTessellationTol = New CurveTessellationMaxError*CurveTessellationMaxError. // Changed in 1.93.0
+    // TabMinWidthForCloseButton = TabCloseButtonMinWidthUnselected // Renamed in 1.91.9.
+#endif // #ifndef IMGUI_DISABLE_OBSOLETE_FUNCTIONS
 };
 CIMGUI_API void ImGuiStyle_ScaleAllSizes(ImGuiStyle* self, float scale_factor);  // Scale all spacing/padding/thickness values. Do not scale fonts. See comments in definition. Consider not calling this if your initial scale factor if <1.0.
 
@@ -3015,26 +3032,34 @@ CIMGUI_API bool ImGuiPayload_IsDelivery(const ImGuiPayload* self);
 #define IM_UNICODE_CODEPOINT_MAX     0xFFFF      // Maximum Unicode code point supported by this build.
 #endif // #ifdef IMGUI_USE_WCHAR32
 
-// [Internal]
-struct ImGuiTextFilter_ImGuiTextRange_t
+// [Internal] Don't use! Will be replaced with ImStrv.
+struct ImGuiTextFilter_ImGuiTextFilterItem_t
 {
-    const char* b;
-    const char* e;
+    const char* Begin;
+    const char* End;
 };
-CIMGUI_API bool ImGuiTextFilter_ImGuiTextRange_empty(const ImGuiTextFilter_ImGuiTextRange* self);
-CIMGUI_API void ImGuiTextFilter_ImGuiTextRange_split(const ImGuiTextFilter_ImGuiTextRange* self, char separator, ImVector_ImGuiTextRange* out);
-// Helper: Parse and apply text filters. In format "aaaaa[,bbbb][,ccccc]"
+// Helper: Parse and apply text filters e.g. 'aaa bbb -ccc'.
 struct ImGuiTextFilter_t
 {
-    char                    InputBuf[256];
-    ImVector_ImGuiTextRange Filters;
-    int                     CountGrep;
+    // [Internal] Members
+    char InputBuf[256];                   // User input buffer
+    char FilterOp;                        // == '|' (any) pr '&' (all)
+    ImU8 MinWordSize;                     // == 1
+    int  _CountExclude;                   // >= 0
+    int  _CountInclude;                   // >= 0
+    ImVector_ImGuiTextFilterItem _Items;  // Pre-parsed, trimmed, reordered items
 };
-CIMGUI_API bool ImGuiTextFilter_Draw(ImGuiTextFilter* self, const char* label /* = "Filter (inc,-exc)" */, float width /* = 0.0f */); // Helper calling InputText+Build
 CIMGUI_API bool ImGuiTextFilter_PassFilter(const ImGuiTextFilter* self, const char* text, const char* text_end /* = NULL */);
-CIMGUI_API void ImGuiTextFilter_Build(ImGuiTextFilter* self);
-CIMGUI_API void ImGuiTextFilter_Clear(ImGuiTextFilter* self);
-CIMGUI_API bool ImGuiTextFilter_IsActive(const ImGuiTextFilter* self);
+CIMGUI_API void ImGuiTextFilter_Build(ImGuiTextFilter* self);                                      // Update internal data when filter changes
+CIMGUI_API void ImGuiTextFilter_Clear(ImGuiTextFilter* self);                                      // Clear filter
+CIMGUI_API bool ImGuiTextFilter_IsActive(const ImGuiTextFilter* self);                             // Useful if you need e.g. an alternative code-path when there are no filters
+// Helper to call InputText() + Build() when buffer is changed.
+CIMGUI_API bool ImGuiTextFilter_Draw(ImGuiTextFilter* self, const char* label /* = "Filter" */);
+CIMGUI_API bool ImGuiTextFilter_DrawWithHint(ImGuiTextFilter* self);                               // Implied label = "Filter", hint = "incl -excl"
+CIMGUI_API bool ImGuiTextFilter_DrawWithHintEx(ImGuiTextFilter* self, const char* label /* = "Filter" */, const char* hint /* = "incl -excl" */);
+#ifndef IMGUI_DISABLE_OBSOLETE_FUNCTIONS
+CIMGUI_API bool ImGuiTextFilter_DrawFloat(ImGuiTextFilter* self, const char* label, float width);
+#endif // #ifndef IMGUI_DISABLE_OBSOLETE_FUNCTIONS
 
 // Helper: Growable text buffer for logging/accumulating text
 // (this could be called 'ImGuiTextBuilder' / 'ImGuiStringBuilder')
@@ -3502,7 +3527,8 @@ struct ImDrawList_t
     ImVector_ImVec4       _ClipRectStack;     // [Internal]
     ImVector_ImTextureRef _TextureStack;      // [Internal]
     ImVector_ImU8         _CallbacksDataBuf;  // [Internal]
-    float                 _FringeScale;       // [Internal] anti-alias fringe is scaled by this value, this helps to keep things sharp while zooming at vertex buffer content
+    float                 _FringeScale;       // [Internal] anti-alias fringe is scaled by this value, this helps to keep things sharp while zooming at vertex buffer content.
+    float                 _InvFringeScale;    // [internal] 1.0 / _FringeScale // FIXME: Consider renaming to _PixelDensity.
     const char*           _OwnerName;         // Pointer to owner window's name for debugging
 
     //inline  void  AddEllipse(const ImVec2& center, float radius_x, float radius_y, ImU32 col, float rot = 0.0f, int num_segments = 0, float thickness = 1.0f) { AddEllipse(center, ImVec2(radius_x, radius_y), col, rot, num_segments, thickness); } // OBSOLETED in 1.90.5 (Mar 2024)
@@ -3635,6 +3661,7 @@ CIMGUI_API void ImDrawList_PopTextureID(ImDrawList* self);                      
 // [Internal helpers]
 CIMGUI_API void        ImDrawList__SetDrawListSharedData(ImDrawList* self, ImDrawListSharedData* data);
 CIMGUI_API void        ImDrawList__ResetForNewFrame(ImDrawList* self);
+CIMGUI_API void        ImDrawList__SetPixelDensity(ImDrawList* self, float pixel_density);
 CIMGUI_API void        ImDrawList__ClearFreeMemory(ImDrawList* self);
 CIMGUI_API void        ImDrawList__PopUnusedDrawCmd(ImDrawList* self);
 CIMGUI_API void        ImDrawList__TryMergeDrawCmds(ImDrawList* self);
@@ -4271,6 +4298,7 @@ struct ImGuiPlatformIO_t
     ImDrawCallback                                                  DrawCallback_ResetRenderState;   // Request to reset the graphics/render state.
     ImDrawCallback                                                  DrawCallback_SetSamplerLinear;   // Request backend to set texture sampling to Linear.
     ImDrawCallback                                                  DrawCallback_SetSamplerNearest;  // Request backend to set texture sampling to Nearest/Point.
+    ImDrawCallback                                                  DrawCallback_SetSamplerFromTex;  // Request backend to use sampler associated to texture - only available in some backends: OpenGL2/3 and SDLRenderer3.
     //ImDrawCallback  DrawCallback_SetSamplerCustom;    // Request backend to set texture sampling using Backend Specific data.
 
     //------------------------------------------------------------------

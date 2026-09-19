@@ -6,6 +6,7 @@
 #include "imgui/dcimgui.h"
 #include "imgui/dcimgui_impl_sdl3.h"
 #include "imgui/dcimgui_impl_sdlrenderer3.h"
+#include "imgui/dcimgui_internal.h"
 
 #include "maingui.h"
 #include "configgui.h"
@@ -19,7 +20,8 @@
 MainGUI MainGUI_Init(MainCfg* mcfg)
 {
     MainGUI mgui = {};
-    if (!SDL_CreateWindowAndRenderer("DualSOUP", 256*2, 192*2*2, SDL_WINDOW_RESIZABLE, &mgui.Win, &mgui.Ren))
+    constexpr int menubarheight = 19; // todo: un-hardcode
+    if (!SDL_CreateWindowAndRenderer("DualSOUP", 256*2, (192*2*2) + menubarheight, SDL_WINDOW_RESIZABLE, &mgui.Win, &mgui.Ren))
     {
         printf("window/renderer init failure :(\n");
         exit(EXIT_FAILURE);
@@ -65,7 +67,21 @@ bool MainGUI_Loop(Console* sys, MainGUI* mgui, MainCfg* mcfg)
     cImGui_ImplSDL3_NewFrame();
     ImGui_NewFrame();
 
-    ImGui_DockSpaceOverViewport();
+    ImGuiID dockspaceid = ImGui_GetID("Main Dockspace");
+    ImGuiViewport* viewport = ImGui_GetMainViewport();
+
+    ImGuiID dockc = dockspaceid;
+    ImGui_DockBuilderDockWindow("Display Window##1", dockc);
+    ImGuiDockNode* node = ImGui_DockBuilderGetNode(dockspaceid);
+    // kinda janky; should be functionally identical to auto-hide tab bar but without the ability to manually unhide it
+    if (node)
+    {
+        if (node->Windows.Size <= 1)
+            node->LocalFlags |= ImGuiDockNodeFlags_NoTabBar;
+        else
+            node->LocalFlags &= ~ImGuiDockNodeFlags_NoTabBar;
+    }
+    ImGui_DockSpaceOverViewportEx(dockspaceid, viewport, 0, NULL);
 
     if (ImGui_BeginMainMenuBar())
     {
@@ -131,22 +147,29 @@ bool MainGUI_Loop(Console* sys, MainGUI* mgui, MainCfg* mcfg)
     {
         DisplayWindow* dispwin = &gcfg->DisplayWindow[i];
         ImGuiWindowFlags flags = ImGuiWindowFlags_NoNav|ImGuiWindowFlags_NoFocusOnAppearing;
-        if (dispwin->LockPos) flags |= ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoResize;
-        if (dispwin->NoDecor) flags |= ImGuiWindowFlags_NoTitleBar|ImGuiWindowFlags_NoScrollbar|ImGuiWindowFlags_NoCollapse;
-
-        static_assert((('0'+(GUI_MaxDisplayWindows)) <= '9') || (('0'+(GUI_MaxDisplayWindows)) >= '0'), "This code needs to be updated to work with > 10 windows\n");
-        label[countof(label)-2] += 1;
-
-        if (dispwin->Dirty)
+        if (i == 0)
         {
-            ImGui_SetNextWindowSize(dispwin->Sz, ImGuiCond_Always);
-            ImGui_SetNextWindowPos(dispwin->Pos, ImGuiCond_Always);
-            dispwin->Dirty = false;
+            flags |= ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoCollapse;
         }
         else
         {
-            ImGui_SetNextWindowSize((ImVec2){256,192}, ImGuiCond_FirstUseEver);
+            if (dispwin->LockPos) flags |= ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoResize;
+            if (dispwin->NoDecor) flags |= ImGuiWindowFlags_NoTitleBar|ImGuiWindowFlags_NoScrollbar|ImGuiWindowFlags_NoCollapse;
+
+            if (dispwin->Dirty)
+            {
+                ImGui_SetNextWindowSize(dispwin->Sz, ImGuiCond_Always);
+                ImGui_SetNextWindowPos(dispwin->Pos, ImGuiCond_Always);
+                dispwin->Dirty = false;
+            }
+            else
+            {
+                ImGui_SetNextWindowSize((ImVec2){256,192}, ImGuiCond_FirstUseEver);
+            }
         }
+
+        static_assert((('0'+(GUI_MaxDisplayWindows)) <= '9') || (('0'+(GUI_MaxDisplayWindows)) >= '0'), "This code needs to be updated to work with > 10 windows\n");
+        label[countof(label)-2] += 1;
 
         if (ImGui_Begin(label, NULL, flags))
         {
@@ -200,14 +223,17 @@ bool MainGUI_Loop(Console* sys, MainGUI* mgui, MainCfg* mcfg)
             // right click menu for configuration
             if (ImGui_BeginPopupContextWindow())
             {
-                ImGui_SeparatorText("Display Window Settings");
-                if (ImGui_Checkbox("Lock Window", &dispwin->LockPos)) mcfg->Dirty = true;
-                if (ImGui_Checkbox("Display Only", &dispwin->NoDecor)) mcfg->Dirty = true;
+                if (i != 0)
+                {
+                    ImGui_SeparatorText("Display Window Settings");
+                    if (ImGui_Checkbox("Lock Window", &dispwin->LockPos)) mcfg->Dirty = true;
+                    if (ImGui_Checkbox("Display Only", &dispwin->NoDecor)) mcfg->Dirty = true;
 
-                GUI_INPUTCLAMPED(Float, "X Pos", dispwin->Pos.x, GUI_MinDisplayWindowPosX, GUI_MaxDisplayWindowPosX)
-                GUI_INPUTCLAMPED(Float, "Y Pos", dispwin->Pos.y, GUI_MinDisplayWindowPosY, GUI_MaxDisplayWindowPosY)
-                GUI_INPUTCLAMPED(Float, "Width", dispwin->Sz.x, GUI_MinDisplayWindowWidth, GUI_MaxDisplayWindowWidth)
-                GUI_INPUTCLAMPED(Float, "Height", dispwin->Sz.x, GUI_MinDisplayWindowHeight, GUI_MaxDisplayWindowHeight)
+                    GUI_INPUTCLAMPED(Float, "X Pos", dispwin->Pos.x, GUI_MinDisplayWindowPosX, GUI_MaxDisplayWindowPosX)
+                    GUI_INPUTCLAMPED(Float, "Y Pos", dispwin->Pos.y, GUI_MinDisplayWindowPosY, GUI_MaxDisplayWindowPosY)
+                    GUI_INPUTCLAMPED(Float, "Width", dispwin->Sz.x, GUI_MinDisplayWindowWidth, GUI_MaxDisplayWindowWidth)
+                    GUI_INPUTCLAMPED(Float, "Height", dispwin->Sz.x, GUI_MinDisplayWindowHeight, GUI_MaxDisplayWindowHeight)
+                }
 
                 ImGui_SeparatorText("Per Window Display Settings");
 
@@ -243,6 +269,7 @@ bool MainGUI_Loop(Console* sys, MainGUI* mgui, MainCfg* mcfg)
             }
 
             ImVec2 basepos = ImGui_GetCursorStartPos();
+            ImDrawList_AddCallback(ImGui_GetWindowDrawList(), ImGui_GetPlatformIO()->DrawCallback_SetSamplerFromTex);
             for (int j = 0; j < dispwin->NumDisplays; j++)
             {
                 Display* disp = &dispwin->Display[j];
@@ -268,7 +295,6 @@ bool MainGUI_Loop(Console* sys, MainGUI* mgui, MainCfg* mcfg)
         }
         ImGui_End();
     }
-
     ImGui_PopStyleVarEx(5);
 
     ImGui_Render();

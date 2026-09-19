@@ -41,19 +41,19 @@ CIMGUI_API void cimgui::ImVector_Destruct(void* vector)
 #if defined(IMGUI_HAS_IMSTR)
 #if IMGUI_HAS_IMSTR
 
-// User-facing helper to convert char* to ImStr
-CIMGUI_API cimgui::ImStr cimgui::ImStr_FromCharStr(const char* b)
+// User-facing helper to convert char* to ImStrv
+CIMGUI_API cimgui::ImStrv cimgui::ImStrv_FromCharStr(const char* b)
 {
-    ImStr str;
+    ImStrv str;
     str.Begin = b;
     str.End = b ? b + strlen(b) : NULL;
     return str;
 }
 
-// Internal helper to convert char* directly to C++-style ImStr
-static inline ::ImStr MarshalToCPP_ImStr_FromCharStr(const char* b)
+// Internal helper to convert char* directly to C++-style ImStrv
+static inline ::ImStrv MarshalToCPP_ImStrv_FromCharStr(const char* b)
 {
-    ::ImStr str;
+    ::ImStrv str;
     str.Begin = b;
     str.End = b ? b + strlen(b) : NULL;
     return str;
@@ -1017,11 +1017,6 @@ CIMGUI_API void cimgui::ImGui_TextColored(cimgui::ImVec4 col, const char* fmt, .
     va_end(args);
 }
 
-CIMGUI_API void cimgui::ImGui_TextColoredUnformatted(cimgui::ImVec4 col, const char* text)
-{
-    ::ImGui::TextColored(ConvertToCPP_ImVec4(col), "%s", text);
-}
-
 CIMGUI_API void cimgui::ImGui_TextColoredV(cimgui::ImVec4 col, const char* fmt, va_list args)
 {
     ::ImGui::TextColoredV(ConvertToCPP_ImVec4(col), fmt, args);
@@ -1033,11 +1028,6 @@ CIMGUI_API void cimgui::ImGui_TextDisabled(const char* fmt, ...)
     va_start(args, fmt);
     ::ImGui::TextDisabledV(fmt, args);
     va_end(args);
-}
-
-CIMGUI_API void cimgui::ImGui_TextDisabledUnformatted(const char* text)
-{
-    ::ImGui::TextDisabled("%s", text);
 }
 
 CIMGUI_API void cimgui::ImGui_TextDisabledV(const char* fmt, va_list args)
@@ -1053,11 +1043,6 @@ CIMGUI_API void cimgui::ImGui_TextWrapped(const char* fmt, ...)
     va_end(args);
 }
 
-CIMGUI_API void cimgui::ImGui_TextWrappedUnformatted(const char* text)
-{
-    ::ImGui::TextWrapped("%s", text);
-}
-
 CIMGUI_API void cimgui::ImGui_TextWrappedV(const char* fmt, va_list args)
 {
     ::ImGui::TextWrappedV(fmt, args);
@@ -1071,11 +1056,6 @@ CIMGUI_API void cimgui::ImGui_LabelText(const char* label, const char* fmt, ...)
     va_end(args);
 }
 
-CIMGUI_API void cimgui::ImGui_LabelTextUnformatted(const char* label, const char* text)
-{
-    ::ImGui::LabelText(label, "%s", text);
-}
-
 CIMGUI_API void cimgui::ImGui_LabelTextV(const char* label, const char* fmt, va_list args)
 {
     ::ImGui::LabelTextV(label, fmt, args);
@@ -1087,11 +1067,6 @@ CIMGUI_API void cimgui::ImGui_BulletText(const char* fmt, ...)
     va_start(args, fmt);
     ::ImGui::BulletTextV(fmt, args);
     va_end(args);
-}
-
-CIMGUI_API void cimgui::ImGui_BulletTextUnformatted(const char* text)
-{
-    ::ImGui::BulletText("%s", text);
 }
 
 CIMGUI_API void cimgui::ImGui_BulletTextV(const char* fmt, va_list args)
@@ -1678,11 +1653,6 @@ CIMGUI_API bool  cimgui::ImGui_TreeNodeStr(const char* str_id, const char* fmt, 
     return temp_result;
 }
 
-CIMGUI_API bool  cimgui::ImGui_TreeNodeStrUnformatted(const char* str_id, const char* text)
-{
-    return ::ImGui::TreeNode(str_id, "%s", text);
-}
-
 CIMGUI_API bool  cimgui::ImGui_TreeNodePtr(const void* ptr_id, const char* fmt, ...)
 {
     va_list args;
@@ -1690,11 +1660,6 @@ CIMGUI_API bool  cimgui::ImGui_TreeNodePtr(const void* ptr_id, const char* fmt, 
     auto temp_result = ::ImGui::TreeNodeV(ptr_id, fmt, args);
     va_end(args);
     return temp_result;
-}
-
-CIMGUI_API bool  cimgui::ImGui_TreeNodePtrUnformatted(const void* ptr_id, const char* text)
-{
-    return ::ImGui::TreeNode(ptr_id, "%s", text);
 }
 
 CIMGUI_API bool  cimgui::ImGui_TreeNodeV(const char* str_id, const char* fmt, va_list args)
@@ -1721,11 +1686,6 @@ CIMGUI_API bool  cimgui::ImGui_TreeNodeExStr(const char* str_id, ImGuiTreeNodeFl
     return temp_result;
 }
 
-CIMGUI_API bool  cimgui::ImGui_TreeNodeExStrUnformatted(const char* str_id, ImGuiTreeNodeFlags flags, const char* text)
-{
-    return ::ImGui::TreeNodeEx(str_id, flags, "%s", text);
-}
-
 CIMGUI_API bool  cimgui::ImGui_TreeNodeExPtr(const void* ptr_id, ImGuiTreeNodeFlags flags, const char* fmt, ...)
 {
     va_list args;
@@ -1733,11 +1693,6 @@ CIMGUI_API bool  cimgui::ImGui_TreeNodeExPtr(const void* ptr_id, ImGuiTreeNodeFl
     auto temp_result = ::ImGui::TreeNodeExV(ptr_id, flags, fmt, args);
     va_end(args);
     return temp_result;
-}
-
-CIMGUI_API bool  cimgui::ImGui_TreeNodeExPtrUnformatted(const void* ptr_id, ImGuiTreeNodeFlags flags, const char* text)
-{
-    return ::ImGui::TreeNodeEx(ptr_id, flags, "%s", text);
 }
 
 CIMGUI_API bool  cimgui::ImGui_TreeNodeExV(const char* str_id, ImGuiTreeNodeFlags flags, const char* fmt, va_list args)
@@ -1973,11 +1928,6 @@ CIMGUI_API void cimgui::ImGui_SetTooltip(const char* fmt, ...)
     va_end(args);
 }
 
-CIMGUI_API void cimgui::ImGui_SetTooltipUnformatted(const char* text)
-{
-    ::ImGui::SetTooltip("%s", text);
-}
-
 CIMGUI_API void cimgui::ImGui_SetTooltipV(const char* fmt, va_list args)
 {
     ::ImGui::SetTooltipV(fmt, args);
@@ -1994,11 +1944,6 @@ CIMGUI_API void cimgui::ImGui_SetItemTooltip(const char* fmt, ...)
     va_start(args, fmt);
     ::ImGui::SetItemTooltipV(fmt, args);
     va_end(args);
-}
-
-CIMGUI_API void cimgui::ImGui_SetItemTooltipUnformatted(const char* text)
-{
-    ::ImGui::SetItemTooltip("%s", text);
 }
 
 CIMGUI_API void cimgui::ImGui_SetItemTooltipV(const char* fmt, va_list args)
@@ -2332,11 +2277,6 @@ CIMGUI_API void cimgui::ImGui_LogText(const char* fmt, ...)
     va_start(args, fmt);
     ::ImGui::LogTextV(fmt, args);
     va_end(args);
-}
-
-CIMGUI_API void cimgui::ImGui_LogTextUnformatted(const char* text)
-{
-    ::ImGui::LogText("%s", text);
 }
 
 CIMGUI_API void cimgui::ImGui_LogTextV(const char* fmt, va_list args)
@@ -2844,11 +2784,6 @@ CIMGUI_API void cimgui::ImGui_DebugLog(const char* fmt, ...)
     va_end(args);
 }
 
-CIMGUI_API void cimgui::ImGui_DebugLogUnformatted(const char* text)
-{
-    ::ImGui::DebugLog("%s", text);
-}
-
 CIMGUI_API void cimgui::ImGui_DebugLogV(const char* fmt, va_list args)
 {
     ::ImGui::DebugLogV(fmt, args);
@@ -3046,21 +2981,6 @@ CIMGUI_API bool cimgui::ImGuiPayload_IsDelivery(const cimgui::ImGuiPayload* self
     return reinterpret_cast<const ::ImGuiPayload*>(self)->IsDelivery();
 }
 
-CIMGUI_API bool cimgui::ImGuiTextFilter_ImGuiTextRange_empty(const cimgui::ImGuiTextFilter_ImGuiTextRange* self)
-{
-    return reinterpret_cast<const ::ImGuiTextFilter::ImGuiTextRange*>(self)->empty();
-}
-
-CIMGUI_API void cimgui::ImGuiTextFilter_ImGuiTextRange_split(const cimgui::ImGuiTextFilter_ImGuiTextRange* self, char separator, cimgui::ImVector_ImGuiTextRange* out)
-{
-    reinterpret_cast<const ::ImGuiTextFilter::ImGuiTextRange*>(self)->split(separator, reinterpret_cast<::ImVector<::ImGuiTextFilter::ImGuiTextRange>*>(out));
-}
-
-CIMGUI_API bool cimgui::ImGuiTextFilter_Draw(cimgui::ImGuiTextFilter* self, const char* label, float width)
-{
-    return reinterpret_cast<::ImGuiTextFilter*>(self)->Draw(label, width);
-}
-
 CIMGUI_API bool cimgui::ImGuiTextFilter_PassFilter(const cimgui::ImGuiTextFilter* self, const char* text, const char* text_end)
 {
     return reinterpret_cast<const ::ImGuiTextFilter*>(self)->PassFilter(text, text_end);
@@ -3080,6 +3000,30 @@ CIMGUI_API bool cimgui::ImGuiTextFilter_IsActive(const cimgui::ImGuiTextFilter* 
 {
     return reinterpret_cast<const ::ImGuiTextFilter*>(self)->IsActive();
 }
+
+CIMGUI_API bool cimgui::ImGuiTextFilter_Draw(cimgui::ImGuiTextFilter* self, const char* label)
+{
+    return reinterpret_cast<::ImGuiTextFilter*>(self)->Draw(label);
+}
+
+CIMGUI_API bool cimgui::ImGuiTextFilter_DrawWithHint(cimgui::ImGuiTextFilter* self)
+{
+    return reinterpret_cast<::ImGuiTextFilter*>(self)->DrawWithHint();
+}
+
+CIMGUI_API bool cimgui::ImGuiTextFilter_DrawWithHintEx(cimgui::ImGuiTextFilter* self, const char* label, const char* hint)
+{
+    return reinterpret_cast<::ImGuiTextFilter*>(self)->DrawWithHint(label, hint);
+}
+
+#ifndef IMGUI_DISABLE_OBSOLETE_FUNCTIONS
+
+CIMGUI_API bool cimgui::ImGuiTextFilter_DrawFloat(cimgui::ImGuiTextFilter* self, const char* label, float width)
+{
+    return reinterpret_cast<::ImGuiTextFilter*>(self)->Draw(label, width);
+}
+
+#endif // #ifndef IMGUI_DISABLE_OBSOLETE_FUNCTIONS
 
 CIMGUI_API const char* cimgui::ImGuiTextBuffer_begin(const cimgui::ImGuiTextBuffer* self)
 {
@@ -3741,6 +3685,11 @@ CIMGUI_API void        cimgui::ImDrawList__SetDrawListSharedData(cimgui::ImDrawL
 CIMGUI_API void        cimgui::ImDrawList__ResetForNewFrame(cimgui::ImDrawList* self)
 {
     reinterpret_cast<::ImDrawList*>(self)->_ResetForNewFrame();
+}
+
+CIMGUI_API void        cimgui::ImDrawList__SetPixelDensity(cimgui::ImDrawList* self, float pixel_density)
+{
+    reinterpret_cast<::ImDrawList*>(self)->_SetPixelDensity(pixel_density);
 }
 
 CIMGUI_API void        cimgui::ImDrawList__ClearFreeMemory(cimgui::ImDrawList* self)
