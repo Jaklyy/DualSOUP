@@ -1,4 +1,3 @@
-#include <SDL3/SDL_mutex.h>
 #include <stdlib.h>
 #include <stdio.h>
 
@@ -9,10 +8,12 @@
 #include <SDL3/SDL_timer.h>
 #include <SDL3/SDL_audio.h>
 #include <SDL3/SDL_thread.h>
+#include <SDL3/SDL_mutex.h>
 #include <SDL3/SDL_filesystem.h>
 
 #include "imgui/dcimgui_impl_sdl3.h"
 
+#include "main.h"
 #include "gui/maingui.h"
 #include "soupparser/soupparser.h"
 
@@ -24,22 +25,18 @@
 
 
 
-typedef enum : u8
+void Mailbox_UpdateTouch(MailBox* mailbox, u16 x, u16 y, bool touched)
 {
-    Init_Busy = 0,
-    Init_Success = 1,
-    Init_Fail = 2,
-} InitFlag;
+    TouchCoords tc = {.X = x, .Y = y, .Touched = touched};
+    mailbox->TouchCoords = tc;
+}
 
-typedef struct
+typedef enum : u32
 {
-    volatile Console* Sys;
-    SDL_Gamepad* Pad;
-    SDL_AudioStream* Aud;
-    volatile InitFlag InitFlag;
-    CoreCfg* Cfg;
-    SDL_Mutex* CfgMutex;
-} MailBox;
+    MailBoxEvent_CorePowerOff,
+
+    MailBoxEvent_MAX,
+} MailBoxEvent_Offsets;
 
 int SDLCALL Core_Init(void* pass)
 {
@@ -47,7 +44,7 @@ int SDLCALL Core_Init(void* pass)
 
     // initialize main emulator state struct
     SDL_LockMutex(mailbox->CfgMutex);
-    Console* sys = Console_Init((Console*)mailbox->Sys, mailbox->Cfg, mailbox->Pad, mailbox->Aud);
+    Console* sys = Console_Init((Console*)mailbox->Sys, mailbox->Cfg, mailbox->Aud);
     SDL_UnlockMutex(mailbox->CfgMutex);
     if (sys == nullptr)
     {
@@ -61,49 +58,158 @@ int SDLCALL Core_Init(void* pass)
 #ifdef USEDIRECTBOOT
     Console_DirectBoot(sys);
 #endif
-    Console_MainLoop(sys);
 
-    sys->CoreRunning = false;
+    bool internalkill = false;
+    Core_Ret ret = Core_EndFrame;
+    while(true)
+    {
+        bool killchk = false;
+        bool pollchk = false;
+        bool syncchk = false;
+        bool pausechk = false;
+        switch(ret)
+        {
+        case Core_Break:
+        {
+            pausechk = true;
+            killchk = true;
+            mailbox->Pause = true;
+            break;
+        }
+        case Core_EndFrame:
+        {
+            pollchk = true;
+            pausechk = true;
+            syncchk = true;
+            killchk = true;
+            break;
+        }
+        case Core_Poll:
+        {
+            pollchk = true;
+            //syncchk = true;
+            break;
+        }
+        case Core_PowerOff:
+        {
+            internalkill = true;
+            killchk = true;
+            break;
+        }
+        case Core_Continue: unreachable();
+        }
+
+        while (pausechk && mailbox->Pause)
+        {
+            if (killchk && mailbox->CoreKill) break; // note: internal kills probably shouldn't override pause
+            SDL_Delay(5); // arbitrary delay
+        }
+
+        if (killchk && (mailbox->CoreKill || internalkill))
+            break;
+
+        if (syncchk) // frame limiter
+        {
+            double frametimeactual = (double)(SDL_GetPerformanceCounter() - sys->OldTimeActual) * 1000.0 / SDL_GetPerformanceFrequency();
+            if (!mailbox->UncapFPS)
+            {
+                timestamp len = sys->NewSync - sys->LastSync;
+                u64 target = sys->OldTime + (((len * SDL_GetPerformanceFrequency()) + sys->TimeFrac) / Sched_Clock);
+                sys->TimeFrac =              ((len * SDL_GetPerformanceFrequency()) + sys->TimeFrac) % Sched_Clock;
+
+                while(SDL_GetPerformanceCounter() < target) SDL_CPUPauseInstruction();
+
+                if ((SDL_GetPerformanceCounter() - (SDL_GetPerformanceFrequency() / 60)) > target)
+                {
+                    sys->OldTime = SDL_GetPerformanceCounter();
+                }
+                else
+                {
+                    sys->OldTime = target;
+                }
+
+            }
+            else sys->OldTime = SDL_GetPerformanceCounter();
+            double frametime = (double)(SDL_GetPerformanceCounter() - sys->OldTimeActual) * 1000.0 / SDL_GetPerformanceFrequency();
+
+            sys->LastSync = sys->NewSync;
+            if (ret == Core_EndFrame)
+            {
+                sys->OldTimeActual = SDL_GetPerformanceCounter();
+                sys->FrameTime = frametime;
+                sys->FrameTimeActual = frametimeactual;
+            }
+
+#ifdef FPSLOG
+            LogPrint(LOG_ALWAYS, "%lu\n", sys->FrameTime);
+#endif
+        }
+
+        if (pollchk && Console_TestIfPollingNeeded(sys, sys->NewSync))
+        {
+            TouchCoords tc = mailbox->TouchCoords;
+            sys->TSC.State.X = tc.X;
+            sys->TSC.State.Y = tc.Y;
+            sys->TSC.State.Touched = tc.Touched;
+            sys->InputMain = Input_PollMain(mailbox->Pad);
+            sys->InputExtra = Input_PollExtra(tc.Touched, mailbox->Pad);
+            sys->LastPoll = sys->NewSync;
+        }
+
+        ret = Console_MainLoop(sys);
+    }
+
+    if (internalkill)
+    {
+        SDL_Event evt = {.user = {.type = mailbox->BaseEvent_ID+MailBoxEvent_CorePowerOff}};
+        if (!SDL_PushEvent(&evt)) printf("%s\n", SDL_GetError());
+    }
 
     return EXIT_SUCCESS;
 }
 
-void CoreThread_Shutdown(volatile Console* sys, bool* thrdrunning)
+void CoreThread_Shutdown(MailBox* mailbox, SDL_Thread** cthrd)
 {
-    if (*thrdrunning)
+    if (*cthrd)
     {
-        sys->CoreRunning = false;
-        while(sys->CoreRunning); // todo: add timeout
-        *thrdrunning = false;
+        int waity;
+        mailbox->CoreKill = true;
+        SDL_WaitThread(*cthrd, &waity);
+        *cthrd = NULL;
+        mailbox->CoreKill = false;
     }
 }
 
-void CoreThread_Reset(Console** sys, SDL_Thread** thrd, SDL_Gamepad* pad, SDL_AudioStream* aud, CoreCfg* cfg, SDL_Mutex* cfgmutex, bool* frontbuffer, bool* thrdrunning)
+void CoreThread_Reset(Console** sys, MailBox* mailbox, SDL_Thread** cthrd, bool* frontbuffer)
 {
-    CoreThread_Shutdown(*sys, thrdrunning);
+    CoreThread_Shutdown(mailbox, cthrd);
 
-    MailBox mailbox = {.Sys = *sys, .Pad = pad, .Aud = aud, .InitFlag = Init_Busy, .Cfg = cfg, .CfgMutex = cfgmutex};
-    if (!*thrdrunning && ((*thrd = SDL_CreateThread(Core_Init, "SOUP_Core", (void*)&mailbox)) == NULL))
+    if ((*cthrd = SDL_CreateThread(Core_Init, "SOUP_Core", (void*)mailbox)) == NULL)
     {
         printf("ERROR: thread init failure :( %s\n", SDL_GetError());
         exit(EXIT_FAILURE);
     }
 
-    while(mailbox.InitFlag == Init_Busy);
+    while(mailbox->InitFlag == Init_Busy);
 
-    if (mailbox.InitFlag == Init_Fail)
+    if (mailbox->InitFlag == Init_Fail)
+    {
+        int waity;
+        SDL_WaitThread(*cthrd, &waity);
         return;
+    }
 
-    *sys = (Console*)mailbox.Sys;
+    *sys = (Console*)mailbox->Sys;
 
     *frontbuffer = false; // feels wrong to be resetting this here...?
-    *thrdrunning = true;
     return;
 }
 
 int main()
 {
     LogMask = u64_max; // temp
+
+    //SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "X11");
 
     SDL_SetAppMetadata("DualSOUP", NULL, NULL);
 
@@ -143,18 +249,11 @@ int main()
         printf("ERROR: SDL Audio open failure :( %s\n", SDL_GetError());
     }
 
-    int num;
-    SDL_JoystickID* joysticks = SDL_GetGamepads(&num);
-    printf("joysticks: %i\n", num);
-
+    int numjoy;
+    SDL_JoystickID* joysticks = NULL;
     SDL_Gamepad* pad = NULL;
-    if (num)
-    {
-        pad = SDL_OpenGamepad(joysticks[0]);
-    }
 
-    bool thrdrunning = false;
-    SDL_Thread* cthrd;
+    SDL_Thread* cthrd = NULL;
     Console* sys = nullptr;
 
     if (aud != NULL)
@@ -172,6 +271,9 @@ int main()
     A7TDMI_InitInstrLUT();
     T7TDMI_InitInstrLUT();
 
+    u32 sdlevent_base = SDL_RegisterEvents(MailBoxEvent_MAX);
+    MailBox mailbox = {.Sys = sys, .Pad = pad, .Aud = aud, .InitFlag = Init_Busy, .Cfg = &mcfg.CoreCfg, .CfgMutex = mcfg.Mutex, .BaseEvent_ID = sdlevent_base};
+
     SDL_Event evts;
     while(true)
     {
@@ -180,22 +282,82 @@ int main()
             cImGui_ImplSDL3_ProcessEvent(&evts);
             switch(evts.type)
             {
-                case SDL_EVENT_QUIT:
-                    CoreThread_Shutdown(sys, &thrdrunning);
-                    return EXIT_SUCCESS;
-                case SDL_EVENT_DROP_FILE:
+            case SDL_EVENT_QUIT:
+                CoreThread_Shutdown(&mailbox, &cthrd);
+                return EXIT_SUCCESS;
+            case SDL_EVENT_DROP_FILE:
+            {
+                printf("%s\n", ((SDL_DropEvent*)&evts)->data);
+                mcfg.CoreCfg.NTR.CardROM = ((SDL_DropEvent*)&evts)->data;
+                mailbox.InitFlag = Init_Busy;
+                CoreThread_Reset(&sys, &mailbox, &cthrd, &mgui.Buffer);
+                break;
+            }
+            case SDL_EVENT_GAMEPAD_ADDED:
+            {
+                joysticks = SDL_GetGamepads(&numjoy);
+                printf("joysticks: %i\n", numjoy);
+                if (numjoy) pad = SDL_OpenGamepad(joysticks[0]);
+                else pad = NULL;
+                SDL_free(joysticks);
+
+                mailbox.Pad = pad;
+                break;
+            }
+            case SDL_EVENT_WINDOW_RESIZED:
+            {
+                if (!mcfg.GuiCfg.MainWinMaximized)
                 {
-                    printf("%s\n", ((SDL_DropEvent*)&evts)->data);
-                    mcfg.CoreCfg.NTR.CardROM = ((SDL_DropEvent*)&evts)->data;
-                    CoreThread_Reset(&sys, &cthrd, pad, aud, &mcfg.CoreCfg, mcfg.Mutex, &mgui.Buffer, &thrdrunning);
+                    int w;
+                    int h;
+                    SDL_GetWindowSize(mgui.Win, &w, &h);
+                    mcfg.GuiCfg.MainWinHeight = h;
+                    mcfg.GuiCfg.MainWinWidth = w;
+                    mcfg.Dirty = true;
+                }
+                break;
+            }
+            case SDL_EVENT_WINDOW_MOVED:
+            {
+                if (!mcfg.GuiCfg.MainWinMaximized)
+                {
+                    int x;
+                    int y;
+                    SDL_GetWindowPosition(mgui.Win, &x, &y);
+                    mcfg.GuiCfg.MainWinX = x;
+                    mcfg.GuiCfg.MainWinY = y;
+                    mcfg.Dirty = true;
+                }
+                break;
+            }
+            case SDL_EVENT_WINDOW_MAXIMIZED:
+            {
+                mcfg.GuiCfg.MainWinMaximized = true;
+                mcfg.Dirty = true;
+                break;
+            }
+            case SDL_EVENT_WINDOW_RESTORED:
+            {
+                mcfg.GuiCfg.MainWinMaximized = false;
+                mcfg.Dirty = true;
+                break;
+            }
+            default:
+            {
+                switch(evts.type-sdlevent_base)
+                {
+                case MailBoxEvent_CorePowerOff:
+                {
+                    CoreThread_Shutdown(&mailbox, &cthrd);
                     break;
                 }
-                default:
-                    break;
+                }
+                break;
+            }
             }
         }
 
-        thrdrunning = MainGUI_Loop(sys, &mgui, &mcfg);
+        MainGUI_Loop(sys, &mailbox, &mgui, &mcfg, cthrd != NULL);
 
         if (mcfg.Dirty)
         {

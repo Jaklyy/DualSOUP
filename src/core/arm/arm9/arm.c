@@ -64,6 +64,19 @@ ARM_PSR A9ES_GetSPSR(ARM946ES* a9es)
     }
 }
 
+bool A9ES_HasSPSR(ARM946ES* a9es)
+{
+    switch(cpu->CPSR.Mode)
+    {
+    case ARMMode_FIQ ... ARMMode_UND:
+        return true;
+    case ARMMode_USR:
+    case ARMMode_UND+1 ... ARMMode_SYS:
+        return false;
+    default: unreachable();
+    }
+}
+
 void A9ES_SetSPSR(ARM946ES* a9es, ARM_PSR psr)
 {
     switch(cpu->CPSR.Mode)

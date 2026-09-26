@@ -64,42 +64,12 @@ void LCD_HBlank(Console* sys, timestamp now)
     }
     if (sys->VCount == 191)
     {
-        if (SDL_GetGamepadButton(sys->Pad, SDL_GAMEPAD_BUTTON_LEFT_STICK))
-            Console_DebugLog(sys);
-
         PPU_Sync(sys, now);
         sys->RenderedLines = 0;
         sys->BackBuf = !sys->BackBuf;
         SDL_LockMutex(sys->FrameBufferMutex[sys->BackBuf]);
         SDL_UnlockMutex(sys->FrameBufferMutex[!sys->BackBuf]);
-
-        // frame limiter
-        {
-            // TODO: this doesn't really work quite right if you take longer than a frame.
-
-            u64 target = sys->OldTime + ((((Frame_Cycles/2) * SDL_GetPerformanceFrequency()) + sys->TimeFrac) / NTR_BaseClock);
-            sys->TimeFrac =              (((Frame_Cycles/2) * SDL_GetPerformanceFrequency()) + sys->TimeFrac) % NTR_BaseClock;
-
-            double frametimeactual = (double)(SDL_GetPerformanceCounter() - sys->OldTimeActual) * 1000.0 / SDL_GetPerformanceFrequency();
-            while(SDL_GetPerformanceCounter() < target) SDL_CPUPauseInstruction();
-            double frametime = (double)(SDL_GetPerformanceCounter() - sys->OldTimeActual) * 1000.0 / SDL_GetPerformanceFrequency();
-
-            if ((SDL_GetPerformanceCounter() - (SDL_GetPerformanceFrequency() / 60)) > target)
-            {
-                sys->OldTime = SDL_GetPerformanceCounter();
-            }
-            else
-            {
-                sys->OldTime = target;
-            }
-            sys->OldTimeActual = SDL_GetPerformanceCounter();
-            sys->FrameTime = frametime;
-            sys->FrameTimeActual = frametimeactual;
-
-#ifdef FPSLOG
-            LogPrint(LOG_ALWAYS, "%lu\n", sys->FrameTime);
-#endif
-        }
+        Sched_AddEvent(sys, now, Evt_EndFrame);
     }
     // schedule irq
     if (sys->DispStatRW9.HBlankIRQ) Sched_AddEvent(sys, now+DSClk33(2), Evt_IRQ9_HBlank); // CHECKME: delay?
@@ -115,8 +85,6 @@ void LCD_Scanline(Console* sys, timestamp now)
     sys->VCount++;
     sys->VCount &= 0x1FF;
     if (sys->VCount == 263) sys->VCount = 0;
-    //ARM9_Log(&sys->ARM9);
-    //ARM7_Log(&sys->ARM7);
 
     // certain ppu state is stepped every scanline.
     // TODO: should this actually be done on the ppu thread...?
@@ -161,7 +129,6 @@ void LCD_Scanline(Console* sys, timestamp now)
         SWRen_Init(sys, now);
         SWRen_SetTarget(sys, now+DSClk33(Scanline_Cycles*263));
 #endif
-        //SWRen_RasterizerFrame(sys);
     }
 
     // i dont 100% trust my testing here but it seems like if both cpus write to vcount on the same scanline the arm9 wins out?

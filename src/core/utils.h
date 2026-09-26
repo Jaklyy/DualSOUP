@@ -430,7 +430,7 @@ typedef struct
         char* Bios7;
         char* Bios9;
         char* NVRAM;
-        char* CardROM;
+        const char* CardROM;
         char* CardSRAM;
     } NTR; // NTR+
     struct {

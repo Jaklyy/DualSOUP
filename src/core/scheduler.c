@@ -51,7 +51,7 @@ void Sched_Log(Console* sys)
     //Sched_Dump(sys);
 #if 1
     Sched* sched = &sys->Sched;
-    Scheduler_Events evt = sched->Next[Evt_Null];
+    Scheduler_Events evt = Evt_Null;
     printf("sched dump:\n");
     do
     {
@@ -116,7 +116,7 @@ void Sched_AddEventIfEarlier(Console* sys, timestamp time, Scheduler_Events id)
     if (time < Sched_GetTime(&sys->Sched, id)) Sched_AddEvent(sys, time, id);
 }
 
-void Sched_RunEvent(Console* sys)
+Core_Ret Sched_RunEvent(Console* sys)
 {
     Sched* sched = &sys->Sched;
     Scheduler_Events evt = sched->Next[Evt_Null];
@@ -182,6 +182,10 @@ void Sched_RunEvent(Console* sys)
     case Evt_CardSPI9:      GameCard_SPIFinish(sys, true); break;
     case Evt_CardSPI7:      GameCard_SPIFinish(sys, false); break;
 
-    case Evt_HaltCore:      sys->CoreRunning = false; break;
+    case Evt_ConsolePowerOff: sys->NewSync = now; return Core_PowerOff;
+    case Evt_EndFrame: sys->NewSync = now; return Core_EndFrame;
+    case Evt_PollInput: sys->NewSync = now; return Core_Poll;
+    case Evt_DebugBreak: sys->NewSync = now; return Core_Break;
     }
+    return Core_Continue;
 }

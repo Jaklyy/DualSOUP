@@ -53,6 +53,11 @@ typedef struct
 typedef struct
 {
     int NumDisplayWindows;
+    int MainWinWidth;
+    int MainWinHeight;
+    int MainWinX;
+    int MainWinY;
+    bool MainWinMaximized;
     DisplayWindow DisplayWindow[GUI_MaxDisplayWindows];
 } GuiCfg;
 
@@ -307,6 +312,8 @@ static_assert(countof(GUI_DisplayOffsetDefaults) >= GUI_MaxDisplaysPerWindow);
 static_assert(GUI_MaxDisplayWindows <= 4);
 static_assert(GUI_MaxDisplaysPerWindow <= 4);
 
+constexpr int menubarheight = 19; // todo: un-hardcode
+
 static const ConfigEntry MainCfgData[] =
 {
     // todo move this junk to SystemCfg
@@ -340,6 +347,44 @@ static const ConfigEntry MainCfgData[] =
         .Name=      "WiFiNVRAMPath",
         .Offset=    offsetof(MainCfg, CoreCfg.NTR.NVRAM),
         .Type=      SEARCH_STRING,
+    },
+    {
+        .Name=      "MainWinMaximized",
+        .Offset=    offsetof(MainCfg, GuiCfg.MainWinMaximized),
+        .BDefVal=   false,
+        .Type=      SEARCH_BOOL,
+    },
+    {
+        .Name=      "MainWinWidth",
+        .Offset=    offsetof(MainCfg, GuiCfg.MainWinWidth),
+        .SDefVal=   256*2,
+        .SMinVal=   32,
+        .SMaxVal=   INT_MAX,
+        .Type=      SEARCH_INT,
+    },
+    {
+        .Name=      "MainWinHeight",
+        .Offset=    offsetof(MainCfg, GuiCfg.MainWinHeight),
+        .SDefVal=   (192*2*2) + menubarheight,
+        .SMinVal=   32,
+        .SMaxVal=   INT_MAX,
+        .Type=      SEARCH_INT,
+    },
+    {
+        .Name=      "MainWinX",
+        .Offset=    offsetof(MainCfg, GuiCfg.MainWinX),
+        .SDefVal=   -1,
+        .SMinVal=   -1,
+        .SMaxVal=   INT_MAX,
+        .Type=      SEARCH_INT,
+    },
+    {
+        .Name=      "MainWinY",
+        .Offset=    offsetof(MainCfg, GuiCfg.MainWinY),
+        .SDefVal=   -1,
+        .SMinVal=   -1,
+        .SMaxVal=   INT_MAX,
+        .Type=      SEARCH_INT,
     },
     {
         .Name =     "NumDisplayWindows",

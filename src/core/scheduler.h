@@ -11,6 +11,7 @@ typedef enum : u8
     Evt_Null,
 
     Evt_DebugBreak,
+    Evt_PollInput,
 
     Evt_IRQ9_VBlank,
     Evt_IRQ9_HBlank,
@@ -110,12 +111,15 @@ typedef enum : u8
     Evt_CardSPI9,
     Evt_CardSPI7,
 
-    Evt_HaltCore,
+    Evt_ConsolePowerOff,
+    Evt_EndFrame,
 
     Evt_Invalid,
 
     Evt_Max
 } Scheduler_Events;
+
+static_assert(Evt_PollInput < Evt_IO9 && Evt_PollInput < Evt_IO7, "POLL EVENT RESOLVES BEFORE IO EVENTS\n");
 
 typedef struct
 {
@@ -124,6 +128,14 @@ typedef struct
     Scheduler_Events Prev[Evt_Max];
 } Sched;
 
+typedef enum : u8
+{
+    Core_Continue,
+    Core_EndFrame,
+    Core_Break,
+    Core_Poll,
+    Core_PowerOff,
+} Core_Ret;
 
 // clock conversion helpers
 
@@ -144,6 +156,6 @@ timestamp Sched_GetTime(Sched* sched, Scheduler_Events id);
 bool Sched_CheckEventScheduled(Console* sys, Scheduler_Events id);
 void Sched_AddEvent(Console* sys, timestamp time, Scheduler_Events id);
 void Sched_AddEventIfEarlier(Console* sys, timestamp time, Scheduler_Events id);
-void Sched_RunEvent(Console* sys);
+Core_Ret Sched_RunEvent(Console* sys);
 
 void DS_BREAK(Console* sys);

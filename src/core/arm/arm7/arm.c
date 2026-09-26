@@ -27,6 +27,20 @@ void A7TDMI_Init(ARM7TDMI* a7tdmi, Console* sys)
     ARM_Init(cpu, sys, ARM7ID);
 }
 
+bool A7TDMI_HasSPSR(ARM7TDMI* a7tdmi)
+{
+    // TODO: THIS IS WRONG FOR ARM7
+    switch(cpu->CPSR.Mode)
+    {
+    case ARMMode_FIQ ... ARMMode_UND:
+        return true;
+    case ARMMode_USR:
+    case ARMMode_UND+1 ... ARMMode_SYS:
+        return false;
+    default: unreachable();
+    }
+}
+
 ARM_PSR A7TDMI_GetSPSR(ARM7TDMI* a7tdmi)
 {
     // TODO: THIS IS WRONG FOR ARM7

@@ -326,3 +326,6 @@ void SPI_Finish(Console* sys, timestamp now);
 void WiFi_Init(Console* sys);
 void WiFi_Read(Console* sys, u32* rdata, timestamp* now, const u32 addr, const AHB_HSIZE size);
 void WiFi_Write(Console* sys, timestamp* now, const u32 addr, const u32 wrdata, const u32 mask);
+
+u32 Bus9_DebugRead(Console* sys, u32 addr);
+u32 Bus7_DebugRead(Console* sys, u32 addr);

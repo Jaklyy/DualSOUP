@@ -1,4 +1,5 @@
-#include <SDL3/SDL.h>
+#include <SDL3/SDL_gamepad.h>
+#include <SDL3/SDL_keyboard.h>
 #include <SDL3/SDL_scancode.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -42,7 +43,6 @@ void LogPrint(const u64 logtype, const char* str, ...)
 // sdl junk
 u16 Input_PollMain(void* pad)
 {
-
     u16 inputs = 0;
     if (pad == NULL)
     {

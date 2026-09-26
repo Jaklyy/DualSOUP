@@ -266,7 +266,15 @@ void IO9_Read(Console* sys, const u32 addr, const timestamp now, const BusCallba
     case 0x00'00'B0 ... 0x00'00'DC: rdata = DMA_IOReadHandler(sys->DMA9.Channels, addr); break;
     case 0x00'00'E0 ... 0x00'00'EC: rdata = sys->DMAFill[(addr & 0xF) / 4]; break;
     case 0x00'01'00 ... 0x00'01'0C: rdata = Timer_IOReadHandler(sys, now, addr, true); break;
-    case 0x00'01'30: rdata = Input_PollMain(sys->Pad); break;
+    case 0x00'01'30:
+        if (Console_TestIfPollingNeeded(sys, now))
+        {
+            Sched_AddEvent(sys, now, Evt_PollInput);
+            Sched_AddEvent(sys, now, Evt_IO9); // resolves last due to scheduler priority
+            return;
+        }
+        else rdata = sys->InputMain;
+        break;
 
     case 0x00'01'80: rdata = sys->IPCSyncDataTo9 | (sys->IPCSyncDataTo7 << 8) | (sys->IPCSyncIRQEnableTo9 << 14); break;
 
@@ -548,9 +556,25 @@ void IO7_Read(Console* sys, const u32 addr, const timestamp now, const BusCallba
 
     case 0x00'01'00 ... 0x00'01'0C: rdata = Timer_IOReadHandler(sys, now, addr, false); break;
 
-    case 0x00'01'30:rdata = Input_PollMain(sys->Pad); break;
+    case 0x00'01'30:
+        if (Console_TestIfPollingNeeded(sys, now))
+        {
+            Sched_AddEvent(sys, now, Evt_PollInput);
+            Sched_AddEvent(sys, now, Evt_IO7); // resolves last due to scheduler priority
+            return;
+        }
+        else rdata = sys->InputMain;
+        break;
 
-    case 0x00'01'34: rdata = sys->RCR | (Input_PollExtra(sys->TSC.State.Touched, sys->Pad) << 16); break;
+    case 0x00'01'34:
+        if (Console_TestIfPollingNeeded(sys, now))
+        {
+            Sched_AddEvent(sys, now, Evt_PollInput);
+            Sched_AddEvent(sys, now, Evt_IO7); // resolves last due to scheduler priority
+            return;
+        }
+        else rdata = (sys->RCR | (sys->InputExtra << 16));
+        break;
 
     case 0x00'01'38: rdata = sys->RTC.CR.Raw; break;
 
@@ -648,7 +672,17 @@ void IO7_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
             {
             case 0: sys->SPIBuf = PMIC_CMDSend(sys, wrdata>>16, sys->SPICR.ChipSelect); break;
             case 1: sys->SPIBuf = Flash_CMDSend(&sys->Firmware, wrdata>>16, sys->SPICR.ChipSelect); break;
-            case 2: sys->SPIBuf = TSC_SendCommand(&sys->TSC, wrdata >> 16); break;
+            case 2:
+            {
+                if (Console_TestIfPollingNeeded(sys, now))
+                {
+                    Sched_AddEvent(sys, now, Evt_PollInput);
+                    Sched_AddEvent(sys, now, Evt_IO7); // resolves last due to scheduler priority
+                    return;
+                }
+                else sys->SPIBuf = TSC_SendCommand(&sys->TSC, wrdata >> 16);
+                break;
+            }
             case 3: LogPrint(LOG_ARM7|LOG_UNIMP, "spi RESERVED????????????\n"); break;
             }
             sys->SPICR.Busy = true;

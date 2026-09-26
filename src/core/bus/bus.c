@@ -264,6 +264,62 @@ void MainRAM_Run(Console* sys, timestamp now)
 }
 #undef MRStepAddr
 
+u32 Bus_VRAMDebugRead(Console* sys, u32 addr, const bool a9)
+{
+    const struct
+    {
+        u32* bank;
+        size_t size;
+    } vram[VRAMID_MAX] =
+    {
+        {sys->VRAM_A.b32, VRAM_A_Size},
+        {sys->VRAM_B.b32, VRAM_B_Size},
+        {sys->VRAM_C.b32, VRAM_C_Size},
+        {sys->VRAM_D.b32, VRAM_D_Size},
+        {sys->VRAM_E.b32, VRAM_E_Size},
+        {sys->VRAM_F.b32, VRAM_F_Size},
+        {sys->VRAM_G.b32, VRAM_G_Size},
+        {sys->VRAM_H.b32, VRAM_H_Size},
+        {sys->VRAM_I.b32, VRAM_I_Size}
+    };
+
+    u16 list;
+    if (a9)
+    {
+        switch((addr >> 20) & 0xE)
+        {
+            case 0:  list = VRAM_BGA (sys, addr); break;
+            case 2:  list = VRAM_BGB (sys, addr); break;
+            case 4:  list = VRAM_OBJA(sys, addr); break;
+            case 6:  list = VRAM_OBJB(sys, addr); break;
+            default: list = VRAM_LCD (sys, addr); break;
+        }
+    }
+    else list = VRAM_ARM7(sys, addr);
+
+    if (!list) return 0;
+    else if (stdc_count_ones(list) == 1)
+    {
+        u8 id = stdc_trailing_zeros(list);
+        u32* bank = vram[id].bank;
+        size_t size = vram[id].size;
+        return bank[(addr & (size-1))/4];
+    }
+    else // overlap; slow handler
+    {
+        u32 rdata = 0;
+        while (list)
+        {
+            u8 id = stdc_trailing_zeros(list);
+            list &= (~1)<<id;
+            u32* bank = vram[id].bank;
+            size_t size = vram[id].size;
+            rdata |= bank[(addr & (size-1))/4];
+        }
+        return rdata;
+    }
+}
+
 void Bus_VRAM(Console* sys, u32* rdata, timestamp* now, u32 addr, const BusReq* req, const bool a9)
 {
     const struct
@@ -487,6 +543,58 @@ void GamePakBus_RAMWrite(Console* sys, const u32 wrdata, timestamp* now, const u
         GamePak_SRAMWrite(&sys->GamePak, addr, ROR32(wrdata, 8*addr) /* select proper byte lanes */); // CHECKME
     }
     else *now += DSClk33(0); // unmapped; checkme: should this use configured waitstates?
+}
+
+u32 Bus9_DebugRead(Console* sys, u32 addr)
+{
+    switch(addr >> 24)
+    {
+    case 0x02: return MemoryRead(32, sys->MainRAM, addr, sys->BusMR.AddrSubmMask);
+    case 0x03:
+        switch(sys->WRAMCR)
+        {
+            case 0: return MemoryRead(32, sys->SharedWRAM,   addr, SharedWRAM_Size  );
+            case 1: return MemoryRead(32, sys->SharedWRAMHi, addr, SharedWRAM_Size/2);
+            case 2: return MemoryRead(32, sys->SharedWRAMLo, addr, SharedWRAM_Size/2);
+            case 3: return 0; break; // unmapped
+            default: unreachable();
+        }
+    case 0x04: return 0; // TODO
+    case 0x05: return MemoryRead(32, sys->Palette, addr, Palette_Size);
+    case 0x06: return Bus_VRAMDebugRead(sys, addr, true);
+    case 0x07: return MemoryRead(32, sys->OAM, addr, OAM_Size);
+    case 0x08 ... 0x09: return 0; // TODO
+    case 0x0A: return 0; // TODO
+    case 0xFF: if ((addr & 0xFFFFF000) == 0xFFFF0000) return MemoryRead(32, sys->NTRBios9, addr, NTRBios9_Size);
+               else { [[fallthrough]]; }
+    default: return 0;
+    }
+}
+
+u32 Bus7_DebugRead(Console* sys, u32 addr)
+{
+    switch((addr>>20) & 0xFF8)
+    {
+    case 0x000: if (addr < 0x4000) return MemoryRead(32, sys->NTRBios7, addr, NTRBios7_Size);
+                else { [[fallthrough]]; }
+    default: return 0;
+    case 0x020 ... 0x028: return MemoryRead(32, sys->MainRAM, addr, sys->BusMR.AddrSubmMask);
+    case 0x030:
+        switch(sys->WRAMCR)
+        {
+        case 0: return MemoryRead(32, sys->ARM7WRAM,     addr, ARM7WRAM_Size    );
+        case 1: return MemoryRead(32, sys->SharedWRAMLo, addr, SharedWRAM_Size/2);
+        case 2: return MemoryRead(32, sys->SharedWRAMHi, addr, SharedWRAM_Size/2);
+        case 3: return MemoryRead(32, sys->SharedWRAM,   addr, SharedWRAM_Size  );
+        default: unreachable();
+        }
+    case 0x038: return MemoryRead(32, sys->ARM7WRAM, addr, ARM7WRAM_Size);
+    case 0x040: return 0; // TODO
+    case 0x048: return 0; // TODO
+    case 0x060 ... 0x068: return Bus_VRAMDebugRead(sys, addr, false);
+    case 0x080 ... 0x098: return 0; // TODO
+    case 0x0A0 ... 0x0A8: return 0; // TODO
+    }
 }
 
 void Bus9_Read(Console* sys, BusReq* req, timestamp now)

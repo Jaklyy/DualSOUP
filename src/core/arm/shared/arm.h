@@ -29,6 +29,8 @@ typedef enum : u8
     ARMCond_UN = ARMCond_NV, // applies to armv5 onward
 } ARM_Condition_Codes;
 
+constexpr char ARM_CondNames[][3] = {"EQ", "NE", "CS", "CC", "MI", "PL", "VS", "VC", "HI", "LS", "GE", "LT", "GT", "LE", "", "NV"};
+
 typedef enum : u8
 {
     ARMMode_USR = 0x0,
@@ -187,6 +189,11 @@ typedef struct
     timestamp MinWakeup;
     Console* Sys;
 } ARM;
+
+typedef struct
+{
+    u32 Addr;
+} Disassembly_Args;
 
 void ARM_Init(ARM* cpu, Console* sys, const u8 CPUID);
 [[nodiscard]] bool ARM_ConditionLookup(const u8 condition, const u8 flags);

@@ -32,7 +32,7 @@ u8 PMIC_CMDSend(Console* sys, const u8 val, const bool chipsel)
                     pmic->PowerCR.Raw = val & ((sys->SysCfg.NTRPMIC == NTRPMIC_NTR) ? 0x7F : 0x7D);
                     if (pmic->PowerCR.SystemShutDown) // TODO: this is going to need a lot of work to make accurate isn't it
                     {
-                        Sched_AddEvent(sys, Sched_GetTime(&sys->Sched, Evt_SPI), Evt_HaltCore);
+                        Sched_AddEvent(sys, Sched_GetTime(&sys->Sched, Evt_SPI), Evt_ConsolePowerOff);
                     }
                     ret = 0;
                     break;

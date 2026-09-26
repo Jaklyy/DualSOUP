@@ -79,17 +79,37 @@ typedef struct
 
 typedef struct
 {
+    u32 CurAddr9;
+    char AddrText9[9];
+    bool A9DbgDisplay;
+    u32 CurAddr7;
+    char AddrText7[9];
+    bool A7DbgDisplay;
+    bool Sched;
+} DebugGui;
+
+typedef struct
+{
     SDL_Window* Win;
     SDL_Renderer* Ren;
     SDL_Texture* Top;
     SDL_Texture* Bot;
+    DebugGui dbg;
     bool Buffer;
     bool CfgDisplay;
     bool DemoDisplay;
+
+    bool Paused;
+    bool FrameLimit;
 
     char TSCRange[4][4];
 } MainGUI;
 
 typedef struct MainCfg MainCfg;
+typedef struct MailBox MailBox;
+
 MainGUI MainGUI_Init(MainCfg* mcfg);
-bool MainGUI_Loop(Console* sys, MainGUI* mgui, MainCfg* mcfg);
+void MainGUI_Loop(Console* sys, MailBox* mailbox, MainGUI* mgui, MainCfg* mcfg, const bool active);
+void Mailbox_UpdateTouch(MailBox* mailbox, u16 x, u16 y, bool touched);
+
+void DebugGUI_Loop(MainGUI* mgui, Console* sys);

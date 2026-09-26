@@ -325,6 +325,7 @@ void A946_DCacheStream_Post(ARM946ES* a946, u32 rdata, timestamp now)
             A9ES_DataGo(a946, &a946->PostMem);
             Sched_AddEvent(a946->ARM.Sys, now, Evt_ARM9);
         }
+        a946->DStreamPtr = -1; // set for debugger
     }
 }
 
@@ -351,6 +352,6 @@ void A946_ICacheStream_Post(ARM946ES* a946, u32 rdata, timestamp now)
             A9ES_InstrGo(a946, false);
             Sched_AddEvent(a946->ARM.Sys, now, Evt_ARM9);
         }
-        a946->BIU.InstrType = A946BIU_InstrNone; // free up biu's instr path
+        a946->IStreamPtr = -1; // set for debugger
     }
 }

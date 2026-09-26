@@ -34,6 +34,18 @@ void ARM_Branch(ARM* cpu, const ARM_Instr instr_data)
     ARM_SetReg(15, addr);
 }
 
+#if 0
+char** ARM_Branch_Dis(ARM* cpu, const ARM_Instr instr_data, u32 addr)
+{
+    const union ARM_BranchImm_Decode instr = {.Raw = instr_data.Raw};
+
+    addr = ((s32)instr.Imm_s24 << 2) + (addr + 8);
+
+    asprintf(NULL, "%s%s 0x%08"PRIX32, (instr.Link) ? "BL" : "B", ARM_CondNames[instr.Raw>>28], addr);
+    return NULL;
+}
+#endif
+
 // ARMv5
 void ARM_BLXImm(ARM* cpu, const ARM_Instr instr_data)
 {

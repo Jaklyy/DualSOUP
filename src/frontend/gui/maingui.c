@@ -1,3 +1,4 @@
+#include <SDL3/SDL_video.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -8,6 +9,7 @@
 #include "imgui/dcimgui_impl_sdlrenderer3.h"
 #include "imgui/dcimgui_internal.h"
 
+#include "../main.h"
 #include "maingui.h"
 #include "configgui.h"
 #include "frontend/soupparser/soupparser.h"
@@ -20,11 +22,24 @@
 MainGUI MainGUI_Init(MainCfg* mcfg)
 {
     MainGUI mgui = {};
-    constexpr int menubarheight = 19; // todo: un-hardcode
-    if (!SDL_CreateWindowAndRenderer("DualSOUP", 256*2, (192*2*2) + menubarheight, SDL_WINDOW_RESIZABLE, &mgui.Win, &mgui.Ren))
+    if (!SDL_CreateWindowAndRenderer("DualSOUP", mcfg->GuiCfg.MainWinWidth, mcfg->GuiCfg.MainWinHeight, SDL_WINDOW_RESIZABLE, &mgui.Win, &mgui.Ren))
     {
-        printf("window/renderer init failure :(\n");
+        printf("window/renderer init failure :( %s\n", SDL_GetError());
         exit(EXIT_FAILURE);
+    }
+    if ((mcfg->GuiCfg.MainWinX >= 0)&& (mcfg->GuiCfg.MainWinY >= 0))
+    {
+        if (!SDL_SetWindowPosition(mgui.Win, mcfg->GuiCfg.MainWinX, mcfg->GuiCfg.MainWinY))
+        {
+            printf("could not restore window position: %s\n", SDL_GetError());
+        }
+    }
+    if (mcfg->GuiCfg.MainWinMaximized)
+    {
+        if (!SDL_MaximizeWindow(mgui.Win))
+        {
+            printf("could not restore window maximization: %s\n", SDL_GetError());
+        }
     }
 
     mgui.Top = SDL_CreateTexture(mgui.Ren, SDL_PIXELFORMAT_XBGR8888, SDL_TEXTUREACCESS_STREAMING, 256, 192);
@@ -59,7 +74,7 @@ MainGUI MainGUI_Init(MainCfg* mcfg)
     return mgui;
 }
 
-bool MainGUI_Loop(Console* sys, MainGUI* mgui, MainCfg* mcfg)
+void MainGUI_Loop(Console* sys, MailBox* mailbox, MainGUI* mgui, MainCfg* mcfg, const bool active)
 {
     GuiCfg* gcfg = &mcfg->GuiCfg;
     SysCfg* scfg = &mcfg->CoreCfg.SysCfg;
@@ -86,14 +101,23 @@ bool MainGUI_Loop(Console* sys, MainGUI* mgui, MainCfg* mcfg)
     if (ImGui_BeginMainMenuBar())
     {
         if (ImGui_MenuItemBoolPtr("Config", NULL, &mgui->CfgDisplay, true)) {}
+        if (ImGui_MenuItemBoolPtr("Uncap FPS", NULL, (bool*)&mailbox->UncapFPS, true)) {}
+        if (ImGui_MenuItemBoolPtr("Pause", NULL, (bool*)&mailbox->Pause, true)) {}
+        if (ImGui_BeginMenu("Debugger"))
+        {
+            if (ImGui_MenuItemBoolPtr("ARM9", NULL, &mgui->dbg.A9DbgDisplay, true)) {}
+            if (ImGui_MenuItemBoolPtr("ARM7", NULL, &mgui->dbg.A7DbgDisplay, true)) {}
+            if (ImGui_MenuItemBoolPtr("Sched", NULL, &mgui->dbg.Sched, true)) {}
+            ImGui_EndMenu();
+        }
         if (ImGui_MenuItemBoolPtr("GUI Demo", NULL, &mgui->DemoDisplay, true)) {}
         ImGui_EndMainMenuBar();
     }
 
     ConfigGUI_Loop(mgui, mcfg);
+    DebugGUI_Loop(mgui, sys);
     if (mgui->DemoDisplay) ImGui_ShowDemoWindow(&mgui->DemoDisplay);
 
-    bool active = (sys && !sys->PMIC.PowerCR.SystemShutDown);
     if (active)
     {
         if (SDL_TryLockMutex(sys->FrameBufferMutex[mgui->Buffer]))
@@ -112,7 +136,6 @@ bool MainGUI_Loop(Console* sys, MainGUI* mgui, MainCfg* mcfg)
                         }
                 SDL_UnlockTexture(((s == 0) ? mgui->Top : mgui->Bot));
             }
-            sys->TSC.State.Touched = false;
             SDL_UnlockMutex(sys->FrameBufferMutex[mgui->Buffer]);
             mgui->Buffer = !mgui->Buffer;
         }
@@ -282,15 +305,17 @@ bool MainGUI_Loop(Console* sys, MainGUI* mgui, MainCfg* mcfg)
                 ImGui_Image((ImTextureRef){._TexID = (intptr_t)(disp->Bottom ? mgui->Bot : mgui->Top)}, dispsz);
 
                 // calculate tsc touch coords if needed
-                if (active && disp->Bottom && ImGui_IsMouseDown(ImGuiMouseButton_Left) && ImGui_IsItemHovered(ImGuiHoveredFlags_None))
+                if (disp->Bottom && ImGui_IsMouseDown(ImGuiMouseButton_Left) && ImGui_IsItemHovered(ImGuiHoveredFlags_None))
                 {
                     ImVec2 moupos = ImGui_GetMousePos();
-                    if (dispsz.x == 0.0) sys->TSC.State.X = 0; // dont div by 0 pls
-                    else sys->TSC.State.X = (((moupos.x-curpos.x) * (scfg->TSCR - scfg->TSCL)) / dispsz.x) + scfg->TSCL;
-                    if (dispsz.y == 0.0) sys->TSC.State.Y = 0; // dont div by 0 pls
-                    else sys->TSC.State.Y = (((moupos.y-curpos.y) * (scfg->TSCB - scfg->TSCT)) / dispsz.y) + scfg->TSCT;
-                    sys->TSC.State.Touched = true;
+                    u16 x, y;
+                    if (dispsz.x == 0.0) x = 0; // dont div by 0 pls
+                    else x = (((moupos.x-curpos.x) * (scfg->TSCR - scfg->TSCL)) / dispsz.x) + scfg->TSCL;
+                    if (dispsz.y == 0.0) y = 0; // dont div by 0 pls
+                    else y = (((moupos.y-curpos.y) * (scfg->TSCB - scfg->TSCT)) / dispsz.y) + scfg->TSCT;
+                    Mailbox_UpdateTouch(mailbox, x, y, true);
                 }
+                else Mailbox_UpdateTouch(mailbox, 0xFFF, 0xFFF, false);
             }
         }
         ImGui_End();
@@ -309,6 +334,4 @@ bool MainGUI_Loop(Console* sys, MainGUI* mgui, MainCfg* mcfg)
         SDL_SetWindowTitle(mgui->Win, str);
     }
     else SDL_SetWindowTitle(mgui->Win, "DualSOUP");
-
-    return active;
 }

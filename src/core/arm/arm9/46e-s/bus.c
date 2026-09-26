@@ -489,3 +489,177 @@ void A9ES_RotateExtendUnit(u32* val, const u32 addr, const ARM_DataWidth size, c
     default: unreachable();
     }
 }
+
+A946_DebugRegion A946_DebugGetRegion(ARM946ES* a946, const u32 addr)
+{
+    A946_MPUPerms priv = A946_RegionLookup(a946, addr, true);
+    A946_MPUPerms user = A946_RegionLookup(a946, addr, false);
+
+    A946_DebugRegion reg;
+    if (priv.Read)
+    {
+        reg.RPerm = (user.Read) ? A946DBG_USER : A946DBG_PRIV;
+        if (A946_ITCMTryRead(a946, addr))
+            reg.RReg = A946DBG_ITCM;
+        else if (A946_DTCMTryRead(a946, addr))
+            reg.RReg = A946DBG_DTCM;
+        else if (priv.DCache)
+        {
+            A946_DCacheSetLookup
+
+            // if we found a valid set use that set to lookup into dcache
+            if (set < A946_DCacheAssoc) // valid line has been found
+            {
+                if ((a946->DStreamPtr / A946_DCacheLineLength) == ((index|set) / A946_DCacheLineLength)) // line is actively being filled
+                {
+                    if ((a946->DStreamPtr % A946_DCacheLineLength) > ((addr/4) % A946_DCacheLineLength)) // requested word has been filled already
+                        reg.RReg = A946DBG_CACHE_INPROGFILLED;
+                    else 
+                        reg.RReg = A946DBG_CACHE_INPROGEMPTY;
+                }
+                else
+                    reg.RReg = A946DBG_CACHE_HIT;
+            }
+            else
+                reg.RReg = A946DBG_CACHE_MISS;
+        }
+        else
+            reg.RReg = A946DBG_AHB;
+    }
+    else
+    {
+        reg.RPerm = A946DBG_ABORT;
+        reg.RReg = A946DBG_NA;
+    }
+
+    if (priv.Write)
+    {
+        reg.WPerm = (user.Write) ? A946DBG_USER : A946DBG_PRIV;
+        if (A946_ITCMTryWrite(a946, addr))
+        {
+            reg.WReg = A946DBG_ITCM;
+            reg.WBuff = A946DBG_NA;
+        }
+        else if (A946_DTCMTryWrite(a946, addr))
+        {
+            reg.WReg = A946DBG_DTCM;
+            reg.WBuff = A946DBG_NA;
+        }
+        else if (priv.DCache)
+        {
+            A946_DCacheSetLookup
+
+            // if we found a valid set use that set to lookup into dcache
+            if (set < A946_DCacheAssoc) // valid line has been found
+            {
+                if ((a946->DStreamPtr / A946_DCacheLineLength) == ((index|set) / A946_DCacheLineLength)) // line is actively being filled
+                {
+                    if ((a946->DStreamPtr % A946_DCacheLineLength) > ((addr/4) % A946_DCacheLineLength)) // requested word has been filled already
+                        reg.WReg = A946DBG_CACHE_INPROGFILLED;
+                    else 
+                        reg.WReg = A946DBG_CACHE_INPROGEMPTY;
+                }
+                else
+                    reg.WReg = A946DBG_CACHE_HIT;
+            }
+            else
+                reg.WReg = A946DBG_CACHE_MISS;
+
+            reg.WBuff = priv.Buffer ? A946DBG_BUFFERABLE : A946DBG_NOBUFFER;
+        }
+        else
+        {
+            reg.WReg = A946DBG_AHB;
+            reg.WBuff = priv.Buffer ? A946DBG_BUFFERABLE : A946DBG_NOBUFFER;
+        }
+    }
+    else
+    {
+        reg.WPerm = A946DBG_ABORT;
+        reg.WReg = A946DBG_NA;
+        reg.WBuff = A946DBG_NA;
+    }
+
+    if (priv.Exec)
+    {
+        reg.XPerm = (user.Exec) ? A946DBG_USER : A946DBG_PRIV;
+        if (A946_ITCMTryRead(a946, addr))
+            reg.XReg = A946DBG_ITCM;
+        else if (priv.ICache)
+        {
+            A946_ICacheSetLookup
+
+            // if we found a valid set use that set to lookup into dcache
+            if (set < A946_ICacheAssoc) // valid line has been found
+            {
+                if ((a946->IStreamPtr / A946_ICacheLineLength) == ((index|set) / A946_ICacheLineLength)) // line is actively being filled
+                {
+                    if ((a946->DStreamPtr % A946_ICacheLineLength) > ((addr/4) % A946_ICacheLineLength)) // requested word has been filled already
+                        reg.XReg = A946DBG_CACHE_INPROGFILLED;
+                    else 
+                        reg.XReg = A946DBG_CACHE_INPROGEMPTY;
+                }
+                else
+                    reg.XReg = A946DBG_CACHE_HIT;
+            }
+            else
+                reg.XReg = A946DBG_CACHE_MISS;
+        }
+        else
+            reg.XReg = A946DBG_AHB;
+    }
+    else
+    {
+        reg.XPerm = A946DBG_ABORT;
+        reg.XReg = A946DBG_NA;
+    }
+    return reg;
+}
+
+u32 A946_DebugInstrRead(ARM946ES* a946, u32 addr)
+{
+    const A946_MPUPerms perms = A946_RegionLookup(a946, addr, a946->ARM.Privileged);
+
+    // priority for data reads: itcm > dtcm > dcache > ahb
+    if (A946_ITCMTryRead(a946, addr))
+        return MemoryRead(32, a946->ITCM, addr, A946_ITCMSize);
+    else if (perms.ICache)
+    {
+        A946_ICacheSetLookup
+
+        // if we found a valid set use that set to lookup into dcache
+        if ((set < A946_ICacheAssoc) // valid line has been found
+        && (((a946->IStreamPtr / A946_ICacheLineLength) != ((index|set) / A946_ICacheLineLength)) // and line isn't actively being filled
+        || ((a946->IStreamPtr % A946_ICacheLineLength) > ((addr/4) % A946_ICacheLineLength)))) // or requested word has been filled already
+        {
+            u32 cacheaddr = ((index | set)<<3) | ((addr/4) & 0x7);
+            return a946->ICache.b32[cacheaddr];
+        }
+    }
+    return Bus9_DebugRead(a946->ARM.Sys, addr & ~3);
+}
+
+u32 A946_DebugDataRead(ARM946ES* a946, u32 addr)
+{
+    const A946_MPUPerms perms = A946_RegionLookup(a946, addr, a946->ARM.Privileged);
+
+    // priority for data reads: itcm > dtcm > dcache > ahb
+    if (A946_ITCMTryRead(a946, addr))
+        return MemoryRead(32, a946->ITCM, addr, A946_ITCMSize);
+    else if (A946_DTCMTryRead(a946, addr))
+        return MemoryRead(32, a946->DTCM, addr, A946_DTCMSize);
+    else if (perms.DCache)
+    {
+        A946_DCacheSetLookup
+
+        // if we found a valid set use that set to lookup into dcache
+        if ((set < A946_DCacheAssoc) // valid line has been found
+        && (((a946->DStreamPtr / A946_DCacheLineLength) != ((index|set) / A946_DCacheLineLength)) // and line isn't actively being filled
+        || ((a946->DStreamPtr % A946_DCacheLineLength) > ((addr/4) % A946_DCacheLineLength)))) // or requested word has been filled already
+        {
+            u32 cacheaddr = ((index | set)<<3) | ((addr/4) & 0x7);
+            return a946->DCache.b32[cacheaddr];
+        }
+    }
+    return Bus9_DebugRead(a946->ARM.Sys, addr & ~3);
+}

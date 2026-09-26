@@ -482,6 +482,9 @@ typedef struct Console
     u16 SoundBias;
     timestamp MixerLastRun;
 
+    timestamp LastPoll; // last cycle time we polled for input
+    timestamp LastSync; // cycle time of last sync
+    timestamp NewSync; // new cycle time to sync against
     u64 FracPerFrame;
     u64 OldTime;
     u64 OldTimeActual;
@@ -519,11 +522,13 @@ typedef struct Console
     alignas(HOST_CACHEALIGN) u32 Framebuffer[2][2][192][256];
 
     bool BackBuf;
-    void* Pad;
     void* Aud;
     SDL_Mutex* FrameBufferMutex[2];
 
-    volatile bool CoreRunning;
+    u16 InputMain;
+    u16 InputExtra;
+
+
     u64 dummy; // for debugging i guess
     FILE* log;
 
@@ -573,15 +578,16 @@ void IPC_FIFOInit(IPCFIFO* fifo); // pretend i put this in a better spot
 // if a nullptr is passed then it will allocate and initialize a console from scratch.
 // otherwise it will re-initialize an already allocated struct.
 // returns success or failure.
-Console* Console_Init(Console* sys, CoreCfg* cfg, void* pad, void* aud);
+Console* Console_Init(Console* sys, CoreCfg* cfg, void* aud);
 // emulate a hardware reset.
 void Console_Reset(Console* sys);
 // actually run the emulation.
-void Console_MainLoop(Console* sys);
+Core_Ret Console_MainLoop(Console* sys);
 
 void Console_DirectBoot(Console* sys);
 
 void Console_DebugLog(Console* sys);
+bool Console_TestIfPollingNeeded(Console* sys, timestamp now);
 
 void IRQ9_Update(Console* sys, const timestamp now);
 void IF9_Clear(Console* sys, u32 wrdata, const timestamp now);

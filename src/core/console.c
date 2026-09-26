@@ -124,7 +124,7 @@ bool Console_ReadFile(u8* buf, const char* path, const size_t num, const char* n
 
 // TODO: this function probably shouldn't manage memory on its own?
 // TODO: this function is a complete mess. it NEEDS to be restructured heavily at some point.
-Console* Console_Init(Console* sys, CoreCfg* cfg, void* pad, void* aud)
+Console* Console_Init(Console* sys, CoreCfg* cfg, void* aud)
 {
     u8* nvram = nullptr;
     if (sys == nullptr)
@@ -250,7 +250,6 @@ Console* Console_Init(Console* sys, CoreCfg* cfg, void* pad, void* aud)
 
     SDL_LockMutex(sys->FrameBufferMutex[sys->BackBuf]);
 
-    sys->Pad = pad;
     sys->Aud = aud;
 
     // init variables
@@ -304,6 +303,10 @@ Console* Console_Init(Console* sys, CoreCfg* cfg, void* pad, void* aud)
     // TODO: are these always running?
     Sched_AddEvent(sys, 0, Evt_MixAudio);
     Sched_AddEvent(sys, 0, Evt_Scanline);
+
+#ifdef DUMPAUDIO
+    sys->log = fopen("audioout.bin", "wb");
+#endif
 
     // run power on/reset logic
     Console_Reset(sys);
@@ -510,19 +513,17 @@ void IF7_Set(Console* sys, const IRQIDs id, const timestamp now)
     Sched_AddEvent(sys, now+DSClk33(1), Evt_UpdateIRQ7);
 }
 
-void Console_MainLoop(Console* sys)
+bool Console_TestIfPollingNeeded(Console* sys, timestamp now)
 {
-    sys->TimeFrac = 0;
-    sys->OldTime = SDL_GetPerformanceCounter();
-#ifdef DUMPAUDIO
-    sys->log = fopen("audioout.bin", "wb");
-#endif
+    return (now - sys->LastPoll) > (Frame_Cycles * (Sched_Clock / NTR_SysClock) / 4);
+}
 
-    sys->CoreRunning = true;
-    while(sys->CoreRunning)
+Core_Ret Console_MainLoop(Console* sys)
+{
+    Core_Ret ret;
+    do
     {
-        Sched_RunEvent(sys);
-    }
-
-    return;
+        ret = Sched_RunEvent(sys);
+    } while(ret == Core_Continue);
+    return ret;
 }

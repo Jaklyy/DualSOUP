@@ -640,4 +640,42 @@ void A946_WriteBufferFill(ARM946ES* a946, const timestamp now, u32* datastart, c
 void A946_WriteBufferFillRun(ARM946ES* a946, const timestamp now);
 
 // Logging
+bool A9ES_HasSPSR(ARM946ES* a9es);
+
+typedef enum : u8
+{
+    A946DBG_ABORT,
+    A946DBG_PRIV,
+    A946DBG_USER,
+
+    A946DBG_NA,
+    A946DBG_ITCM,
+    A946DBG_DTCM,
+    A946DBG_CACHE_HIT,
+    A946DBG_CACHE_INPROGFILLED,
+    A946DBG_CACHE_INPROGEMPTY,
+    A946DBG_CACHE_MISS,
+    A946DBG_AHB,
+
+    A946DBG_BUFFERABLE,
+    A946DBG_NOBUFFER,
+} A946DBGREGION;
+
+typedef struct
+{
+    A946DBGREGION RPerm;
+    A946DBGREGION RReg;
+
+    A946DBGREGION WPerm;
+    A946DBGREGION WReg;
+    A946DBGREGION WBuff;
+
+    A946DBGREGION XPerm;
+    A946DBGREGION XReg;
+
+} A946_DebugRegion;
+
+A946_DebugRegion A946_DebugGetRegion(ARM946ES* a946, const u32 addr);
+u32 A946_DebugInstrRead(ARM946ES* a946, u32 addr);
+u32 A946_DebugDataRead(ARM946ES* a946, u32 addr);
 void A946_DumpMPU(const ARM946ES* a946);
