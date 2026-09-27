@@ -577,8 +577,10 @@ void IPC_FIFOInit(IPCFIFO* fifo); // pretend i put this in a better spot
 // initialize a console to a clean state.
 // if a nullptr is passed then it will allocate and initialize a console from scratch.
 // otherwise it will re-initialize an already allocated struct.
-// returns success or failure.
+// returns pointer to console struct, or nullptr on fail
 Console* Console_Init(Console* sys, CoreCfg* cfg, void* aud);
+// cleans up console struct's internal variables; full frees the struct itself
+void Console_Cleanup(Console* sys, bool full);
 // emulate a hardware reset.
 void Console_Reset(Console* sys);
 // actually run the emulation.

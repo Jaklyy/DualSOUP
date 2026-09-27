@@ -136,6 +136,7 @@ void Config_Write(const char* path, void* cfgin, const ConfigEntry* cfgref, cons
         case SEARCH_##searchtype: \
         { \
             SDL_asprintf((char**)&valstr, fmt, pun.type[entry.Offset/sizeof(pun.type[0])]); \
+            valstrneedssdlfree = true; \
             break; \
         }
 
@@ -186,6 +187,7 @@ void Config_Load(const char* path, void* cfgout, const ConfigEntry* cfgref, cons
     bool dirty = false;
     pun pun = {.cfg = cfgout};
 
+    // create config mutex if it hasn't been created yet
     if (mutex == NULL)
     {
         if (*mutex == NULL)

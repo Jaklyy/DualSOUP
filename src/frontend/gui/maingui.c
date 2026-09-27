@@ -120,7 +120,7 @@ void MainGUI_Loop(Console* sys, MailBox* mailbox, MainGUI* mgui, MainCfg* mcfg, 
 
     if (active)
     {
-        if (SDL_TryLockMutex(sys->FrameBufferMutex[mgui->Buffer]))
+        if (SDL_TryLockMutex(sys->FrameBufferMutex[!sys->BackBuf]))
         {
             u8* buffer;
             int pitch; 
@@ -132,12 +132,11 @@ void MainGUI_Loop(Console* sys, MailBox* mailbox, MainGUI* mgui, MainCfg* mcfg, 
                         for (int b = 0; b < 4; b++)
                         {
                             if (b == 4) continue;
-                            buffer[(y*pitch)+(x*pitch/256)+b] = (u8)((((float)((sys->Framebuffer[mgui->Buffer][s][y][x] >> (b*6)) & 0x3F) * 0xFF) / 0x3F));
+                            buffer[(y*pitch)+(x*pitch/256)+b] = (u8)((((float)((sys->Framebuffer[!sys->BackBuf][s][y][x] >> (b*6)) & 0x3F) * 0xFF) / 0x3F));
                         }
                 SDL_UnlockTexture(((s == 0) ? mgui->Top : mgui->Bot));
             }
-            SDL_UnlockMutex(sys->FrameBufferMutex[mgui->Buffer]);
-            mgui->Buffer = !mgui->Buffer;
+            SDL_UnlockMutex(sys->FrameBufferMutex[!sys->BackBuf]);
         }
     }
     else

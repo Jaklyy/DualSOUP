@@ -66,9 +66,11 @@ void LCD_HBlank(Console* sys, timestamp now)
     {
         PPU_Sync(sys, now);
         sys->RenderedLines = 0;
+        // swap buffers
+        bool backbuf = sys->BackBuf;
+        SDL_LockMutex(sys->FrameBufferMutex[!backbuf]);
         sys->BackBuf = !sys->BackBuf;
-        SDL_LockMutex(sys->FrameBufferMutex[sys->BackBuf]);
-        SDL_UnlockMutex(sys->FrameBufferMutex[!sys->BackBuf]);
+        SDL_UnlockMutex(sys->FrameBufferMutex[backbuf]);
         Sched_AddEvent(sys, now, Evt_EndFrame);
     }
     // schedule irq

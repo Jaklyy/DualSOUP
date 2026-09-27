@@ -122,56 +122,107 @@ bool Console_ReadFile(u8* buf, const char* path, const size_t num, const char* n
     return false;
 }
 
+
+void Console_Cleanup(Console* sys, bool full)
+{
+    // i tried reusing these and it hung, so i gave up, because it probably doesn't matter
+    SDL_UnlockMutex(sys->FrameBufferMutex[sys->BackBuf]); // freeing a locked mutex is apparently undefined behavior, neat
+    SDL_DestroyMutex(sys->FrameBufferMutex[0]);
+    SDL_DestroyMutex(sys->FrameBufferMutex[1]);
+
+    // flash and gamecards need to be recreated from scratch in case we're booting a new game/system
+    Flash_Cleanup(&sys->Firmware);
+    GameCard_Cleanup(&sys->GameCard);
+
+    // these dont need to be re-init actually?
+    int dummy;
+#ifndef SINGLETHREADRASTER
+    // todo: detach threads instead?
+    // todo: obliterate threads without asking politely instead?
+    sys->KillSWRen = true;
+    sys->SWRenStart = true;
+    sys->SWRenTarget = timestamp_max;
+    SDL_WaitThread(sys->SWRenThread, &dummy); 
+    sys->RenderedLines = 255;
+    sys->KillPPUs = true;
+    sys->PPUStart = true;
+    sys->PPUTarget = timestamp_max;
+    SDL_WaitThread(sys->PPUAThread, &dummy);
+    SDL_WaitThread(sys->PPUBThread, &dummy);
+#endif
+
+    if (full) SDL_aligned_free(sys);
+}
+
 // TODO: this function probably shouldn't manage memory on its own?
 // TODO: this function is a complete mess. it NEEDS to be restructured heavily at some point.
 Console* Console_Init(Console* sys, CoreCfg* cfg, void* aud)
 {
-    u8* nvram = nullptr;
+    int cleanup = 0;
     if (sys == nullptr)
     {
-        // allocate
-        // use SDL function for this because windows SUCKS
-        sys = SDL_aligned_alloc(alignof(Console), sizeof(Console));
+        // fresh init, allocate everything
 
-        if (sys == NULL)
+        // use SDL function for this because windows SUCKS
+        if ((sys = SDL_aligned_alloc(alignof(Console), sizeof(Console))) == NULL)
         {
             LogPrint(LOG_ALWAYS, "FATAL: Memory allocation failed.\n");
-            return nullptr;
+            goto fail;
         }
+        cleanup++;
     }
     else
     {
-        // de-allocate shit so it can be re-allocated
-        // TODO: dont do this?
-        SDL_DestroyMutex(sys->FrameBufferMutex[0]);
-        SDL_DestroyMutex(sys->FrameBufferMutex[1]);
-        Flash_Cleanup(&sys->Firmware);
-        //nvram = sys->Firmware.RAM;
-        GameCard_Cleanup(&sys->GameCard);
-        int dummy;
-#ifndef SINGLETHREADRASTER
-        sys->KillSWRen = true;
-        sys->SWRenStart = true;
-        sys->SWRenTarget = timestamp_max;
-        SDL_WaitThread(sys->SWRenThread, &dummy); // todo: detach thread instead?
-        sys->RenderedLines = 255;
-        sys->KillPPUs = true;
-        sys->PPUStart = true;
-        sys->PPUTarget = timestamp_max;
-        SDL_WaitThread(sys->PPUAThread, &dummy); // todo: detach thread instead?
-        SDL_WaitThread(sys->PPUBThread, &dummy); // todo: detach thread instead?
-#endif
+        Console_Cleanup(sys, false);
+        // reusing an allocated struct, cleanup internal variables
+        cleanup++;
     }
 
     // wipe entire emulator state
     memset(sys, 0, sizeof(*sys));
 
+    if ((sys->FrameBufferMutex[0] = SDL_CreateMutex()) == NULL)
+    {
+        LogPrint(LOG_ALWAYS, "FATAL: Mutex init failed. %s\n", SDL_GetError());
+        goto fail;
+    }
+    cleanup++;
+    if ((sys->FrameBufferMutex[1] = SDL_CreateMutex()) == NULL)
+    {
+        LogPrint(LOG_ALWAYS, "FATAL: Mutex init failed. %s\n", SDL_GetError());
+        goto fail;
+    }
+    cleanup++;
+
+#ifndef SINGLETHREADRASTER
+    if ((sys->PPUAThread = SDL_CreateThread(PPUA_MainLoop, "SOUP_PPUA", sys)) == NULL)
+    {
+        LogPrint(LOG_ALWAYS, "FATAL: PPUA Thread creation failed. %s\n", SDL_GetError());
+        goto fail;
+    }
+    cleanup++;
+    if ((sys->PPUAThread = SDL_CreateThread(PPUB_MainLoop, "SOUP_PPUB", sys)) == NULL)
+    {
+        LogPrint(LOG_ALWAYS, "FATAL: PPUB Thread creation failed. %s\n", SDL_GetError());
+        goto fail;
+    }
+    cleanup++;
+    if ((sys->SWRenThread = SDL_CreateThread(SWRen_MainLoop, "SOUP_GPUR", sys)) == NULL)
+    {
+        LogPrint(LOG_ALWAYS, "FATAL: 3D Rasterizer Thread creation failed. %s\n", SDL_GetError());
+        goto fail;
+    }
+    cleanup++;
+#else
+    cleanup+=3;
+#endif
+
     sys->SysCfg = cfg->SysCfg;
+    sys->Aud = aud;
 
-    bool ntr9init = Console_ReadFile(sys->NTRBios9.b8, cfg->NTR.Bios9, NTRBios9_Size, "DS ARM9 Bios");
-    bool ntr7init = Console_ReadFile(sys->NTRBios7.b8, cfg->NTR.Bios7, NTRBios7_Size, "DS ARM7 Bios");
+    if (!Console_ReadFile(sys->NTRBios9.b8, cfg->NTR.Bios9, NTRBios9_Size, "DS ARM9 Bios")) goto fail;
+    if (!Console_ReadFile(sys->NTRBios7.b8, cfg->NTR.Bios7, NTRBios7_Size, "DS ARM7 Bios")) goto fail;
 
-    bool firminit = false;
     size_t nvramsize;
     switch(sys->SysCfg.WiFiNVRAMSize)
     {
@@ -181,76 +232,23 @@ Console* Console_Init(Console* sys, CoreCfg* cfg, void* aud)
         case WiFiNVRAM_256KiB: nvramsize = KiB(256); break;
         case WiFiNVRAM_512KiB: nvramsize = KiB(512); break;
     }
-    if ((nvram = malloc(nvramsize)) != NULL)
+    u8* nvram;
+    if ((nvram = malloc(nvramsize)) == NULL)
     {
-        if ((firminit = Console_ReadFile(nvram, cfg->NTR.NVRAM, nvramsize, "DS Firmware")))
-        {
-            Flash_Init(&sys->Firmware, nvram, nvramsize, sys->SysCfg.WiFiNVRAMWriteProt, 0x010101);
-        }
+        LogPrint(LOG_ALWAYS, "FATAL: Failed to allocate memory for firmware nvram\n");
+        goto fail;
     }
+    cleanup++;
+    if (!Console_ReadFile(nvram, cfg->NTR.NVRAM, nvramsize, "DS Firmware")) goto fail;
+    cleanup++;
+    Flash_Init(&sys->Firmware, nvram, nvramsize, sys->SysCfg.WiFiNVRAMWriteProt, 0x010101);
 
-    // allocate shit
-    bool gcinit = GameCard_Init(&sys->GameCard, cfg->NTR.CardROM, sys->NTRBios7.b8);
+    if (!GameCard_Init(&sys->GameCard, cfg->NTR.CardROM, sys->NTRBios7.b8)) goto fail;
+    cleanup++;
 
     GamePak_Init(&sys->GamePak);
 
-    bool mtxinit = ((sys->FrameBufferMutex[0] = SDL_CreateMutex()) != NULL);
-    bool mtxinit3 = ((sys->FrameBufferMutex[1] = SDL_CreateMutex()) != NULL);
-#ifndef SINGLETHREADRASTER
-    bool thrdinit1 = ((sys->PPUAThread = SDL_CreateThread(PPUA_MainLoop, "SOUP_PPUA", sys)) != NULL);
-    bool thrdinit2 = ((sys->PPUAThread = SDL_CreateThread(PPUB_MainLoop, "SOUP_PPUB", sys)) != NULL);
-    bool thrdinit3 = ((sys->SWRenThread = SDL_CreateThread(SWRen_MainLoop, "SOUP_GPUR", sys)) != NULL);
-#else
-    bool thrdinit1 = true, thrdinit2 = true, thrdinit3 = true;
-#endif
-
-    if (!ntr9init || !ntr7init || !firminit || !gcinit || !mtxinit || !mtxinit3 || !thrdinit1 || !thrdinit2 || !thrdinit3)
-    {
-        // return error messages
-        if (!mtxinit || !mtxinit3)
-            LogPrint(LOG_ALWAYS, "FATAL: Mutex init failed.\n");
-        if (!ntr9init)
-            LogPrint(LOG_ALWAYS, "FATAL: ARM9 BIOS did not load properly.\n");
-        if (!ntr7init)
-            LogPrint(LOG_ALWAYS, "FATAL: ARM7 BIOS did not load properly.\n");
-        if (!thrdinit1 || !thrdinit2)
-            LogPrint(LOG_ALWAYS, "FATAL: PPU Thread creation failed.\n");
-        if (!thrdinit3)
-            LogPrint(LOG_ALWAYS, "FATAL: 3D Rasterizer Thread creation failed.\n");
-
-        if (!gcinit)
-        {
-            LogPrint(LOG_ALWAYS, "FATAL: Game Card failed init.\n");
-        }
-
-        // cleanup ones that actually allocated correctly
-        if (firminit) Flash_Cleanup(&sys->Firmware);
-        if (gcinit) GameCard_Cleanup(&sys->GameCard);
-        if (mtxinit) SDL_DestroyMutex(sys->FrameBufferMutex[0]);
-        if (mtxinit3) SDL_DestroyMutex(sys->FrameBufferMutex[1]);
-        int dummy;
-#ifndef SINGLETHREADRASTER
-        sys->KillSWRen = true;
-        sys->SWRenStart = true;
-        sys->SWRenTarget = timestamp_max;
-        SDL_WaitThread(sys->SWRenThread, &dummy); // todo: detach thread instead?
-        sys->RenderedLines = 255;
-        sys->KillPPUs = true;
-        sys->PPUStart = true;
-        sys->PPUTarget = timestamp_max;
-        SDL_WaitThread(sys->PPUAThread, &dummy); // todo: detach thread instead?
-        SDL_WaitThread(sys->PPUBThread, &dummy); // todo: detach thread instead?
-#endif
-
-        SDL_aligned_free(sys);
-        sys = nullptr;
-
-        return nullptr;
-    }
-
     SDL_LockMutex(sys->FrameBufferMutex[sys->BackBuf]);
-
-    sys->Aud = aud;
 
     // init variables
 
@@ -312,6 +310,43 @@ Console* Console_Init(Console* sys, CoreCfg* cfg, void* aud)
     Console_Reset(sys);
 
     return sys;
+
+    fail:
+    int dummy;
+    switch (cleanup)
+    {
+        default: LogPrint(LOG_ALWAYS, "UNHANDLED CLEANUP SWITCH\n"); [[fallthrough]];
+        case 8: GameCard_Cleanup(&sys->GameCard); [[fallthrough]];
+        case 7: Flash_Cleanup(&sys->Firmware); [[fallthrough]];
+#ifndef SINGLETHREADRASTER
+        case 6:
+        sys->KillSWRen = true;
+        sys->SWRenStart = true;
+        sys->SWRenTarget = timestamp_max;
+        SDL_WaitThread(sys->SWRenThread, &dummy); // todo: detach thread instead?
+        [[fallthrough]];
+        case 5:
+        sys->RenderedLines = 255;
+        sys->KillPPUs = true;
+        sys->PPUStart = true;
+        sys->PPUTarget = timestamp_max;
+        SDL_WaitThread(sys->PPUAThread, &dummy); // todo: detach thread instead?
+        [[fallthrough]];
+        case 4:
+        sys->RenderedLines = 255;
+        sys->KillPPUs = true;
+        sys->PPUStart = true;
+        sys->PPUTarget = timestamp_max;
+        SDL_WaitThread(sys->PPUBThread, &dummy); // todo: detach thread instead?
+        [[fallthrough]];
+#else
+        case 4 ... 6: [[fallthrough]]; // unimplemented
+#endif
+        case 3: SDL_DestroyMutex(sys->FrameBufferMutex[1]); [[fallthrough]];
+        case 2: SDL_DestroyMutex(sys->FrameBufferMutex[0]); [[fallthrough]];
+        case 1: SDL_aligned_free(sys); [[fallthrough]];
+        case 0: return nullptr;
+    }
 }
 
 void Console_DirectBoot(Console* sys)

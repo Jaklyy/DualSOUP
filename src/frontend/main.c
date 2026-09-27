@@ -46,13 +46,15 @@ int SDLCALL Core_Init(void* pass)
     SDL_LockMutex(mailbox->CfgMutex);
     Console* sys = Console_Init((Console*)mailbox->Sys, mailbox->Cfg, mailbox->Aud);
     SDL_UnlockMutex(mailbox->CfgMutex);
+
+    mailbox->Sys = sys;
+
     if (sys == nullptr)
     {
         mailbox->InitFlag = Init_Fail;
         return EXIT_FAILURE;
     }
 
-    mailbox->Sys = sys;
     mailbox->InitFlag = Init_Success;
 
 #ifdef USEDIRECTBOOT
@@ -180,7 +182,7 @@ void CoreThread_Shutdown(MailBox* mailbox, SDL_Thread** cthrd)
     }
 }
 
-void CoreThread_Reset(Console** sys, MailBox* mailbox, SDL_Thread** cthrd, bool* frontbuffer)
+void CoreThread_Reset(Console** sys, MailBox* mailbox, SDL_Thread** cthrd)
 {
     CoreThread_Shutdown(mailbox, cthrd);
 
@@ -196,13 +198,8 @@ void CoreThread_Reset(Console** sys, MailBox* mailbox, SDL_Thread** cthrd, bool*
     {
         int waity;
         SDL_WaitThread(*cthrd, &waity);
-        return;
     }
-
-    *sys = (Console*)mailbox->Sys;
-
-    *frontbuffer = false; // feels wrong to be resetting this here...?
-    return;
+    else *sys = (Console*)mailbox->Sys;
 }
 
 int main()
@@ -235,6 +232,7 @@ int main()
     char* cfgpath = malloc(strlen(path)+sizeof(ininame));
     strcpy(cfgpath, path);
     strcat(cfgpath, ininame);
+    SDL_free(path);
 
     MainCfg mcfg = {.Dirty = false};
     Config_Load(cfgpath, &mcfg, MainCfgData, countof(MainCfgData), &mcfg.Dirty, &mcfg.Mutex);
@@ -284,13 +282,14 @@ int main()
             {
             case SDL_EVENT_QUIT:
                 CoreThread_Shutdown(&mailbox, &cthrd);
+                Console_Cleanup(sys, true);
                 return EXIT_SUCCESS;
             case SDL_EVENT_DROP_FILE:
             {
                 printf("%s\n", ((SDL_DropEvent*)&evts)->data);
                 mcfg.CoreCfg.NTR.CardROM = ((SDL_DropEvent*)&evts)->data;
                 mailbox.InitFlag = Init_Busy;
-                CoreThread_Reset(&sys, &mailbox, &cthrd, &mgui.Buffer);
+                CoreThread_Reset(&sys, &mailbox, &cthrd);
                 break;
             }
             case SDL_EVENT_GAMEPAD_ADDED:

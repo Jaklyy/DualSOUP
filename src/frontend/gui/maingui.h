@@ -95,7 +95,6 @@ typedef struct
     SDL_Texture* Top;
     SDL_Texture* Bot;
     DebugGui dbg;
-    bool Buffer;
     bool CfgDisplay;
     bool DemoDisplay;
 
