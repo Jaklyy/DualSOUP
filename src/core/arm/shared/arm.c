@@ -7,6 +7,7 @@
 
 void ARM_Init(ARM* cpu, Console* sys, const u8 CPUID)
 {
+    cpu->ExecBreak = u64_max;
     // set mode id
     cpu->CPUID = CPUID;
     // msb of mode is always set

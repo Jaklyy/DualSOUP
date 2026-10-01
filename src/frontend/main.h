@@ -46,4 +46,5 @@ typedef struct MailBox
     volatile bool Pause;
     volatile bool CoreKill;
     volatile bool CoreDead;
+    volatile bool PauseConfirm;
 } MailBox;

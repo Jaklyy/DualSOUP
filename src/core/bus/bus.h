@@ -300,6 +300,19 @@ typedef struct
     } ControlReg;
 } BusMainRAM;
 
+constexpr u64 Bus_DebugMaxWatch = 32;
+typedef struct
+{
+    int AddrMin;
+    int AddrMax;
+    int ManMask;
+    int WrData;
+    int WriteMatch;
+    int WidthMask;
+    bool MustWrite;
+    bool MustRead;
+} Bus_Breakpoint;
+
 enum NTRFCRAM : u8;
 void Bus9_Init(BusImpl* bus);
 void Bus7_Init(BusImpl* bus);

@@ -18,18 +18,8 @@
 #include "sram/flash.h"
 
 
-
-void Console_DebugLog(Console* sys)
+void Console_DebugDump(Console* sys)
 {
-#if 0
-    printf("%i %i\n", sys->A946ES.BIU.WBuffer.Empty, sys->A946ES.BIU.WBuffer.Full);
-#elif 1
-    A946_Log(&sys->A946ES);
-    A946_DumpMPU(&sys->A946ES);
-    A7TDMI_Log(&sys->A7TDMI);
-    Sched_Log(sys);
-    printf("fcram: %i %i\n", sys->BusMR.CurReq, sys->BusMR.Locked);
-//#elif 0
     printf("Dumping\n");
 
     FILE* file = fopen("logfcram.bin", "wb");
@@ -53,6 +43,20 @@ void Console_DebugLog(Console* sys)
     fclose(file);
 
     printf("Done.\n");
+}
+
+void Console_DebugLog(Console* sys)
+{
+#if 0
+    printf("%i %i\n", sys->A946ES.BIU.WBuffer.Empty, sys->A946ES.BIU.WBuffer.Full);
+#elif 1
+    A946_Log(&sys->A946ES);
+    A946_DumpMPU(&sys->A946ES);
+    A7TDMI_Log(&sys->A7TDMI);
+    Sched_Log(sys);
+    printf("fcram: %i %i\n", sys->BusMR.CurReq, sys->BusMR.Locked);
+    Console_DebugDump(sys);
+//#elif 0
 #elif 0
     for (int i = 0; i < 16; i++)
     {

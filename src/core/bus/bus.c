@@ -12,6 +12,28 @@
 #include "vram.h"
 
 
+bool Bus_DebugBreak(Console* sys, timestamp now, Bus_Breakpoint bkptlist[const Bus_DebugMaxWatch], u64 bkptnum, BusReq* req)
+{
+    for (u64 i = 0; i < bkptnum; i++)
+    {
+        if (req->Write ? bkptlist[i].MustRead : bkptlist[i].MustWrite)
+            continue;
+        if (((u32)bkptlist[i].WriteMatch & (u32)bkptlist[i].WrData) != ((u32)bkptlist[i].WriteMatch & req->WrData))
+            continue;
+        if (!(bkptlist[i].ManMask & ((u32)1<<req->Man)))
+            continue;
+        if ((u32)bkptlist[i].AddrMin > req->Addr)
+            continue;
+        if ((u32)bkptlist[i].AddrMax < req->Addr)
+            continue;
+        if (!(bkptlist[i].WidthMask & ((u32)1<<req->Size)))
+            continue;
+
+        Sched_AddEvent(sys, now, Evt_DebugBreak);
+        return true;
+    }
+    return false;
+}
 
 void Bus9_Init(BusImpl* bus)
 {
@@ -1137,6 +1159,8 @@ void Bus_Run(Console* sys, timestamp now, const bool a9)
     BusReq* req = &bus->PipeFIFO[bus->FIFODrainPtr];
     if (!bus->FIFOEmpty && ((bus->PipeExitTs[bus->FIFODrainPtr] <= now)))
     {
+        // TODO: make fully exit this logic cleanly somehow
+        Bus_DebugBreak(sys, now, a9 ? sys->Bus9_Watch : sys->Bus7_Watch, a9 ? sys->Bus9_NumWatch : sys->Bus7_NumWatch, req);
         bus->ReqActivePtr = bus->FIFODrainPtr;
 
         bus->FIFODrainPtr = (bus->FIFODrainPtr + 1) % countof(bus->PipeFIFO);

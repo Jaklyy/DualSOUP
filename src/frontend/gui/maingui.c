@@ -146,6 +146,17 @@ void MainGUI_Loop(Console* sys, MailBox* mailbox, MainGUI* mgui, MainCfg* mcfg, 
             if (ImGui_MenuItemBoolPtr("ARM9", NULL, &mgui->dbg.A9DbgDisplay, true)) {}
             if (ImGui_MenuItemBoolPtr("ARM7", NULL, &mgui->dbg.A7DbgDisplay, true)) {}
             if (ImGui_MenuItemBoolPtr("Sched", NULL, &mgui->dbg.Sched, true)) {}
+            ImGui_BeginDisabled(sys == nullptr);
+            if (ImGui_Button("Dump Memory\n"))
+            {
+                bool paused = mailbox->Pause;
+                mailbox->PauseConfirm = false;
+                mailbox->Pause = true;
+                while(!mailbox->PauseConfirm) SDL_Delay(1); // arbitrary delay
+                Console_DebugDump(sys);
+                mailbox->Pause = paused;
+            }
+            ImGui_EndDisabled();
             ImGui_EndMenu();
         }
         if (ImGui_MenuItemBoolPtr("GUI Demo", NULL, &mgui->DemoDisplay, true)) {}
@@ -153,7 +164,7 @@ void MainGUI_Loop(Console* sys, MailBox* mailbox, MainGUI* mgui, MainCfg* mcfg, 
     }
 
     ConfigGUI_Loop(mgui, mcfg);
-    DebugGUI_Loop(mgui, sys);
+    DebugGUI_Loop(mailbox, mgui, sys);
     ImportGui_Loop(mgui, &mgui->NDSImportGui, true);
     //ImportGui_Loop(mgui, &mgui->GBAImportGui, mcfg, false);
     if (mgui->DemoDisplay) ImGui_ShowDemoWindow(&mgui->DemoDisplay);

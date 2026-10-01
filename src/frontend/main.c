@@ -97,6 +97,7 @@ int SDLCALL Core_Init(void* pass)
 
         while (pausechk && mailbox->Pause)
         {
+            mailbox->PauseConfirm = true;
             if (killchk && mailbox->CoreKill) break; // note: internal kills probably shouldn't override pause
             SDL_Delay(5); // arbitrary delay
         }
@@ -341,6 +342,12 @@ int main()
                 mcfg.Dirty = true;
                 break;
             }
+            case SDL_EVENT_KEY_DOWN:
+            {
+                if (((SDL_KeyboardEvent*)&evts)->scancode == SDL_SCANCODE_F6) // idk
+                    mailbox.Pause = !mailbox.Pause;
+                break;
+            }
             default:
             {
                 switch(evts.type-sdlevent_base)
@@ -359,7 +366,7 @@ int main()
                 break;
             }
             }
-        }
+        }\
 
         MainGUI_Loop(sys, &mailbox, &mgui, &mcfg, cthrd != NULL);
 

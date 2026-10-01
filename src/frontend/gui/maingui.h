@@ -157,7 +157,7 @@ MainGUI MainGUI_Init(MainCfg* mcfg);
 void MainGUI_Loop(Console* sys, MailBox* mailbox, MainGUI* mgui, MainCfg* mcfg, const bool active);
 void Mailbox_UpdateTouch(MailBox* mailbox, u16 x, u16 y, bool touched);
 
-void DebugGUI_Loop(MainGUI* mgui, Console* sys);
+void DebugGUI_Loop(MailBox* mail, MainGUI* mgui, Console* sys);
 void ImportGui_Loop(MainGUI* mgui, ImportGui* igui, const bool NDS);
 
 void LibraryGui_InitList(MainGUI* mgui);

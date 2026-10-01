@@ -573,7 +573,7 @@ void IO7_Read(Console* sys, const u32 addr, const timestamp now, const BusCallba
             Sched_AddEvent(sys, now, Evt_IO7); // resolves last due to scheduler priority
             return;
         }
-        else rdata = (sys->RCR | (sys->InputExtra << 16));
+        else rdata = (sys->RCR | ((u32)sys->InputExtra << 16));
         break;
 
     case 0x00'01'38: rdata = sys->RTC.CR.Raw; break;
@@ -667,11 +667,20 @@ void IO7_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
 
         if (mask & 0xFF0000)
         {
-            Sched_AddEvent(sys, now + ((DSClk33(8*8) << sys->SPICR.Baudrate)), Evt_SPI); // checkme: delay?
             switch(sys->SPICR.DeviceSelect)
             {
-            case 0: sys->SPIBuf = PMIC_CMDSend(sys, wrdata>>16, sys->SPICR.ChipSelect); break;
-            case 1: sys->SPIBuf = Flash_CMDSend(&sys->Firmware, wrdata>>16, sys->SPICR.ChipSelect); break;
+            case 0:
+            {
+                Sched_AddEvent(sys, now + ((DSClk33(8*8) << sys->SPICR.Baudrate)), Evt_SPI); // checkme: delay?
+                sys->SPIBuf = PMIC_CMDSend(sys, wrdata>>16, sys->SPICR.ChipSelect);
+                break;
+            }
+            case 1:
+            {
+                Sched_AddEvent(sys, now + ((DSClk33(8*8) << sys->SPICR.Baudrate)), Evt_SPI); // checkme: delay?
+                sys->SPIBuf = Flash_CMDSend(&sys->Firmware, wrdata>>16, sys->SPICR.ChipSelect);
+                break;
+            }
             case 2:
             {
                 if (Console_TestIfPollingNeeded(sys, now))
@@ -680,10 +689,19 @@ void IO7_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
                     Sched_AddEvent(sys, now, Evt_IO7); // resolves last due to scheduler priority
                     return;
                 }
-                else sys->SPIBuf = TSC_SendCommand(&sys->TSC, wrdata >> 16);
+                else
+                {
+                    Sched_AddEvent(sys, now + ((DSClk33(8*8) << sys->SPICR.Baudrate)), Evt_SPI); // checkme: delay?
+                    sys->SPIBuf = TSC_SendCommand(&sys->TSC, wrdata >> 16);
+                    break;
+                }
+            }
+            case 3:
+            {
+                Sched_AddEvent(sys, now + ((DSClk33(8*8) << sys->SPICR.Baudrate)), Evt_SPI); // checkme: delay?
+                LogPrint(LOG_ARM7|LOG_UNIMP, "spi RESERVED????????????\n");
                 break;
             }
-            case 3: LogPrint(LOG_ARM7|LOG_UNIMP, "spi RESERVED????????????\n"); break;
             }
             sys->SPICR.Busy = true;
         }

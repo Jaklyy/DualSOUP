@@ -180,6 +180,10 @@ typedef struct
         u32 R[2];
         ARM_PSR SPSR;
     } UND_Bank;
+    u32 CurExec;
+    u64 ExecBreak;
+    bool StepOnce;
+    bool StepOver;
     CPU_IDs CPUID;
     bool Privileged; // permissions
     bool CodeSeq; // should the next code fetch be sequential

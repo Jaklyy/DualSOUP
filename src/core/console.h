@@ -602,6 +602,11 @@ typedef struct Console
     volatile double FrameTimeActual;
     bool DirectBoot;
 
+    Bus_Breakpoint Bus9_Watch[32];
+    Bus_Breakpoint Bus7_Watch[32];
+    int Bus9_NumWatch;
+    int Bus7_NumWatch;
+
 
     alignas(HOST_CACHEALIGN) // ppu a sync area
     volatile timestamp PPUATimestamp;
@@ -698,6 +703,7 @@ Core_Ret Console_MainLoop(Console* sys);
 void Console_DirectBoot(Console* sys);
 
 void Console_DebugLog(Console* sys);
+void Console_DebugDump(Console* sys);
 bool Console_TestIfPollingNeeded(Console* sys, timestamp now);
 
 void IRQ9_Update(Console* sys, const timestamp now);

@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <float.h>
 
 #include "imgui/dcimgui.h"
 
@@ -8,6 +9,7 @@
 #include "core/arm/arm7/arm.h"
 
 #include "maingui.h"
+#include "../main.h"
 
 
 #define a9 (&sys->A946ES)
@@ -57,7 +59,57 @@ void DebugGui_PushRegionColor(A946DBGREGION var)
     }
 }
 
-void DebugGui_A9(DebugGui* dgui, Console* sys)
+void DebugGui_BusWatch(Bus_Breakpoint list[const Bus_DebugMaxWatch], int* num)
+{
+    ImGui_InputIntEx("Num", num, 1, 1, 0);
+    if (ImGui_BeginTable("tablebuswatch", 8,
+        ImGuiTableFlags_Hideable | ImGuiTableFlags_Reorderable | ImGuiTableFlags_Borders
+        | ImGuiTableFlags_HighlightHoveredColumn | ImGuiTableFlags_SizingFixedFit))
+    {
+        ImGui_TableSetupColumn("Min Address", 0);
+        ImGui_TableSetupColumn("Max Address", 0);
+        ImGui_TableSetupColumn("Manager Mask", 0);
+        ImGui_TableSetupColumn("Write Value", 0);
+        ImGui_TableSetupColumn("Write Match", 0);
+        ImGui_TableSetupColumn("Width Mask", 0);
+        ImGui_TableSetupColumn("Write", 0);
+        ImGui_TableSetupColumn("Read", 0);
+        ImGui_TableHeadersRow();
+        for (u64 i = 0; i < Bus_DebugMaxWatch; i++)
+        {
+            ImGui_PushIDInt(i);
+            ImGui_TableNextRow();
+            if (i % 2) ImGui_TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui_GetColorU32(ImGuiCol_TableRowBg), -1);
+            else       ImGui_TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui_GetColorU32(ImGuiCol_TableRowBgAlt), -1);
+            ImGui_TableNextColumn();
+            ImGui_PushItemWidth(-FLT_MIN); // Right-aligned
+            ImGui_InputIntEx("##min", &list[i].AddrMin, 0, 0, ImGuiInputTextFlags_CharsHexadecimal);
+            ImGui_TableNextColumn();
+            ImGui_PushItemWidth(-FLT_MIN); // Right-aligned
+            ImGui_InputIntEx("##max", &list[i].AddrMax, 0, 0, ImGuiInputTextFlags_CharsHexadecimal);
+            ImGui_TableNextColumn();
+            ImGui_PushItemWidth(-FLT_MIN); // Right-aligned
+            ImGui_InputIntEx("##man", &list[i].ManMask, 0, 0, ImGuiInputTextFlags_CharsHexadecimal);
+            ImGui_TableNextColumn();
+            ImGui_PushItemWidth(-FLT_MIN); // Right-aligned
+            ImGui_InputIntEx("##val", &list[i].WrData, 0, 0, ImGuiInputTextFlags_CharsHexadecimal);
+            ImGui_TableNextColumn();
+            ImGui_PushItemWidth(-FLT_MIN); // Right-aligned
+            ImGui_InputIntEx("##match", &list[i].WriteMatch, 0, 0, ImGuiInputTextFlags_CharsHexadecimal);
+            ImGui_TableNextColumn();
+            ImGui_PushItemWidth(-FLT_MIN); // Right-aligned
+            ImGui_InputIntEx("##wid", &list[i].WidthMask, 0, 0, ImGuiInputTextFlags_CharsHexadecimal);
+            ImGui_TableNextColumn();
+            ImGui_Checkbox("##mwr", &list[i].MustWrite);
+            ImGui_TableNextColumn();
+            ImGui_Checkbox("##mrd", &list[i].MustRead);
+            ImGui_PopID();
+        }
+        ImGui_EndTable();
+    }
+}
+
+void DebugGui_A9(MailBox* mail, DebugGui* dgui, Console* sys)
 {
     ImGui_SetNextWindowSize((ImVec2){725, 348}, ImGuiCond_FirstUseEver);
     if (ImGui_Begin("ARM9 Debugger", &dgui->A9DbgDisplay, 0))
@@ -66,7 +118,7 @@ void DebugGui_A9(DebugGui* dgui, Console* sys)
         {
             if (ImGui_Button("Jump To A9 PC"))
             {
-                dgui->CurAddr9 = cpu9->PC;
+                dgui->CurAddr9 = cpu9->CurExec;
                 sprintf(dgui->AddrText9, "%08X", dgui->CurAddr9);
             }
 
@@ -76,6 +128,19 @@ void DebugGui_A9(DebugGui* dgui, Console* sys)
             if (ImGui_IsItemDeactivatedAfterEdit())
             {
                 dgui->CurAddr9 = strtoul(dgui->AddrText9, NULL, 16);
+            }
+            ImGui_SameLine();
+            if (ImGui_Button("Step Once"))
+            {
+                cpu9->StepOnce = true;
+                mail->Pause = false;
+            }
+            ImGui_SameLine();
+            if (ImGui_Button("Step Over"))
+            {
+                cpu9->StepOver = true;
+                cpu9->ExecBreak = cpu9->CurExec + (cpu9->CPSR.Thumb ? 2 : 4);
+                mail->Pause = false;
             }
 
             if (ImGui_BeginTable("tablea9view", 6,
@@ -94,7 +159,7 @@ void DebugGui_A9(DebugGui* dgui, Console* sys)
                 {
                     u32 addr = dgui->CurAddr9 - 8 + (4*i);
                     ImGui_TableNextRow();
-                    if (addr == cpu9->PC) ImGui_TableSetBgColor(ImGuiTableBgTarget_RowBg0, 0xFF1F6F6F, -1);
+                    if (addr == cpu9->CurExec) ImGui_TableSetBgColor(ImGuiTableBgTarget_RowBg0, 0xFF1F6F6F, -1);
                     else
                     {
                         if (i % 2) ImGui_TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui_GetColorU32(ImGuiCol_TableRowBg), -1);
@@ -139,23 +204,32 @@ void DebugGui_A9(DebugGui* dgui, Console* sys)
             {
                 for (int i = 0; i < 10; i++)
                 {
-                    ImGui_Text("R%i:   %08X", i, cpu9->R[i]);
+                    ImGui_Text("R%i:   %08"PRIX32, i, cpu9->R[i]);
                     i++;
                     ImGui_SameLine();
-                    ImGui_Text("R%i:   %08X", i, cpu9->R[i]);
+                    ImGui_Text("R%i:   %08"PRIX32, i, cpu9->R[i]);
                 }
                 for (int i = 10; i < 16; i++)
                 {
-                    ImGui_Text("R%i:  %08X", i, cpu9->R[i]);
+                    ImGui_Text("R%i:  %08"PRIX32, i, cpu9->R[i]);
                     i++;
                     ImGui_SameLine();
-                    ImGui_Text("R%i:  %08X", i, cpu9->R[i]);
+                    ImGui_Text("R%i:  %08"PRIX32, i, cpu9->R[i]);
                 }
-                ImGui_Text("CPSR: %08X", cpu9->CPSR.Raw);
+                ImGui_Text("CPSR: %08"PRIX32, cpu9->CPSR.Raw);
                 ImGui_SameLine();
                 ImGui_BeginDisabled(!A9ES_HasSPSR(a9));
-                ImGui_Text("SPSR: %08X", A9ES_GetSPSR(a9).Raw);
+                ImGui_Text("SPSR: %08"PRIX32, A9ES_GetSPSR(a9).Raw);
                 ImGui_EndDisabled();
+            }
+            ImGui_EndChild();
+            DebugGui_BusWatch(sys->Bus9_Watch, &sys->Bus9_NumWatch);
+            ImGui_SameLine();
+            if (ImGui_BeginChild("Interrupts", (ImVec2){230, 170}, ImGuiChildFlags_Borders|ImGuiChildFlags_ResizeX|ImGuiChildFlags_ResizeY, 0))
+            {
+                ImGui_Text("IE: %08"PRIX32, sys->IE9);
+                ImGui_Text("IF: %08"PRIX32, sys->IF9);
+                ImGui_Text("IME: %i", sys->IME9);
             }
             ImGui_EndChild();
         }
@@ -167,7 +241,7 @@ void DebugGui_A9(DebugGui* dgui, Console* sys)
 #define a7 (&sys->A7TDMI)
 #define cpu7 (&sys->A7TDMI.ARM)
 
-void DebugGui_A7(DebugGui* dgui, Console* sys)
+void DebugGui_A7(MailBox* mail, DebugGui* dgui, Console* sys)
 {
     ImGui_SetNextWindowSize((ImVec2){470, 348}, ImGuiCond_FirstUseEver);
     if (ImGui_Begin("ARM7 Debugger", &dgui->A7DbgDisplay, 0))
@@ -176,7 +250,7 @@ void DebugGui_A7(DebugGui* dgui, Console* sys)
         {
             if (ImGui_Button("Jump To A7 PC"))
             {
-                dgui->CurAddr7 = cpu7->PC;
+                dgui->CurAddr7 = cpu7->CurExec;
                 sprintf(dgui->AddrText7, "%08X", dgui->CurAddr7);
             }
 
@@ -186,6 +260,19 @@ void DebugGui_A7(DebugGui* dgui, Console* sys)
             if (ImGui_IsItemDeactivatedAfterEdit())
             {
                 dgui->CurAddr7 = strtoul(dgui->AddrText7, NULL, 16);
+            }
+            ImGui_SameLine();
+            if (ImGui_Button("Step Once"))
+            {
+                cpu7->StepOnce = true;
+                mail->Pause = false;
+            }
+            ImGui_SameLine();
+            if (ImGui_Button("Step Over"))
+            {
+                cpu7->StepOver = true;
+                cpu7->ExecBreak = cpu7->CurExec + (cpu7->CPSR.Thumb ? 2 : 4);
+                mail->Pause = false;
             }
 
             if (ImGui_BeginTable("tablea7view", 3,
@@ -201,7 +288,7 @@ void DebugGui_A7(DebugGui* dgui, Console* sys)
                 {
                     u32 addr = dgui->CurAddr7 - 8 + (4*i);
                     ImGui_TableNextRow();
-                    if (addr == cpu7->PC) ImGui_TableSetBgColor(ImGuiTableBgTarget_RowBg0, 0xFF1F6F6F, -1);
+                    if (addr == cpu7->CurExec) ImGui_TableSetBgColor(ImGuiTableBgTarget_RowBg0, 0xFF1F6F6F, -1);
                     else
                     {
                         if (i % 2) ImGui_TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui_GetColorU32(ImGuiCol_TableRowBg), -1);
@@ -241,6 +328,15 @@ void DebugGui_A7(DebugGui* dgui, Console* sys)
                 ImGui_BeginDisabled(!A7TDMI_HasSPSR(a7));
                 ImGui_Text("SPSR: %08X", A7TDMI_GetSPSR(a7).Raw);
                 ImGui_EndDisabled();
+            }
+            ImGui_EndChild();
+            DebugGui_BusWatch(sys->Bus7_Watch, &sys->Bus7_NumWatch);
+            ImGui_SameLine();
+            if (ImGui_BeginChild("Interrupts", (ImVec2){230, 170}, ImGuiChildFlags_Borders|ImGuiChildFlags_ResizeX|ImGuiChildFlags_ResizeY, 0))
+            {
+                ImGui_Text("IE: %08"PRIX64, sys->IE7);
+                ImGui_Text("IF: %08"PRIX64, sys->IF7);
+                ImGui_Text("IME: %i", sys->IME7);
             }
             ImGui_EndChild();
         }
@@ -346,9 +442,9 @@ void DebugGui_Sched(DebugGui* dgui, Console* sys)
     ImGui_End();
 }
 
-void DebugGUI_Loop(MainGUI* mgui, Console* sys)
+void DebugGUI_Loop(MailBox* mail, MainGUI* mgui, Console* sys)
 {
-    if (mgui->dbg.A9DbgDisplay) DebugGui_A9(&mgui->dbg, sys);
-    if (mgui->dbg.A7DbgDisplay) DebugGui_A7(&mgui->dbg, sys);
+    if (mgui->dbg.A9DbgDisplay) DebugGui_A9(mail, &mgui->dbg, sys);
+    if (mgui->dbg.A7DbgDisplay) DebugGui_A7(mail, &mgui->dbg, sys);
     if (mgui->dbg.Sched) DebugGui_Sched(&mgui->dbg, sys);
 }

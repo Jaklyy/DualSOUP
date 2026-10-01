@@ -240,6 +240,7 @@ void A9ES_Exec(ARM946ES* a9es)
     {
         if (cpu->CPSR.Thumb)
         {
+            cpu->CurExec = cpu->PC-4;
             const ARM_Instr instr = cpu->Instr[0];
             const u16 decode = (instr.Thumb >> 10);
 
@@ -247,6 +248,7 @@ void A9ES_Exec(ARM946ES* a9es)
         }
         else
         {
+            cpu->CurExec = cpu->PC-8;
             const ARM_Instr instr = cpu->Instr[0];
             const u8 condcode = instr.Arm >> 28;
             const u16 decode = ((instr.Arm >> 16) & 0xFF0) | ((instr.Arm >> 4) & 0xF);
@@ -330,6 +332,20 @@ void A946_Run(ARM946ES* a946, timestamp now)
     else if (!cpu->WaitForInterrupt)
     {
         A9ES_Exec(a946);
+        if (cpu->CurExec == cpu->ExecBreak)
+        {
+            if (cpu->StepOver)
+            {
+                cpu->StepOver = false;
+                cpu->ExecBreak = u64_max;
+            }
+            Sched_AddEvent(cpu->Sys, now, Evt_DebugBreak);
+        }
+        if (cpu->StepOnce)
+        {
+            cpu->StepOnce = false;
+            Sched_AddEvent(cpu->Sys, now, Evt_DebugBreak);
+        }
 
         // if the instruction did any manual handling of the bus logic, skip automatic handling
         if (!a946->BusFlags.DataGo  && !a946->BusFlags.DataBusy  && !a946->BusFlags.DataDone
