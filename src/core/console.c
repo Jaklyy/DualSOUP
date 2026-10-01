@@ -471,6 +471,9 @@ void Console_DirectBoot(Console* sys)
 
     A9ES_SetPC(&sys->A946ES, arm9_entryaddr);
     A7TDMI_SetPC(&sys->A7TDMI, arm7_entryaddr);
+    // hack
+    memset(&sys->Bus7, 0, sizeof(sys->Bus7));
+    Bus7_Init(&sys->Bus7);
     A7TDMI_InstrRead(&sys->A7TDMI, 0);
     sys->DirectBoot = true;
 }
