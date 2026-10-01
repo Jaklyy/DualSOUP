@@ -1,265 +1,166 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+
+#include <SDL3/SDL_iostream.h>
+
 #include "gamecard.h"
 #include "core/console.h"
 #include "core/scheduler.h"
-#include "core/sram/flash.h"
-#include "core/sram/eeprom.h"
-#include "core/sram/ir.h"
-#include "frontend/soupparser/soupparser.h"
 
 
 
-bool GameCard_Init(GameCard* card, const char* romname, u8* bios7)
+bool GameCard_Init(GameCard* card, const GameCardConfig* cfg, u8* bios7)
 {
-    FILE* rom;
-    if ((rom = fopen(romname, "rb")) == NULL)
+    size_t romsize = (size_t)1<<cfg->ROMChipSize;
+    card->RomSize = romsize;
+    card->ChipID = cfg->ROMChipID;
+    card->ChipID &= 0x7FFFFFFF; // TODO: IMPLEMENT PROTOCOL VARIANT
+
+    if ((card->ROM = malloc(romsize)) == NULL)
     {
-        perror("ERROR: Could not open provided ROM");
+        LogPrint(LOG_ALWAYS, "Malloc failure in card init\n");
+        return false;
+    }
+    memset(card->ROM, cfg->ROMPaddingByte, romsize);
+
+    SDL_IOStream* rom;
+    if ((rom = SDL_IOFromFile(cfg->ROMPath, "rb")) == NULL)
+    {
+        LogPrint(LOG_ALWAYS, "Could not open rom: %s\n%s", cfg->ROMPath, SDL_GetError());
+
+        free(card->ROM);
         return false;
     }
 
-    if (fseek(rom, 0, SEEK_END))
-    {
-        perror("Seek Error");
-        fclose(rom);
-        return false;
-    }
+    size_t rombytes = SDL_ReadIO(rom, card->ROM, romsize);
+    if ((rombytes != romsize) && (SDL_GetIOStatus(rom) != SDL_IO_STATUS_EOF))
+        LogPrint(LOG_ALWAYS, "ROM File read error: %s\n", SDL_GetError());
 
-    u64 filesize = ftell(rom);
-    u64 chipsize = (u64)0x8000'0000'0000'0000 >> (stdc_leading_zeros(filesize) - (stdc_count_ones(filesize) != 1));
+    LogPrint(LOG_ALWAYS, "Read %zu bytes of ROM\n", rombytes);
 
-    if (chipsize > GiB(2))
-    {
-        LogPrint(LOG_ALWAYS, "ERROR: Game Card ROM too big! Must be <= 2GiB! size: %lu\n", chipsize);
-        fclose(rom);
-        return false;
-    }
-    if (chipsize < KiB(4))
-    {
-        LogPrint(LOG_ALWAYS, "NOTE: Game Card ROM too small! padding to 4KiB size: %lu\n", chipsize);
-        chipsize = KiB(4);
-    }
-
-    if (fseek(rom, 0, SEEK_SET))
-    {
-        perror("Seek Error");
-        fclose(rom);
-        return false;
-    }
-
-    card->RomSize = chipsize;
-    if ((card->ROM = malloc(chipsize)) == NULL)
-    {
-        LogPrint(LOG_ALWAYS, "ERROR: Could not allocate memory for Game Card ROM.\n");
-        fclose(rom);
-        return false;
-    }
-
-    if (filesize != chipsize)
-    {
-        LogPrint(LOG_ALWAYS, "NOTE: filesize not power of 2, trimmed ROM? Padding with FF. file: %lu chip: %lu\n", filesize, chipsize);
-        memset(card->ROM, 0xFF, chipsize);
-    }
-
-    if (fread(card->ROM, filesize, 1, rom) == 0)
-    {
-        perror("ERROR: Could not read Game Card ROM");
-        fclose(rom);
-        return false;
-    }
-    fclose(rom);
+    if (!SDL_CloseIO(rom))
+        LogPrint(LOG_ALWAYS, "ROM File close error: %s\n", SDL_GetError());
 
     memcpy(card->Key1, &bios7[0x30], sizeof(card->Key1));
 
+    card->SPIType = cfg->SPIBusType;
+    card->SRAMType = cfg->SRAMChipType;
 
-    // BEGIN SOUP PARSING
-
-    // load defaults
-    card->SPI = nullptr;
-    card->ChipID = DefaultChipID;
-
-    FILE* soup;
-    if ((soup = FindFileWithSameName(romname, "soup", "r")) == NULL)
+    GCSRAM* sram;
+    switch(cfg->SPIBusType)
     {
-        LogPrint(LOG_ALWAYS, "NOTE: Could not locate .soup for this ROM; SPI/SRAM will not be configured. Things may break.\n");
-
+    case GameCard_SPIBus_None:
         return true;
+    case GameCard_SPIBus_DirectSRAM:
+        sram = &card->SPI.SRAM;
+        break;
+    case GameCard_SPIBus_InfraredHLE:
+        sram = &card->SPI.IRhle.SRAM;
+        break;
     }
 
-    char* soupbowl;
-
-    if (fseek(soup, 0, SEEK_END))
+    size_t sramsize = (size_t)1<<cfg->SRAMChipSize;
+    u8* srambuffer;
+    if (cfg->SRAMChipType != GameCard_SRAMChip_None)
     {
-        perror(".soup Seek Error");
-        fclose(soup);
-        return true;
-    }
-    u64 soupsize = ftell(soup);
-    if (fseek(soup, 0, SEEK_SET))
-    {
-        perror(".soup Seek Error");
-        fclose(soup);
-        return true;
-    }
-
-    soupbowl = malloc(soupsize+32); // overallocate to make my life easier
-
-    memset(soupbowl, 0, soupsize+32);
-
-    if (fread(soupbowl, soupsize, 1, soup) == 0)
-    {
-        perror("ERROR: Could not read .soup\n");
-        fclose(soup);
-        return true;
-    }
-    fclose(soup);
-
-    soupbowl[soupsize+31] = '\0'; // im kinda just assuming i have to do this
-
-    if (SOUPParser(soupbowl, "chipid:", NULL, SEARCH_U32HEX, &card->ChipID))
-    {
-        LogPrint(LOG_ALWAYS, "ChipID found: %08X\n", card->ChipID);
-    }
-    else
-    {
-        LogPrint(LOG_ALWAYS, "No chipid specified in .soup, loading default: %08X\n", DefaultChipID);
-    }
-
-    u64 sramsize;
-    if (SOUPParser(soupbowl, "sramsize:", NULL, SEARCH_U64DEC, &sramsize))
-    {
-        if ((sramsize > 24) || (sramsize < 9))
+        if ((srambuffer = malloc(sramsize)) == NULL)
         {
-            LogPrint(LOG_ALWAYS, "SRAMSize found, but invalid size: max 24, min 9: val:%li size:%liB; SPI/SRAM will not be configured. Things may break.\n", sramsize, (u64)1<<sramsize);
-            return true;
+            LogPrint(LOG_ALWAYS, "Could not allocate RAM for Game Card SRAM\n");
+            goto fail;
+        }
+        memset(srambuffer, 0xFF, sramsize);
+
+        SDL_IOStream* sram;
+        if ((sram = SDL_IOFromFile(cfg->SRAMPath, "rb")) == NULL)
+        {
+            LogPrint(LOG_ALWAYS, "Could not open SRAM: %s\n%s", cfg->SRAMPath, SDL_GetError());
+
+            free(srambuffer);
+            goto fail;
         }
 
-        LogPrint(LOG_ALWAYS, "SRAMSize found: val:%li size:%liB\n", sramsize, (u64)1<<sramsize);
-    }
-    else
-    {
-        LogPrint(LOG_ALWAYS, "ERROR: sramsize unspecified in .soup; SPI/SRAM will not be configured. Things may break.\n");
-        return true;
-    }
-    sramsize = 1<<sramsize;
+        size_t srambytes = SDL_ReadIO(sram, srambuffer, sramsize);
+        if ((srambytes != sramsize) && (SDL_GetIOStatus(sram) != SDL_IO_STATUS_EOF))
+            LogPrint(LOG_ALWAYS, "SRAM File read error: %s\n", SDL_GetError());
 
-    u8* sram = malloc(sramsize);
-    FILE* sav;
-    if ((sav = FindFileWithSameName(romname, "sav", "rb")) == NULL)
-    {
-        LogPrint(LOG_ALWAYS, "NOTE: Could not locate .sav for this ROM. Creating uninitialized save ram.\n");
-        memset(sram, 0xFF, sramsize); // CHECKME
-    }
-    else
-    {
-        if (fseek(sav, 0, SEEK_END))
+        LogPrint(LOG_ALWAYS, "Read %zu bytes of SRAM\n", srambytes);
+
+        if (!SDL_CloseIO(sram))
+            LogPrint(LOG_ALWAYS, "SRAM File close error: %s\n", SDL_GetError());
+
+        if (false)
         {
-            perror("Seek Error");
+            fail:
+            free(card->ROM);
             return false;
         }
-        u64 savsize = ftell(sav);
-        if (fseek(sav, 0, SEEK_SET))
-        {
-            perror("Seek Error");
-            return false;
-        }
-        if (fread(sram, savsize, 1, sav) == 0)
-        {
-            perror("ERROR: Could not read .sav\n");
-            fclose(sav);
-            return false;
-        }
-        fclose(sav);
-        memset(&sram[savsize], 0xFF, sramsize - savsize);
     }
 
-    void** spi = &card->SPI;
-    void** send = (void*)&card->SPI_CMDSend;
-    void** clean = (void*)&card->SPI_Cleanup;
-
-    if (SOUPParser(soupbowl, "tmp:", "ir", SEARCH_STRING, NULL))
+    switch(cfg->SRAMChipType)
     {
-        *spi = malloc(sizeof(IRhle));
-        if (*spi == NULL)
-        {
-            LogPrint(LOG_ALWAYS, "Could not allocate RAM for HLE Game Card IR\n");
-            return false;
-        }
-        memset(*spi, 0, sizeof(IRhle));
-        *send = (void*)IRhle_CMDSend;
-        *clean = (void*)IRhle_Cleanup;
-
-        printf("%p %p\n", *spi, (void*)&(((IRhle*)(*spi))->SRAM_CMDSend));
-        // unholy abominations:
-        void* tmp = *spi;
-        spi = &(((IRhle*)tmp)->SRAM);
-        send = (void*)&(((IRhle*)tmp)->SRAM_CMDSend);
-        clean = (void*)&(((IRhle*)tmp)->SRAM_Cleanup);
-    }
-
-    u8 addrbytes;
-    if (SOUPParser(soupbowl, "spi:", "flash", SEARCH_STRING, NULL))
-    {
-        *spi = malloc(sizeof(Flash));
-        if (*spi == NULL)
-        {
-            LogPrint(LOG_ALWAYS, "Could not allocate RAM for Game Card flash\n");
-            return false;
-        }
-        memset(*spi, 0, sizeof(Flash));
-
-        u32 flashid;
-        if (!SOUPParser(soupbowl, "flashid:", NULL, SEARCH_U32HEX, &flashid))
-        {
-            flashid = 0x00010203;
-        }
-
-        Flash_Init(*spi, sram, sramsize, false, flashid);
-        *send = (void*)Flash_CMDSend;
-        *clean = (void*)Flash_Cleanup;
+    case GameCard_SRAMChip_None:
+        return true;
+    case GameCard_SRAMChip_Flash24BitAddr:
+        Flash_Init(&sram->Flash, srambuffer, sramsize, false, cfg->FlashChipID);
+        return true;
+    case GameCard_SRAMChip_EEPROM9BitAddr:
+    case GameCard_SRAMChip_EEPROM16BitAddr:
+    case GameCard_SRAMChip_EEPROM24BitAddr:
+        EEPROM_Init(&sram->EEP, srambuffer, sramsize, cfg->SRAMChipType-GameCard_SRAMChip_EEPROM9BitAddr+1, 0);
         return true;
     }
-    else if (SOUPParser(soupbowl, "spi:", "eep9", SEARCH_STRING, NULL))
-    {
-        addrbytes = 1;
-    }
-    else if (SOUPParser(soupbowl, "spi:", "eep16", SEARCH_STRING, NULL))
-    {
-        addrbytes = 2;
-    }
-    else if (SOUPParser(soupbowl, "spi:", "eep24", SEARCH_STRING, NULL))
-    {
-        addrbytes = 3;
-    }
-    else
-    {
-        LogPrint(LOG_ALWAYS, "ERROR: UNK SRAM TYPE SPECIFIED?\n");
-        return false;
-    }
+}
 
-    *spi = malloc(sizeof(EEPROM));
-    if (*spi == NULL)
+u8 GameCardSRAM_CmdSend(GCSRAM* self, GameCard_SRAMChip sram, u8 val, bool chipsel)
+{
+    switch(sram)
     {
-        LogPrint(LOG_ALWAYS, "Could not allocate RAM for Game Card eeprom\n");
-        return false;
+    case GameCard_SRAMChip_None:
+        return 0xFF; // checkme
+    case GameCard_SRAMChip_Flash24BitAddr:
+        return Flash_CMDSend((Flash*)self, val, chipsel);
+    case GameCard_SRAMChip_EEPROM9BitAddr
+    ... GameCard_SRAMChip_EEPROM24BitAddr:
+        return EEPROM_CMDSend((EEPROM*)self, val, chipsel);
     }
+}
 
-    memset(*spi, 0, sizeof(EEPROM));
-    EEPROM_Init(*spi, sram, sramsize, addrbytes, 0);
-    *send = (void*)EEPROM_CMDSend;
-    *clean = (void*)EEPROM_Cleanup;
-    return true;
+u8 GameCardSPI_CmdSend(GCSPI* self, GameCard_SPIBus spi, GameCard_SRAMChip sram, u8 val, bool chipsel)
+{
+    switch(spi)
+    {
+    case GameCard_SPIBus_None:
+        return 0xFF; // checkme
+    case GameCard_SPIBus_DirectSRAM:
+        return GameCardSRAM_CmdSend(&self->SRAM, sram, val, chipsel);
+    case GameCard_SPIBus_InfraredHLE:
+        return IRhle_CMDSend((IRhle*)self, sram, val, chipsel);
+    }
+}
+
+void GameCardSRAM_Cleanup(GCSRAM* self, GameCard_SRAMChip sram)
+{
+    switch(sram)
+    {
+    case GameCard_SRAMChip_None: return;
+    case GameCard_SRAMChip_Flash24BitAddr:
+        return Flash_Cleanup((Flash*)self);
+    case GameCard_SRAMChip_EEPROM9BitAddr
+    ... GameCard_SRAMChip_EEPROM24BitAddr:
+        return EEPROM_Cleanup((EEPROM*)self);
+    }
 }
 
 void GameCard_Cleanup(GameCard* card)
 {
-    if (card->SPI != nullptr)
+    switch(card->SPIType)
     {
-        card->SPI_Cleanup((card->SPI));
-        free(card->SPI);
-        card->SPI = nullptr;
+    case GameCard_SPIBus_None: break;
+    case GameCard_SPIBus_DirectSRAM:
+        GameCardSRAM_Cleanup(&card->SPI.SRAM, card->SRAMType); break;
+    case GameCard_SPIBus_InfraredHLE:
+        IRhle_Cleanup((IRhle*)&card->SPI, card->SRAMType); break;
     }
     free(card->ROM);
     card->ROM = nullptr;
@@ -640,8 +541,7 @@ void GameCard_IOWriteHandler(Console* sys, u32 addr, const u32 val, const u32 ma
                 }
                 else
                 {
-                    if (sys->GameCard.SPI == nullptr) sys->GCSPIBuf = 0xFF;
-                    else sys->GCSPIBuf = sys->GameCard.SPI_CMDSend(sys->GameCard.SPI, (val>>16)&0xFF, sys->GCSPICR[a9].ChipSelect);
+                    sys->GCSPIBuf = GameCardSPI_CmdSend(&sys->GameCard.SPI, sys->GameCard.SPIType, sys->GameCard.SRAMType, (val>>16)&0xFF, sys->GCSPICR[a9].ChipSelect);
 
                     sys->GCSPICR[a9].Busy = true;
                     Sched_AddEvent(sys, cur + (DSClk33(8*8)<<sys->GCSPICR[a9].Baudrate), (a9 ? Evt_CardSPI9 : Evt_CardSPI7)); // checkme: delay

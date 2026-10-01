@@ -1,6 +1,7 @@
 #include <SDL3/SDL_video.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 
 #include <SDL3/SDL.h>
 
@@ -58,8 +59,8 @@ MainGUI MainGUI_Init(MainCfg* mcfg)
     ImGui_CreateContext(NULL);
 
     ImGuiIO* io = ImGui_GetIO();
-    io->ConfigFlags |= ImGuiConfigFlags_DockingEnable; 
-    io->ConfigFlags |= ImGuiConfigFlags_ViewportsEnable; 
+    io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+    io->ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
 
     ImGui_StyleColorsDark(NULL);
 
@@ -71,6 +72,24 @@ MainGUI MainGUI_Init(MainCfg* mcfg)
     snprintf(mgui.TSCRange[2], 4, "%03X", mcfg->CoreCfg.SysCfg.TSCT);
     snprintf(mgui.TSCRange[3], 4, "%03X", mcfg->CoreCfg.SysCfg.TSCB);
 
+    mgui.NDSImportGui.NeedReset = true;
+    mgui.NDSImportGui.Name = calloc(1, 1);
+    mgui.NDSImportGui.ROMPath = calloc(1, 1);
+    mgui.NDSImportGui.SRAMPath = calloc(1, 1);
+    mgui.NDSImportGui.TxtPath = calloc(1, 1);
+    mgui.NDSImportGui.Mutex = SDL_CreateMutex();
+
+    mgui.GBAImportGui.NeedReset = true;
+    mgui.GBAImportGui.Name = calloc(1, 1);
+    mgui.GBAImportGui.ROMPath = calloc(1, 1);
+    mgui.GBAImportGui.SRAMPath = calloc(1, 1);
+    mgui.GBAImportGui.TxtPath = calloc(1, 1);
+    mgui.GBAImportGui.Mutex = SDL_CreateMutex();
+
+    for (int i = 0; i < GUI_LibraryMax; i++)
+        mgui.LibraryIcons[i] = SDL_CreateTexture(mgui.Ren, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STATIC, 32, 32);
+
+    LibraryGui_InitList(&mgui);
     return mgui;
 }
 
@@ -82,6 +101,7 @@ void MainGUI_Loop(Console* sys, MailBox* mailbox, MainGUI* mgui, MainCfg* mcfg, 
     cImGui_ImplSDL3_NewFrame();
     ImGui_NewFrame();
 
+#if 0
     ImGuiID dockspaceid = ImGui_GetID("Main Dockspace");
     ImGuiViewport* viewport = ImGui_GetMainViewport();
 
@@ -96,10 +116,29 @@ void MainGUI_Loop(Console* sys, MailBox* mailbox, MainGUI* mgui, MainCfg* mcfg, 
         else
             node->LocalFlags &= ~ImGuiDockNodeFlags_NoTabBar;
     }
+    ImGui_DockBuilderFinish(dockspaceid);
     ImGui_DockSpaceOverViewportEx(dockspaceid, viewport, 0, NULL);
+#else
+    ImGuiID dockspaceid = ImGui_GetID("Main Dockspace");
+    ImGuiViewport* viewport = ImGui_GetMainViewport();
+
+    ImGuiID dockc = dockspaceid;
+    ImGui_DockBuilderDockWindow("Display Window##1", dockc);
+    // kinda janky; should be functionally identical to auto-hide tab bar but without the ability to manually unhide it
+    ImGuiDockNode* node = ImGui_DockBuilderGetNode(dockspaceid);
+    if (node)
+    {
+        if (node->Windows.Size <= 1)
+            node->LocalFlags |= ImGuiDockNodeFlags_NoTabBar;
+        else
+            node->LocalFlags &= ~ImGuiDockNodeFlags_NoTabBar;
+    }
+    ImGui_DockSpaceOverViewportEx(dockspaceid, viewport, 0, NULL);
+#endif
 
     if (ImGui_BeginMainMenuBar())
     {
+        if (ImGui_MenuItemBoolPtr("Game List", NULL, &mgui->ShowList, active)) {}
         if (ImGui_MenuItemBoolPtr("Config", NULL, &mgui->CfgDisplay, true)) {}
         if (ImGui_MenuItemBoolPtr("Uncap FPS", NULL, (bool*)&mailbox->UncapFPS, true)) {}
         if (ImGui_MenuItemBoolPtr("Pause", NULL, (bool*)&mailbox->Pause, true)) {}
@@ -116,6 +155,8 @@ void MainGUI_Loop(Console* sys, MailBox* mailbox, MainGUI* mgui, MainCfg* mcfg, 
 
     ConfigGUI_Loop(mgui, mcfg);
     DebugGUI_Loop(mgui, sys);
+    ImportGui_Loop(mgui, &mgui->NDSImportGui, true);
+    //ImportGui_Loop(mgui, &mgui->GBAImportGui, mcfg, false);
     if (mgui->DemoDisplay) ImGui_ShowDemoWindow(&mgui->DemoDisplay);
 
     if (active)
@@ -195,6 +236,13 @@ void MainGUI_Loop(Console* sys, MailBox* mailbox, MainGUI* mgui, MainCfg* mcfg, 
 
         if (ImGui_Begin(label, NULL, flags))
         {
+            if ((i == 0) && (!active || mgui->ShowList))
+            {
+                LibraryGui_Loop(mgui, mcfg);
+                ImGui_End();
+                continue;
+            }
+
             ImVec2 sz = ImGui_GetContentRegionAvail();
             dispwin->Sz = ImGui_GetWindowSize();
             dispwin->Sz = ImGui_GetWindowPos();

@@ -13,6 +13,14 @@ typedef enum : u8
     Init_Fail = 2,
 } InitFlag;
 
+typedef enum : u32
+{
+    UserEvent_CorePowerOff,
+    UserEvent_BootRom,
+
+    UserEvent_MAX,
+} UserEvent_Offsets;
+
 typedef union
 {
     struct

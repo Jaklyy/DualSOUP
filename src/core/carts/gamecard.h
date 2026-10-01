@@ -1,5 +1,7 @@
 #pragma once
 #include "core/utils.h"
+#include "core/sram/cardsram.h"
+#include "core/sram/ir.h"
 
 
 
@@ -33,20 +35,6 @@ typedef enum : u8
     GameCard_SPIBus_MAX [[maybe_unused]],
 } GameCard_SPIBus;
 
-typedef enum : u8
-{
-    GameCard_SRAMChip_None,
-    GameCard_SRAMChip_Flash24BitAddr,
-    GameCard_SRAMChip_EEPROM9BitAddr,
-    GameCard_SRAMChip_EEPROM16BitAddr,
-    GameCard_SRAMChip_EEPROM24BitAddr,
-    //GameCard_SRAMChip_FRAM9BitAddr,
-    //GameCard_SRAMChip_FRAM16BitAddr,
-    //GameCard_SRAMChip_FRAM24BitAddr,
-
-    GameCard_SRAMChip_MAX [[maybe_unused]],
-} GameCard_SRAMChip;
-
 constexpr u32 DefaultChipID  = 0x04030201;
 constexpr u32 DefaultFlashID = 0x030201;
 
@@ -62,32 +50,41 @@ typedef struct
     GameCard_SRAMChip SRAMChipType;
     u8 SRAMChipSize;
     u32 FlashChipID;
+    char* SRAMPath;
 
     bool ImportKey1FromNTRBios7;
     char* ManualKey1Path;
 } GameCardConfig;
 
+typedef union
+{
+    GCSRAM SRAM;
+    IRhle IRhle;
+} GCSPI;
+
+
 typedef struct GameCard GameCard;
 struct GameCard
 {
-    u8 Mode;
-    bool Buffered;
-    void* (*CmdHandler) (Console*, bool);
+    //void* (*CmdHandler) (Console*, bool);
+    u32 RomSize;
+    u32 ChipID;
+    u32* ROM;
+    GameCard_SPIBus SPIType;
+    GameCard_SRAMChip SRAMType;
+    GCSPI SPI;
+    u32 Key1[4168/sizeof(u32)];
+
     u32 (*ReadHandler) (struct GameCard*);
     u32 Address;
     s32 NumWords;
-    u32 RomSize;
-    u32 ChipID;
     u32 WordBuffer;
-    u32* ROM;
-    u8 (*SPI_CMDSend)(void*, const u8, const bool);
-    void (*SPI_Cleanup)(void*);
-    void* SPI;
-    u32 Key1[4168/sizeof(u32)];
+    u8 Mode;
+    bool Buffered;
 };
 
 
-bool GameCard_Init(GameCard* card, const char* romname, u8* bios7);
+bool GameCard_Init(GameCard* card, const GameCardConfig* cfg, u8* bios7);
 void GameCard_Cleanup(GameCard* card);
 u32 GameCard_ROMDataRead(Console* sys, timestamp cur, const bool a9);
 u32 GameCard_IOReadHandler(Console* sys, u32 addr, const bool a9);

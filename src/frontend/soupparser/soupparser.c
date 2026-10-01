@@ -107,6 +107,7 @@ void Config_Write(const char* path, void* cfgin, const ConfigEntry* cfgref, cons
         size_t fulllen = baselen+sizeof(char[2]);
 
         bool valstrneedssdlfree = false;
+        bool valstrneedsnormalfree = false;
         const char* valstr;
         switch(entry.Type)
         {
@@ -142,13 +143,22 @@ void Config_Write(const char* path, void* cfgin, const ConfigEntry* cfgref, cons
 
         STOREVAL(INT, "%i", integer)
         STOREVAL(FLOAT, "%f", floating)
+        STOREVAL(U8DEC, "%"PRIi8, u8)
+        STOREVAL(S8DEC, "%"PRIi8, s8)
+        STOREVAL(U8HEX, "%"PRIX8, u8)
         STOREVAL(U16HEX, "%"PRIX16, u16)
+        STOREVAL(U32HEX, "%"PRIX32, u32)
 
 #undef STOREVAL
 
         case SEARCH_STRING:
         {
             valstr = pun.str[entry.Offset/sizeof(pun.str[0])];
+            if (valstr == nullptr)
+            {
+                valstr = calloc(1, 1);
+                valstrneedsnormalfree = true;
+            }
             break;
         }
         case SEARCH_BOOL:
@@ -162,7 +172,8 @@ void Config_Write(const char* path, void* cfgin, const ConfigEntry* cfgref, cons
         strcpy(outstr, entrystr);
         strcpy(&outstr[baselen], valstr);
 
-        if (valstrneedssdlfree) SDL_free((char**)valstr);
+        if (valstrneedssdlfree) SDL_free((void*)valstr);
+        if (valstrneedsnormalfree) free((void*)valstr);
 
         // add some filler
         // string should now look like: "entrystr=valstr\0\n"
@@ -173,7 +184,7 @@ void Config_Write(const char* path, void* cfgin, const ConfigEntry* cfgref, cons
         free(outstr);
     }
 
-    *dirtyflag = false;
+    if (dirtyflag != NULL) *dirtyflag = false;
     if (mutex != NULL) SDL_UnlockMutex(mutex);
     if (!SDL_CloseIO(file)) printf("%s\n", SDL_GetError());
 }
@@ -188,7 +199,7 @@ void Config_Load(const char* path, void* cfgout, const ConfigEntry* cfgref, cons
     pun pun = {.cfg = cfgout};
 
     // create config mutex if it hasn't been created yet
-    if (mutex == NULL)
+    if (mutex != NULL)
     {
         if (*mutex == NULL)
         {
@@ -372,7 +383,11 @@ void Config_Load(const char* path, void* cfgout, const ConfigEntry* cfgref, cons
 
         READNUMBER(INT, integer, isdigit, S, strtoll, NULL, 10)
         READNUMBER(FLOAT, floating, isdigit, F, strtof, NULL)
-        READNUMBER(U16HEX, u16, isxdigit, U, strtoll, NULL, 16)
+        READNUMBER(U8DEC, u8, isdigit, U, strtoull, NULL, 10)
+        READNUMBER(S8DEC, s8, isdigit, S, strtoll, NULL, 10)
+        READNUMBER(U8HEX, u8, isxdigit, U, strtoull, NULL, 16)
+        READNUMBER(U16HEX, u16, isxdigit, U, strtoull, NULL, 16)
+        READNUMBER(U32HEX, u32, isdigit, U, strtoull, NULL, 16)
 
 #undef READNUMBER
 

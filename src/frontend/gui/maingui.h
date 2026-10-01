@@ -40,6 +40,8 @@ constexpr float GUI_MaxDisplayPosX = 999999.0;
 constexpr float GUI_MinDisplayPosY = 0;
 constexpr float GUI_MaxDisplayPosY = 999999.0;
 
+constexpr int GUI_LibraryMax = 1000;
+
 #define GUI_INPUTCLAMPED(type, label, var, rangelo, rangehi) \
     if (ImGui_Input##type(label, &var)) \
     { \
@@ -90,16 +92,59 @@ typedef struct
 
 typedef struct
 {
+    SDL_Mutex* Mutex;
+    char* Name;
+    char* ROMPath;
+    char* SRAMPath;
+    char* TxtPath;
+    bool Show;
+    struct
+    {
+        char Name[129*2];
+        u32 Bitmap[32*32];
+        u8 Size;
+    } ROMDat;
+    struct
+    {
+        u8 Size;
+    } SRAMDat;
+    struct
+    {
+        u32 ROMID;
+        u32 SRAMID;
+    } TxtDat;
+    bool ROMDirty;
+    bool SRAMDirty;
+    bool TxtDirty;
+    bool NeedReset;
+    int ROMSize;
+    int ROMChipID;
+    int SPIType;
+    int SRAMType;
+    int SRAMChipSize;
+    int FlashChipID;
+} ImportGui;
+
+typedef struct
+{
     SDL_Window* Win;
     SDL_Renderer* Ren;
     SDL_Texture* Top;
     SDL_Texture* Bot;
     DebugGui dbg;
+    ImportGui NDSImportGui;
+    ImportGui GBAImportGui;
+    u32 UserEventBase;
     bool CfgDisplay;
     bool DemoDisplay;
+    bool ShowList;
 
     bool Paused;
     bool FrameLimit;
+
+    int LibraryNum;
+    const char* LibraryFolders[GUI_LibraryMax];
+    SDL_Texture* LibraryIcons[GUI_LibraryMax];
 
     char TSCRange[4][4];
 } MainGUI;
@@ -112,3 +157,7 @@ void MainGUI_Loop(Console* sys, MailBox* mailbox, MainGUI* mgui, MainCfg* mcfg, 
 void Mailbox_UpdateTouch(MailBox* mailbox, u16 x, u16 y, bool touched);
 
 void DebugGUI_Loop(MainGUI* mgui, Console* sys);
+void ImportGui_Loop(MainGUI* mgui, ImportGui* igui, const bool NDS);
+
+void LibraryGui_InitList(MainGUI* mgui);
+void LibraryGui_Loop(MainGUI* mgui, MainCfg* mcfg);

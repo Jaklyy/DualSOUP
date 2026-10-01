@@ -300,9 +300,10 @@ typedef struct
     } ControlReg;
 } BusMainRAM;
 
+enum NTRFCRAM : u8;
 void Bus9_Init(BusImpl* bus);
 void Bus7_Init(BusImpl* bus);
-void MainRAM_Init(Console* sys, NTRFCRAM fcramsize);
+void MainRAM_Init(Console* sys, enum NTRFCRAM fcramsize);
 
 // shared handlers
 void AddBusContention(Console* sys, const timestamp cur, const NTRAHB_Devices device);

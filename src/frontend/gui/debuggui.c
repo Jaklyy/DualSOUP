@@ -57,6 +57,7 @@ void DebugGui_PushRegionColor(A946DBGREGION var)
 
 void DebugGui_A9(DebugGui* dgui, Console* sys)
 {
+    ImGui_SetNextWindowSize((ImVec2){725, 348}, ImGuiCond_FirstUseEver);
     if (ImGui_Begin("ARM9 Debugger", &dgui->A9DbgDisplay, 0))
     {
         if (sys)
@@ -90,13 +91,13 @@ void DebugGui_A9(DebugGui* dgui, Console* sys)
                 for (int i = 0; i < 16; i++)
                 {
                     u32 addr = dgui->CurAddr9 - 8 + (4*i);
+                    ImGui_TableNextRow();
                     if (addr == cpu9->PC) ImGui_TableSetBgColor(ImGuiTableBgTarget_RowBg0, 0xFF1F6F6F, -1);
                     else
                     {
                         if (i % 2) ImGui_TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui_GetColorU32(ImGuiCol_TableRowBg), -1);
                         else       ImGui_TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui_GetColorU32(ImGuiCol_TableRowBgAlt), -1);
                     }
-                    ImGui_TableNextRow();
                     ImGui_TableNextColumn();
 
                     A946_DebugRegion reg = A946_DebugGetRegion(a9, addr);
@@ -132,7 +133,7 @@ void DebugGui_A9(DebugGui* dgui, Console* sys)
             }
 
             ImGui_SameLine();
-            if (ImGui_BeginChild("ARM946E-S View", (ImVec2){40.0, 200.0}, ImGuiChildFlags_Borders|ImGuiChildFlags_ResizeX|ImGuiChildFlags_ResizeY, 0))
+            if (ImGui_BeginChild("ARM946E-S View", (ImVec2){230, 170}, ImGuiChildFlags_Borders|ImGuiChildFlags_ResizeX|ImGuiChildFlags_ResizeY, 0))
             {
                 for (int i = 0; i < 10; i++)
                 {
@@ -166,6 +167,7 @@ void DebugGui_A9(DebugGui* dgui, Console* sys)
 
 void DebugGui_A7(DebugGui* dgui, Console* sys)
 {
+    ImGui_SetNextWindowSize((ImVec2){470, 348}, ImGuiCond_FirstUseEver);
     if (ImGui_Begin("ARM7 Debugger", &dgui->A7DbgDisplay, 0))
     {
         if (sys)
@@ -193,35 +195,30 @@ void DebugGui_A7(DebugGui* dgui, Console* sys)
                 ImGui_TableSetupColumn("Disassembly", ImGuiTableColumnFlags_WidthFixed);
                 ImGui_TableHeadersRow();
 
-                ImGuiListClipper clip;
-                ImGuiListClipper_Begin(&clip, 16, 12);
-                while (ImGuiListClipper_Step(&clip))
+                for (int i = 0; i < 16; i++)
                 {
-                    for (int i = clip.DisplayStart; i < clip.DisplayEnd; i++)
+                    u32 addr = dgui->CurAddr7 - 8 + (4*i);
+                    ImGui_TableNextRow();
+                    if (addr == cpu7->PC) ImGui_TableSetBgColor(ImGuiTableBgTarget_RowBg0, 0xFF1F6F6F, -1);
+                    else
                     {
-                        u32 addr = dgui->CurAddr7 - 8 + (4*i);
-                        if (addr == cpu7->PC) ImGui_TableSetBgColor(ImGuiTableBgTarget_RowBg0, 0xFF1F6F6F, -1);
-                        else
-                        {
-                            if (i % 2) ImGui_TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui_GetColorU32(ImGuiCol_TableRowBg), -1);
-                            else       ImGui_TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui_GetColorU32(ImGuiCol_TableRowBgAlt), -1);
-                        }
-                        ImGui_TableNextRow();
-                        ImGui_TableNextColumn();
-                        ImGui_Text("%08"PRIX32"", addr);
-                        ImGui_TableNextColumn();
-                        ImGui_Text("%08"PRIX32"", Bus7_DebugRead(sys, addr));
-                        ImGui_TableNextColumn();
-                        ImGui_Text("BL");
-                        ImGui_SameLineEx(0, 0);
-                        ImGui_TextColored((ImVec4){1, 0.8, 0.9, 1}, "0x02000000");
+                        if (i % 2) ImGui_TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui_GetColorU32(ImGuiCol_TableRowBg), -1);
+                        else       ImGui_TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui_GetColorU32(ImGuiCol_TableRowBgAlt), -1);
                     }
+                    ImGui_TableNextColumn();
+                    ImGui_Text("%08"PRIX32"", addr);
+                    ImGui_TableNextColumn();
+                    ImGui_Text("%08"PRIX32"", Bus7_DebugRead(sys, addr));
+                    ImGui_TableNextColumn();
+                    ImGui_Text("BL");
+                    ImGui_SameLineEx(0, 0);
+                    ImGui_TextColored((ImVec4){1, 0.8, 0.9, 1}, "0x02000000");
                 }
                 ImGui_EndTable();
             }
 
             ImGui_SameLine();
-            if (ImGui_BeginChild("ARM946E-S View", (ImVec2){40.0, 200.0}, ImGuiChildFlags_Borders|ImGuiChildFlags_ResizeX|ImGuiChildFlags_ResizeY, 0))
+            if (ImGui_BeginChild("ARM7TDMI View", (ImVec2){230, 170}, ImGuiChildFlags_Borders|ImGuiChildFlags_ResizeX|ImGuiChildFlags_ResizeY, 0))
             {
                 for (int i = 0; i < 10; i++)
                 {
@@ -253,6 +250,7 @@ void DebugGui_A7(DebugGui* dgui, Console* sys)
 
 void DebugGui_Sched(DebugGui* dgui, Console* sys)
 {
+    ImGui_SetNextWindowSize((ImVec2){700, 348}, ImGuiCond_FirstUseEver);
     if (ImGui_Begin("Scheduler Debugger", &dgui->Sched, 0))
     {
         if (sys)

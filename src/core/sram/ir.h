@@ -1,5 +1,6 @@
+#pragma once
 #include "core/utils.h"
-#include "flash.h"
+#include "cardsram.h"
 
 
 
@@ -8,10 +9,8 @@ typedef struct
     u16 CmdLen;
     bool PrevChipSelect;
     u8 CurCmd;
-    void* SRAM;
-    u8 (*SRAM_CMDSend)(void*, const u8, const bool);
-    u8 (*SRAM_Cleanup)(void*);
+    GCSRAM SRAM;
 } IRhle;
 
-u8 IRhle_CMDSend(IRhle* ir, const u8 val, const bool chipsel);
-void IRhle_Cleanup(IRhle* ir);
+u8 IRhle_CMDSend(IRhle* ir, GameCard_SRAMChip sramtype, const u8 val, const bool chipsel);
+void IRhle_Cleanup(IRhle* ir, GameCard_SRAMChip sramtype);

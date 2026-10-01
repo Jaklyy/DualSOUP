@@ -125,6 +125,7 @@ bool Console_ReadFile(u8* buf, const char* path, const size_t num, const char* n
 
 void Console_Cleanup(Console* sys, bool full)
 {
+    if (sys == nullptr) return;
     // i tried reusing these and it hung, so i gave up, because it probably doesn't matter
     SDL_UnlockMutex(sys->FrameBufferMutex[sys->BackBuf]); // freeing a locked mutex is apparently undefined behavior, neat
     SDL_DestroyMutex(sys->FrameBufferMutex[0]);
@@ -243,7 +244,7 @@ Console* Console_Init(Console* sys, CoreCfg* cfg, void* aud)
     cleanup++;
     Flash_Init(&sys->Firmware, nvram, nvramsize, sys->SysCfg.WiFiNVRAMWriteProt, 0x010101);
 
-    if (!GameCard_Init(&sys->GameCard, cfg->NTR.CardROM, sys->NTRBios7.b8)) goto fail;
+    if (!GameCard_Init(&sys->GameCard, &cfg->SysCfg.GameCard, sys->NTRBios7.b8)) goto fail;
     cleanup++;
 
     GamePak_Init(&sys->GamePak);

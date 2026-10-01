@@ -86,9 +86,9 @@ static const ConfigEntry GameCardCfgData[] =
     {
         .Name=      "ROMChipSize",
         .Offset=    offsetof(GameCardConfig, ROMChipSize),
-        .UDefVal=   -1, // auto
-        .UMinVal=   0,
-        .UMaxVal=   32, // standard card protocol doesn't support >32 bit addresses
+        .SDefVal=   -1, // auto
+        .SMinVal=   16,
+        .SMaxVal=   32, // standard card protocol doesn't support >32 bit addresses
         .Type=      SEARCH_S8DEC,
     },
     {
@@ -145,6 +145,11 @@ static const ConfigEntry GameCardCfgData[] =
         .UMinVal=   0x000000,
         .UMaxVal=   0xFFFFFF,
         .Type=      SEARCH_U32HEX,
+    },
+    {
+        .Name=      "SRAMPath",
+        .Offset=    offsetof(GameCardConfig, SRAMPath),
+        .Type=      SEARCH_STRING,
     },
     {
         .Name=      "Key1FromBios",
