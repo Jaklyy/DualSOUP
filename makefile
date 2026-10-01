@@ -9,7 +9,7 @@ OBJDIR := /obj
 
 SRCDIR := src
 
-LIBDIRS := /usr/local/libc
+LIBDIRS := /opt/homebrew/lib
 
 LIBS := -lSDL3
 
