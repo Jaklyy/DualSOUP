@@ -1,5 +1,4 @@
 #include <assert.h>
-#include <stdbit.h>
 #include <stddef.h>
 #include "bus.h"
 #include "core/arm/arm7/arm.h"
