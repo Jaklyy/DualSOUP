@@ -100,7 +100,7 @@ typedef struct
     bool Show;
     struct
     {
-        char Name[129*2];
+        char* FriendlyName;
         u32 Bitmap[32*32];
         u8 Size;
     } ROMDat;
@@ -143,7 +143,8 @@ typedef struct
     bool FrameLimit;
 
     int LibraryNum;
-    const char* LibraryFolders[GUI_LibraryMax];
+    const char* LibrarySoups[GUI_LibraryMax];
+    const char* LibraryNames[GUI_LibraryMax];
     SDL_Texture* LibraryIcons[GUI_LibraryMax];
 
     char TSCRange[4][4];

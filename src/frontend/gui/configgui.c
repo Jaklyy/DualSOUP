@@ -1,10 +1,9 @@
 #include <string.h>
 #include <math.h>
-#include <uchar.h>
-#include <errno.h>
 
 #include <SDL3/SDL_dialog.h>
 #include <SDL3/SDL_mutex.h>
+#include <SDL3/SDL_stdinc.h>
 
 #include "imgui/dcimgui.h"
 
@@ -140,7 +139,6 @@ void ImportGui_ParseNDSROM(ImportGui* igui)
 
     SDL_LockMutex(igui->Mutex);
 
-    igui->ROMDat.Name[0] = '\0';
     igui->ROMDat.Size = 0;
     memset(igui->ROMDat.Bitmap, 0, sizeof(igui->ROMDat.Bitmap));
 
@@ -206,25 +204,13 @@ void ImportGui_ParseNDSROM(ImportGui* igui)
         if (SDL_SeekIO(rom, iconoffs+0x340, SDL_IO_SEEK_SET) != (iconoffs+0x340)) goto kill;
 
         {
-            char16_t str[128+1] = {0};
+            char str[(128)*2] = {0};
             if (SDL_ReadIO(rom, str, (sizeof(str)-sizeof(str[0]))) != (sizeof(str)-sizeof(str[0]))) goto kill;
-            //char out[MB_CUR_MAX * (128+1)] = {};
-            size_t mblen = 0;
-            {
-                mbstate_t convstate = {};
-                size_t i = 0;
-                do
-                {
-                    size_t inc = c16rtomb(&igui->ROMDat.Name[mblen], str[i], &convstate);
-                    if (inc == (size_t)-1)
-                    {
-                        printf("ERROR?? %zu %04X %s\n", i, str[i], strerror(errno));
-                        break;
-                    }
-                    mblen += inc;
-                }
-                while(str[i++] != U'\0');
-            }
+
+            if (igui->ROMDat.FriendlyName != NULL)
+                SDL_free(igui->ROMDat.FriendlyName);
+
+            igui->ROMDat.FriendlyName = SDL_iconv_string("UTF-8", "UTF-16", str, sizeof(str));
         }
         kill:
         SDL_CloseIO(rom);
@@ -307,7 +293,7 @@ void ImportGui_Loop(MainGUI* mgui, ImportGui* igui, const bool NDS)
         return;
     }
 
-    ImGui_SetNextWindowSize((ImVec2){340.0, 360.0}, ImGuiCond_FirstUseEver);
+    ImGui_SetNextWindowSize((ImVec2){340.0, 400.0}, ImGuiCond_FirstUseEver);
     if (!ImGui_Begin("Import NDS Game Card", &igui->Show, 0))
         return ImGui_End();
 
@@ -317,6 +303,8 @@ void ImportGui_Loop(MainGUI* mgui, ImportGui* igui, const bool NDS)
         igui->ROMPath[0] = '\0';
         igui->SRAMPath[0] = '\0';
         igui->TxtPath[0] = '\0';
+        if (igui->ROMDat.FriendlyName != NULL)
+            SDL_free(igui->ROMDat.FriendlyName);
         memset(&igui->ROMDat, 0, sizeof(ImportGui) - offsetof(ImportGui, ROMDat));
         igui->TxtDat.SRAMID = 0xFFFFFF;
 
@@ -332,14 +320,11 @@ void ImportGui_Loop(MainGUI* mgui, ImportGui* igui, const bool NDS)
         ImportGui_ParseNDSSRAM(igui);
         ImportGui_ParseNDSTxt(igui);
 
-        // i dont like how this feature works tbh
-        #if 0
-        if (igui->ROMDat.Name[0] != '\0')
+        if (igui->ROMDat.FriendlyName != NULL)
         {
             free(igui->Name);
-            igui->Name = strdup(igui->ROMDat.Name);
+            igui->Name = strdup(igui->ROMDat.FriendlyName);
         }
-        #endif
 
         if (igui->TxtDat.ROMID != 0)
         {
@@ -406,8 +391,7 @@ void ImportGui_Loop(MainGUI* mgui, ImportGui* igui, const bool NDS)
         }
     }
 
-    ImGui_InputTextEx("Game Name", igui->Name, strlen(igui->Name)+1, ImGuiInputTextFlags_ElideLeft|ImGuiInputTextFlags_AutoSelectAll|ImGuiInputTextFlags_CallbackResize, FilePathTextCallback, &igui->Name);
-
+    ImGui_InputTextMultilineEx("Game Title", igui->Name, strlen(igui->Name)+1, (ImVec2){0, 45}, ImGuiInputTextFlags_AutoSelectAll|ImGuiInputTextFlags_CallbackResize, FilePathTextCallback, &igui->Name);
 
     const char* const romsizes[] = {"1 MiB", "2 MiB", "4 MiB", "8 MiB", "16 MiB", "32 MiB", "64 MiB", "128 MiB", "256 MiB", "512 MiB"};
     ImGui_ComboChar("ROM Chip Size", &igui->ROMSize, romsizes, NDS ? countof(romsizes) : 6);
@@ -434,26 +418,40 @@ void ImportGui_Loop(MainGUI* mgui, ImportGui* igui, const bool NDS)
     ImGui_EndDisabled();
     ImGui_EndDisabled();
 
-    if (ImGui_Button("Import"))
+    if (ImGui_Button("Import") && (igui->ROMPath[0] != '\0'))
     {
-        char* path = SDL_GetPrefPath("DualSOUP", "DualSOUP");
+        if (igui->ROMPath[0] == '\0')
+            return ImGui_End();
+
+        size_t sramsize = (size_t)1<<(igui->SRAMChipSize + 9);
+        u8 srambuffer[sramsize];
+
         constexpr char cfgname[] = "/cfg.soup";
         constexpr char savfolder[] = "/sav";
         constexpr char savfile[] = "/sav.sav"; // TODO: backups
         constexpr char iconfile[] = "/icon.bin";
-        char* submpath = nullptr;
-        char* savpath = nullptr;
-        char* iconpath = nullptr;
+        constexpr char ndsfolder[] = "GameCard/";
+
+        char* start; char* end;
+        if ((start = strrchr(igui->ROMPath, '/')) == NULL)
+            start = igui->ROMPath;
+        if ((end = strrchr(start, '.')) == NULL)
+            end = start+strlen(start)+1;
+
+        char* romfoldername;
+        if ((romfoldername = calloc(1, end-start)) == NULL)
+            goto out;
+        strncpy(romfoldername, start, end-start);
+        char* path = SDL_GetPrefPath("DualSOUP", "DualSOUP");
+
+        char submpath[strlen(path)+sizeof(ndsfolder)+strlen(romfoldername)+sizeof(cfgname)];
+        char savpath[strlen(path)+sizeof(ndsfolder)+strlen(romfoldername)+sizeof(iconfile)];
+        char iconpath[strlen(path)+sizeof(ndsfolder)+strlen(romfoldername)+sizeof(savfolder)+sizeof(savfile)];
         if (NDS)
         {
-            constexpr char ndsfolder[] = "GameCard/";
-            submpath = malloc(strlen(path)+sizeof(ndsfolder)+strlen(igui->Name)+sizeof(cfgname));
-            iconpath = malloc(strlen(path)+sizeof(ndsfolder)+strlen(igui->Name)+sizeof(iconfile));
-            savpath = malloc(strlen(path)+sizeof(ndsfolder)+strlen(igui->Name)+sizeof(savfolder)+sizeof(savfile));
-
             strcpy(submpath, path);
             strcat(submpath, ndsfolder);
-            strcat(submpath, igui->Name);
+            strcat(submpath, romfoldername);
             strcpy(savpath, submpath);
             strcpy(iconpath, submpath);
             strcat(submpath, cfgname);
@@ -470,7 +468,7 @@ void ImportGui_Loop(MainGUI* mgui, ImportGui* igui, const bool NDS)
         else
         {
             constexpr char gbafolder[] = "GamePak/";
-            submpath = malloc(strlen(path)+sizeof(gbafolder)+strlen(igui->Name));
+            //submpath = malloc(strlen(path)+sizeof(gbafolder)+strlen(igui->Name));
             strcpy(submpath, path);
             strcat(submpath, gbafolder);
             strcat(submpath, igui->Name);
@@ -490,22 +488,13 @@ void ImportGui_Loop(MainGUI* mgui, ImportGui* igui, const bool NDS)
             .SRAMPath = savpath,
             .ImportKey1FromNTRBios7 = true,
             .ManualKey1Path = nullptr,
+            .FriendlyName = igui->Name,
         };
 
         Config_Write(submpath, &cfg, GameCardCfgData, countof(GameCardCfgData), nullptr, igui->Mutex);
 
         if ((igui->SPIType == GameCard_SPIBus_None) || (igui->SRAMType == GameCard_SRAMChip_None)) // exit if no sram
             goto skipsav;
-
-        size_t sramsize = (size_t)1<<cfg.SRAMChipSize;
-        u8* srambuffer;
-        if ((srambuffer = malloc(sramsize)) == NULL)
-        {
-            printf("malloc failure in sram creation routine????\n");
-            goto skipsav;
-        }
-
-        // initialize to FFs
         memset(srambuffer, 0xFF, sramsize);
 
         // load provided save
@@ -550,11 +539,9 @@ void ImportGui_Loop(MainGUI* mgui, ImportGui* igui, const bool NDS)
         igui->Show = false;
         exit:
         SDL_free(path);
-        free(savpath);
-        free(iconpath);
-        free(submpath);
         // refresh library list
         LibraryGui_InitList(mgui);
     }
+    out:
     ImGui_End();
 }

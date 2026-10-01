@@ -54,6 +54,8 @@ typedef struct
 
     bool ImportKey1FromNTRBios7;
     char* ManualKey1Path;
+
+    char* FriendlyName;
 } GameCardConfig;
 
 typedef union

@@ -9,7 +9,8 @@
 
 typedef struct LibraryGui_EnumPass
 {
-    const char** LibraryFolders;
+    const char** LibrarySoups;
+    const char** LibraryNames;
     SDL_Texture** LibraryIcons;
     int* LibraryNum;
 } LibraryGui_EnumPass;
@@ -18,17 +19,33 @@ SDL_EnumerationResult SDLCALL LibraryGui_EnumerateLoop(void* userdata, const cha
 {
     LibraryGui_EnumPass* pass = userdata;
 
-    pass->LibraryFolders[*pass->LibraryNum] = strdup(fname);
-    char icon[strlen(dirname)+strlen(fname)+sizeof("/icon.bin")];
-    strcpy(icon, dirname);
-    strcat(icon, fname);
+    char folder[strlen(dirname)+strlen(fname)+1];
+    strcpy(folder, dirname);
+    strcat(folder, fname);
+    SDL_PathInfo info;
+    if (!SDL_GetPathInfo(folder, &info) || (info.type != SDL_PATHTYPE_DIRECTORY))
+        return SDL_ENUM_CONTINUE;
+
+    char cfg[strlen(folder)+sizeof("/cfg.soup")];
+    strcpy(cfg, folder);
+    strcat(cfg, "/cfg.soup");
+
+    if (!SDL_GetPathInfo(cfg, &info) || (info.type != SDL_PATHTYPE_FILE))
+        return SDL_ENUM_CONTINUE;
+
+    char icon[strlen(folder)+sizeof("/icon.bin")];
+    strcpy(icon, folder);
     strcat(icon, "/icon.bin");
+
+    GameCardConfig cfgtmp;
+    Config_Load(cfg, &cfgtmp, GameCardCfgData, countof(GameCardCfgData), NULL, NULL);
+    pass->LibrarySoups[*pass->LibraryNum] = strdup(cfg);
+    pass->LibraryNames[*pass->LibraryNum] = strdup(cfgtmp.FriendlyName);
+
     size_t size;
-    printf("%s\n", icon);
     void* buf = SDL_LoadFile(icon, &size);
     if ((buf != NULL) && (size == (32*32*4)))
     {
-        printf("yes???\n");
         if (!SDL_UpdateTexture(pass->LibraryIcons[*pass->LibraryNum], NULL, buf, 4*32))
             printf("%s\n", SDL_GetError());
     }
@@ -54,14 +71,16 @@ void LibraryGui_InitList(MainGUI* mgui)
 
     mgui->LibraryNum = 0;
     LibraryGui_EnumPass pass = {
-        .LibraryFolders = mgui->LibraryFolders,
+        .LibrarySoups = mgui->LibrarySoups,
+        .LibraryNames = mgui->LibraryNames,
         .LibraryIcons = mgui->LibraryIcons,
         .LibraryNum = &mgui->LibraryNum,
     };
 
     for (int i = 0; i < *pass.LibraryNum; i++)
     {
-        free((void*)mgui->LibraryFolders[i]);
+        free((void*)mgui->LibrarySoups[i]);
+        free((void*)mgui->LibraryNames[i]);
     }
 
     SDL_EnumerateDirectory(librarypath, LibraryGui_EnumerateLoop, &pass);
@@ -88,24 +107,13 @@ void LibraryGui_Loop(MainGUI* mgui, MainCfg* mcfg)
                 if (i % 2) ImGui_TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui_GetColorU32(ImGuiCol_TableRowBg), -1);
                 else       ImGui_TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui_GetColorU32(ImGuiCol_TableRowBgAlt), -1);
                 ImGui_TableNextColumn();
+                ImGui_Dummy((ImVec2){0.0, 0.0});
                 ImGui_Image((ImTextureRef){._TexID = (intptr_t)(mgui->LibraryIcons[i])}, (ImVec2){32,32});
                 ImGui_TableNextColumn();
                 ImGui_PushIDInt(i);
-                if (ImGui_SelectableEx(mgui->LibraryFolders[i], false, ImGuiSelectableFlags_SpanAllColumns|ImGuiSelectableFlags_AllowOverlap, (ImVec2){0, 32}))
+                if (ImGui_SelectableEx(mgui->LibraryNames[i], false, ImGuiSelectableFlags_SpanAllColumns|ImGuiSelectableFlags_AllowOverlap, (ImVec2){0, 39}))
                 {
-                    char* path = SDL_GetPrefPath("DualSOUP", "DualSOUP");
-                    constexpr char ndsfolder[] = "GameCard/";
-                    constexpr char cfgsoup[] = "/cfg.soup";
-                    char* gamepath = malloc(strlen(path)+sizeof(ndsfolder)+strlen(mgui->LibraryFolders[i])+sizeof(cfgsoup));
-                    strcpy(gamepath, path);
-                    strcat(gamepath, ndsfolder);
-                    strcat(gamepath, mgui->LibraryFolders[i]);
-                    strcat(gamepath, cfgsoup);
-                    SDL_free(path);
-
-                    Config_Load(gamepath, &mcfg->CoreCfg.SysCfg.GameCard, GameCardCfgData, countof(GameCardCfgData), nullptr, nullptr);
-
-                    free(gamepath);
+                    Config_Load(mgui->LibrarySoups[i], &mcfg->CoreCfg.SysCfg.GameCard, GameCardCfgData, countof(GameCardCfgData), nullptr, nullptr);
 
                     SDL_Event evt = {.user = {.type = mgui->UserEventBase+UserEvent_BootRom}};
                     if (!SDL_PushEvent(&evt)) printf("%s\n", SDL_GetError());

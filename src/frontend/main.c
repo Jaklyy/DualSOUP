@@ -1,6 +1,6 @@
 #include <stdlib.h>
 #include <stdio.h>
-#include <locale.h>
+//#include <locale.h>
 
 #include <SDL3/SDL_error.h>
 #include <SDL3/SDL_events.h>
@@ -199,8 +199,8 @@ void CoreThread_Reset(Console** sys, MailBox* mailbox, SDL_Thread** cthrd)
 
 int main()
 {
-    if (setlocale(LC_CTYPE, "en_US.UTF-8") == NULL)
-        printf("could not set character locale\n");
+    //if (setlocale(LC_CTYPE, "en_US.UTF-8") == NULL)
+    //    printf("could not set character locale\n");
     LogMask = u64_max; // temp
 
     //SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "X11");

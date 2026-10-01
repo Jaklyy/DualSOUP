@@ -162,6 +162,11 @@ static const ConfigEntry GameCardCfgData[] =
         .Offset=    offsetof(GameCardConfig, ManualKey1Path),
         .Type=      SEARCH_STRING,
     },
+    {
+        .Name=      "FriendlyName",
+        .Offset=    offsetof(GameCardConfig, FriendlyName),
+        .Type=      SEARCH_STRING,
+    },
 };
 
 static const ConfigEntry SystemCfgData[] =
