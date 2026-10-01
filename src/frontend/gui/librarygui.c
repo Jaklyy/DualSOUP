@@ -1,4 +1,6 @@
+#include <stdlib.h>
 #include <SDL3/SDL_filesystem.h>
+
 #include "imgui/dcimgui.h"
 
 #include "../main.h"

@@ -1,3 +1,5 @@
+#include <stdlib.h>
+
 #include "imgui/dcimgui.h"
 
 #include "core/utils.h"
