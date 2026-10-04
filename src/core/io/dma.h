@@ -64,7 +64,29 @@ constexpr u64 DMA7_NewMax = DMA7_NewBase + DMA7_NumNew;
 constexpr u64 DMA7_Max = DMA7_NewMax;
 
 
-struct DMA_Channel
+constexpr u64 DMA9_NumSound = 0;
+constexpr u64 DMA9_NumSoundCap = 0;
+constexpr u64 DMA9_NumNormal = 4;
+constexpr u64 DMA9_NumNew = 4;
+
+constexpr u64 DMA9_Base = 0;
+
+constexpr u64 DMA9_SoundCapBase = DMA9_Base;
+constexpr u64 DMA9_SoundCapMax = DMA9_SoundCapBase + DMA9_NumSoundCap;
+
+constexpr u64 DMA9_SoundBase = DMA9_SoundCapMax;
+constexpr u64 DMA9_SoundMax = DMA9_SoundBase + DMA9_NumSound;
+
+constexpr u64 DMA9_NormalBase = DMA9_SoundMax;
+constexpr u64 DMA9_NormalMax = DMA9_NormalBase + DMA9_NumNormal;
+
+constexpr u64 DMA9_NewBase = DMA9_NormalMax;
+constexpr u64 DMA9_NewMax = DMA9_NewBase + DMA9_NumNew;
+
+constexpr u64 DMA9_Max = DMA9_NewMax;
+
+
+typedef struct
 {
     u32 SrcAddr;
     u32 DstAddr;
@@ -89,19 +111,14 @@ struct DMA_Channel
     bool Latched_Width32;
     bool DoBusy;
     bool NeedsInit;
-};
-
-struct DMA_Controller
-{
-    struct DMA_Channel Channels[DMA7_Max];
-};
+} DMA_Channel;
 
 typedef struct Console Console;
 
 void DMA_Init(Console* sys);
-void DMA7_IOWriteHandler(Console* sys, timestamp now, struct DMA_Channel* channels, u32 addr, u32 val, const u32 mask);
-void DMA9_IOWriteHandler(Console* sys, timestamp now, struct DMA_Channel* channels, u32 addr, u32 val, u32 mask);
-u32 DMA_IOReadHandler(struct DMA_Channel* channels, u32 addr);
+void DMA7_IOWriteHandler(Console* sys, timestamp now, DMA_Channel* channels, u32 addr, u32 val, const u32 mask);
+void DMA9_IOWriteHandler(Console* sys, timestamp now, DMA_Channel* channels, u32 addr, u32 val, u32 mask);
+u32 DMA_IOReadHandler(DMA_Channel* channels, u32 addr);
 void StartDMA9(Console* sys, timestamp start, u8 mode);
 void StartDMA7(Console* sys, timestamp start, u8 mode);
 void StartSoundCapDMA(Console* sys, u8 id, timestamp start);

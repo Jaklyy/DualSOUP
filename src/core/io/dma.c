@@ -10,78 +10,71 @@ void DMA_Init(Console* sys)
 {
     for (u32 i = DMA7_SoundBase; i < DMA7_SoundMax; i++)
     {
-        sys->DMA7.Channels[i].CurrentMode = DMAStart_Audio;
-        sys->DMA7.Channels[i].CR.Width32 = true;
-        sys->DMA7.Channels[i].SrcInc = 4;
-        sys->DMA7.Channels[i].SrcAddrMask = 0x07FFFFFC;
+        sys->DMA7[i].CurrentMode = DMAStart_Audio;
+        sys->DMA7[i].CR.Width32 = true;
+        sys->DMA7[i].SrcInc = 4;
+        sys->DMA7[i].SrcAddrMask = 0x07FFFFFC;
     }
     for (u32 i = DMA7_SoundCapBase; i < DMA7_SoundCapMax; i++)
     {
-        sys->DMA7.Channels[i].CurrentMode = DMAStart_AudioCap;
-        sys->DMA7.Channels[i].CR.Width32 = true;
-        sys->DMA7.Channels[i].DstInc = 4;
-        sys->DMA7.Channels[i].CR.DestCR = 3;
-        sys->DMA7.Channels[i].DstAddrMask = 0x07FFFFFC;
-        sys->DMA7.Channels[i].CR.Enable = true;
-        sys->DMA7.Channels[i].CR.Repeat = true;
+        sys->DMA7[i].CurrentMode = DMAStart_AudioCap;
+        sys->DMA7[i].CR.Width32 = true;
+        sys->DMA7[i].DstInc = 4;
+        sys->DMA7[i].CR.DestCR = 3;
+        sys->DMA7[i].DstAddrMask = 0x07FFFFFC;
+        sys->DMA7[i].CR.Enable = true;
+        sys->DMA7[i].CR.Repeat = true;
     }
 
-    sys->DMA7.Channels[0+DMA7_NormalBase].SrcAddrMask = 0x07FFFFFE;
-    sys->DMA7.Channels[1+DMA7_NormalBase].SrcAddrMask = 0x0FFFFFFE;
-    sys->DMA7.Channels[2+DMA7_NormalBase].SrcAddrMask = 0x0FFFFFFE;
-    sys->DMA7.Channels[3+DMA7_NormalBase].SrcAddrMask = 0x0FFFFFFE;
 
-    sys->DMA7.Channels[0+DMA7_NormalBase].DstAddrMask = 0x0FFFFFFE;
-    sys->DMA7.Channels[1+DMA7_NormalBase].DstAddrMask = 0x0FFFFFFE;
-    sys->DMA7.Channels[2+DMA7_NormalBase].DstAddrMask = 0x0FFFFFFE;
-    sys->DMA7.Channels[3+DMA7_NormalBase].DstAddrMask = 0x07FFFFFE;
+    for (u32 i = DMA7_NormalBase; i < DMA7_NormalMax; i++)
+    {
+        sys->DMA7[i].SrcAddrMask = (i == 0) ? 0x07FFFFFE : 0x0FFFFFFE;
+        sys->DMA7[i].DstAddrMask = (i == 3) ? 0x07FFFFFE : 0x0FFFFFFE;
+    }
 
-    sys->DMA9.Channels[0].SrcAddrMask = 0x0FFFFFFE;
-    sys->DMA9.Channels[1].SrcAddrMask = 0x0FFFFFFE;
-    sys->DMA9.Channels[2].SrcAddrMask = 0x0FFFFFFE;
-    sys->DMA9.Channels[3].SrcAddrMask = 0x0FFFFFFE;
-
-    sys->DMA9.Channels[0].DstAddrMask = 0x0FFFFFFE;
-    sys->DMA9.Channels[1].DstAddrMask = 0x0FFFFFFE;
-    sys->DMA9.Channels[2].DstAddrMask = 0x0FFFFFFE;
-    sys->DMA9.Channels[3].DstAddrMask = 0x0FFFFFFE;
+    for (u32 i = DMA9_NormalBase; i < DMA9_NormalMax; i++)
+    {
+        sys->DMA9[i].SrcAddrMask = 0x0FFFFFFE;
+        sys->DMA9[i].DstAddrMask = 0x0FFFFFFE;
+    }
 }
 
 void StartDMA9(Console* sys, timestamp start, u8 mode)
 {
-    for (int i = 0; i < 4; i++)
+    for (u64 i = DMA9_NormalBase; i < DMA9_NormalMax; i++)
     {
-        if (!sys->DMA9.Channels[i].CR.Enable) continue;
-        if (sys->DMA9.Channels[i].CurrentMode != mode) continue;
+        if (!sys->DMA9[i].CR.Enable) continue;
+        if (sys->DMA9[i].CurrentMode != mode) continue;
         // checkme: starting dma while already started?
-        if (sys->DMA9.Channels[i].WriteCur != sys->DMA9.Channels[i].BurstMax)
+        if (sys->DMA9[i].WriteCur != sys->DMA9[i].BurstMax)
         {
             // CHECKME
-            //if ((sys->DMA9.Channels[i].CurrentMode != DMAStart_NTRCard) && (sys->DMA9.Channels[i].CurrentMode != DMAStart_3DFIFO))
+            //if ((sys->DMA9[i].CurrentMode != DMAStart_NTRCard) && (sys->DMA9[i].CurrentMode != DMAStart_3DFIFO))
             {
-                LogPrint(LOG_DMA|LOG_ODD, "DMA9: channel already going??? errchan:%i chanmode:%i\n", i, sys->DMA9.Channels[i].CurrentMode);
+                LogPrint(LOG_DMA|LOG_ODD, "DMA9: channel already going??? errchan:%"PRIu64" chanmode:%"PRIu8"\n", i, sys->DMA9[i].CurrentMode);
             }
             continue;
         }
-        sys->DMA9.Channels[i].NeedsInit = true;
+        sys->DMA9[i].NeedsInit = true;
         Sched_AddEvent(sys, start, Evt_DMA90 + i);
     }
 }
 
 void StartDMA7(Console* sys, timestamp start, u8 mode)
 {
-    for (u32 i = DMA7_NormalBase; i < DMA7_NormalMax; i++)
+    for (u64 i = DMA7_NormalBase; i < DMA7_NormalMax; i++)
     {
-        struct DMA_Channel* cur = &sys->DMA7.Channels[i];
+        DMA_Channel* cur = &sys->DMA7[i];
         if (!cur->CR.Enable) continue;
         if (cur->CurrentMode != mode) continue;
         // checkme: starting dma while already started?
         if (cur->WriteCur != cur->BurstMax)
         {
             // CHECKME
-            //if (sys->DMA7.Channels[i].CurrentMode != DMAStart_NTRCard)
+            //if (sys->DMA7[i].CurrentMode != DMAStart_NTRCard)
             {
-                LogPrint(LOG_DMA|LOG_ODD, "DMA7: channel already going??? errchan:%i chanmode:%i\n", i, sys->DMA7.Channels[i].CurrentMode);
+                LogPrint(LOG_DMA|LOG_ODD, "DMA7: channel already going??? errchan:%"PRIu64" chanmode:%"PRIu8"\n", i, sys->DMA7[i].CurrentMode);
             }
             continue;
         }
@@ -92,19 +85,19 @@ void StartDMA7(Console* sys, timestamp start, u8 mode)
 
 void StartSoundCapDMA(Console* sys, u8 id, timestamp start)
 {
-    if (!sys->DMA7.Channels[id+DMA7_SoundCapBase].CR.Enable) return;
-    sys->DMA7.Channels[id+DMA7_SoundCapBase].NeedsInit = true;
+    if (!sys->DMA7[id+DMA7_SoundCapBase].CR.Enable) return;
+    sys->DMA7[id+DMA7_SoundCapBase].NeedsInit = true;
     Sched_AddEvent(sys, start, Evt_SCapDMA70+id);
 }
 
 void StartSoundDMA(Console* sys, u8 id, timestamp start, bool matters)
 {
-    if (!sys->DMA7.Channels[id+DMA7_SoundBase].CR.Enable) return;
-    sys->DMA7.Channels[id+DMA7_SoundBase].NeedsInit = true;
+    if (!sys->DMA7[id+DMA7_SoundBase].CR.Enable) return;
+    sys->DMA7[id+DMA7_SoundBase].NeedsInit = true;
     Sched_AddEvent(sys, start, Evt_SndDMA70+id);
 }
 
-void DMA7_Enable(Console* sys, struct DMA_Channel* channel, timestamp now)
+void DMA7_Enable(Console* sys, DMA_Channel* channel, timestamp now)
 {
     channel->Latched_SrcAddr = channel->SrcAddr;
     channel->Latched_DstAddr = channel->DstAddr;
@@ -171,7 +164,7 @@ void DMA7_Enable(Console* sys, struct DMA_Channel* channel, timestamp now)
     }
 }
 
-void DMA9_Enable(Console* sys, struct DMA_Channel* channel, timestamp now)
+void DMA9_Enable(Console* sys, DMA_Channel* channel, timestamp now)
 {
     channel->Latched_SrcAddr = channel->SrcAddr;
     channel->Latched_DstAddr = channel->DstAddr;
@@ -265,7 +258,7 @@ void DMA9_Enable(Console* sys, struct DMA_Channel* channel, timestamp now)
 
 void DMA_CompPost(Console* sys, timestamp now, const u8 id, u32 rdata, const bool load, const bool a9)
 {
-    struct DMA_Channel* channel = (a9 ? &sys->DMA9.Channels[id] : &sys->DMA7.Channels[id]);
+    DMA_Channel* channel = (a9 ? &sys->DMA9[id] : &sys->DMA7[id]);
 
     channel->CompCur++;
     if (channel->CompCur == channel->CompMax) // burst complete
@@ -315,7 +308,7 @@ void DMA_CompPost(Console* sys, timestamp now, const u8 id, u32 rdata, const boo
 
 void DMA_Step(Console* sys, const u8 id, timestamp now, const bool a9)
 {
-    struct DMA_Channel* channel = (a9 ? &sys->DMA9.Channels[id] : &sys->DMA7.Channels[id]);
+    DMA_Channel* channel = (a9 ? &sys->DMA9[id] : &sys->DMA7[id]);
 
     if (!channel->NeedsInit && (channel->WriteCur == channel->BurstMax)) return;
 
@@ -469,14 +462,14 @@ void DMA_Step(Console* sys, const u8 id, timestamp now, const bool a9)
     Bus_Req(sys, &req, now, a9);
 }
 
-u32 DMA_IOReadHandler(struct DMA_Channel* channels, u32 addr)
+u32 DMA_IOReadHandler(DMA_Channel* channels, u32 addr)
 {
     addr &= 0xFC;
     addr -= 0xB0;
     int channel = (addr / 4) / 3;
     int reg = (addr / 4) % 3;
 
-    struct DMA_Channel* cur = &channels[channel];
+    DMA_Channel* cur = &channels[channel];
 
     switch(reg)
     {
@@ -497,14 +490,14 @@ u32 DMA_IOReadHandler(struct DMA_Channel* channels, u32 addr)
     }
 }
 
-void DMA9_IOWriteHandler(Console* sys, timestamp now, struct DMA_Channel* channels, u32 addr, u32 val, u32 mask)
+void DMA9_IOWriteHandler(Console* sys, timestamp now, DMA_Channel* channels, u32 addr, u32 val, u32 mask)
 {
     addr &= 0xFC;
     addr -= 0xB0;
     int channel = (addr / 4) / 3;
     int reg = (addr / 4) % 3;
 
-    struct DMA_Channel* cur = &channels[channel];
+    DMA_Channel* cur = &channels[channel];
 
     switch(reg)
     {
@@ -549,14 +542,14 @@ void DMA9_IOWriteHandler(Console* sys, timestamp now, struct DMA_Channel* channe
     }
 }
 
-void DMA7_IOWriteHandler(Console* sys, timestamp now, struct DMA_Channel* channels, u32 addr, u32 val, const u32 mask)
+void DMA7_IOWriteHandler(Console* sys, timestamp now, DMA_Channel* channels, u32 addr, u32 val, const u32 mask)
 {
     addr &= 0xFC;
     addr -= 0xB0;
     int channel = (addr / 4) / 3;
     int reg = (addr / 4) % 3;
 
-    struct DMA_Channel* cur = &channels[channel];
+    DMA_Channel* cur = &channels[channel];
 
     switch(reg)
     {

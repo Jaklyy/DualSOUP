@@ -263,7 +263,7 @@ void IO9_Read(Console* sys, const u32 addr, const timestamp now)
     case 0x00'00'04: rdata = (sys->VCount << 16) | sys->DispStatRO9.Raw | sys->DispStatRW9.Raw; break;
     case 0x00'00'60: rdata = sys->GX3D.RasterCR.Raw; break;
 
-    case 0x00'00'B0 ... 0x00'00'DC: rdata = DMA_IOReadHandler(sys->DMA9.Channels, addr); break;
+    case 0x00'00'B0 ... 0x00'00'DC: rdata = DMA_IOReadHandler(&sys->DMA9[DMA9_NormalBase], addr); break;
     case 0x00'00'E0 ... 0x00'00'EC: rdata = sys->DMAFill[(addr & 0xF) / 4]; break;
     case 0x00'01'00 ... 0x00'01'0C: rdata = Timer_IOReadHandler(sys, now, addr, true); break;
     case 0x00'01'30:
@@ -375,7 +375,7 @@ void IO9_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
     case 0x00'00'60: MaskedWrite(sys->GX3D.RasterCR.Raw, wrdata, mask & 0x4FFF); break;
 
     // DMA
-    case 0x00'00'B0 ... 0x00'00'DC: DMA9_IOWriteHandler(sys, now, sys->DMA9.Channels, addr, wrdata, mask); break;
+    case 0x00'00'B0 ... 0x00'00'DC: DMA9_IOWriteHandler(sys, now, &sys->DMA9[DMA9_NormalBase], addr, wrdata, mask); break;
     case 0x00'00'E0 ... 0x00'00'EC: MaskedWrite(sys->DMAFill[(addr & 0xF) / 4], wrdata, mask); break;
 
     case 0x00'01'00 ... 0x00'01'0C: Timer_IOWriteHandler(sys, now, addr, wrdata, mask, true); break;
@@ -552,7 +552,7 @@ void IO7_Read(Console* sys, const u32 addr, const timestamp now)
     {
     case 0x00'00'04: rdata = (sys->VCount << 16) | sys->DispStatRO7.Raw | sys->DispStatRW7.Raw; break;
 
-    case 0x00'00'B0 ... 0x00'00'E0-1: rdata = DMA_IOReadHandler(&sys->DMA7.Channels[DMA7_NormalBase], addr); break;
+    case 0x00'00'B0 ... 0x00'00'E0-1: rdata = DMA_IOReadHandler(&sys->DMA7[DMA7_NormalBase], addr); break;
 
     case 0x00'01'00 ... 0x00'01'0C: rdata = Timer_IOReadHandler(sys, now, addr, false); break;
 
@@ -638,7 +638,7 @@ void IO7_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
         }
         break;
 
-    case 0x00'00'B0 ... 0x00'00'DC: DMA7_IOWriteHandler(sys, now, &sys->DMA7.Channels[DMA7_NormalBase], addr, wrdata, mask); break;
+    case 0x00'00'B0 ... 0x00'00'DC: DMA7_IOWriteHandler(sys, now, &sys->DMA7[DMA7_NormalBase], addr, wrdata, mask); break;
 
     case 0x00'01'00 ... 0x00'01'0C: Timer_IOWriteHandler(sys, now, addr, wrdata, mask, false); break;
 

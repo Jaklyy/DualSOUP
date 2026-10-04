@@ -153,7 +153,10 @@ Core_Ret Sched_RunEvent(Console* sys)
 
     case Evt_DMA90
      ... Evt_DMA93:         DMA_Step(sys, evt-Evt_DMA90, now, true); break;
-    case Evt_Timer9:        (sys->timertemp9 == TIMER_UPDATECR) ? Timer9_UpdateCRs(sys, now) : Timer_SchedRun9(sys, now); break;
+    case Evt_Timer90CR
+     ... Evt_Timer93CR:     Timer_UpdateCR(sys, sys->Timers9, evt-Evt_Timer90CR, now, TimerType_9); break;
+    case Evt_Timer90Run
+     ... Evt_Timer93Run:    Timer_Run(sys, sys->Timers9, evt-Evt_Timer90Run, now, TimerType_9); break;
 
     case Evt_Bus9:          Bus_Run(sys, now, true); break;
     case Evt_Divider:       IO9_FinishDiv(sys); break;
@@ -166,7 +169,10 @@ Core_Ret Sched_RunEvent(Console* sys)
 
     case Evt_SCapDMA70
      ... Evt_DMA73:         DMA_Step(sys, evt-Evt_SCapDMA70, now, false); break;
-    case Evt_Timer7:        (sys->timertemp7 == TIMER_UPDATECR) ? Timer7_UpdateCRs(sys, now) : Timer_SchedRun7(sys, now); break;
+    case Evt_Timer70CR
+     ... Evt_Timer73CR:     Timer_UpdateCR(sys, sys->Timers7, evt-Evt_Timer70CR, now, TimerType_7); break;
+    case Evt_Timer70Run
+     ... Evt_Timer73Run:    Timer_Run(sys, sys->Timers7, evt-Evt_Timer70Run, now, TimerType_7); break;
 
     case Evt_Bus7:          Bus_Run(sys, now, false); break;
 

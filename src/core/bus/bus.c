@@ -727,7 +727,7 @@ void Bus9_Write(Console* sys, BusReq* req, timestamp now)
 
     // disgusting hack
     if (req->Man9 >= MAN9_DMA0 && req->Man9 <= MAN9_NDMA3)
-        req->WrData = sys->DMA9.Channels[req->Man9-MAN9_DMA0].RData;
+        req->WrData = sys->DMA9[req->Man9-MAN9_DMA0].RData;
 
     const u32 wrdata = req->WrData;
     // checkme: are there any devices on the bus with weird handling of addr misalignment or weird access widths?
@@ -922,7 +922,7 @@ void Bus7_Write(Console* sys, BusReq* req, timestamp now)
 
     // disgusting hack
     if (req->Man7 >= MAN7_SNDDMA0 && req->Man7 <= MAN7_NDMA3)
-        req->WrData = sys->DMA7.Channels[req->Man7-MAN7_SCAPDMA0].RData;
+        req->WrData = sys->DMA7[req->Man7-MAN7_SCAPDMA0].RData;
 
     const u32 wrdata = req->WrData;
     // checkme: are there any devices on the bus with weird handling of addr misalignment or weird access widths?

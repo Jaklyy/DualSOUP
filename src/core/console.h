@@ -266,8 +266,8 @@ typedef struct Console
     ARM946ES A946ES;
     ARM7TDMI A7TDMI;
 
-    struct DMA_Controller DMA9;
-    struct DMA_Controller DMA7;
+    DMA_Channel DMA9[DMA9_Max];
+    DMA_Channel DMA7[DMA7_Max];
 
     BusImpl Bus9;
     BusImpl Bus7;
@@ -293,8 +293,6 @@ typedef struct Console
     bool IME7;
     bool A7ClkDisable;
 
-    enum TIMERTEMP timertemp7;
-    enum TIMERTEMP timertemp9;
     bool TEMPHBLANK;
 
     alignas(u32) VRAMCR VRAMCR[9];
@@ -359,8 +357,9 @@ typedef struct Console
         };
     } DispStatRO7;
 
-    struct Timer Timers9[4];
-    struct Timer Timers7[20];
+    Timer Timers9[4];
+    Timer Timers7[4];
+    Timer TimerSound[16];
 
     union {
         u8 Raw;

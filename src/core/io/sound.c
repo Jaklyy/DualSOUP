@@ -121,8 +121,8 @@ u32 SoundFIFO_Drain(Console* sys, SoundChannel* channel, u8 numbytes, const u8 i
 {
     if (channel->FIFO_Bytes < numbytes) // fifo empty
     {
-        LogPrint(LOG_SOUND, "SOUND FIFO OVERFLOW: Channel: %i cr:%08X p:%X m:%lX dma:%08X tim:%06X\n",
-            id, channel->CR.Raw, channel->Prog, channel->SampleMax, sys->DMA7.Channels[id+DMA7_SoundBase].CR.Raw, sys->Timers7[id+4].Regs);
+       // LogPrint(LOG_SOUND, "SOUND FIFO OVERFLOW: Channel: %i cr:%08X p:%X m:%lX dma:%08X tim:%06X\n",
+          //  id, channel->CR.Raw, channel->Prog, channel->SampleMax, sys->DMA7.Channels[id+DMA7_SoundBase].CR.Raw, sys->Timers7[id+4].Regs);
         return 0;
     }
     u32 ret;
@@ -162,8 +162,8 @@ void SoundFIFO_Sample(Console* sys, const u8 id, const timestamp now)
             sys->Timers7[id+4].NeedsUpdate = true;
             sys->Timers7[id+4].BufferedRegs = 0x00'0000;
 
-            Sched_AddEvent(sys, now+DSClk33(1), Evt_Timer7);
-            sys->timertemp7 = TIMER_UPDATECR;
+          //  Sched_AddEvent(sys, now+DSClk33(1), Evt_Timer7);
+            //sys->timertemp7 = TIMER_UPDATECR;
             return;
         }
     }
@@ -369,9 +369,9 @@ void SoundFIFO_Sample(Console* sys, const u8 id, const timestamp now)
 void SoundChannel_Disable(Console* sys, const u8 id)
 {
     // disable dma
-    sys->DMA7.Channels[id+DMA7_SoundBase].CR.Repeat = false;
-    sys->DMA7.Channels[id+DMA7_SoundBase].CR.Enable = false;
-    sys->DMA7.Channels[id+DMA7_SoundBase].Latched_NumWords = 0;
+    //sys->DMA7.Channels[id+DMA7_SoundBase].CR.Repeat = false;
+    //sys->DMA7.Channels[id+DMA7_SoundBase].CR.Enable = false;
+    //sys->DMA7.Channels[id+DMA7_SoundBase].Latched_NumWords = 0;
 
     sys->SoundChannels[id].CR.Enable = false;
 }
@@ -381,16 +381,16 @@ void SoundChannel_KillAll(Console* sys, const timestamp now)
     for (int i = 0; i < 16; i++)
     {
         // disable dma
-        sys->DMA7.Channels[i+DMA7_SoundBase].CR.Repeat = false;
-        sys->DMA7.Channels[i+DMA7_SoundBase].CR.Enable = false;
+        //sys->DMA7.Channels[i+DMA7_SoundBase].CR.Repeat = false;
+        //sys->DMA7.Channels[i+DMA7_SoundBase].CR.Enable = false;
 
         // disable timer
         sys->Timers7[i+4].NeedsUpdate = true;
         sys->Timers7[i+4].BufferedRegs = 0x00'0000;
     }
 
-    Sched_AddEvent(sys, now+DSClk33(1), Evt_Timer7);
-    sys->timertemp7 = TIMER_UPDATECR;
+    //Sched_AddEvent(sys, now+DSClk33(1), Evt_Timer7);
+    //sys->timertemp7 = TIMER_UPDATECR;
 }
 
 void SoundChannel_Start(Console* sys, SoundChannel* channel, const u8 id, const timestamp now)
@@ -400,20 +400,20 @@ void SoundChannel_Start(Console* sys, SoundChannel* channel, const u8 id, const 
         // set up DMA
         if (channel->CR.RepeatMode == 0)
         {
-            sys->DMA7.Channels[id+DMA7_SoundBase].Latched_NumWords = 4;
-            sys->DMA7.Channels[id+DMA7_SoundBase].NumWords = 4;
-            sys->DMA7.Channels[id+DMA7_SoundBase].CR.Repeat = true;
+            //sys->DMA7.Channels[id+DMA7_SoundBase].Latched_NumWords = 4;
+            //sys->DMA7.Channels[id+DMA7_SoundBase].NumWords = 4;
+            //sys->DMA7.Channels[id+DMA7_SoundBase].CR.Repeat = true;
         }
         else
         {
-            sys->DMA7.Channels[id+DMA7_SoundBase].Latched_NumWords = channel->SoundLen + channel->LoopOffs;
-            sys->DMA7.Channels[id+DMA7_SoundBase].NumWords = channel->SoundLen;
-            sys->DMA7.Channels[id+DMA7_SoundBase].CR.Repeat = (channel->CR.RepeatMode == 1);
+            //sys->DMA7.Channels[id+DMA7_SoundBase].Latched_NumWords = channel->SoundLen + channel->LoopOffs;
+            //sys->DMA7.Channels[id+DMA7_SoundBase].NumWords = channel->SoundLen;
+            //sys->DMA7.Channels[id+DMA7_SoundBase].CR.Repeat = (channel->CR.RepeatMode == 1);
         }
-        sys->DMA7.Channels[id+DMA7_SoundBase].Latched_SrcAddr = channel->SrcAddr;
-        sys->DMA7.Channels[id+DMA7_SoundBase].SrcAddr = channel->SrcAddr + ((u32)(channel->LoopOffs)*4);
-        sys->DMA7.Channels[id+DMA7_SoundBase].CR.SourceCR = (channel->CR.RepeatMode == 1) ? 3 : 1;
-        sys->DMA7.Channels[id+DMA7_SoundBase].CR.Enable = true;
+        //sys->DMA7.Channels[id+DMA7_SoundBase].Latched_SrcAddr = channel->SrcAddr;
+        //sys->DMA7.Channels[id+DMA7_SoundBase].SrcAddr = channel->SrcAddr + ((u32)(channel->LoopOffs)*4);
+       // sys->DMA7.Channels[id+DMA7_SoundBase].CR.SourceCR = (channel->CR.RepeatMode == 1) ? 3 : 1;
+       // sys->DMA7.Channels[id+DMA7_SoundBase].CR.Enable = true;
     }
 
     // set up timers
@@ -421,8 +421,8 @@ void SoundChannel_Start(Console* sys, SoundChannel* channel, const u8 id, const 
     sys->Timers7[id+4].NeedsUpdate = true;
     sys->Timers7[id+4].CR.Enable = false; // hacky?
     sys->Timers7[id+4].BufferedRegs = 0xC0'0000 /* Enable, IRQ */ | channel->Timer;
-    Sched_AddEvent(sys, now+DSClk33(1), Evt_Timer7);
-    sys->timertemp7 = TIMER_UPDATECR;
+   // Sched_AddEvent(sys, now+DSClk33(1), Evt_Timer7);
+   // sys->timertemp7 = TIMER_UPDATECR;
 
     if (channel->CR.RepeatMode == 2)
     {
@@ -532,8 +532,8 @@ void SoundChannel_IOWrite(Console* sys, const u32 addr, const u32 val, const u32
         {
             sys->Timers7[id+4].NeedsUpdate = true;
             sys->Timers7[id+4].BufferedRegs = 0xC0'0000 | (val & 0xFFFF);
-            Sched_AddEvent(sys, now+DSClk33(1), Evt_Timer7);
-            sys->timertemp7 = TIMER_UPDATECR;
+           // Sched_AddEvent(sys, now+DSClk33(1), Evt_Timer7);
+           // sys->timertemp7 = TIMER_UPDATECR;
         }
 
         MaskedWrite(channel->LoopOffs, val>>16, (mask>>16) & 0xFFFF);
@@ -559,14 +559,14 @@ void SoundCapture_CRWrite(Console* sys, const u8 val, const timestamp now, const
             cap->Prog = 0;
             cap->Flush = false;
             cap->LatchedLength = (cap->Length + (cap->Length == 0)) * sizeof(u32);
-            sys->DMA7.Channels[DMA7_SoundCapBase+id].Latched_NumWords = 0;
-            sys->DMA7.Channels[DMA7_SoundCapBase+id].DstAddr = cap->DstAddr;
+           // sys->DMA7.Channels[DMA7_SoundCapBase+id].Latched_NumWords = 0;
+           // sys->DMA7.Channels[DMA7_SoundCapBase+id].DstAddr = cap->DstAddr;
             // set up timers
             sys->Timers7[id+4].NeedsUpdate = true;
             sys->Timers7[id+4].CR.Enable = false; // hacky?
             sys->Timers7[id+4].BufferedRegs = 0xC0'0000 /* Enable, IRQ */ | sys->SoundChannels[(id*2)+1].Timer;
-            Sched_AddEvent(sys, now+DSClk33(1), Evt_Timer7);
-            sys->timertemp7 = TIMER_UPDATECR;
+           // Sched_AddEvent(sys, now+DSClk33(1), Evt_Timer7);
+           // sys->timertemp7 = TIMER_UPDATECR;
         }
     }
     //else cap->CR.Addition = false; // checkme?
