@@ -106,13 +106,14 @@ typedef union
 
 typedef struct
 {
-    alignas(u64)
+    alignas(alignof(u64)*2)
     union
     {
         u32 Raw;
         u32 Arm;
         u16 Thumb;
     };
+    u32 Addr;
     bool Aborted; // whether the instruction fetch raised a prefetch abort; used for fixing prefetch aborts during flushless switches to thumb, and distinguishing real aborts w/ bkpt
     bool CoprocPriv; // whether the coprocessor pipeline thinks we have privilege or not.
 } ARM_Instr;

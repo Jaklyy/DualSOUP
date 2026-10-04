@@ -5,6 +5,7 @@
 #endif
 #include "core/utils.h"
 #include "../arm.h"
+#include "core/console.h"
 #include "core/scheduler.h"
 
 
@@ -57,12 +58,14 @@ void A946_InstrFetchAborted(ARM946ES* a946, timestamp now)
     if (a946->ARM.CPSR.Thumb)
     {
         a946->ARM.Instr[2] = (ARM_Instr){.Raw = 0xBE00, // encode bkpt as a minor hack to avoid needing dedicated prefetch abort handling.
+                                         .Addr = a946->ARM.PC,
                                          .Aborted = true, // flag used for distinguishing bkpt from actual prefetch aborts.
                                          .CoprocPriv = false}; // privilege bug shouldn't matter here; aborted instrs aren't coprocessor instructions.
     }
     else // arm
     {
         a946->ARM.Instr[2] = (ARM_Instr){.Raw = 0xE1200070, // encode bkpt as a minor hack to avoid needing dedicated prefetch abort handling.
+                                         .Addr = a946->ARM.PC,
                                          .Aborted = true, // flag used for distinguishing bkpt from actual prefetch aborts.
                                          .CoprocPriv = false}; // privilege bug shouldn't matter here; aborted instrs aren't coprocessor instructions.
     }
@@ -87,6 +90,7 @@ void A946_InstrFetchITCM(ARM946ES* a946, timestamp now)
     u32 fetch = MemoryRead(32, a946->ITCM, addr, A946_ITCMSize);
     a946->InstrTS = now + DSClk67(1) + DSClk67(a946->ITCMMultiplexData);
     a946->InstrLatch = fetch;
+    Bus_DebugBreak(a946->ARM.Sys, now, a946->ARM.Sys->Bus9_Watch, a946->ARM.Sys->Bus9_NumWatch, addr, a946->ARM.CPSR.Thumb ? ARMDataWidth_16 : ARMDataWidth_32, false, MAN9_A9INTERNALINSTR, a946->InstrLatch);
 }
 
 bool A946_InstrFetchICache(ARM946ES* a946, timestamp now)
@@ -97,6 +101,7 @@ bool A946_InstrFetchICache(ARM946ES* a946, timestamp now)
     {
         a946->InstrTS = now + DSClk67(1);
         a946->InstrLatch = fetch;
+        Bus_DebugBreak(a946->ARM.Sys, now, a946->ARM.Sys->Bus9_Watch, a946->ARM.Sys->Bus9_NumWatch, addr, a946->ARM.CPSR.Thumb ? ARMDataWidth_16 : ARMDataWidth_32, false, MAN9_A9INTERNALINSTR, a946->InstrLatch);
         return true;
     }
     else return false;
@@ -189,12 +194,14 @@ void A946_InstrRead_Post(ARM946ES* a946, const u32 addr)
         instr = ROR32(instr, rotate) & 0xFFFF;
 
         a946->ARM.Instr[2] = (ARM_Instr){.Raw = instr,
+                                         .Addr = a946->ARM.PC,
                                          .Aborted = false,
                                          .CoprocPriv = a946->ARM.Privileged};
     }
     else
     {
         a946->ARM.Instr[2] = (ARM_Instr){.Raw = instr,
+                                         .Addr = a946->ARM.PC,
                                          .Aborted = false,
                                          .CoprocPriv = a946->ARM.Privileged};
     }
@@ -266,7 +273,10 @@ void A946_DataRead(ARM946ES* a946, timestamp now)
             a946->ITCMMultiplexData = true;
         }
         for (u8 i = 0; i < numfetch; i++)
+        {
             pass->RData[i+pass->SubmCur] = MemoryRead(32, a946->ITCM, addr + (i*4), A946_ITCMSize);
+            Bus_DebugBreak(a946->ARM.Sys, now, a946->ARM.Sys->Bus9_Watch, a946->ARM.Sys->Bus9_NumWatch, addr + (i*4), pass->Size, false, MAN9_A9INTERNALDATA, pass->RData[i+pass->SubmCur]);
+        }
 
         AddMem(1);
         pass->SubmCur += numfetch;
@@ -276,7 +286,10 @@ void A946_DataRead(ARM946ES* a946, timestamp now)
     else if (A946_DTCMTryRead(a946, addr))
     {
         for (u8 i = 0; i < numfetch; i++)
+        {
             pass->RData[i+pass->SubmCur] = MemoryRead(32, a946->DTCM, addr + (i*4), A946_DTCMSize);
+            Bus_DebugBreak(a946->ARM.Sys, now, a946->ARM.Sys->Bus9_Watch, a946->ARM.Sys->Bus9_NumWatch, addr + (i*4), pass->Size, false, MAN9_A9INTERNALDATA, pass->RData[i+pass->SubmCur]);
+        }
 
         AddMem(1);
         pass->SubmCur += numfetch;
@@ -375,7 +388,10 @@ void A946_DataWrite(ARM946ES* a946, timestamp now)
             a946->DataWrStall = a946->DataTS+DSClk67(1);
         }
         for (u8 i = 0; i < numfetch; i++)
+        {
             MemoryWrite(32, a946->ITCM, addr+(i*4), A946_ITCMSize, pass->WrData[i+pass->SubmCur], wrlanes);
+            Bus_DebugBreak(a946->ARM.Sys, now, a946->ARM.Sys->Bus9_Watch, a946->ARM.Sys->Bus9_NumWatch, addr + (i*4), pass->Size, true, MAN9_A9INTERNALDATA, pass->WrData[i+pass->SubmCur]);
+        }
 
         pass->SubmCur += numfetch;
         A9ES_DataDone(a946);
@@ -384,7 +400,10 @@ void A946_DataWrite(ARM946ES* a946, timestamp now)
     else if (A946_DTCMTryWrite(a946, addr))
     {
         for (u8 i = 0; i < numfetch; i++)
+        {
             MemoryWrite(32, a946->DTCM, addr+(i*4), A946_DTCMSize, pass->WrData[i+pass->SubmCur], wrlanes);
+            Bus_DebugBreak(a946->ARM.Sys, now, a946->ARM.Sys->Bus9_Watch, a946->ARM.Sys->Bus9_NumWatch, addr + (i*4), pass->Size, true, MAN9_A9INTERNALDATA, pass->WrData[i+pass->SubmCur]);
+        }
 
         AddMem(1);
         a946->DataWrStall = a946->DataTS+DSClk67(1);
@@ -409,6 +428,8 @@ void A946_DataWrite(ARM946ES* a946, timestamp now)
         // checkme: how does write buffer work with big endian toggle?
         // how does it work if you toggle it before it begins writing?
         // how does it work if you toggle it while its writing?
+        for (u8 i = 0; i < numfetch; i++)
+            Bus_DebugBreak(a946->ARM.Sys, now, a946->ARM.Sys->Bus9_Watch, a946->ARM.Sys->Bus9_NumWatch, addr + (i*4), pass->Size, true, MAN9_A9INTERNALDATA, pass->WrData[i+pass->SubmCur]);
         A946_WriteBufferFill(a946, now, &pass->WrData[pass->SubmCur], addr, size, numfetch, A946WBCause_DataDir);
         pass->SubmCur += numfetch;
         A9ES_DataBusy(a946);

@@ -83,9 +83,16 @@ typedef struct
 {
     u32 CurAddr9;
     char AddrText9[9];
+    bool FollowA9;
+    int A9BreakAddr;
+    bool A9ExecBreak;
     bool A9DbgDisplay;
+
     u32 CurAddr7;
     char AddrText7[9];
+    bool FollowA7;
+    int A7BreakAddr;
+    bool A7ExecBreak;
     bool A7DbgDisplay;
     bool Sched;
 } DebugGui;

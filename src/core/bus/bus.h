@@ -47,6 +47,9 @@ typedef enum : u8 // bitfield
     MAN9_NDMA3,
     MAN9_ARM9,
     MAN9_MAX, // bus is idle (might be arm9 instead?)
+    MAN9_A9EXTERNALWONKY = 29, // for debugger purposes; async load/stores
+    MAN9_A9INTERNALDATA = 30, // for debugger purposes; internal data access
+    MAN9_A9INTERNALINSTR = 31, // for debugger purposes; internal instruction access
 } Bus9_Managers;
 
 // note: actual IDs unknown
@@ -306,8 +309,8 @@ typedef struct
     int AddrMin;
     int AddrMax;
     int ManMask;
-    int WrData;
-    int WriteMatch;
+    int DataToMatch;
+    int MaskForMatch;
     int WidthMask;
     bool MustWrite;
     bool MustRead;
@@ -343,3 +346,4 @@ void WiFi_Write(Console* sys, timestamp* now, const u32 addr, const u32 wrdata, 
 
 u32 Bus9_DebugRead(Console* sys, u32 addr);
 u32 Bus7_DebugRead(Console* sys, u32 addr);
+bool Bus_DebugBreak(Console* sys, timestamp now, Bus_Breakpoint bkptlist[const Bus_DebugMaxWatch], u64 bkptnum, u32 addr, u8 size, bool write, u8 man, u32 matchdata);

@@ -138,6 +138,7 @@ void A7TDMI_InstrReadPost(ARM7TDMI* a7tdmi, const timestamp now, u32 rdata)
     if (cpu->CPSR.Thumb && (cpu->PC & 2)) rdata = ROR32(rdata, 16);
 
     cpu->Instr[2] = (ARM_Instr){.Raw = rdata,
+                                .Addr = cpu->PC,
                                 .Aborted = false, // only used in theory
                                 .CoprocPriv = false}; // this is for an arm9 specific bug
 

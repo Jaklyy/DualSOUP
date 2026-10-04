@@ -12,21 +12,21 @@
 #include "vram.h"
 
 
-bool Bus_DebugBreak(Console* sys, timestamp now, Bus_Breakpoint bkptlist[const Bus_DebugMaxWatch], u64 bkptnum, BusReq* req)
+bool Bus_DebugBreak(Console* sys, timestamp now, Bus_Breakpoint bkptlist[const Bus_DebugMaxWatch], u64 bkptnum, u32 addr, u8 size, bool write, u8 man, u32 matchdata)
 {
     for (u64 i = 0; i < bkptnum; i++)
     {
-        if (req->Write ? bkptlist[i].MustRead : bkptlist[i].MustWrite)
+        if (write ? bkptlist[i].MustRead : bkptlist[i].MustWrite)
             continue;
-        if (((u32)bkptlist[i].WriteMatch & (u32)bkptlist[i].WrData) != ((u32)bkptlist[i].WriteMatch & req->WrData))
+        if (((u32)bkptlist[i].MaskForMatch & (u32)bkptlist[i].DataToMatch) != ((u32)bkptlist[i].MaskForMatch & matchdata))
             continue;
-        if (!(bkptlist[i].ManMask & ((u32)1<<req->Man)))
+        if (!(bkptlist[i].ManMask & ((u32)1<<man)))
             continue;
-        if ((u32)bkptlist[i].AddrMin > req->Addr)
+        if ((u32)bkptlist[i].AddrMin > addr)
             continue;
-        if ((u32)bkptlist[i].AddrMax < req->Addr)
+        if ((u32)bkptlist[i].AddrMax < addr)
             continue;
-        if (!(bkptlist[i].WidthMask & ((u32)1<<req->Size)))
+        if (!(bkptlist[i].WidthMask & ((u32)1<<size)))
             continue;
 
         Sched_AddEvent(sys, now, Evt_DebugBreak);
@@ -1084,6 +1084,14 @@ void Bus_Run(Console* sys, timestamp now, const bool a9)
     // process last completion
     if (!bus->PostNoPrev)
     {
+        BusReq* reqold = &bus->PipeFIFO[bus->ReqActivePtr];
+        u8 man = reqold->Man;
+        if (a9 && man == MAN9_ARM9)
+        {
+            if ((reqold->CB != CB9_BIU9InstrNormal) && (reqold->CB != CB9_BIU9DataNormal))
+                man = MAN9_A9EXTERNALWONKY;
+        }
+        Bus_DebugBreak(sys, now, a9 ? sys->Bus9_Watch : sys->Bus7_Watch, a9 ? sys->Bus9_NumWatch : sys->Bus7_NumWatch, reqold->Addr, reqold->Size, reqold->Write, man, (reqold->Write ? reqold->WrData : rdata));
         len = now - bus->PipeExitTs[bus->ReqActivePtr];
         cmpcb = bus->PostCB;
         // apply waitstate delays
@@ -1159,8 +1167,6 @@ void Bus_Run(Console* sys, timestamp now, const bool a9)
     BusReq* req = &bus->PipeFIFO[bus->FIFODrainPtr];
     if (!bus->FIFOEmpty && ((bus->PipeExitTs[bus->FIFODrainPtr] <= now)))
     {
-        // TODO: make fully exit this logic cleanly somehow
-        Bus_DebugBreak(sys, now, a9 ? sys->Bus9_Watch : sys->Bus7_Watch, a9 ? sys->Bus9_NumWatch : sys->Bus7_NumWatch, req);
         bus->ReqActivePtr = bus->FIFODrainPtr;
 
         bus->FIFODrainPtr = (bus->FIFODrainPtr + 1) % countof(bus->PipeFIFO);

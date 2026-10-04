@@ -1,6 +1,7 @@
 #include "core/arm/shared/arm.h"
 #include "core/utils.h"
 #include "core/scheduler.h"
+#include "core/console.h"
 #include "../arm.h"
 
 
@@ -102,7 +103,10 @@ void A946_DCacheReadLookup(ARM946ES* a946, const AHB_HPROT prot, const u32 addr,
     {
         u32 cachebase = ((index | set)<<3) | ((addr/4) & 0x7);
         for (u8 i = 0; i < numfetch; i++)
+        {
             a946->PostMem.RData[i+a946->PostMem.SubmCur] = a946->DCache.b32[cachebase + i];
+            Bus_DebugBreak(a946->ARM.Sys, now, a946->ARM.Sys->Bus9_Watch, a946->ARM.Sys->Bus9_NumWatch, addr + (i*4), a946->PostMem.Size, false, MAN9_A9INTERNALDATA, a946->PostMem.RData[i+a946->PostMem.SubmCur]);
+        }
 
         a946->DataTS = now + DSClk67(numfetch);
         a946->PostMem.SubmCur += numfetch;
@@ -171,6 +175,9 @@ bool A946_DCacheWriteLookup(ARM946ES* a946, const u32 addr, const timestamp now,
 
         if (bufferable) // write-back cache: does not write back to memory until line is cleaned
         {
+            for (u8 i = 0; i < numfetch; i++)
+                Bus_DebugBreak(a946->ARM.Sys, now, a946->ARM.Sys->Bus9_Watch, a946->ARM.Sys->Bus9_NumWatch, addr, a946->PostMem.Size, true, MAN9_A9INTERNALDATA, a946->PostMem.WrData[a946->PostMem.SubmCur]);
+
             u32 start = addr;
             u32 end = addr + (4*(numfetch-1));
             if (start & 0x10) a946->DTagRAM[index|set].DirtyHi = true;

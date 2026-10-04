@@ -69,8 +69,8 @@ void DebugGui_BusWatch(Bus_Breakpoint list[const Bus_DebugMaxWatch], int* num)
         ImGui_TableSetupColumn("Min Address", 0);
         ImGui_TableSetupColumn("Max Address", 0);
         ImGui_TableSetupColumn("Manager Mask", 0);
-        ImGui_TableSetupColumn("Write Value", 0);
-        ImGui_TableSetupColumn("Write Match", 0);
+        ImGui_TableSetupColumn("Match Data", 0);
+        ImGui_TableSetupColumn("Match Mask", 0);
         ImGui_TableSetupColumn("Width Mask", 0);
         ImGui_TableSetupColumn("Write", 0);
         ImGui_TableSetupColumn("Read", 0);
@@ -92,10 +92,10 @@ void DebugGui_BusWatch(Bus_Breakpoint list[const Bus_DebugMaxWatch], int* num)
             ImGui_InputIntEx("##man", &list[i].ManMask, 0, 0, ImGuiInputTextFlags_CharsHexadecimal);
             ImGui_TableNextColumn();
             ImGui_PushItemWidth(-FLT_MIN); // Right-aligned
-            ImGui_InputIntEx("##val", &list[i].WrData, 0, 0, ImGuiInputTextFlags_CharsHexadecimal);
+            ImGui_InputIntEx("##val", &list[i].DataToMatch, 0, 0, ImGuiInputTextFlags_CharsHexadecimal);
             ImGui_TableNextColumn();
             ImGui_PushItemWidth(-FLT_MIN); // Right-aligned
-            ImGui_InputIntEx("##match", &list[i].WriteMatch, 0, 0, ImGuiInputTextFlags_CharsHexadecimal);
+            ImGui_InputIntEx("##match", &list[i].MaskForMatch, 0, 0, ImGuiInputTextFlags_CharsHexadecimal);
             ImGui_TableNextColumn();
             ImGui_PushItemWidth(-FLT_MIN); // Right-aligned
             ImGui_InputIntEx("##wid", &list[i].WidthMask, 0, 0, ImGuiInputTextFlags_CharsHexadecimal);
@@ -109,6 +109,12 @@ void DebugGui_BusWatch(Bus_Breakpoint list[const Bus_DebugMaxWatch], int* num)
     }
 }
 
+void DebugGui_ReadInstr(u32 val, u32 addr, bool thumb)
+{
+    if (thumb) ImGui_Text("%04"PRIX16"", ROR32(val, 8*(addr&2)) & 0xFFFF);
+    else       ImGui_Text("%08"PRIX32"", val);
+}
+
 void DebugGui_A9(MailBox* mail, DebugGui* dgui, Console* sys)
 {
     ImGui_SetNextWindowSize((ImVec2){725, 348}, ImGuiCond_FirstUseEver);
@@ -116,7 +122,10 @@ void DebugGui_A9(MailBox* mail, DebugGui* dgui, Console* sys)
     {
         if (sys)
         {
-            if (ImGui_Button("Jump To A9 PC"))
+            bool update = dgui->FollowA9 | ImGui_Button("Jump To A9 PC");
+            ImGui_SameLine();
+            ImGui_Checkbox("Follow PC", &dgui->FollowA9);
+            if (update)
             {
                 dgui->CurAddr9 = cpu9->CurExec;
                 sprintf(dgui->AddrText9, "%08X", dgui->CurAddr9);
@@ -155,9 +164,10 @@ void DebugGui_A9(MailBox* mail, DebugGui* dgui, Console* sys)
                 ImGui_TableSetupColumn("Disassembly", ImGuiTableColumnFlags_WidthFixed);
                 ImGui_TableHeadersRow();
 
+                bool thumb = cpu9->CPSR.Thumb;
                 for (int i = 0; i < 16; i++)
                 {
-                    u32 addr = dgui->CurAddr9 - 8 + (4*i);
+                    u32 addr = dgui->CurAddr9 - ((8-i) * (thumb ? 2 : 4));
                     ImGui_TableNextRow();
                     if (addr == cpu9->CurExec) ImGui_TableSetBgColor(ImGuiTableBgTarget_RowBg0, 0xFF1F6F6F, -1);
                     else
@@ -183,14 +193,14 @@ void DebugGui_A9(MailBox* mail, DebugGui* dgui, Console* sys)
                     ImGui_Text("%08"PRIX32"", addr);
                     ImGui_TableNextColumn();
                     DebugGui_PushRegionColor(reg.XReg);
-                    ImGui_Text("%08"PRIX32"", A946_DebugInstrRead(a9, addr));
+                    DebugGui_ReadInstr(A946_DebugInstrRead(a9, addr), addr, thumb);
                     ImGui_PopStyleColor();
                     ImGui_TableNextColumn();
                     DebugGui_PushRegionColor(reg.RReg);
-                    ImGui_Text("%08"PRIX32"", A946_DebugDataRead(a9, addr));
+                    DebugGui_ReadInstr(A946_DebugDataRead(a9, addr), addr, thumb);
                     ImGui_PopStyleColor();
                     ImGui_TableNextColumn();
-                    ImGui_Text("%08"PRIX32"", Bus9_DebugRead(sys, addr));
+                    DebugGui_ReadInstr(Bus9_DebugRead(sys, addr), addr, thumb);
                     ImGui_TableNextColumn();
                     ImGui_Text("BL");
                     ImGui_SameLine();
@@ -223,6 +233,19 @@ void DebugGui_A9(MailBox* mail, DebugGui* dgui, Console* sys)
                 ImGui_EndDisabled();
             }
             ImGui_EndChild();
+
+            ImGui_SetNextItemWidth(65.0);
+            ImGui_InputIntEx("Break Addr", &dgui->A9BreakAddr, 0, 0, ImGuiInputTextFlags_CharsHexadecimal|ImGuiInputTextFlags_CharsUppercase);
+            ImGui_SameLine();
+            if (ImGui_Checkbox("Break On Exec", &dgui->A9ExecBreak))
+            {
+                if (dgui->A9ExecBreak)
+                {
+                    cpu9->StepOver = false;
+                    cpu9->ExecBreak = dgui->A9BreakAddr;
+                }
+                else cpu9->ExecBreak = u64_max;
+            }
             DebugGui_BusWatch(sys->Bus9_Watch, &sys->Bus9_NumWatch);
             ImGui_SameLine();
             if (ImGui_BeginChild("Interrupts", (ImVec2){230, 170}, ImGuiChildFlags_Borders|ImGuiChildFlags_ResizeX|ImGuiChildFlags_ResizeY, 0))
@@ -248,10 +271,13 @@ void DebugGui_A7(MailBox* mail, DebugGui* dgui, Console* sys)
     {
         if (sys)
         {
-            if (ImGui_Button("Jump To A7 PC"))
+            bool update = dgui->FollowA7 | ImGui_Button("Jump To A7 PC");
+            ImGui_SameLine();
+            ImGui_Checkbox("Follow PC", &dgui->FollowA7);
+            if (update)
             {
                 dgui->CurAddr7 = cpu7->CurExec;
-                sprintf(dgui->AddrText7, "%08X", dgui->CurAddr7);
+                sprintf(dgui->AddrText7, "%08"PRIX32, dgui->CurAddr7);
             }
 
             ImGui_SameLine();
@@ -284,9 +310,10 @@ void DebugGui_A7(MailBox* mail, DebugGui* dgui, Console* sys)
                 ImGui_TableSetupColumn("Disassembly", ImGuiTableColumnFlags_WidthFixed);
                 ImGui_TableHeadersRow();
 
+                bool thumb = cpu7->CPSR.Thumb;
                 for (int i = 0; i < 16; i++)
                 {
-                    u32 addr = dgui->CurAddr7 - 8 + (4*i);
+                    u32 addr = dgui->CurAddr7 - ((8-i) * (thumb ? 2 : 4));
                     ImGui_TableNextRow();
                     if (addr == cpu7->CurExec) ImGui_TableSetBgColor(ImGuiTableBgTarget_RowBg0, 0xFF1F6F6F, -1);
                     else
@@ -297,7 +324,7 @@ void DebugGui_A7(MailBox* mail, DebugGui* dgui, Console* sys)
                     ImGui_TableNextColumn();
                     ImGui_Text("%08"PRIX32"", addr);
                     ImGui_TableNextColumn();
-                    ImGui_Text("%08"PRIX32"", Bus7_DebugRead(sys, addr));
+                    DebugGui_ReadInstr(Bus7_DebugRead(sys, addr), addr, thumb);
                     ImGui_TableNextColumn();
                     ImGui_Text("BL");
                     ImGui_SameLineEx(0, 0);
@@ -330,6 +357,19 @@ void DebugGui_A7(MailBox* mail, DebugGui* dgui, Console* sys)
                 ImGui_EndDisabled();
             }
             ImGui_EndChild();
+
+            ImGui_SetNextItemWidth(65.0);
+            ImGui_InputIntEx("Break Addr", &dgui->A7BreakAddr, 0, 0, ImGuiInputTextFlags_CharsHexadecimal|ImGuiInputTextFlags_CharsUppercase);
+            ImGui_SameLine();
+            if (ImGui_Checkbox("Break On Exec", &dgui->A7ExecBreak))
+            {
+                if (dgui->A7ExecBreak)
+                {
+                    cpu7->StepOver = false;
+                    cpu7->ExecBreak = dgui->A7BreakAddr;
+                }
+                else cpu7->ExecBreak = u64_max;
+            }
             DebugGui_BusWatch(sys->Bus7_Watch, &sys->Bus7_NumWatch);
             ImGui_SameLine();
             if (ImGui_BeginChild("Interrupts", (ImVec2){230, 170}, ImGuiChildFlags_Borders|ImGuiChildFlags_ResizeX|ImGuiChildFlags_ResizeY, 0))
