@@ -250,7 +250,7 @@ void SPI_Finish(Console* sys, timestamp now)
     if (sys->SPICR.IRQ) Sched_AddEvent(sys, now+DSClk33(1), Evt_IRQ7_SPI); // delay?
 }
 
-void IO9_Read(Console* sys, const u32 addr, const timestamp now, const BusCallbacks cb, u8 man)
+void IO9_Read(Console* sys, const u32 addr, const timestamp now)
 {
     u32 rdata;
     switch (addr & 0xFF'FF'FC)
@@ -347,10 +347,10 @@ void IO9_Read(Console* sys, const u32 addr, const timestamp now, const BusCallba
         break;
     }
 
-    Bus_TransferPostSetup(sys, rdata, true, now, false, cb, man, true);
+    Bus_TransferPostSetup(sys, rdata, true, now, false, true);
 }
 
-void IO9_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, const u32 mask, const BusCallbacks cb, u8 man)
+void IO9_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, const u32 mask)
 {
     switch (addr & 0xFF'FF'FC)
     {
@@ -542,10 +542,10 @@ void IO9_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
     }
 
     AddBusContention(sys, now, Dev_IO9);
-    Bus_TransferPostSetup(sys, 0, false, now, false, cb, man, true);
+    Bus_TransferPostSetup(sys, 0, false, now, false, true);
 }
 
-void IO7_Read(Console* sys, const u32 addr, const timestamp now, const BusCallbacks cb, u8 man)
+void IO7_Read(Console* sys, const u32 addr, const timestamp now)
 {
     u32 rdata;
     switch(addr & 0xFF'FF'FC)
@@ -620,10 +620,10 @@ void IO7_Read(Console* sys, const u32 addr, const timestamp now, const BusCallba
         break;
     }
 
-    Bus_TransferPostSetup(sys, rdata, true, now, false, cb, man, false);
+    Bus_TransferPostSetup(sys, rdata, true, now, false, false);
 }
 
-void IO7_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, const u32 mask, const BusCallbacks cb, u8 man)
+void IO7_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, const u32 mask)
 {
     switch(addr & 0xFF'FF'FC)
     {
@@ -827,7 +827,7 @@ void IO7_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
     }
 
     AddBusContention(sys, now, Dev_IO7);
-    Bus_TransferPostSetup(sys, 0, false, now, false, cb, man, false);
+    Bus_TransferPostSetup(sys, 0, false, now, false, false);
 }
 
 void IO9_Handler(Console* sys, timestamp now)
@@ -835,8 +835,8 @@ void IO9_Handler(Console* sys, timestamp now)
     BusReq* req = &sys->Bus9.PipeFIFO[sys->Bus9.ReqActivePtr];
     const u32 addr = req->Addr;
 
-    if (req->Write) IO9_Write(sys, addr, now, req->WrData, MakeWriteMask(addr, req->Size), req->CB, req->Man);
-    else            IO9_Read (sys, addr, now, req->CB, req->Man);
+    if (req->Write) IO9_Write(sys, addr, now, req->WrData, MakeWriteMask(addr, req->Size));
+    else            IO9_Read (sys, addr, now);
 }
 
 void IO7_Handler(Console* sys, timestamp now)
@@ -844,6 +844,6 @@ void IO7_Handler(Console* sys, timestamp now)
     BusReq* req = &sys->Bus7.PipeFIFO[sys->Bus7.ReqActivePtr];
     const u32 addr = req->Addr;
 
-    if (req->Write) IO7_Write(sys, addr, now, req->WrData, MakeWriteMask(addr, req->Size), req->CB, req->Man);
-    else            IO7_Read (sys, addr, now, req->CB, req->Man);
+    if (req->Write) IO7_Write(sys, addr, now, req->WrData, MakeWriteMask(addr, req->Size));
+    else            IO7_Read (sys, addr, now);
 }

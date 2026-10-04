@@ -157,8 +157,14 @@ DSINT_BIURET A946_BIUData(ARM946ES* a946, timestamp now)
     {
     case A946BIU_DataLoad:
     case A946BIU_DataCache:
+    {
         if ((biu->DataSubmCur == 0) && (biu->DataProt.Bufferable || biu->DataProt.Cacheable) && !biu->WBuffer.Empty)
             return DS_BIU946_INT_DO_WB; // drain writebuffer (checkme: dcache behavior?)
+
+        AHB_HTRANS type;
+        if (biu->DataSubmCur == 0) type = HTRANS_NONSEQ;
+        else if ((biu->DataAddr & (KiB(1)-1)) == 0) type = HTRANS_NONSEQ; // AHB spec dictates bursts should not cross 1 KiB boundaries (ignore that the dma controller does that anyway...)
+        else type = HTRANS_SEQ;
 
         req = (BusReq){
             .Addr = biu->DataAddr,
@@ -168,7 +174,7 @@ DSINT_BIURET A946_BIUData(ARM946ES* a946, timestamp now)
             .Man9 = MAN9_ARM9,
             .Prot = biu->DataProt,
             .Size = (AHB_HSIZE)biu->DataWidth,
-            .Type = ((biu->DataSubmCur == 0) ? HTRANS_NONSEQ : HTRANS_SEQ),
+            .Type = type,
             .CB = ((biu->DataType == A946BIU_DataLoad) ? CB9_BIU9DataNormal : CB9_BIU9DataStream),
         };
         biu->DataSubmCur++;
@@ -179,10 +185,17 @@ DSINT_BIURET A946_BIUData(ARM946ES* a946, timestamp now)
         }
         else biu->DataAddr += 4;
         break;
+    }
 
     case A946BIU_DataStore:
+    {
         if ((biu->DataSubmCur == 0) && !biu->WBuffer.Empty) // writes always drain writebuffer
             return DS_BIU946_INT_DO_WB;
+
+        AHB_HTRANS type;
+        if (biu->DataSubmCur == 0) type = HTRANS_NONSEQ;
+        else if ((biu->DataAddr & (KiB(1)-1)) == 0) type = HTRANS_NONSEQ; // AHB spec dictates bursts should not cross 1 KiB boundaries (ignore that the dma controller does that anyway...)
+        else type = HTRANS_SEQ;
 
         req = (BusReq){
             .Addr = biu->DataAddr,
@@ -192,7 +205,7 @@ DSINT_BIURET A946_BIUData(ARM946ES* a946, timestamp now)
             .Man9 = MAN9_ARM9,
             .Prot = biu->DataProt,
             .Size = (AHB_HSIZE)biu->DataWidth,
-            .Type = ((biu->DataSubmCur == 0) ? HTRANS_NONSEQ : HTRANS_SEQ),
+            .Type = type,
             .CB = CB9_BIU9DataNormal,
         };
         biu->DataSubmCur++;
@@ -203,6 +216,7 @@ DSINT_BIURET A946_BIUData(ARM946ES* a946, timestamp now)
         }
         else biu->DataAddr += 4;
         break;
+    }
 
     case A946BIU_DataSwapLoad:
         if ((biu->DataSubmCur == 0) && (biu->DataProt.Bufferable || biu->DataProt.Cacheable) && !biu->WBuffer.Empty)

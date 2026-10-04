@@ -32,6 +32,32 @@ typedef enum : u8
     Dev_Max,
 } NTRAHB_Devices;
 
+typedef enum : u8
+{
+    Sel9_Default, // unmapped
+    Sel9_MainRAM,
+    Sel9_WRAM,
+    Sel9_IO,
+    Sel9_Palette,
+    Sel9_VRAM,
+    Sel9_OAM,
+    Sel9_GBAROM,
+    Sel9_GBARAM,
+    Sel9_BIOS,
+} Bus9_Sel;
+
+typedef enum : u8
+{
+    Sel7_Default, // unmapped
+    Sel7_BIOS,
+    Sel7_MainRAM,
+    Sel7_WRAM,
+    Sel7_IO,
+    Sel7_VRAM,
+    Sel7_GBAROM,
+    Sel7_GBARAM,
+} Bus7_Sel;
+
 static_assert(Dev_Max < 32, "BUSYDEVICE BIT MASK TOO SMALL!!!");
 
 // note: actual IDs unknown
@@ -207,11 +233,8 @@ typedef struct
     u8 ReqActivePtr;
     u32 ReqList;
     // post data:
-    u32 PostReadBus; // used by arm7 bus for open bus emulation
-    BusCallbacks PostCB;
-    u8 PostMan;
-    bool PostLoad;
-    bool PostNoPrev;
+    u32 ReadBus; // used by arm7 bus for open bus emulation
+    bool NoPrev;
     s8 PipeNum;
 } BusImpl;
 
@@ -250,7 +273,6 @@ typedef struct
     bool BurstActive;
     MainRAM_Buses CurReq;
     MainRAM_Buses Locked;
-    u8 CurMan;
     // Internal control reg for the FCRAM chip on the NDS.
     // NTR/USG ARM9 BIOS has init code for mainRAM @ offset 0x180.
     // Should be initialized using halfword r/w to the most significant halfword of mainRAM.
@@ -329,7 +351,7 @@ void Bus7_A7Wake(Console* sys, const timestamp now);
 // handlers
 void Bus_Req(Console* sys, const BusReq* req, const timestamp now, const bool a9);
 void Bus_Run(Console* sys, const timestamp now, const bool a9);
-void Bus_TransferPostSetup(Console* sys, const u32 rdata, const bool isread, const timestamp end, const bool noprev, const BusCallbacks cb, const u8 man, const bool a9);
+void Bus_TransferPostSetup(Console* sys, const u32 rdata, const bool isread, const timestamp end, const bool noprev, const bool a9);
 
 void MainRAM_TestKillBurst(Console* sys, timestamp now, bool a9);
 void MainRAM_Run(Console* sys, const timestamp now);

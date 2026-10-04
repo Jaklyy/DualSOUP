@@ -39,7 +39,7 @@ void Bus9_Init(BusImpl* bus)
 {
     bus->PipeCycles = DSClk33(2);
     bus->HLockGeneric = MAN_NONE; // todo: put in a reset handler
-    bus->PostNoPrev = true;
+    bus->NoPrev = true;
     bus->FIFOEmpty = true;
 }
 
@@ -48,7 +48,7 @@ void Bus7_Init(BusImpl* bus)
     // TODO: RE-ENABLE
     bus->PipeCycles = 0;//DSClk33(1);
     bus->HLockGeneric = MAN_NONE; // todo: put in a reset handler
-    bus->PostNoPrev = true;
+    bus->NoPrev = true;
     bus->FIFOEmpty = true;
 }
 
@@ -76,7 +76,7 @@ timestamp BusContention(Console* sys, timestamp cur, const NTRAHB_Devices device
 
 void AddBusContention(Console* sys, const timestamp cur, const NTRAHB_Devices device)
 {
-    sys->AHBBusyTS[device] = cur+DSClk33(1);
+    sys->AHBBusyTS[device] = cur+DSClk33(1)+DSClk33(1);
 }
 
 
@@ -171,15 +171,11 @@ void MainRAM_Run(Console* sys, timestamp now)
 
     if (write && (addr & 2)) wrdata >>= 16;
 
-    u8 prevman = mr->CurMan;
-
     if (!mr->BurstActive) nseq = true;
     if (write != mr->PrevWrite) nseq = true; // split burst if switching from read to write
     mr->PrevWrite = write;
     if (grant != mr->CurReq) nseq = true; // split burst if switching which bus has grant
     mr->CurReq = grant;
-    if (man != mr->CurMan) nseq = true; // split burst if switching manager TODO: handle this elsewhere?
-    mr->CurMan = man;
     if (now > mr->BurstLimitTs) nseq = true; // TODO: this should probably be regardless of an access occuring
 
     // this is presumably enforced by the SoC main ram interface?
@@ -201,7 +197,7 @@ void MainRAM_Run(Console* sys, timestamp now)
     {
         mr->AddrLatch = (addr & mr->AddrSubmMask) >> 1;
         mr->WeirdStart = ((addr & 0x1E) >= 0x1A);
-        mr->BurstLimitTs = now + DSClk33(241);
+        mr->BurstLimitTs = now + DSClk33(241) + DSClk33(1);
     }
     else MRStepAddr
 
@@ -209,7 +205,7 @@ void MainRAM_Run(Console* sys, timestamp now)
 
     if (mr->AddrLatch != fauxaddr)
     {
-        LogPrint(LOG_FCRAM, "MR ADDR MISMATCH: %08X %08X %i %i %i %i %i\n", mr->AddrLatch << 1, addr, grant == MainRAM_A9, mr->CurMan, prevman, r->CB, r->Type);
+        LogPrint(LOG_FCRAM, "MR ADDR MISMATCH: %08X %08X %i %i %i %i\n", mr->AddrLatch << 1, addr, grant == MainRAM_A9, man, r->CB, r->Type);
 #ifdef MRTURBOLOG
         for (size_t i = 0; i < countof(mr->REQLOG); i++)
         {
@@ -235,9 +231,9 @@ void MainRAM_Run(Console* sys, timestamp now)
             {
                 MRStepAddr
                 sys->MainRAM.b16[mr->AddrLatch] = wrdata >> 16;
-                now += DSClk33(3);
+                now += nseq ? DSClk33(3) : DSClk33(1);
             }
-            else now += DSClk33(2);
+            else now += nseq ? DSClk33(2) : DSClk33(0);
         }
     }
     else // read
@@ -259,7 +255,7 @@ void MainRAM_Run(Console* sys, timestamp now)
         }
     }
 
-    mr->LastFetchTs = now;
+    mr->LastFetchTs = now + DSClk33(1);
 
 #ifdef MRTURBOLOG
     mr->REQLOG[mr->REQLOGPTR++] = ((grant == MainRAM_A9) ? (sys->Bus9.PipeFIFO[sys->Bus9.FIFODrainPtr])
@@ -267,21 +263,22 @@ void MainRAM_Run(Console* sys, timestamp now)
     mr->REQLOGPTR %= countof(mr->REQLOG);
 #endif
 
-    Bus_TransferPostSetup(sys, rdata, !write, now, false, r->CB, r->Man, (grant == MainRAM_A9));
+    Bus_TransferPostSetup(sys, rdata, !write, now, false, (grant == MainRAM_A9));
 
     if (grant == MainRAM_A9)
     {
         mr->IsReq9 = false;
-        if (mr->CurMan <= MAN9_NDMA3) return Sched_AddEvent(sys, mr->BurstLimitTs, Evt_MainRAM);
+        //if (man <= MAN9_NDMA3) return Sched_AddEvent(sys, mr->BurstLimitTs, Evt_MainRAM);
     }
     else
     {
         mr->IsReq7 = false;
-        if (mr->CurMan <= MAN7_NDMA3) return Sched_AddEvent(sys, mr->BurstLimitTs, Evt_MainRAM);
+        //if (man <= MAN7_NDMA3) return Sched_AddEvent(sys, mr->BurstLimitTs, Evt_MainRAM);
     }
 
+    return Sched_AddEvent(sys, mr->BurstLimitTs, Evt_MainRAM);
     //if (size != HSIZE_8) // this special casing is stupid but i dont wanna fix it
-        Sched_AddEvent(sys, now+DSClk33(1), Evt_MainRAM); // schedule an event to enforce burst limit
+        //Sched_AddEvent(sys, now+DSClk33(1), Evt_MainRAM); // schedule an event to enforce burst limit
 }
 #undef MRStepAddr
 
@@ -718,7 +715,7 @@ void Bus9_Read(Console* sys, BusReq* req, timestamp now)
         break;
     }
 
-    Bus_TransferPostSetup(sys, rdata, true, now, false, req->CB, req->Man, true);
+    Bus_TransferPostSetup(sys, rdata, true, now, false, true);
 }
 
 void Bus9_Write(Console* sys, BusReq* req, timestamp now)
@@ -827,7 +824,7 @@ void Bus9_Write(Console* sys, BusReq* req, timestamp now)
         break;
     }
 
-    Bus_TransferPostSetup(sys, 0, false, now, false, req->CB, req->Man, true);
+    Bus_TransferPostSetup(sys, 0, false, now, false, true);
 }
 
 void Bus7_Read(Console* sys, BusReq* req, timestamp now)
@@ -913,7 +910,7 @@ void Bus7_Read(Console* sys, BusReq* req, timestamp now)
         GamePakBus_RAMRead(sys, &rdata, &now, addr, size, false); break;
     }
 
-    Bus_TransferPostSetup(sys, rdata, true, now, false, req->CB, req->Man, false);
+    Bus_TransferPostSetup(sys, rdata, true, now, false, false);
 }
 
 void Bus7_Write(Console* sys, BusReq* req, timestamp now)
@@ -972,37 +969,22 @@ void Bus7_Write(Console* sys, BusReq* req, timestamp now)
         break;
     }
 
-    Bus_TransferPostSetup(sys, 0, false, now, false, req->CB, req->Man, false);
+    Bus_TransferPostSetup(sys, 0, false, now, false, false);
 }
 
-void Bus9_Idle(Console* sys, BusReq* req, const timestamp now)
+void Bus9_KillBursts(Console* sys, const timestamp now)
+{
+    if (sys->BusMR.CurReq == MainRAM_A9)
+        MainRAM_KillBurst(sys, now);
+
+    // TODO: kill gba rom/ram chipsel
+}
+
+void Bus9_Idle(Console* sys, const timestamp now)
 {
     // no access performed this cycle
     // speculation: treat as signal to kill bursts
-    if (sys->BusMR.CurReq == MainRAM_A9)
-    {
-        MainRAM_KillBurst(sys, now);
-#if 0
-        if (req != nullptr)
-        {
-            // hacky complete guess idk
-            switch(req->Addr >> 24) // check most signficant byte
-            {
-            case 0x02:
-                if (sys->BusMR.Locked == MainRAM_A9) sys->BusMR.Locked = (req->Lock ? MainRAM_A9 : MainRAM_None); break;
-            default:
-                if (sys->BusMR.Locked == MainRAM_A9) sys->BusMR.Locked = MainRAM_None; break;
-            }
-        }
-        else if (sys->BusMR.Locked == MainRAM_A9)
-        {
-            LogPrint(LOG_ARM9|LOG_FCRAM, "Locked fcram but no access?\n");
-            sys->BusMR.Locked = MainRAM_None;
-        }
-#endif
-    }
-
-    // TODO: kill gba rom/ram chipsel
+    Bus9_KillBursts(sys, now);
 }
 
 void Bus9_Busy(Console* sys [[maybe_unused]], const timestamp now [[maybe_unused]])
@@ -1011,14 +993,19 @@ void Bus9_Busy(Console* sys [[maybe_unused]], const timestamp now [[maybe_unused
     // speculation: do *not* kill bursts
 }
 
-void Bus7_Idle(Console* sys, const timestamp now)
+void Bus7_KillBursts(Console* sys, const timestamp now)
 {
-    // no access performed this cycle
-    // speculation: treat as signal to kill bursts
     if (sys->BusMR.CurReq == MainRAM_A7)
         MainRAM_KillBurst(sys, now);
 
     // TODO: kill gba rom/ram chipsel
+}
+
+void Bus7_Idle(Console* sys, const timestamp now)
+{
+    // no access performed this cycle
+    // speculation: treat as signal to kill bursts
+    Bus7_KillBursts(sys, now);
 }
 
 void Bus7_Busy(Console* sys [[maybe_unused]], const timestamp now [[maybe_unused]])
@@ -1059,14 +1046,11 @@ void Bus7_A7Wake(Console* sys, const timestamp now)
     }
 }
 
-void Bus_TransferPostSetup(Console* sys, const u32 rdata, const bool isread, const timestamp end, const bool noprev, const BusCallbacks cb, const u8 man, const bool a9)
+void Bus_TransferPostSetup(Console* sys, const u32 rdata, const bool isread, const timestamp end, const bool noprev, const bool a9)
 {
     BusImpl* bus = (a9 ? &sys->Bus9 : &sys->Bus7);
-    if (isread) bus->PostReadBus = rdata;
-    bus->PostNoPrev = noprev;
-    bus->PostCB = cb;
-    bus->PostLoad = isread;
-    bus->PostMan = man;
+    if (isread) bus->ReadBus = rdata;
+    bus->NoPrev = noprev;
     Sched_AddEvent(sys, end, a9 ? Evt_Bus9 : Evt_Bus7);
 }
 
@@ -1075,25 +1059,29 @@ void Bus_TransferPostSetup(Console* sys, const u32 rdata, const bool isread, con
 void Bus_Run(Console* sys, timestamp now, const bool a9)
 {
     BusImpl* bus = (a9 ? &sys->Bus9 : &sys->Bus7);
-    u32 rdata = bus->PostReadBus;
+    u32 rdata = bus->ReadBus;
     BusCallbacks cmpcb = CB_None;
+    u8 cmpman = MAN_NONE;
+    bool wasload = false;
 
     now += DSClk33(1);
     timestamp len = DSClk33(1);
 
     // process last completion
-    if (!bus->PostNoPrev)
+    if (!bus->NoPrev)
     {
         BusReq* reqold = &bus->PipeFIFO[bus->ReqActivePtr];
-        u8 man = reqold->Man;
-        if (a9 && man == MAN9_ARM9)
+        cmpman = reqold->Man;
+        u8 mandebug = cmpman;
+        cmpcb = reqold->CB;
+        wasload = !reqold->Write;
+        if (a9 && mandebug == MAN9_ARM9)
         {
-            if ((reqold->CB != CB9_BIU9InstrNormal) && (reqold->CB != CB9_BIU9DataNormal))
-                man = MAN9_A9EXTERNALWONKY;
+            if ((cmpcb != CB9_BIU9InstrNormal) && (cmpcb != CB9_BIU9DataNormal))
+                mandebug = MAN9_A9EXTERNALWONKY;
         }
-        Bus_DebugBreak(sys, now, a9 ? sys->Bus9_Watch : sys->Bus7_Watch, a9 ? sys->Bus9_NumWatch : sys->Bus7_NumWatch, reqold->Addr, reqold->Size, reqold->Write, man, (reqold->Write ? reqold->WrData : rdata));
+        Bus_DebugBreak(sys, now, a9 ? sys->Bus9_Watch : sys->Bus7_Watch, a9 ? sys->Bus9_NumWatch : sys->Bus7_NumWatch, reqold->Addr, reqold->Size, reqold->Write, mandebug, (reqold->Write ? reqold->WrData : rdata));
         len = now - bus->PipeExitTs[bus->ReqActivePtr];
-        cmpcb = bus->PostCB;
         // apply waitstate delays
         if (len > DSClk33(1))
         {
@@ -1157,10 +1145,10 @@ void Bus_Run(Console* sys, timestamp now, const bool a9)
     {
     case CB_None: break;
     case CB9_BIU9InstrNormal ... CB9_BIU9Idle: A946_BIUCompPost(&sys->A946ES, now, rdata, cmpcb); break;
-    case CB9_DMA: DMA_CompPost(sys, now, bus->PostMan-MAN9_DMA0, rdata, bus->PostLoad, true); break;
+    case CB9_DMA: DMA_CompPost(sys, now, cmpman-MAN9_DMA0, rdata, wasload, true); break;
     case CB7_7TDMIData: A7TDMI_DataPost(&sys->A7TDMI, now, rdata); break;
     case CB7_7TDMIInstr: A7TDMI_InstrReadPost(&sys->A7TDMI, now, rdata); break;
-    case CB7_DMA: DMA_CompPost(sys, now, bus->PostMan-MAN7_SCAPDMA0, rdata, bus->PostLoad, false); break;
+    case CB7_DMA: DMA_CompPost(sys, now, cmpman-MAN7_SCAPDMA0, rdata, wasload, false); break;
     }
 
     // try to run next access
@@ -1180,17 +1168,13 @@ void Bus_Run(Console* sys, timestamp now, const bool a9)
 
         if (req->Type >= HTRANS_NONSEQ)
         {
+            if (req->Man != cmpman) req->Type = HTRANS_NONSEQ; // note: this should technically be enforced by the manager
+
+            // split bursts on nonsequential access
+            if (req->Type == HTRANS_NONSEQ) a9 ? Bus9_KillBursts(sys, now) : Bus7_KillBursts(sys, now);
             // its time; begin transfer!
-            if (a9)
-            {
-                if (req->Write) Bus9_Write(sys, req, now);
-                else            Bus9_Read(sys, req, now);
-            }
-            else
-            {
-                if (req->Write) Bus7_Write(sys, req, now);
-                else            Bus7_Read(sys, req, now);
-            }
+            if (req->Write) a9 ? Bus9_Write(sys, req, now) : Bus7_Write(sys, req, now);
+            else            a9 ? Bus9_Read(sys, req, now)  : Bus7_Read(sys, req, now);
             return; // rest of logic is for handling idle/busy cycles
         }
         else if (req->Type == HTRANS_BUSY)
@@ -1201,20 +1185,20 @@ void Bus_Run(Console* sys, timestamp now, const bool a9)
         else
         {
             // explicit idle transfer
-            if (a9) Bus9_Idle(sys, req, now);
+            if (a9) Bus9_Idle(sys, now);
             else    Bus7_Idle(sys, now);
         }
-        Bus_TransferPostSetup(sys, 0, false, now, false, req->CB, req->Man, a9);
+        Bus_TransferPostSetup(sys, 0, false, now, false, a9);
         return;
     }
 
     // nothing running; implied idle transfer
-    if (!bus->PostNoPrev) // if previous req was not an implied idle transfer, run one
+    if (!bus->NoPrev) // if previous req was not an implied idle transfer, run one
     {
-        if (a9) Bus9_Idle(sys, nullptr, now);
+        if (a9) Bus9_Idle(sys, now);
         else    Bus7_Idle(sys, now);
 
-        Bus_TransferPostSetup(sys, 0, false, now, true, CB_None, 0, a9);
+        Bus_TransferPostSetup(sys, 0, false, now, true, a9);
         return;
     }
 
@@ -1238,160 +1222,3 @@ void Bus_Run(Console* sys, timestamp now, const bool a9)
 
     Sched_AddEvent(sys, new, a9 ? Evt_Bus9 : Evt_Bus7);
 }
-
-#if 0
-void Bus_TransferPost(Console* sys, const timestamp fin, const bool a9)
-{
-    BusImpl* bus = (a9 ? &sys->Bus9 : &sys->Bus7);
-    u32 rdata = bus->PostReadBus;
-    BusCallbacks cmpcb = bus->PostCB;
-    const timestamp len = (bus->PostNoPrev ? DSClk33(1) : (fin - bus->PipeExitTs[bus->FIFODrainPtr]));
-    // ahb pipeline steps once every HREADY
-
-    if (!bus->PostNoPrev)
-        bus->FIFODrainPtr = (bus->FIFODrainPtr + 1) % countof(bus->PipeFIFO);
-
-    if (bus->FIFODrainPtr == bus->FIFOFillPtr)
-        bus->FIFOEmpty = true;
-
-    // apply waitstate delays
-    if (len > DSClk33(1))
-    {
-        for (size_t i = 0; i < countof(bus->PipeExitTs); i++)
-            bus->PipeExitTs[i] += (len-DSClk33(1));
-    }
-
-    // speculative method of implementing arm7 halt
-#define reqlista7deny (((a9 || !sys->A7ClkDisable) ? u32_max : ~(1<<MAN7_ARM7)) & bus->ReqList)
-
-    BusCallbacks ackcb = CB_None;
-    u8 ackman;
-
-    // arbitrate next req
-    if (reqlista7deny)
-    {
-        u8 manager;
-        // handle locked transfers
-        if (bus->HLockGeneric == MAN_NONE)
-            manager = stdc_trailing_zeros(reqlista7deny); // not locked
-        else
-        {
-            manager = bus->HLockGeneric; // locked, manager stays the original
-
-            if (!(bus->ReqList & (1<<manager))) // make sure it's actually trying to do a transfer
-                goto nvm; // assume its holding lock with idle transfers
-        }
-
-        // put entry into fifo
-        bus->PipeFIFO[bus->FIFOFillPtr] = bus->Reqs[manager];
-        bus->PipeExitTs[bus->FIFOFillPtr] = fin + bus->PipeCycles;
-        ackcb = bus->Reqs[manager].CB;
-        ackman = manager;
-
-        bus->ReqList &= ~(1<<manager); // clear req list
-        // update lock flag
-        bus->HLockGeneric = ((bus->PipeFIFO[bus->FIFOFillPtr].Lock) ? manager : MAN_NONE);
-
-        // step fill ptr
-        bus->FIFOFillPtr = (bus->FIFOFillPtr + 1) % countof(bus->PipeFIFO);
-        bus->FIFOEmpty = false;
-    }
-    nvm:
-
-    // schedule next event
-    timestamp new;
-    // check if something is still in req list
-    if ((bus->HLockGeneric != MAN_NONE) ? (bus->ReqList & (1<<bus->HLockGeneric)) : reqlista7deny)
-    {
-        // step pipeline
-        new = fin;
-    }
-    else if (!bus->FIFOEmpty)
-    {
-        // if something is in the pipeline wait for it
-        new = fin;
-        //new = bus->PipeExitTs[bus->FIFODrainPtr];
-    }
-    else
-    {
-        bus->LockSched = false; // fetch completed; we can allow scheduling again
-        // nothing to do; ahb go nini
-        goto noresched;
-    }
-    Sched_AddEvent(sys, new, a9 ? Evt_Bus9 : Evt_Bus7);
-    noresched:
-
-    // ack callback
-    switch(ackcb)
-    {
-    case CB_None: break;
-    case CB9_BIU9InstrNormal ... CB9_BIU9Idle: A946_BIUSubmPost(&sys->A946ES, fin); break;
-    case CB9_DMA: DMA_Step(sys, ackman-MAN9_DMA0, fin, true); break;
-    case CB7_7TDMIData: break;
-    case CB7_7TDMIInstr: break;
-    case CB7_DMA: DMA_Step(sys, ackman-MAN7_SCAPDMA0, fin, false); break;
-    }
-
-    // completion callback
-    switch(cmpcb)
-    {
-    case CB_None: break;
-    case CB9_BIU9InstrNormal ... CB9_BIU9Idle: A946_BIUCompPost(&sys->A946ES, fin, rdata, cmpcb); break;
-    case CB9_DMA: DMA_CompPost(sys, fin, bus->PostMan-MAN9_DMA0, rdata, bus->PostLoad, true); break;
-    case CB7_7TDMIData: A7TDMI_DataPost(&sys->A7TDMI, fin, rdata); break;
-    case CB7_7TDMIInstr: A7TDMI_InstrReadPost(&sys->A7TDMI, fin, rdata); break;
-    case CB7_DMA: DMA_CompPost(sys, fin, bus->PostMan-MAN7_SCAPDMA0, rdata, bus->PostLoad, false); break;
-    }
-}
-
-void Bus_Run(Console* sys, const timestamp now, const bool a9)
-{
-    BusImpl* bus = (a9 ? &sys->Bus9 : &sys->Bus7);
-    bus->LockSched = true; // make sure we can't reschedule shit until *after* the fetch completes
-
-    // step pipeline
-    if (!bus->FIFOEmpty)
-    {
-        BusReq* req = &bus->PipeFIFO[bus->FIFODrainPtr];
-        if ((bus->PipeExitTs[bus->FIFODrainPtr] <= now))
-        {
-            if (req->Type >= HTRANS_NONSEQ)
-            {
-                // its time; begin transfer!
-                if (a9)
-                {
-                    if (req->Write) Bus9_Write(sys, req, now);
-                    else            Bus9_Read(sys, req, now);
-                }
-                else
-                {
-                    if (req->Write) Bus7_Write(sys, req, now);
-                    else            Bus7_Read(sys, req, now);
-                }
-                return; // rest of logic is for handling idle/busy cycles
-            }
-            else if (req->Type == HTRANS_BUSY)
-            {
-                if (a9) Bus9_Busy(sys, now);
-                else    Bus7_Busy(sys, now);
-            }
-            else
-            {
-                // explicit idle transfer
-                if (a9) Bus9_Idle(sys, req, now);
-                else    Bus7_Idle(sys, now);
-            }
-            Bus_TransferPostSetup(sys, 0, false, now + DSClk33(1), false, req->CB, req->Man, a9);
-            return;
-        }
-        else goto idle; // not time yet; implied idle transfer
-    }
-    else // nothing running; implied idle transfer
-    { idle:
-        if (a9) Bus9_Idle(sys, nullptr, now);
-        else    Bus7_Idle(sys, now);
-    }
-
-    Bus_TransferPostSetup(sys, 0, false, now + DSClk33(1), true, CB_None, 0, a9);
-}
-#endif
