@@ -12,7 +12,7 @@ void Timer_CalcNextEvent(Console* sys, Timer arr[], u8 num, timestamp now, Timer
 {
     Timer* timer = &arr[num];
 
-    if (!timer->On || !timer->CR.IRQ) return;
+    if (!timer->On || !(timer->CR.IRQ || (type == TimerType_Snd))) return;
 
     timestamp next = 0;
     goto first;
@@ -32,9 +32,9 @@ void Timer_CalcNextEvent(Console* sys, Timer arr[], u8 num, timestamp now, Timer
     Scheduler_Events evt;
     switch(type)
     {
-    case TimerType_7: evt = Evt_Timer70Run; break;
-    case TimerType_9: evt = Evt_Timer90Run; break;
-    case TimerType_Snd: CrashSpectacularly("waow\n"); break;
+    case TimerType_7:   evt = Evt_Timer70Run; break;
+    case TimerType_9:   evt = Evt_Timer90Run; break;
+    case TimerType_Snd: evt = Evt_TimerSnd0Run; break;
     }
     Sched_AddEvent(sys, next, evt+num);
 }
@@ -55,20 +55,19 @@ void Timer_AddTicks(Console* sys, Timer arr[], u8 num, timestamp now, timestamp 
         timer->Counter = (ticks % iterlen) + timer->Reload;
         numoverflows = (ticks / iterlen) + 1;
 
-        if ((num < 3) // not the last timer
-            && arr[num+1].CR.OverflowTick // next timer ticks when we overflow
-            && (arr[num+1].On)) // next timer is running
+        if (type == TimerType_Snd) // sound timer; sample audio fifo
+            SoundFIFO_Sample(sys, num, now);
+        else
         {
-            Timer_AddTicks(sys, arr, num+1, now, numoverflows, type); // tick the next timer
-        }
+            if ((num < 3) // not the last timer
+                && arr[num+1].CR.OverflowTick // next timer ticks when we overflow
+                && (arr[num+1].On)) // next timer is running
+            {
+                Timer_AddTicks(sys, arr, num+1, now, numoverflows, type); // tick the next timer
+            }
 
-        if (timer->CR.IRQ)
-        {
-            // last update is kinda wrong to use but probably good enough tbh :: checkme: delay?
-            if (type != TimerType_Snd)
+            if (timer->CR.IRQ) // checkme: delay?
                 Sched_AddEvent(sys, now+DSClk33(1), ((type == TimerType_9) ? Evt_IRQ9_Time0 : Evt_IRQ7_Time0) + num);
-            else // sound dma; sample audio fifo
-                SoundFIFO_Sample(sys, num, now);
         }
     }
     else timer->Counter += ticks;
@@ -118,14 +117,15 @@ void Timer_UpdateCR(Console* sys, Timer arr[], u8 num, timestamp now, TimerType 
         if (!oldenable && timer->CR.Enable)
         {
             timer->On = true;
+            if (type == TimerType_Snd && timer->Counter == 0xFFFF) LogPrint(LOG_BUG, "Sound timer enable at overflow?\n");
             timer->NeedsEnable = true; // loading cr is delayed by 1 cycle
 
             Scheduler_Events evt;
             switch(type)
             {
-            case TimerType_7: evt = Evt_Timer70CR; break;
-            case TimerType_9: evt = Evt_Timer90CR; break;
-            case TimerType_Snd: CrashSpectacularly("waow\n"); break;
+            case TimerType_7:   evt = Evt_Timer70CR; break;
+            case TimerType_9:   evt = Evt_Timer90CR; break;
+            case TimerType_Snd: evt = Evt_TimerSnd0CR; break;
             }
             Sched_AddEvent(sys, now+DSClk33(1), evt+num);
         }

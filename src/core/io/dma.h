@@ -122,7 +122,7 @@ u32 DMA_IOReadHandler(DMA_Channel* channels, u32 addr);
 void StartDMA9(Console* sys, timestamp start, u8 mode);
 void StartDMA7(Console* sys, timestamp start, u8 mode);
 void StartSoundCapDMA(Console* sys, u8 id, timestamp start);
-void StartSoundDMA(Console* sys, u8 id, timestamp start, bool matters);
+void StartSoundDMA(Console* sys, u8 id, timestamp start);
 timestamp DMA_GetNext(Console* sys, const timestamp now, const bool sync, const bool a9);
 
 void DMA_CompPost(Console* sys, timestamp now, const u8 id, u32 rdata, const bool load, const bool a9);

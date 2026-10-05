@@ -203,14 +203,20 @@ void MainRAM_Run(Console* sys, timestamp now)
 
     //mr->AddrLatch = (addr & mr->AddrSubmMask) >> 1;
 
-    if (mr->AddrLatch != fauxaddr)
+    if ((addr & 0xFF000000) != 0x02000000) printf("BAD ADDRESS????\n");
+    if ((r->Type < HTRANS_NONSEQ)) printf("BAD TRANSFER TYPE??\n");
+    if ((mr->AddrLatch != fauxaddr) || ((addr & 0xFF000000) != 0x02000000))
     {
         LogPrint(LOG_FCRAM, "MR ADDR MISMATCH: %08X %08X %i %i %i %i\n", mr->AddrLatch << 1, addr, grant == MainRAM_A9, man, r->CB, r->Type);
 #ifdef MRTURBOLOG
+        BusReq* l;
         for (size_t i = 0; i < countof(mr->REQLOG); i++)
         {
-            printf("%02zu: %016lX%016lX\n", i, ((u64*)&mr->REQLOG[i])[1], ((u64*)&mr->REQLOG[i])[0]);
+            l = &mr->REQLOG[(mr->REQLOGPTR + i) % countof(mr->REQLOG)];
+            printf("%02zu: a: %08"PRIX32" d: %08"PRIX32" w:%i l:%i m:%"PRIu8" p:%01"PRIX8" s:%01"PRIX8" t:%01"PRIX8" c:%02"PRIu8"\n", i, l->Addr, l->WrData, l->Write, l->Lock, l->Man, *(u8*)&l->Prot, l->Size, l->Type, l->CB);
         }
+        l = r;
+        printf("%02zu: a: %08"PRIX32" d: %08"PRIX32" w:%i l:%i m:%"PRIu8" p:%01"PRIX8" s:%01"PRIX8" t:%01"PRIX8" c:%02"PRIu8"\n", (size_t)32, l->Addr, l->WrData, l->Write, l->Lock, l->Man, *(u8*)&l->Prot, l->Size, l->Type, l->CB);
 #endif
     }
     u32 rdata;
@@ -258,27 +264,17 @@ void MainRAM_Run(Console* sys, timestamp now)
     mr->LastFetchTs = now + DSClk33(1);
 
 #ifdef MRTURBOLOG
-    mr->REQLOG[mr->REQLOGPTR++] = ((grant == MainRAM_A9) ? (sys->Bus9.PipeFIFO[sys->Bus9.FIFODrainPtr])
-                                                         : (sys->Bus7.PipeFIFO[sys->Bus7.FIFODrainPtr]));\
+    mr->REQLOG[mr->REQLOGPTR++] = ((grant == MainRAM_A9) ? (sys->Bus9.PipeFIFO[sys->Bus9.ReqActivePtr])
+                                                         : (sys->Bus7.PipeFIFO[sys->Bus7.ReqActivePtr]));\
     mr->REQLOGPTR %= countof(mr->REQLOG);
 #endif
 
     Bus_TransferPostSetup(sys, rdata, !write, now, false, (grant == MainRAM_A9));
 
-    if (grant == MainRAM_A9)
-    {
-        mr->IsReq9 = false;
-        //if (man <= MAN9_NDMA3) return Sched_AddEvent(sys, mr->BurstLimitTs, Evt_MainRAM);
-    }
-    else
-    {
-        mr->IsReq7 = false;
-        //if (man <= MAN7_NDMA3) return Sched_AddEvent(sys, mr->BurstLimitTs, Evt_MainRAM);
-    }
+    if (grant == MainRAM_A9) mr->IsReq9 = false;
+    else                     mr->IsReq7 = false;
 
     return Sched_AddEvent(sys, mr->BurstLimitTs, Evt_MainRAM);
-    //if (size != HSIZE_8) // this special casing is stupid but i dont wanna fix it
-        //Sched_AddEvent(sys, now+DSClk33(1), Evt_MainRAM); // schedule an event to enforce burst limit
 }
 #undef MRStepAddr
 
@@ -1018,7 +1014,7 @@ void Bus_Req(Console* sys, const BusReq* req, const timestamp now, const bool a9
 {
     BusImpl* bus = (a9 ? &sys->Bus9 : &sys->Bus7);
 
-    if (bus->ReqList & (1<<(req->Man))) CrashSpectacularly("REQ ON REQ!!!!!\n");
+    if (bus->ReqList & (1<<(req->Man))) LogPrint(LOG_ALWAYS, "REQ ON REQ!!!!! %"PRIu8"\n", req->Man);
     bus->ReqList |= (1<<(req->Man));
     bus->Reqs[req->Man] = *req;
 
@@ -1179,6 +1175,7 @@ void Bus_Run(Console* sys, timestamp now, const bool a9)
         }
         else if (req->Type == HTRANS_BUSY)
         {
+            if (req->Man != cmpman) a9 ? Bus9_KillBursts(sys, now) : Bus7_KillBursts(sys, now); // HACK
             if (a9) Bus9_Busy(sys, now);
             else    Bus7_Busy(sys, now);
         }

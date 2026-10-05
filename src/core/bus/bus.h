@@ -245,7 +245,7 @@ typedef enum : u8
     MainRAM_A7,
 } MainRAM_Buses;
 
-//#define MRTURBOLOG
+#define MRTURBOLOG
 
 // MainRAM is a type of FCRAM.
 // gbatek lists the following chips as being used in retail DS models:

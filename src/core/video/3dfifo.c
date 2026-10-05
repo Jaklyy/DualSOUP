@@ -383,7 +383,8 @@ u32 GX_IORead(Console* sys, const u32 addr)
             return gx->VectorMatrix.Arr[(((addr) & 0xC)/4)+8];
 
         default:
-            LogPrint(LOG_GX|LOG_UNIMP, "UNIMPLEMENTED 3D READ %08X\n", addr);
+            LogPrint(LOG_GX|LOG_UNIMP, "UNIMPLEMENTED 3D READ %08X\n", addr); [[fallthrough]];
+        case 0x4A4: // shadduupppp!!!!
             return 0;
     }
 }

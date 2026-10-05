@@ -12,6 +12,7 @@ void DMA_Init(Console* sys)
     {
         sys->DMA7[i].CurrentMode = DMAStart_Audio;
         sys->DMA7[i].CR.Width32 = true;
+        sys->DMA7[i].Latched_Width32 = true;
         sys->DMA7[i].SrcInc = 4;
         sys->DMA7[i].SrcAddrMask = 0x07FFFFFC;
     }
@@ -19,13 +20,13 @@ void DMA_Init(Console* sys)
     {
         sys->DMA7[i].CurrentMode = DMAStart_AudioCap;
         sys->DMA7[i].CR.Width32 = true;
+        sys->DMA7[i].Latched_Width32 = true;
         sys->DMA7[i].DstInc = 4;
         sys->DMA7[i].CR.DestCR = 3;
         sys->DMA7[i].DstAddrMask = 0x07FFFFFC;
         sys->DMA7[i].CR.Enable = true;
         sys->DMA7[i].CR.Repeat = true;
     }
-
 
     for (u32 i = DMA7_NormalBase; i < DMA7_NormalMax; i++)
     {
@@ -90,9 +91,18 @@ void StartSoundCapDMA(Console* sys, u8 id, timestamp start)
     Sched_AddEvent(sys, start, Evt_SCapDMA70+id);
 }
 
-void StartSoundDMA(Console* sys, u8 id, timestamp start, bool matters)
+void StartSoundDMA(Console* sys, u8 id, timestamp start)
 {
     if (!sys->DMA7[id+DMA7_SoundBase].CR.Enable) return;
+    if (sys->DMA7[id+DMA7_SoundBase].WriteCur != sys->DMA7[id+DMA7_SoundBase].BurstMax)
+    {
+        // CHECKME
+        //if (sys->DMA7[i].CurrentMode != DMAStart_NTRCard)
+        {
+            LogPrint(LOG_DMA|LOG_ODD, "DMA SND: channel already going??? errchan:%"PRIu8" chanmode:%"PRIu8"\n", id, sys->DMA7[id+DMA7_SoundBase].CurrentMode);
+        }
+        return;
+    }
     sys->DMA7[id+DMA7_SoundBase].NeedsInit = true;
     Sched_AddEvent(sys, start, Evt_SndDMA70+id);
 }
@@ -263,7 +273,6 @@ void DMA_CompPost(Console* sys, timestamp now, const u8 id, u32 rdata, const boo
     channel->CompCur++;
     if (channel->CompCur == channel->CompMax) // burst complete
     {
-        MainRAM_TestKillBurst(sys, now, a9);
         bool dmaqueued = false;
         if (channel->Latched_NumWords <= 0)
         {
@@ -295,14 +304,26 @@ void DMA_CompPost(Console* sys, timestamp now, const u8 id, u32 rdata, const boo
         }
     }
 
-    if (!load) return;
-
-    channel->RData = rdata;
-    if (!channel->Latched_Width32)
+    if (!load)
     {
-        channel->RData = ROR32(channel->RData , (((channel->Latched_SrcAddr - channel->SrcInc) & 2) * 8));
-        channel->RData &= 0xFFFF;
-        channel->RData |= channel->RData << 16;
+        if (channel->CurrentMode == DMAStart_Audio) SoundFIFO_Fill(sys, channel->RData, id-DMA7_SoundBase); // spaghetti...
+        return;
+    }
+
+    if (channel->CurrentMode == DMAStart_AudioCap)
+    {
+        channel->RData = sys->SoundCaptures[id-DMA7_SoundCapBase].FIFO.Raw;
+        sys->SoundCaptures[id-DMA7_SoundCapBase].Flush = false;
+    }
+    else
+    {
+        channel->RData = rdata;
+        if (!channel->Latched_Width32)
+        {
+            channel->RData = ROR32(channel->RData , (((channel->Latched_SrcAddr - channel->SrcInc) & 2) * 8));
+            channel->RData &= 0xFFFF;
+            channel->RData |= channel->RData << 16;
+        }
     }
 }
 
@@ -421,7 +442,7 @@ void DMA_Step(Console* sys, const u8 id, timestamp now, const bool a9)
             req = (BusReq){
                 .Addr = channel->Latched_SrcAddr, // idk
                 .WrData = 0,
-                .Write = false,
+                .Write = true,
                 .Lock = false,
                 .Man = MAN7_SCAPDMA0 + id,
                 .Prot = {
@@ -434,7 +455,6 @@ void DMA_Step(Console* sys, const u8 id, timestamp now, const bool a9)
                 .Type = HTRANS_BUSY, // checkme: complete guess
                 .CB = CB7_DMA,
             };
-            SoundFIFO_Fill(sys, channel->RData, id-DMA7_SoundBase); // spaghetti...
         }
         else
         {

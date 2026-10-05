@@ -597,19 +597,15 @@ void IO7_Read(Console* sys, const u32 addr, const timestamp now)
 
     case 0x00'03'04: rdata = sys->PowerCR7.Raw; break;
 
-    case 0x00'04'00 ... 0x00'05'00:
-    case 0x00'05'08 ... 0x00'05'1C: rdata = 0; break;
-#if 0
     case 0x00'04'00 ... 0x00'04'FC: rdata = SoundChannel_IORead(sys, addr); break;
 
     case 0x00'05'00: rdata = sys->SoundCR.Raw; break;
-#endif
     case 0x00'05'04: rdata = sys->SoundBias; break;
-#if 0
+
     case 0x00'05'08: rdata = sys->SoundCaptures[0].CR.Raw | (sys->SoundCaptures[1].CR.Raw << 8); break;
     case 0x00'05'10: rdata = sys->SoundCaptures[0].DstAddr; break;
     case 0x00'05'18: rdata = sys->SoundCaptures[1].DstAddr; break;
-#endif
+
     case 0x10'00'00: rdata = IPC_FIFORead(sys, now, false); break;
 
     case 0x10'00'10: rdata = GameCard_ROMDataRead(sys, now, false); break;
@@ -765,9 +761,6 @@ void IO7_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
             MaskedWrite(sys->Bios7Prot, wrdata, mask & 0x3FFC); // mask is a guess; in practice the only value ever written is "0x1205"
         break;
 
-    case 0x00'04'00 ... 0x00'05'00:
-    case 0x00'05'08 ... 0x00'05'1C: break;
-#if 0
     case 0x00'04'00 ... 0x00'04'FC: SoundChannel_IOWrite(sys, addr, wrdata, mask, now); break;
     case 0x00'05'00:
         if (!sys->PowerCR7.AudioPower) break; // read only
@@ -787,14 +780,12 @@ void IO7_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
             }
         }*/
         break;
-#endif
 
     case 0x00'05'04:
         if (!sys->PowerCR7.AudioPower) break; // read only
         MaskedWrite(sys->SoundBias, wrdata, mask & 0x3FF);
         break;
 
-#if 0
     case 0x00'05'08:
         if (!sys->PowerCR7.AudioPower) break; // read only
         if (mask & 0x00FF) SoundCapture_CRWrite(sys, wrdata & 0xFF, now, 0);
@@ -808,7 +799,7 @@ void IO7_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
     case 0x00'05'14:
         if (!sys->PowerCR7.AudioPower) break; // read only
         MaskedWrite(sys->SoundCaptures[0].Length, wrdata, mask & 0xFFFF);
-        sys->DMA7.Channels[0+DMA7_SoundCapBase].NumWords = sys->SoundCaptures[0].Length + (sys->SoundCaptures[0].Length == 0);
+        sys->DMA7[0+DMA7_SoundCapBase].NumWords = sys->SoundCaptures[0].Length + (sys->SoundCaptures[0].Length == 0);
         break;
     case 0x00'05'18:
         if (!sys->PowerCR7.AudioPower) break; // read only
@@ -817,10 +808,9 @@ void IO7_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
     case 0x00'05'1C:
         if (!sys->PowerCR7.AudioPower) break; // read only
         MaskedWrite(sys->SoundCaptures[1].Length, wrdata, mask & 0xFFFF);
-        sys->DMA7.Channels[1+DMA7_SoundCapBase].NumWords = sys->SoundCaptures[1].Length + (sys->SoundCaptures[1].Length == 0);
+        sys->DMA7[1+DMA7_SoundCapBase].NumWords = sys->SoundCaptures[1].Length + (sys->SoundCaptures[1].Length == 0);
         break;
 
-#endif
     default:
         LogPrint(LOG_ARM7 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO7 WRITE: %08"PRIX32" %08"PRIX32" %08"PRIX32" @ %08"PRIX32"\n", addr, wrdata, mask, sys->A7TDMI.ARM.PC);
         break;

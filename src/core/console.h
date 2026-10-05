@@ -359,7 +359,7 @@ typedef struct Console
 
     Timer Timers9[4];
     Timer Timers7[4];
-    Timer TimerSound[16];
+    Timer TimersSound[16];
 
     union {
         u8 Raw;

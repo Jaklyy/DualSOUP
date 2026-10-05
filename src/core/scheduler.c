@@ -169,6 +169,12 @@ Core_Ret Sched_RunEvent(Console* sys)
 
     case Evt_SCapDMA70
      ... Evt_DMA73:         DMA_Step(sys, evt-Evt_SCapDMA70, now, false); break;
+
+    case Evt_TimerSnd0CR
+     ... Evt_TimerSndFCR:   Timer_UpdateCR(sys, sys->TimersSound, evt-Evt_TimerSnd0CR, now, TimerType_Snd); break;
+    case Evt_TimerSnd0Run
+     ... Evt_TimerSndFRun:  Timer_Run(sys, sys->TimersSound, evt-Evt_TimerSnd0Run, now, TimerType_Snd); break;
+
     case Evt_Timer70CR
      ... Evt_Timer73CR:     Timer_UpdateCR(sys, sys->Timers7, evt-Evt_Timer70CR, now, TimerType_7); break;
     case Evt_Timer70Run

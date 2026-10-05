@@ -107,9 +107,10 @@ void AudioMixer_Sample(Console* sys, timestamp now)
     sys->AudioFrac = 0;//((timestamp)NTR_SysClock + sys->AudioFrac) % SoundMixerOutput;
 }
 
-void SoundFIFO_Fill(Console* sys, const u32 val, const u8 id)
+void SoundFIFO_Fill(Console* sys, const u32 val, const u8 num)
 {
-    SoundChannel* channel = &sys->SoundChannels[id];
+    //printf("fill %i\n", num);
+    SoundChannel* channel = &sys->SoundChannels[num];
     MemoryWrite(32, channel->FIFO, channel->FIFO_FillPtr, sizeof(channel->FIFO), val, 0xFFFFFFFF);
 
     channel->FIFO_FillPtr+=4;
@@ -117,12 +118,13 @@ void SoundFIFO_Fill(Console* sys, const u32 val, const u8 id)
     channel->FIFO_Bytes+=4;
 }
 
-u32 SoundFIFO_Drain(Console* sys, SoundChannel* channel, u8 numbytes, const u8 id, const timestamp now)
+u32 SoundFIFO_Drain(Console* sys, SoundChannel* channel, u8 numbytes, const u8 num, const timestamp now)
 {
+    //printf("drain %i\n", num);
     if (channel->FIFO_Bytes < numbytes) // fifo empty
     {
-       // LogPrint(LOG_SOUND, "SOUND FIFO OVERFLOW: Channel: %i cr:%08X p:%X m:%lX dma:%08X tim:%06X\n",
-          //  id, channel->CR.Raw, channel->Prog, channel->SampleMax, sys->DMA7.Channels[id+DMA7_SoundBase].CR.Raw, sys->Timers7[id+4].Regs);
+        LogPrint(LOG_SOUND, "SOUND FIFO OVERFLOW: Channel: %i cr:%08X p:%X m:%lX dma:%08X tim:%06X\n",
+            num, channel->CR.Raw, channel->Prog, channel->SampleMax, sys->DMA7[num+DMA7_SoundBase].CR.Raw, sys->TimersSound[num].Regs);
         return 0;
     }
     u32 ret;
@@ -138,16 +140,30 @@ u32 SoundFIFO_Drain(Console* sys, SoundChannel* channel, u8 numbytes, const u8 i
     channel->FIFO_Bytes-=numbytes;
     if (channel->FIFO_Bytes <= 16)
     {
-        StartSoundDMA(sys, id, now+1, false);
+        StartSoundDMA(sys, num, now+1);
     }
     return ret;
 }
 
-extern void Timer7_UpdateCRs(Console* sys, timestamp now);
-extern void SoundChannel_Disable(Console* sys, const u8 id);
-void SoundFIFO_Sample(Console* sys, const u8 id, const timestamp now)
+void SoundChannel_Disable(Console* sys, const u8 num, timestamp now)
 {
-    SoundChannel* channel = &sys->SoundChannels[id];
+    // disable dma
+    sys->DMA7[num+DMA7_SoundBase].CR.Repeat = false;
+    sys->DMA7[num+DMA7_SoundBase].CR.Enable = false;
+    sys->DMA7[num+DMA7_SoundBase].Latched_NumWords = 0;
+    sys->DMA7[num+DMA7_SoundBase].NumWords = 0;
+    sys->DMA7[num+DMA7_SoundBase].WriteCur = 0; // checkme?
+    sys->DMA7[num+DMA7_SoundBase].BurstMax = 0; // checkme?
+    sys->TimersSound[num].NeedsUpdate = true;
+    sys->TimersSound[num].BufferedRegs &= 0xFFFF; // checkme?
+    Sched_AddEvent(sys, now+DSClk33(1), Evt_TimerSnd0CR + num);
+
+    sys->SoundChannels[num].CR.Enable = false;
+}
+
+void SoundFIFO_Sample(Console* sys, const u8 num, const timestamp now)
+{
+    SoundChannel* channel = &sys->SoundChannels[num];
 
     if (!channel->CR.Enable)
     {
@@ -157,13 +173,12 @@ void SoundFIFO_Sample(Console* sys, const u8 id, const timestamp now)
         //    printf("trying to hold sample\n");
 
         // disable timer
-        if (((id != 1) || !sys->SoundCaptures[0].CR.Enable) && ((id != 3) || !sys->SoundCaptures[1].CR.Enable))
+        if (((num != 1) || !sys->SoundCaptures[0].CR.Enable) && ((num != 3) || !sys->SoundCaptures[1].CR.Enable))
         {
-            sys->Timers7[id+4].NeedsUpdate = true;
-            sys->Timers7[id+4].BufferedRegs = 0x00'0000;
+            sys->TimersSound[num].NeedsUpdate = true;
+            sys->TimersSound[num].BufferedRegs &= 0xFFFF;
 
-          //  Sched_AddEvent(sys, now+DSClk33(1), Evt_Timer7);
-            //sys->timertemp7 = TIMER_UPDATECR;
+            Sched_AddEvent(sys, now+DSClk33(1), Evt_TimerSnd0CR + num);
             return;
         }
     }
@@ -181,7 +196,7 @@ void SoundFIFO_Sample(Console* sys, const u8 id, const timestamp now)
             if (channel->Prog >= PCM_Delay) // fetch pcm
             {
                 if (channel->FIFO_Bytes < 1) break;
-                channel->CurSample = (s16)(SoundFIFO_Drain(sys, channel, 1, id, now) << 8);
+                channel->CurSample = (s16)(SoundFIFO_Drain(sys, channel, 1, num, now) << 8);
             }
             else if (channel->Prog > 0) channel->CurSample = 0;
             break;
@@ -191,7 +206,7 @@ void SoundFIFO_Sample(Console* sys, const u8 id, const timestamp now)
             if (channel->Prog >= PCM_Delay) // fetch pcm
             {
                 if (channel->FIFO_Bytes < 2) break;
-                channel->CurSample = (s16)SoundFIFO_Drain(sys, channel, 2, id, now);
+                channel->CurSample = (s16)SoundFIFO_Drain(sys, channel, 2, num, now);
             }
             else if (channel->Prog > 0) channel->CurSample = 0;
             break;
@@ -216,7 +231,7 @@ void SoundFIFO_Sample(Console* sys, const u8 id, const timestamp now)
                 if ((channel->Prog & 1) == (ADPCM_Delay & 1))
                 {
                     if (channel->FIFO_Bytes < 1) break;
-                    channel->ADPCM_Data = SoundFIFO_Drain(sys, channel, 1, id, now);
+                    channel->ADPCM_Data = SoundFIFO_Drain(sys, channel, 1, num, now);
                 }
                 else
                 {
@@ -247,7 +262,7 @@ void SoundFIFO_Sample(Console* sys, const u8 id, const timestamp now)
             else if (channel->Prog == ADPCM_HeaderDelay) // fetch header
             {
                 if (channel->FIFO_Bytes < 4) break;
-                u32 header = SoundFIFO_Drain(sys, channel, 4, id, now);
+                u32 header = SoundFIFO_Drain(sys, channel, 4, num, now);
                 channel->ADPCM_Sample = (s16)(header & 0xFFFF);
                 DS_CLAMP(channel->ADPCM_Sample, >, 0x7FFF)
                 DS_CLAMP(channel->ADPCM_Sample, <, -0x7FFF)
@@ -264,7 +279,7 @@ void SoundFIFO_Sample(Console* sys, const u8 id, const timestamp now)
 
         case AudioFormat_PSGNoise:
         {
-            if (id >= 14) // noise
+            if (num >= 14) // noise
             {
                 if (channel->Noise_Cur & 0x1)
                 {
@@ -280,7 +295,7 @@ void SoundFIFO_Sample(Console* sys, const u8 id, const timestamp now)
                     channel->CurSample = 0x7FFF;
                 }
             }
-            else if (id >= 8) // wave
+            else if (num >= 8) // wave
             {
                 channel->Prog %= 8;
 
@@ -297,13 +312,13 @@ void SoundFIFO_Sample(Console* sys, const u8 id, const timestamp now)
         channel->LastSubmit = now / MixerDivide;
 
         if (channel->Prog >= channel->SampleMax)
-            SoundChannel_Disable(sys, id);
+            SoundChannel_Disable(sys, num, now);
     }
 
     // sound capture
-    if ((id == 1) || (id == 3))
+    if ((num == 1) || (num == 3))
     {
-        SoundCapture* cap = &sys->SoundCaptures[id/2];
+        SoundCapture* cap = &sys->SoundCaptures[num/2];
 
         if (!cap->CR.Enable || cap->Flush) return;
 
@@ -312,13 +327,13 @@ void SoundFIFO_Sample(Console* sys, const u8 id, const timestamp now)
         s16 out;
         if (cap->CR.Source) // channel 0/2
         {
-            out = channel[id-1].MixedSample >> 11;
+            out = channel[num-1].MixedSample >> 11;
             if (cap->CR.Addition)
             {
                 printf("addition\n");
-                out += channel[id].MixedSample >> 11; // checkme: allegedly this can overflow
+                out += channel[num].MixedSample >> 11; // checkme: allegedly this can overflow
             }
-            else if ((out < 0) && (channel[id].MixedSample < 0))
+            else if ((out < 0) && (channel[num].MixedSample < 0))
             {
                 printf("capture bug\n");
                 out = -0x8000; // checkme: this is a thing apparently?
@@ -326,7 +341,7 @@ void SoundFIFO_Sample(Console* sys, const u8 id, const timestamp now)
         }
         else // mixer
         {
-            s32 tmp = sys->MixerOut[id/2] >> 8;
+            s32 tmp = sys->MixerOut[num/2] >> 8;
             DS_CLAMP(tmp, <, -0x8000)
             DS_CLAMP(tmp, >,  0x7FFF)
             out = tmp;
@@ -347,7 +362,7 @@ void SoundFIFO_Sample(Console* sys, const u8 id, const timestamp now)
 
         if (cap->Flush)
         {
-            StartSoundCapDMA(sys, id/2, now+1);
+            StartSoundCapDMA(sys, num/2, now+1);
         }
 
         if (cap->Prog >= (cap->LatchedLength * sizeof(u32)))
@@ -365,64 +380,54 @@ void SoundFIFO_Sample(Console* sys, const u8 id, const timestamp now)
     }
 }
 
-
-void SoundChannel_Disable(Console* sys, const u8 id)
-{
-    // disable dma
-    //sys->DMA7.Channels[id+DMA7_SoundBase].CR.Repeat = false;
-    //sys->DMA7.Channels[id+DMA7_SoundBase].CR.Enable = false;
-    //sys->DMA7.Channels[id+DMA7_SoundBase].Latched_NumWords = 0;
-
-    sys->SoundChannels[id].CR.Enable = false;
-}
-
+#if 0
 void SoundChannel_KillAll(Console* sys, const timestamp now)
 {
     for (int i = 0; i < 16; i++)
     {
         // disable dma
-        //sys->DMA7.Channels[i+DMA7_SoundBase].CR.Repeat = false;
-        //sys->DMA7.Channels[i+DMA7_SoundBase].CR.Enable = false;
+        sys->DMA7[i+DMA7_SoundBase].CR.Repeat = false;
+        sys->DMA7[i+DMA7_SoundBase].CR.Enable = false;
 
         // disable timer
-        sys->Timers7[i+4].NeedsUpdate = true;
-        sys->Timers7[i+4].BufferedRegs = 0x00'0000;
+        sys->TimersSound[i].NeedsUpdate = true;
+        sys->TimersSound[i].BufferedRegs = 0x00'0000;
     }
 
-    //Sched_AddEvent(sys, now+DSClk33(1), Evt_Timer7);
-    //sys->timertemp7 = TIMER_UPDATECR;
+    Sched_AddEvent(sys, now+DSClk33(1), Evt_Timer7);
+    sys->timertemp7 = TIMER_UPDATECR;
 }
+#endif
 
-void SoundChannel_Start(Console* sys, SoundChannel* channel, const u8 id, const timestamp now)
+void SoundChannel_Start(Console* sys, SoundChannel* channel, const u8 num, const timestamp now)
 {
     if (channel->CR.Format != AudioFormat_PSGNoise) // checkme
     {
         // set up DMA
         if (channel->CR.RepeatMode == 0)
         {
-            //sys->DMA7.Channels[id+DMA7_SoundBase].Latched_NumWords = 4;
-            //sys->DMA7.Channels[id+DMA7_SoundBase].NumWords = 4;
-            //sys->DMA7.Channels[id+DMA7_SoundBase].CR.Repeat = true;
+            sys->DMA7[num+DMA7_SoundBase].Latched_NumWords = 4;
+            sys->DMA7[num+DMA7_SoundBase].NumWords = 4;
+            sys->DMA7[num+DMA7_SoundBase].CR.Repeat = true;
         }
         else
         {
-            //sys->DMA7.Channels[id+DMA7_SoundBase].Latched_NumWords = channel->SoundLen + channel->LoopOffs;
-            //sys->DMA7.Channels[id+DMA7_SoundBase].NumWords = channel->SoundLen;
-            //sys->DMA7.Channels[id+DMA7_SoundBase].CR.Repeat = (channel->CR.RepeatMode == 1);
+            sys->DMA7[num+DMA7_SoundBase].Latched_NumWords = channel->SoundLen + channel->LoopOffs;
+            sys->DMA7[num+DMA7_SoundBase].NumWords = channel->SoundLen;
+            sys->DMA7[num+DMA7_SoundBase].CR.Repeat = (channel->CR.RepeatMode == 1);
         }
-        //sys->DMA7.Channels[id+DMA7_SoundBase].Latched_SrcAddr = channel->SrcAddr;
-        //sys->DMA7.Channels[id+DMA7_SoundBase].SrcAddr = channel->SrcAddr + ((u32)(channel->LoopOffs)*4);
-       // sys->DMA7.Channels[id+DMA7_SoundBase].CR.SourceCR = (channel->CR.RepeatMode == 1) ? 3 : 1;
-       // sys->DMA7.Channels[id+DMA7_SoundBase].CR.Enable = true;
+        sys->DMA7[num+DMA7_SoundBase].Latched_SrcAddr = channel->SrcAddr;
+        sys->DMA7[num+DMA7_SoundBase].SrcAddr = channel->SrcAddr + ((u32)(channel->LoopOffs)*4);
+        sys->DMA7[num+DMA7_SoundBase].CR.SourceCR = (channel->CR.RepeatMode == 1) ? 3 : 1;
+        sys->DMA7[num+DMA7_SoundBase].CR.Enable = true;
     }
 
     // set up timers
-    //if (sys->Timers7[id+4].CR.Enable) printf("timer fucked it all up!\n"); // todo: is this actually a problem?
-    sys->Timers7[id+4].NeedsUpdate = true;
-    sys->Timers7[id+4].CR.Enable = false; // hacky?
-    sys->Timers7[id+4].BufferedRegs = 0xC0'0000 /* Enable, IRQ */ | channel->Timer;
-   // Sched_AddEvent(sys, now+DSClk33(1), Evt_Timer7);
-   // sys->timertemp7 = TIMER_UPDATECR;
+    //if (sys->TimersSound[num].CR.Enable) printf("timer fucked it all up!\n"); // todo: is this actually a problem?
+    sys->TimersSound[num].NeedsUpdate = true;
+    sys->TimersSound[num].CR.Enable = false; // hacky?
+    sys->TimersSound[num].BufferedRegs = 0x80'0000 | channel->Timer;
+    Sched_AddEvent(sys, now+DSClk33(1), Evt_TimerSnd0CR + num);
 
     if (channel->CR.RepeatMode == 2)
     {
@@ -466,7 +471,7 @@ void SoundChannel_Start(Console* sys, SoundChannel* channel, const u8 id, const 
     channel->FIFO_DrainPtr = 0;
     channel->FIFO_FillPtr = 0;
     channel->Prog = 0;
-    StartSoundDMA(sys, id, now+1, true);
+    StartSoundDMA(sys, num, now+1);
 }
 
 void SoundChannel_TryStartAll(Console* sys, const timestamp now)
@@ -483,8 +488,8 @@ void SoundChannel_TryStartAll(Console* sys, const timestamp now)
 u32 SoundChannel_IORead(Console* sys, const u32 addr)
 {
     if ((addr & 0xC) != 0) return 0; // checkme: supposedly only each channel's control reg can be read?
-    u8 id = ((addr >> 4) & 0xF);
-    SoundChannel* channel = &sys->SoundChannels[id];
+    u8 num = ((addr >> 4) & 0xF);
+    SoundChannel* channel = &sys->SoundChannels[num];
 
     return channel->CR.Raw;
 }
@@ -492,64 +497,62 @@ u32 SoundChannel_IORead(Console* sys, const u32 addr)
 void SoundChannel_IOWrite(Console* sys, const u32 addr, const u32 val, const u32 mask, const timestamp now)
 {
     if (!sys->PowerCR7.AudioPower) return; // read only
-    u8 id = ((addr >> 4) & 0xF);
-    SoundChannel* channel = &sys->SoundChannels[id];
+    u8 num = ((addr >> 4) & 0xF);
+    SoundChannel* channel = &sys->SoundChannels[num];
 
     switch(addr & 0xC)
     {
     case 0x0:
         u32 oldcr = channel->CR.Raw;
         MaskedWrite(channel->CR.Raw, val, mask & 0xFF7F837F);
-        if (channel->CR.Enable && (oldcr>>31) && ((oldcr >> 24) ^ (channel->CR.Raw >> 24))) LogPrint(LOG_SOUND, "Updating sound CR while active %i\n", id);
+        if (channel->CR.Enable && (oldcr>>31) && ((oldcr >> 24) ^ (channel->CR.Raw >> 24))) LogPrint(LOG_SOUND, "Updating sound CR while active %"PRIu8"\n", num);
         if (channel->CR.Enable ^ (oldcr>>31))
         {
             if (channel->CR.Enable)
             {
-                SoundChannel_Start(sys, channel, id, now);
+                SoundChannel_Start(sys, channel, num, now);
             }
             else
             {
-                SoundChannel_Disable(sys, id);
-                // disable timer
-                /*Scheduler_TryRun(sys, false, now, true);
-                sys->Timers7[id+4].NeedsUpdate = true;
-                sys->Timers7[id+4].BufferedRegs = 0x00'0000;
-                Schedule_Event(sys, Timer7_UpdateCRs, Evt_Timer7, now+1);*/
+                SoundChannel_Disable(sys, num, now);
             }
         }
         if (!channel->CR.Enable && (!channel->CR.Hold && (oldcr & (1<<15)))) // clear hold (CHECKME?)
+        {
+            LogPrint(LOG_SOUND,"Tentative: Hold clear? %"PRIu8"\n", num);
             channel->CurSample = 0;
+        }
         break;
 
     case 0x4:
         MaskedWrite(channel->SrcAddr, val, mask & 0x07FF'FFFC);
-        if (channel->CR.Enable) LogPrint(LOG_SOUND,"Writing src while active %i\n", id);
+        if (channel->CR.Enable) LogPrint(LOG_SOUND,"Writing src while active %"PRIu8"\n", num);
         break;
 
     case 0x8:
         MaskedWrite(channel->Timer, val, mask & 0xFFFF);
-        if (sys->Timers7[id+4].CR.Enable && (mask & 0xFFFF))
+        if (mask & 0x0000FFFF)
         {
-            sys->Timers7[id+4].NeedsUpdate = true;
-            sys->Timers7[id+4].BufferedRegs = 0xC0'0000 | (val & 0xFFFF);
-           // Sched_AddEvent(sys, now+DSClk33(1), Evt_Timer7);
-           // sys->timertemp7 = TIMER_UPDATECR;
+            sys->TimersSound[num].NeedsUpdate = true;
+            sys->TimersSound[num].BufferedRegs &= 0xFF'0000;
+            sys->TimersSound[num].BufferedRegs |= channel->Timer;
+            Sched_AddEvent(sys, now+DSClk33(1), Evt_TimerSnd0CR + num);
         }
 
         MaskedWrite(channel->LoopOffs, val>>16, (mask>>16) & 0xFFFF);
-        if (channel->CR.Enable && mask & 0xFFFF0000) LogPrint(LOG_SOUND, "Writing loopoffs while active %i\n", id);
+        if (channel->CR.Enable && mask & 0xFFFF0000) LogPrint(LOG_SOUND, "Writing loopoffs while active %"PRIu8"\n", num);
         break;
 
     case 0xC:
         MaskedWrite(channel->SoundLen, val, mask & 0x003F'FFFF);
-        if (channel->CR.Enable) LogPrint(LOG_SOUND, "Writing len while active %i\n", id);
+        if (channel->CR.Enable) LogPrint(LOG_SOUND, "Writing len while active %"PRIu8"\n", num);
         break;
     }
 }
 
-void SoundCapture_CRWrite(Console* sys, const u8 val, const timestamp now, const u8 id)
+void SoundCapture_CRWrite(Console* sys, const u8 val, const timestamp now, const u8 num)
 {
-    SoundCapture* cap = &sys->SoundCaptures[id];
+    SoundCapture* cap = &sys->SoundCaptures[num];
     bool olden = cap->CR.Enable;
     cap->CR.Raw = val & 0x8F;
     if (cap->CR.Enable ^ olden)
@@ -559,14 +562,16 @@ void SoundCapture_CRWrite(Console* sys, const u8 val, const timestamp now, const
             cap->Prog = 0;
             cap->Flush = false;
             cap->LatchedLength = (cap->Length + (cap->Length == 0)) * sizeof(u32);
-           // sys->DMA7.Channels[DMA7_SoundCapBase+id].Latched_NumWords = 0;
-           // sys->DMA7.Channels[DMA7_SoundCapBase+id].DstAddr = cap->DstAddr;
+            sys->DMA7[DMA7_SoundCapBase+num].Latched_NumWords = 0;
+            sys->DMA7[DMA7_SoundCapBase+num].DstAddr = cap->DstAddr;
             // set up timers
-            sys->Timers7[id+4].NeedsUpdate = true;
-            sys->Timers7[id+4].CR.Enable = false; // hacky?
-            sys->Timers7[id+4].BufferedRegs = 0xC0'0000 /* Enable, IRQ */ | sys->SoundChannels[(id*2)+1].Timer;
-           // Sched_AddEvent(sys, now+DSClk33(1), Evt_Timer7);
-           // sys->timertemp7 = TIMER_UPDATECR;
+            if (!sys->SoundChannels[(num*2)+1].CR.Enable)
+            {
+                sys->TimersSound[(num*2)+1].NeedsUpdate = true;
+                sys->TimersSound[(num*2)+1].CR.Enable = false; // hacky?
+                sys->TimersSound[(num*2)+1].BufferedRegs = 0xC0'0000 /* Enable, IRQ */ | sys->SoundChannels[(num*2)+1].Timer;
+                Sched_AddEvent(sys, now+DSClk33(1), Evt_TimerSnd0CR+((num*2)+1));
+            }
         }
     }
     //else cap->CR.Addition = false; // checkme?
