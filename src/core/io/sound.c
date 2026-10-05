@@ -154,9 +154,11 @@ void SoundChannel_Disable(Console* sys, const u8 num, timestamp now)
     sys->DMA7[num+DMA7_SoundBase].NumWords = 0;
     sys->DMA7[num+DMA7_SoundBase].WriteCur = 0; // checkme?
     sys->DMA7[num+DMA7_SoundBase].BurstMax = 0; // checkme?
+    #if 0
     sys->TimersSound[num].NeedsUpdate = true;
     sys->TimersSound[num].BufferedRegs &= 0xFFFF; // checkme?
     Sched_AddEvent(sys, now+DSClk33(1), Evt_TimerSnd0CR + num);
+    #endif
 
     sys->SoundChannels[num].CR.Enable = false;
 }
@@ -365,7 +367,7 @@ void SoundFIFO_Sample(Console* sys, const u8 num, const timestamp now)
             StartSoundCapDMA(sys, num/2, now+1);
         }
 
-        if (cap->Prog >= (cap->LatchedLength * sizeof(u32)))
+        if (cap->Prog >= cap->LatchedLength)
         {
             if (cap->CR.NoLoop)
             {
@@ -561,7 +563,7 @@ void SoundCapture_CRWrite(Console* sys, const u8 val, const timestamp now, const
         {
             cap->Prog = 0;
             cap->Flush = false;
-            cap->LatchedLength = (cap->Length + (cap->Length == 0)) * sizeof(u32);
+            cap->LatchedLength = (cap->Length + (cap->Length == 0)) * 4;
             sys->DMA7[DMA7_SoundCapBase+num].Latched_NumWords = 0;
             sys->DMA7[DMA7_SoundCapBase+num].DstAddr = cap->DstAddr;
             // set up timers

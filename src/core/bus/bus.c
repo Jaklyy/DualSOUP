@@ -917,7 +917,7 @@ void Bus7_Write(Console* sys, BusReq* req, timestamp now)
     const u32 mask = MakeWriteMask(addr, size);
 
     // disgusting hack
-    if (req->Man7 >= MAN7_SNDDMA0 && req->Man7 <= MAN7_NDMA3)
+    if (req->Man7 >= MAN7_SCAPDMA0 && req->Man7 <= MAN7_NDMA3)
         req->WrData = sys->DMA7[req->Man7-MAN7_SCAPDMA0].RData;
 
     const u32 wrdata = req->WrData;
