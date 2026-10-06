@@ -9,7 +9,7 @@ OBJDIR := /obj
 
 SRCDIR := src
 
-LIBDIRS := /opt/homebrew/lib
+LIBDIRS := -L/opt/homebrew/lib -L/opt/homebrew/include
 
 LIBS := -lSDL3
 
@@ -86,7 +86,7 @@ $(BUILDDIR)$(OBJDIR)/%.cpp.o: %.cpp
 
 $(BUILDDIR)/DualSOUP: $(OBJS)
 	@echo linking...
-	@$(CXX) $(CPPFLAGS) $(CFLAGS) $^ -o $@ -L$(LIBDIRS) $(LIBS)
+	@$(CXX) $(CPPFLAGS) $(CFLAGS) $^ -o $@ $(LIBDIRS) $(LIBS)
 
 .PHONY: clean
 clean:
