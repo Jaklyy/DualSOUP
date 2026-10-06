@@ -156,17 +156,21 @@ void Config_Write(const char* path, void* cfgin, const ConfigEntry* cfgref, cons
             valstr = pun.str[entry.Offset/sizeof(pun.str[0])];
             if (valstr == nullptr)
             {
+                printf("yeahh\n");
                 valstr = calloc(1, 1);
                 valstrneedsnormalfree = true;
             }
+            printf("not bool\n");
             break;
         }
         case SEARCH_BOOL:
         {
             valstr = boolnames[pun.boolean[entry.Offset/sizeof(pun.boolean[0])]];
+            printf("bool??\n");
             break;
         }
         }
+        printf("%zu\n", i);
         fulllen += strlen(valstr);
         outstr = malloc(fulllen);
         strcpy(outstr, entrystr);

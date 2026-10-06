@@ -153,7 +153,7 @@ static const ConfigEntry GameCardCfgData[] =
     },
     {
         .Name=      "Key1FromBios",
-        .Offset=    offsetof(GameCardConfig, FlashChipID),
+        .Offset=    offsetof(GameCardConfig, ImportKey1FromNTRBios7),
         .BDefVal=   true,
         .Type=      SEARCH_BOOL,
     },

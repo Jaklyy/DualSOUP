@@ -436,18 +436,20 @@ void ImportGui_Loop(MainGUI* mgui, ImportGui* igui, const bool NDS)
         char* start; char* end;
         if ((start = strrchr(igui->ROMPath, '/')) == NULL)
             start = igui->ROMPath;
+        else start+=1;
         if ((end = strrchr(start, '.')) == NULL)
             end = start+strlen(start)+1;
 
         char* romfoldername;
-        if ((romfoldername = calloc(1, end-start)) == NULL)
+        if ((romfoldername = calloc(1, end-start+1)) == NULL)
             goto out;
         strncpy(romfoldername, start, end-start);
         char* path = SDL_GetPrefPath("DualSOUP", "DualSOUP");
 
-        char submpath[strlen(path)+sizeof(ndsfolder)+strlen(romfoldername)+sizeof(cfgname)];
-        char savpath[strlen(path)+sizeof(ndsfolder)+strlen(romfoldername)+sizeof(iconfile)];
-        char iconpath[strlen(path)+sizeof(ndsfolder)+strlen(romfoldername)+sizeof(savfolder)+sizeof(savfile)];
+        size_t basefolderlen = strlen(path)+sizeof(ndsfolder)+strlen(romfoldername);
+        char submpath[basefolderlen+sizeof(cfgname)];
+        char savpath[basefolderlen+sizeof(savfolder)+sizeof(savfile)];
+        char iconpath[basefolderlen+sizeof(iconfile)];
         if (NDS)
         {
             strcpy(submpath, path);
