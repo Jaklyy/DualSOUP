@@ -546,7 +546,7 @@ void DMA9_IOWriteHandler(Console* sys, timestamp now, DMA_Channel* channels, u32
             if (cur->CR.Enable == true)
             {
                 // starting dma channel
-                DMA9_Enable(sys, cur, now);
+                DMA9_Enable(sys, cur, now+DSClk33(2));
             }
             else
             {
@@ -600,7 +600,7 @@ void DMA7_IOWriteHandler(Console* sys, timestamp now, DMA_Channel* channels, u32
             if (cur->CR.Enable == true)
             {
                 // starting dma channel
-                DMA7_Enable(sys, cur, now);
+                DMA7_Enable(sys, cur, now+DSClk33(3));
             }
             else
             {

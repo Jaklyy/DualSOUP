@@ -158,7 +158,8 @@ Core_Ret Sched_RunEvent(Console* sys)
     case Evt_Timer90Run
      ... Evt_Timer93Run:    Timer_Run(sys, sys->Timers9, evt-Evt_Timer90Run, now, TimerType_9); break;
 
-    case Evt_Bus9:          Bus_Run(sys, now, true); break;
+    case Evt_Bus9Cmp:       Bus_RunCmp(sys, now, true); break;
+    case Evt_Bus9Arb:       Bus_RunArb(sys, now, true); break;
     case Evt_Divider:       IO9_FinishDiv(sys); break;
     case Evt_Sqrt:          IO9_FinishSqrt(sys); break;
 
@@ -166,6 +167,9 @@ Core_Ret Sched_RunEvent(Console* sys)
 
     case Evt_UpdateIRQ7:    IRQ7_Update(sys, now); break;
     case Evt_ARM7:          A7TDMI_Run(&sys->A7TDMI, now); break;
+    case Evt_ARM7DataRead:  A7TDMI_DataReadActual(&sys->A7TDMI, now); break;
+    case Evt_ARM7InstrRead: A7TDMI_InstrReadActual(&sys->A7TDMI, now); break;
+    case Evt_ARM7DataWrite: A7TDMI_DataWriteActual(&sys->A7TDMI, now); break;
 
     case Evt_SCapDMA70
      ... Evt_DMA73:         DMA_Step(sys, evt-Evt_SCapDMA70, now, false); break;
@@ -180,7 +184,8 @@ Core_Ret Sched_RunEvent(Console* sys)
     case Evt_Timer70Run
      ... Evt_Timer73Run:    Timer_Run(sys, sys->Timers7, evt-Evt_Timer70Run, now, TimerType_7); break;
 
-    case Evt_Bus7:          Bus_Run(sys, now, false); break;
+    case Evt_Bus7Cmp:       Bus_RunCmp(sys, now, false); break;
+    case Evt_Bus7Arb:       Bus_RunArb(sys, now, false); break;
 
     case Evt_SPI:           SPI_Finish(sys, now); break;
     case Evt_MixAudio:      AudioMixer_Sample(sys, now); break;

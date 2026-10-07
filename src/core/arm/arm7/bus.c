@@ -8,6 +8,12 @@
 
 void A7TDMI_DataRead(ARM7TDMI* a7tdmi, const timestamp now)
 {
+    a7tdmi->BusGo = true;
+    Sched_AddEvent(a7tdmi->ARM.Sys, now, Evt_ARM7DataRead);
+}
+
+void A7TDMI_DataReadActual(ARM7TDMI* a7tdmi, const timestamp now)
+{
     A7TDMI_PostMem* pass = &a7tdmi->PostMem;
     u32 addr = pass->Addr;
     ARM_DataWidth size = pass->Size;
@@ -33,11 +39,16 @@ void A7TDMI_DataRead(ARM7TDMI* a7tdmi, const timestamp now)
         .Type = ((pass->NumFetchCompleted == 0) ? HTRANS_NONSEQ : HTRANS_SEQ),
         .CB = CB7_7TDMIData,
     };
-    a7tdmi->BusGo = true;
     Bus_Req(a7tdmi->ARM.Sys, &req, now, false);
 }
 
 void A7TDMI_InstrRead(ARM7TDMI* a7tdmi, const timestamp now)
+{
+    a7tdmi->BusGo = true;
+    Sched_AddEvent(a7tdmi->ARM.Sys, now, Evt_ARM7InstrRead);
+}
+
+void A7TDMI_InstrReadActual(ARM7TDMI* a7tdmi, const timestamp now)
 {
     u32 addr = a7tdmi->ARM.PC;
     ARM_DataWidth size = (a7tdmi->ARM.CPSR.Thumb ? ARMDataWidth_16 : ARMDataWidth_32);
@@ -61,18 +72,27 @@ void A7TDMI_InstrRead(ARM7TDMI* a7tdmi, const timestamp now)
         .Type = (nseq ? HTRANS_NONSEQ : HTRANS_SEQ),
         .CB = CB7_7TDMIInstr,
     };
-    a7tdmi->BusGo = true;
     Bus_Req(a7tdmi->ARM.Sys, &req, now, false);
 }
 
 void A7TDMI_DataWrite(ARM7TDMI* a7tdmi, const timestamp now)
 {
+    a7tdmi->BusGo = true;
+    Sched_AddEvent(a7tdmi->ARM.Sys, now, Evt_ARM7DataWrite);
+}
+
+void A7TDMI_DataWriteActual(ARM7TDMI* a7tdmi, const timestamp now)
+{
     A7TDMI_PostMem* pass = &a7tdmi->PostMem;
     u32 addr = pass->Addr;
     ARM_DataWidth size = pass->Size;
 
-    // TODO: how is misalignment of address handled?
-    //if (size == ARMDataWidth_32) addr &= ~3;
+    // nds hardware seems to force align words (but not halfwords!?) when accessing the gba sram interface.
+    // this still occurs in gba mode (on 3ds at least) and the same code run on actual gba hardware will result in unaligned accesses as expected.
+    // so im suspecting, but unable to outright confirm, a cpu revision difference.
+    // though it could be a difference anywhere from the arm7tdmi bus interface, the bus itself, the gba cart sram interface, etc.
+    // but it is almost certainly a hardware revision somewhere along the chain.
+    if (size == ARMDataWidth_32) addr &= ~3;
 
     BusReq req = {
         .Addr = addr,
@@ -88,7 +108,6 @@ void A7TDMI_DataWrite(ARM7TDMI* a7tdmi, const timestamp now)
         .Type = ((pass->NumFetchCompleted == 0) ? HTRANS_NONSEQ : HTRANS_SEQ),
         .CB = CB7_7TDMIData,
     };
-    a7tdmi->BusGo = true;
     Bus_Req(a7tdmi->ARM.Sys, &req, now, false);
 }
 
@@ -119,6 +138,7 @@ void A7TDMI_DataPost(ARM7TDMI* a7tdmi, const timestamp now, u32 rdata)
     else
     {
         a7tdmi->BusGo = false;
+        a7tdmi->ARM.Timestamp = now;
         switch(pass->DataCB)
         {
             case A7TDMIDataCB_LoadSingle: A7TDMI_LDR_Post(a7tdmi); break;
@@ -151,6 +171,7 @@ void A7TDMI_InstrReadPost(ARM7TDMI* a7tdmi, const timestamp now, u32 rdata)
     }
     else
     {
+        a7tdmi->ARM.Timestamp = now;
         a7tdmi->BusGo = false;
         Sched_AddEvent(cpu->Sys, now, Evt_ARM7);
     }

@@ -6,8 +6,7 @@
 
 
 
-// NDS model: ARM7TDMI (unknown revision?) (i'm speculating its Rev 4, but its unconfirmed)
-// GBA model: ARM7TDMI Rev 3A
+// Model: ARM7TDMI Rev 3A (Revision not 100% confirmed for NDS and later?)
 
 /*
     name decodes as:
@@ -109,6 +108,9 @@ void A7TDMI_SWPStore_Post(ARM7TDMI* a7tdmi);
 void A7TDMI_DataRead(ARM7TDMI* a7tdmi, const timestamp now);
 void A7TDMI_InstrRead(ARM7TDMI* a7tdmi, const timestamp now);
 void A7TDMI_DataWrite(ARM7TDMI* a7tdmi, const timestamp now);
+void A7TDMI_DataReadActual(ARM7TDMI* a7tdmi, const timestamp now);
+void A7TDMI_InstrReadActual(ARM7TDMI* a7tdmi, const timestamp now);
+void A7TDMI_DataWriteActual(ARM7TDMI* a7tdmi, const timestamp now);
 
 void A7TDMI_InstrReadPost(ARM7TDMI* a7tdmi, const timestamp now, u32 rdata);
 void A7TDMI_DataPost(ARM7TDMI* a7tdmi, const timestamp now, u32 rdata);

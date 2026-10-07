@@ -11,7 +11,7 @@
 
 
 
-// Full Model Name: ARM946E-S r1p1
+// Model: ARM946E-S r1p1
 
 /*
     Name decodes as:

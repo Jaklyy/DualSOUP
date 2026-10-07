@@ -37,8 +37,9 @@ bool Bus_DebugBreak(Console* sys, timestamp now, Bus_Breakpoint bkptlist[const B
 
 void Bus9_Init(BusImpl* bus)
 {
-    bus->PipeCycles = DSClk33(2);
+    bus->PipeCycles = DSClk33(3);
     bus->HLockGeneric = MAN_NONE; // todo: put in a reset handler
+    bus->CmpMan = MAN_NONE;
     bus->NoPrev = true;
     bus->FIFOEmpty = true;
 }
@@ -46,8 +47,9 @@ void Bus9_Init(BusImpl* bus)
 void Bus7_Init(BusImpl* bus)
 {
     // TODO: RE-ENABLE
-    bus->PipeCycles = 0;//DSClk33(1);
+    bus->PipeCycles = DSClk33(0);
     bus->HLockGeneric = MAN_NONE; // todo: put in a reset handler
+    bus->CmpMan = MAN_NONE;
     bus->NoPrev = true;
     bus->FIFOEmpty = true;
 }
@@ -1014,14 +1016,14 @@ void Bus_Req(Console* sys, const BusReq* req, const timestamp now, const bool a9
 {
     BusImpl* bus = (a9 ? &sys->Bus9 : &sys->Bus7);
 
-    if (bus->ReqList & (1<<(req->Man))) LogPrint(LOG_ALWAYS, "REQ ON REQ!!!!! %"PRIu8"\n", req->Man);
+    if (bus->ReqList & (1<<(req->Man))) LogPrint(LOG_ALWAYS, "BUS REQ OVERWRITE!!!!! %"PRIu8"\n", req->Man);
     bus->ReqList |= (1<<(req->Man));
     bus->Reqs[req->Man] = *req;
 
     if (!bus->LockSched)
     {
         bus->LockSched = true;
-        Sched_AddEventIfEarlier(sys, now, a9 ? Evt_Bus9 : Evt_Bus7);
+        Sched_AddEventIfEarlier(sys, now, a9 ? Evt_Bus9Cmp : Evt_Bus7Cmp);
     }
 }
 
@@ -1033,7 +1035,7 @@ void Bus7_A7Wake(Console* sys, const timestamp now)
         if (!sys->Bus7.LockSched)
         {
             sys->Bus7.LockSched = true;
-            Sched_AddEventIfEarlier(sys, now, Evt_Bus7);
+            Sched_AddEventIfEarlier(sys, now, Evt_Bus7Cmp);
         }
     }
     else
@@ -1047,17 +1049,17 @@ void Bus_TransferPostSetup(Console* sys, const u32 rdata, const bool isread, con
     BusImpl* bus = (a9 ? &sys->Bus9 : &sys->Bus7);
     if (isread) bus->ReadBus = rdata;
     bus->NoPrev = noprev;
-    Sched_AddEvent(sys, end, a9 ? Evt_Bus9 : Evt_Bus7);
+    Sched_AddEvent(sys, end, a9 ? Evt_Bus9Cmp : Evt_Bus7Cmp);
 }
 
 #define reqlista7deny (((a9 || !sys->A7ClkDisable) ? u32_max : ~(1<<MAN7_ARM7)) & bus->ReqList) // speculative method of implementing arm7 halt
 
-void Bus_Run(Console* sys, timestamp now, const bool a9)
+void Bus_RunCmp(Console* sys, timestamp now, const bool a9)
 {
     BusImpl* bus = (a9 ? &sys->Bus9 : &sys->Bus7);
     u32 rdata = bus->ReadBus;
     BusCallbacks cmpcb = CB_None;
-    u8 cmpman = MAN_NONE;
+    bus->CmpMan = MAN_NONE;
     bool wasload = false;
 
     now += DSClk33(1);
@@ -1067,8 +1069,8 @@ void Bus_Run(Console* sys, timestamp now, const bool a9)
     if (!bus->NoPrev)
     {
         BusReq* reqold = &bus->PipeFIFO[bus->ReqActivePtr];
-        cmpman = reqold->Man;
-        u8 mandebug = cmpman;
+        bus->CmpMan = reqold->Man;
+        u8 mandebug = bus->CmpMan;
         cmpcb = reqold->CB;
         wasload = !reqold->Write;
         if (a9 && mandebug == MAN9_ARM9)
@@ -1086,6 +1088,22 @@ void Bus_Run(Console* sys, timestamp now, const bool a9)
         }
     }
 
+    // completion callback
+    switch(cmpcb)
+    {
+    case CB_None: break;
+    case CB9_BIU9InstrNormal ... CB9_BIU9Idle: A946_BIUCompPost(&sys->A946ES, now, rdata, cmpcb); break;
+    case CB9_DMA: DMA_CompPost(sys, now, bus->CmpMan-MAN9_DMA0, rdata, wasload, true); break;
+    case CB7_7TDMIData: A7TDMI_DataPost(&sys->A7TDMI, now, rdata); break;
+    case CB7_7TDMIInstr: A7TDMI_InstrReadPost(&sys->A7TDMI, now, rdata); break;
+    case CB7_DMA: DMA_CompPost(sys, now, bus->CmpMan-MAN7_SCAPDMA0, rdata, wasload, false); break;
+    }
+    Sched_AddEvent(sys, now, a9 ? Evt_Bus9Arb : Evt_Bus7Arb);
+}
+
+void Bus_RunArb(Console* sys, timestamp now, const bool a9)
+{
+    BusImpl* bus = (a9 ? &sys->Bus9 : &sys->Bus7);
     BusCallbacks arbcb = CB_None;
     u8 arbman;
     // arbitrate next req
@@ -1136,17 +1154,6 @@ void Bus_Run(Console* sys, timestamp now, const bool a9)
     case CB7_DMA: DMA_Step(sys, arbman-MAN7_SCAPDMA0, now, false); break;
     }
 
-    // completion callback
-    switch(cmpcb)
-    {
-    case CB_None: break;
-    case CB9_BIU9InstrNormal ... CB9_BIU9Idle: A946_BIUCompPost(&sys->A946ES, now, rdata, cmpcb); break;
-    case CB9_DMA: DMA_CompPost(sys, now, cmpman-MAN9_DMA0, rdata, wasload, true); break;
-    case CB7_7TDMIData: A7TDMI_DataPost(&sys->A7TDMI, now, rdata); break;
-    case CB7_7TDMIInstr: A7TDMI_InstrReadPost(&sys->A7TDMI, now, rdata); break;
-    case CB7_DMA: DMA_CompPost(sys, now, cmpman-MAN7_SCAPDMA0, rdata, wasload, false); break;
-    }
-
     // try to run next access
     BusReq* req = &bus->PipeFIFO[bus->FIFODrainPtr];
     if (!bus->FIFOEmpty && ((bus->PipeExitTs[bus->FIFODrainPtr] <= now)))
@@ -1164,7 +1171,7 @@ void Bus_Run(Console* sys, timestamp now, const bool a9)
 
         if (req->Type >= HTRANS_NONSEQ)
         {
-            if (req->Man != cmpman) req->Type = HTRANS_NONSEQ; // note: this should technically be enforced by the manager
+            if (req->Man != bus->CmpMan) req->Type = HTRANS_NONSEQ; // note: this should technically be enforced by the manager
 
             // split bursts on nonsequential access
             if (req->Type == HTRANS_NONSEQ) a9 ? Bus9_KillBursts(sys, now) : Bus7_KillBursts(sys, now);
@@ -1175,7 +1182,7 @@ void Bus_Run(Console* sys, timestamp now, const bool a9)
         }
         else if (req->Type == HTRANS_BUSY)
         {
-            if (req->Man != cmpman) a9 ? Bus9_KillBursts(sys, now) : Bus7_KillBursts(sys, now); // HACK
+            if (req->Man != bus->CmpMan) a9 ? Bus9_KillBursts(sys, now) : Bus7_KillBursts(sys, now); // HACK
             if (a9) Bus9_Busy(sys, now);
             else    Bus7_Busy(sys, now);
         }
@@ -1217,5 +1224,5 @@ void Bus_Run(Console* sys, timestamp now, const bool a9)
         return; // nothing to do; ahb go nini
     }
 
-    Sched_AddEvent(sys, new, a9 ? Evt_Bus9 : Evt_Bus7);
+    Sched_AddEvent(sys, new, a9 ? Evt_Bus9Cmp : Evt_Bus7Cmp);
 }
