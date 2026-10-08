@@ -36,6 +36,7 @@ void GX_UpdateIRQ(Console* sys, const timestamp time)
         }
         break;
     }
+    case 3: LogPrint(LOG_UNIMP|LOG_GX, "Reserved IRQ Mode 3?\n"); [[fallthrough]];
     default: // checkme: mode 3?
         LevelIRQ9_Stop(sys, IRQ_3DFIFO);
         break;
@@ -107,7 +108,7 @@ bool GXPipe_Fill(Console* sys, timestamp now)
     {
         gx->Status.FIFOHalfEmpty = true;
         GX_UpdateIRQ(sys, gx->Timestamp);
-        StartDMA9(sys, gx->Timestamp, DMAStart_3DFIFO); // TODO: everything involving when and how this dma type triggers?
+        StartDMA(sys, gx->Timestamp, DMAStart_3DFIFO, true); // TODO: everything involving when and how this dma type triggers?
         // checkme:?
     }
 

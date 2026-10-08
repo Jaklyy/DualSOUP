@@ -420,8 +420,7 @@ u32 GameCard_ROMDataRead(Console* sys, timestamp cur, const bool a9)
         QueueNextTransfer(sys, cur, a9);
         sys->GCROMData[a9] = card->WordBuffer;
         card->Buffered = false;
-        if (a9) StartDMA9(sys, cur+DSClk33(1), DMAStart_NTRCard); // checkme: delay?
-        else    StartDMA7(sys, cur+DSClk33(1), DMAStart_NTRCard); // checkme: delay?
+        StartDMA(sys, cur+DSClk33(1), DMAStart_NTRCard, a9); // checkme: delay?
     }
     else
     {
@@ -450,8 +449,7 @@ void GameCard_HandleSchedulingROM(Console* sys, timestamp now)
         {
             sys->GCROMData[a9] = data;
             sys->GCROMCR[a9].DataReady = true;
-            if (a9) StartDMA9(sys, now+DSClk33(1), DMAStart_NTRCard); // checkme: delay?
-            else StartDMA7(sys, now+DSClk33(1), DMAStart_NTRCard); // checkme: delay?
+            StartDMA(sys, now+DSClk33(1), DMAStart_NTRCard, a9); // checkme: delay?
 
             QueueNextTransfer(sys, now, a9);
         }

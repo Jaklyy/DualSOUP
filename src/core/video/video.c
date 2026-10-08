@@ -59,7 +59,7 @@ void LCD_HBlank(Console* sys, timestamp now)
         PPU_SetTarget(sys, now);
     if (sys->VCount < 192)
     {
-        StartDMA9(sys, now+DSClk33(2+1), DMAStart_HBlank); // checkme: delay?
+        StartDMA(sys, now+DSClk33(2+1), DMAStart_HBlank, true); // checkme: delay?
         PPU_SetTarget(sys, now);
     }
     if (sys->VCount == 191)
@@ -101,8 +101,8 @@ void LCD_Scanline(Console* sys, timestamp now)
         // schedule irq
         if (sys->DispStatRW9.VBlankIRQ) Sched_AddEvent(sys, now+DSClk33(2), Evt_IRQ9_VBlank);
         if (sys->DispStatRW7.VBlankIRQ) Sched_AddEvent(sys, now+DSClk33(2), Evt_IRQ7_VBlank); // CHECKME: delay correct for arm7 too?
-        StartDMA9(sys, now+DSClk33(2+1), DMAStart_VBlank); // checkme: delay?
-        StartDMA9(sys, now+DSClk33(2+1), DMAStart_VBlank); // checkme: delay?
+        StartDMA(sys, now+DSClk33(2+1), DMAStart_VBlank, true); // checkme: delay?
+        StartDMA(sys, now+DSClk33(2+1), DMAStart_VBlank, false); // checkme: delay?
 
 #ifndef SINGLETHREADRASTER
         SWRen_Sync(sys, now);

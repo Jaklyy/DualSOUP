@@ -41,69 +41,43 @@ void DMA_Init(Console* sys)
     }
 }
 
-void StartDMA9(Console* sys, timestamp start, u8 mode)
+void StartDMA(Console* sys, timestamp start, u8 mode, bool a9)
 {
-    for (u64 i = DMA9_NormalBase; i < DMA9_NormalMax; i++)
+    DMA_Channel* base = (a9 ? &sys->DMA9[DMA9_NormalBase] : &sys->DMA7[DMA7_NormalBase]);
+    for (u64 i = 0; i < (a9 ? DMA9_NumNormal : DMA7_NumNormal); i++)
     {
-        if (!sys->DMA9[i].CR.Enable) continue;
-        if (sys->DMA9[i].CurrentMode != mode) continue;
-        // checkme: starting dma while already started?
-        if (sys->DMA9[i].CompCur != sys->DMA9[i].CompMax)
-        {
-            // CHECKME
-            if ((sys->DMA9[i].CurrentMode != DMAStart_NTRCard) && (sys->DMA9[i].CurrentMode != DMAStart_3DFIFO))
-            {
-                LogPrint(LOG_DMA|LOG_ODD, "DMA9: channel already going??? errchan:%"PRIu64" chanmode:%"PRIu8"\n", i, sys->DMA9[i].CurrentMode);
-            }
-            continue;
-        }
-        sys->DMA9[i].NeedsInit = true;
-        Sched_AddEvent(sys, start, Evt_DMA90 + i);
-    }
-}
-
-void StartDMA7(Console* sys, timestamp start, u8 mode)
-{
-    for (u64 i = DMA7_NormalBase; i < DMA7_NormalMax; i++)
-    {
-        DMA_Channel* cur = &sys->DMA7[i];
+        DMA_Channel* cur = &base[i];
         if (!cur->CR.Enable) continue;
         if (cur->CurrentMode != mode) continue;
         // checkme: starting dma while already started?
         if (cur->CompCur != cur->CompMax)
         {
-            // CHECKME
-            if (sys->DMA7[i].CurrentMode != DMAStart_NTRCard)
-            {
-                LogPrint(LOG_DMA|LOG_ODD, "DMA7: channel already going??? errchan:%"PRIu64" chanmode:%"PRIu8"\n", i, sys->DMA7[i].CurrentMode);
-            }
+            if ((cur->CurrentMode != DMAStart_NTRCard) && (cur->CurrentMode != DMAStart_3DFIFO))
+                LogPrint(LOG_DMA|LOG_ODD, "DMA%c: channel already going??? errchan:%"PRIu64" chanmode:%"PRIu8"\n", (a9 ? '9' : '7'), i, cur->CurrentMode);
             continue;
         }
         cur->NeedsInit = true;
-        Sched_AddEvent(sys, start, Evt_DMA70 + (i-DMA7_NormalBase));
+        Sched_AddEvent(sys, start, (a9 ? Evt_DMA90 : Evt_DMA70) + i);
     }
 }
 
 void StartSoundCapDMA(Console* sys, u8 id, timestamp start)
 {
-    if (!sys->DMA7[id+DMA7_SoundCapBase].CR.Enable) return;
-    sys->DMA7[id+DMA7_SoundCapBase].NeedsInit = true;
+    DMA_Channel* cur = &sys->DMA7[id+DMA7_SoundCapBase];
+    if (!cur->CR.Enable) return;
+    if (cur->CompCur != cur->CompMax) // CHECKME
+        return LogPrint(LOG_DMA|LOG_ODD, "DMA SNDCAP: channel already going??? errchan:%"PRIu8" chanmode:%"PRIu8"\n", id, cur->CurrentMode);
+    cur->NeedsInit = true;
     Sched_AddEvent(sys, start, Evt_SCapDMA70+id);
 }
 
 void StartSoundDMA(Console* sys, u8 id, timestamp start)
 {
-    if (!sys->DMA7[id+DMA7_SoundBase].CR.Enable) return;
-    if (sys->DMA7[id+DMA7_SoundBase].CompCur != sys->DMA7[id+DMA7_SoundBase].CompMax)
-    {
-        // CHECKME
-        //if (sys->DMA7[i].CurrentMode != DMAStart_NTRCard)
-        {
-            LogPrint(LOG_DMA|LOG_ODD, "DMA SND: channel already going??? errchan:%"PRIu8" chanmode:%"PRIu8"\n", id, sys->DMA7[id+DMA7_SoundBase].CurrentMode);
-        }
-        return;
-    }
-    sys->DMA7[id+DMA7_SoundBase].NeedsInit = true;
+    DMA_Channel* cur = &sys->DMA7[id+DMA7_SoundBase];
+    if (!cur->CR.Enable) return;
+    if (cur->CompCur != cur->CompMax) // CHECKME
+        return LogPrint(LOG_DMA|LOG_ODD, "DMA SND: channel already going??? errchan:%"PRIu8" chanmode:%"PRIu8"\n", id, cur->CurrentMode);
+    cur->NeedsInit = true;
     Sched_AddEvent(sys, start, Evt_SndDMA70+id);
 }
 
@@ -118,7 +92,7 @@ void DMA7_Enable(Console* sys, DMA_Channel* channel, timestamp now)
     case 0: // Immediate
     {
         channel->CurrentMode = DMAStart_Immediate;
-        StartDMA7(sys, now, DMAStart_Immediate);
+        StartDMA(sys, now, DMAStart_Immediate, false);
         break;
     }
     case 1: // VBlank
@@ -131,7 +105,7 @@ void DMA7_Enable(Console* sys, DMA_Channel* channel, timestamp now)
         channel->CurrentMode = DMAStart_NTRCard;
         // checkme: this probably works.
         if (sys->GCROMCR[false].DataReady)
-            StartDMA7(sys, now, DMAStart_NTRCard); // checkme: delay?
+            StartDMA(sys, now, DMAStart_NTRCard, false); // checkme: delay?
         break;
     }
     #if 0
@@ -185,7 +159,7 @@ void DMA9_Enable(Console* sys, DMA_Channel* channel, timestamp now)
     case 0: // Immediate
     {
         channel->CurrentMode = DMAStart_Immediate;
-        StartDMA9(sys, now, DMAStart_Immediate);
+        StartDMA(sys, now, DMAStart_Immediate, true);
         break;
     }
     case 1: // VBlank
@@ -203,7 +177,7 @@ void DMA9_Enable(Console* sys, DMA_Channel* channel, timestamp now)
         channel->CurrentMode = DMAStart_NTRCard;
         // checkme: this probably works.
         if (sys->GCROMCR[true].DataReady)
-            StartDMA9(sys, now, DMAStart_NTRCard); // checkme: delay?
+            StartDMA(sys, now, DMAStart_NTRCard, true); // checkme: delay?
         break;
     }
     case 7: // 3D Command FIFO
@@ -211,7 +185,7 @@ void DMA9_Enable(Console* sys, DMA_Channel* channel, timestamp now)
         channel->CurrentMode = DMAStart_3DFIFO;
 
         if (sys->GX3D.Status.FIFOHalfEmpty)
-            StartDMA9(sys, now, DMAStart_3DFIFO);
+            StartDMA(sys, now, DMAStart_3DFIFO, true);
         break;
     }
     #if 0
@@ -300,7 +274,7 @@ void DMA_CompPost(Console* sys, timestamp now, const u8 id, u32 rdata, const boo
         if (dmaqueued)
         {
             channel->NeedsInit = true;
-            Sched_AddEvent(sys, now+DSClk33(1), Evt_SCapDMA70 + id);
+            Sched_AddEvent(sys, now+DSClk33(1), ((a9) ? Evt_DMA90 : Evt_SCapDMA70) + id);
         }
     }
 
