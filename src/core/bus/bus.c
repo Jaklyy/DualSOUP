@@ -176,6 +176,8 @@ void MainRAM_Run(Console* sys, timestamp now)
     if (!mr->BurstActive) nseq = true;
     if (write != mr->PrevWrite) nseq = true; // split burst if switching from read to write
     mr->PrevWrite = write;
+    if (addr <= mr->PrevAddr) nseq = true; // this is part of a really stupid theory i have on how dma bursts work
+    mr->PrevAddr = addr;
     if (grant != mr->CurReq) nseq = true; // split burst if switching which bus has grant
     mr->CurReq = grant;
     if (now > mr->BurstLimitTs) nseq = true; // TODO: this should probably be regardless of an access occuring
@@ -1016,7 +1018,11 @@ void Bus_Req(Console* sys, const BusReq* req, const timestamp now, const bool a9
 {
     BusImpl* bus = (a9 ? &sys->Bus9 : &sys->Bus7);
 
-    if (bus->ReqList & (1<<(req->Man))) LogPrint(LOG_ALWAYS, "BUS REQ OVERWRITE!!!!! %"PRIu8"\n", req->Man);
+    if (bus->ReqList & (1<<(req->Man)))
+    {
+        Sched_AddEvent(sys, now, Evt_DebugBreak);
+        LogPrint(LOG_ALWAYS, "BUS REQ OVERWRITE!!!!! %i %"PRIu8"\n", a9, req->Man);
+    }
     bus->ReqList |= (1<<(req->Man));
     bus->Reqs[req->Man] = *req;
 
@@ -1105,7 +1111,7 @@ void Bus_RunArb(Console* sys, timestamp now, const bool a9)
 {
     BusImpl* bus = (a9 ? &sys->Bus9 : &sys->Bus7);
     BusCallbacks arbcb = CB_None;
-    u8 arbman;
+    u8 arbman = MAN_NONE;
     // arbitrate next req
     if (reqlista7deny)
     {

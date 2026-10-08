@@ -267,6 +267,7 @@ typedef struct
     u32 AddrLatch; // fcram chip internally latched address
     u32 AddrSubmMask; // mask when sending address to fcram chip
     u32 AddrLatchMask; // mask when stepping latched addr internally
+    u32 PrevAddr;
     bool WeirdStart; // burst start address was within the last 3 halfwords of a 16 halfword boundary; forces an NS cycle when crossing the 16 halfword boundary
     bool PrevWrite;
     bool IsReq9;

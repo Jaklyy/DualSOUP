@@ -48,10 +48,10 @@ void StartDMA9(Console* sys, timestamp start, u8 mode)
         if (!sys->DMA9[i].CR.Enable) continue;
         if (sys->DMA9[i].CurrentMode != mode) continue;
         // checkme: starting dma while already started?
-        if (sys->DMA9[i].WriteCur != sys->DMA9[i].BurstMax)
+        if (sys->DMA9[i].CompCur != sys->DMA9[i].CompMax)
         {
             // CHECKME
-            //if ((sys->DMA9[i].CurrentMode != DMAStart_NTRCard) && (sys->DMA9[i].CurrentMode != DMAStart_3DFIFO))
+            if ((sys->DMA9[i].CurrentMode != DMAStart_NTRCard) && (sys->DMA9[i].CurrentMode != DMAStart_3DFIFO))
             {
                 LogPrint(LOG_DMA|LOG_ODD, "DMA9: channel already going??? errchan:%"PRIu64" chanmode:%"PRIu8"\n", i, sys->DMA9[i].CurrentMode);
             }
@@ -70,10 +70,10 @@ void StartDMA7(Console* sys, timestamp start, u8 mode)
         if (!cur->CR.Enable) continue;
         if (cur->CurrentMode != mode) continue;
         // checkme: starting dma while already started?
-        if (cur->WriteCur != cur->BurstMax)
+        if (cur->CompCur != cur->CompMax)
         {
             // CHECKME
-            //if (sys->DMA7[i].CurrentMode != DMAStart_NTRCard)
+            if (sys->DMA7[i].CurrentMode != DMAStart_NTRCard)
             {
                 LogPrint(LOG_DMA|LOG_ODD, "DMA7: channel already going??? errchan:%"PRIu64" chanmode:%"PRIu8"\n", i, sys->DMA7[i].CurrentMode);
             }
@@ -94,7 +94,7 @@ void StartSoundCapDMA(Console* sys, u8 id, timestamp start)
 void StartSoundDMA(Console* sys, u8 id, timestamp start)
 {
     if (!sys->DMA7[id+DMA7_SoundBase].CR.Enable) return;
-    if (sys->DMA7[id+DMA7_SoundBase].WriteCur != sys->DMA7[id+DMA7_SoundBase].BurstMax)
+    if (sys->DMA7[id+DMA7_SoundBase].CompCur != sys->DMA7[id+DMA7_SoundBase].CompMax)
     {
         // CHECKME
         //if (sys->DMA7[i].CurrentMode != DMAStart_NTRCard)
@@ -300,7 +300,7 @@ void DMA_CompPost(Console* sys, timestamp now, const u8 id, u32 rdata, const boo
         if (dmaqueued)
         {
             channel->NeedsInit = true;
-            Sched_AddEvent(sys, now, Evt_SCapDMA70 + id);
+            Sched_AddEvent(sys, now+DSClk33(1), Evt_SCapDMA70 + id);
         }
     }
 
@@ -426,7 +426,8 @@ void DMA_Step(Console* sys, const u8 id, timestamp now, const bool a9)
                     .Cacheable = false,
                 },
                 .Size = (channel->Latched_Width32 ? HSIZE_32 : HSIZE_16),
-                .Type = (((channel->ReadCur == 0) || channel->SrcInc <= 0) ? HTRANS_NONSEQ : HTRANS_SEQ),
+                // NOTE: really stupid theory i have on dma burst logic: they always signal sequential after the first load. (which is being handled by the bus logic currently)
+                .Type = HTRANS_SEQ, //(((channel->ReadCur == 0) || channel->SrcInc <= 0) ? HTRANS_NONSEQ : HTRANS_SEQ),
                 .CB = (a9 ? CB9_DMA : CB7_DMA),
             };
             channel->Latched_SrcAddr = (channel->Latched_SrcAddr + channel->SrcInc) & channel->SrcAddrMask;
@@ -471,7 +472,8 @@ void DMA_Step(Console* sys, const u8 id, timestamp now, const bool a9)
                     .Cacheable = false,
                 },
                 .Size = (channel->Latched_Width32 ? HSIZE_32 : HSIZE_16),
-                .Type = ((channel->WriteCur == 0 || channel->DstInc <= 0) ? HTRANS_NONSEQ : HTRANS_SEQ),
+                // NOTE: really stupid theory i have on dma burst logic: they always signal sequential after the first load. (which is being handled by the bus logic currently)
+                .Type = HTRANS_SEQ, //((channel->WriteCur == 0 || channel->DstInc <= 0) ? HTRANS_NONSEQ : HTRANS_SEQ),
                 .CB = (a9 ? CB9_DMA : CB7_DMA),
             };
             channel->Latched_DstAddr = (channel->Latched_DstAddr + channel->DstInc) & channel->DstAddrMask;
