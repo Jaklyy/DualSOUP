@@ -123,6 +123,9 @@ typedef struct
     bool ROMDirty;
     bool SRAMDirty;
     bool TxtDirty;
+    bool ROMDirtyB;
+    bool SRAMDirtyB;
+    bool TxtDirtyB;
     bool NeedReset;
     int ROMSize;
     int ROMChipID;

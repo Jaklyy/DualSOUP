@@ -302,6 +302,20 @@ void ImportGui_ParseNDSTxt(ImportGui* igui)
     SDL_UnlockMutex(igui->Mutex);
 }
 
+char* FindFileWithDifferentExtension(char* path, char* ext)
+{
+    char* end = strrchr(path, '.');
+    if (end == NULL) return NULL; // no extension, idc
+
+    char* out = calloc((end-path)+1+strlen(ext)+1, 1);
+    strncpy(out, path, (end-path)+1);
+    strcpy(out+(end-path)+1, ext);
+    SDL_PathInfo info;
+    if (!SDL_GetPathInfo(out, &info)) return NULL;
+    if (info.type != SDL_PATHTYPE_FILE) return NULL;
+    return out;
+}
+
 void ImportGui_Loop(MainGUI* mgui, ImportGui* igui, const bool NDS)
 {
     if (!igui->Show)
@@ -328,9 +342,50 @@ void ImportGui_Loop(MainGUI* mgui, ImportGui* igui, const bool NDS)
         igui->NeedReset = false;
     }
 
-    SelectFile(igui->ROMPath, "NDS ROM", "nds;nds.enc", 1, igui->Mutex, igui->ROMDirty);
-    SelectFile(igui->SRAMPath, "NDS SRAM", "sav", 1, igui->Mutex, igui->SRAMDirty);
-    SelectFile(igui->TxtPath, "GM9 Dump Info", "txt", 1, igui->Mutex, igui->TxtDirty);
+    SelectFile(igui->ROMPath, "NDS ROM", "nds", 1, igui->Mutex, igui->ROMDirtyB);
+    igui->ROMDirty |= igui->ROMDirtyB;
+    SelectFile(igui->SRAMPath, "NDS SRAM", "sav", 1, igui->Mutex, igui->SRAMDirtyB);
+    igui->SRAMDirty |= igui->SRAMDirtyB;
+    SelectFile(igui->TxtPath, "GM9 Dump Info", "txt", 1, igui->Mutex, igui->TxtDirtyB);
+    igui->TxtDirty |= igui->TxtDirtyB;
+    if (igui->ROMDirtyB || igui->SRAMDirtyB || igui->TxtDirtyB)
+    {
+        char* str = NULL;
+        if (igui->ROMDirtyB) str = igui->ROMPath;
+        if (igui->SRAMDirtyB) str = igui->SRAMPath;
+        if (igui->TxtDirtyB) str = igui->TxtPath;
+        if (igui->ROMPath[0] == '\0')
+        {
+            char* new;
+            if (((new = FindFileWithDifferentExtension(str, "nds")) != NULL))
+            {
+                free(igui->ROMPath);
+                igui->ROMPath = new;
+                igui->ROMDirty = true;
+            }
+        }
+        if (igui->SRAMPath[0] == '\0')
+        {
+            char* new;
+            if (((new = FindFileWithDifferentExtension(str, "sav")) != NULL))
+            {
+                free(igui->SRAMPath);
+                igui->SRAMPath = new;
+                igui->SRAMDirty = true;
+            }
+        }
+        if (igui->TxtPath[0] == '\0')
+        {
+            char* new;
+            if (((new = FindFileWithDifferentExtension(str, "txt")) != NULL))
+            {
+                free(igui->TxtPath);
+                igui->TxtPath = new;
+                igui->TxtDirty = true;
+            }
+        }
+    }
+
     if (ImGui_Button("Infer from provided Files\n"))
     {
         ImportGui_ParseNDSROM(igui);
