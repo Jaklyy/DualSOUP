@@ -130,14 +130,6 @@ bool Console_ReadFile(u8* buf, const char* path, const size_t num, const char* n
 void Console_Cleanup(Console* sys, bool full)
 {
     if (sys == nullptr) return;
-    // i tried reusing these and it hung, so i gave up, because it probably doesn't matter
-    SDL_UnlockMutex(sys->FrameBufferMutex[sys->BackBuf]); // freeing a locked mutex is apparently undefined behavior, neat
-    SDL_DestroyMutex(sys->FrameBufferMutex[0]);
-    SDL_DestroyMutex(sys->FrameBufferMutex[1]);
-
-    // flash and gamecards need to be recreated from scratch in case we're booting a new game/system
-    Flash_Cleanup(&sys->Firmware);
-    GameCard_Cleanup(&sys->GameCard);
 
     // these dont need to be re-init actually?
     int dummy;
@@ -155,6 +147,14 @@ void Console_Cleanup(Console* sys, bool full)
     SDL_WaitThread(sys->PPUAThread, &dummy);
     SDL_WaitThread(sys->PPUBThread, &dummy);
 #endif
+    // i tried reusing these and it hung, so i gave up, because it probably doesn't matter
+    SDL_UnlockMutex(sys->FrameBufferMutex[sys->BackBuf]); // freeing a locked mutex is apparently undefined behavior, neat
+    SDL_DestroyMutex(sys->FrameBufferMutex[0]);
+    SDL_DestroyMutex(sys->FrameBufferMutex[1]);
+
+    // flash and gamecards need to be recreated from scratch in case we're booting a new game/system
+    Flash_Cleanup(&sys->Firmware);
+    GameCard_Cleanup(&sys->GameCard);
 
     if (full) SDL_aligned_free(sys);
 }
