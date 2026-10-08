@@ -202,7 +202,6 @@ int main()
 {
     //if (setlocale(LC_CTYPE, "en_US.UTF-8") == NULL)
     //    printf("could not set character locale\n");
-    LogMask = u64_max; // temp
 
     //SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "X11");
 
@@ -235,6 +234,7 @@ int main()
     MainCfg mcfg = {.Dirty = false};
     Config_Load(cfgpath, &mcfg, MainCfgData, countof(MainCfgData), &mcfg.Dirty, &mcfg.Mutex);
     Config_Load(NULL, &mcfg.CoreCfg.SysCfg, SystemCfgData, countof(SystemCfgData), NULL, &mcfg.Mutex);
+    LogMask = mcfg.LoggingMask;
 
     MainGUI mgui = MainGUI_Init(&mcfg);
 

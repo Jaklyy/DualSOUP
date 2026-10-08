@@ -128,6 +128,22 @@ void ConfigGUI_Loop(MainGUI* mgui, MainCfg* mcfg)
             }
             ImGui_EndTabItem();
         }
+        if (ImGui_BeginTabItem("Logging", NULL, ImGuiTabItemFlags_None))
+        {
+            for (u32 i = 0; i < stdc_trailing_zeros((u64)LOG_MAX); i++)
+            {
+                ImGui_PushIDInt(i);
+                bool pass = LogMask & (1 << i);
+                if (ImGui_Checkbox(LoggingLevelsNames[i], &pass))
+                {
+                    LogMask ^= 1<<i;
+                    mcfg->LoggingMask = LogMask;
+                    mcfg->Dirty = true;
+                }
+                ImGui_PopID();
+            }
+            ImGui_EndTabItem();
+        }
         ImGui_EndTabBar();
     }
     ImGui_End();

@@ -194,7 +194,8 @@ Core_Ret Sched_RunEvent(Console* sys)
     case Evt_IO7:           IO7_Handler(sys, now); break;
     case Evt_MainRAM:       MainRAM_Run(sys, now); break;
 
-    case Evt_Scanline:      (sys->TEMPHBLANK ? LCD_HBlank(sys, now) : LCD_Scanline(sys, now)); break;
+    case Evt_Scanline:      LCD_Scanline(sys, now); break;
+    case Evt_HBlank:        LCD_HBlank(sys, now); break;
     case Evt_CardROM:       GameCard_HandleSchedulingROM(sys, now); break;
     case Evt_CardSPI9:      GameCard_SPIFinish(sys, true); break;
     case Evt_CardSPI7:      GameCard_SPIFinish(sys, false); break;

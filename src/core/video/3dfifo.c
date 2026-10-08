@@ -357,8 +357,11 @@ u32 GX_IORead(Console* sys, const u32 addr)
     switch(addr & 0x7FC)
     {
         case 0x600:
-            //printf("stat %08X\n", gx->Status.Raw | (gx->FIFOFullness << 16));
-            return gx->Status.Raw | (gx->FIFOFullness << 16) | (gx->ProjMtxStackPtr << 13) | ((gx->PosVecMtxStackPtr & 0x1F) << 8);
+        {
+            u32 stat = gx->Status.Raw | (gx->FIFOFullness << 16) | (gx->ProjMtxStackPtr << 13) | ((gx->PosVecMtxStackPtr & 0x1F) << 8);
+            //printf("stat %08X\n", stat);
+            return stat;
+        }
 
         case 0x604:
             return gx->PolyRAMPtr | (gx->VtxRAMPtr << 16);

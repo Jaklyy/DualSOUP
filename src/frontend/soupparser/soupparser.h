@@ -68,6 +68,7 @@ typedef struct MainCfg
     bool Dirty; // update the fecking config file
     CoreCfg CoreCfg;
     GuiCfg GuiCfg;
+    u64 LoggingMask;
 } MainCfg;
 
 #include "core/carts/gamecard.h"
@@ -397,12 +398,20 @@ static const ConfigEntry MainCfgData[] =
         .Type=      SEARCH_INT,
     },
     {
-        .Name =     "NumDisplayWindows",
+        .Name=      "NumDisplayWindows",
         .Offset=    offsetof(MainCfg, GuiCfg.NumDisplayWindows),
         .SDefVal=   1,
         .SMinVal=   GUI_MinDisplayWindows,
         .SMaxVal=   GUI_MaxDisplayWindows,
         .Type=      SEARCH_INT,
+    },
+    {
+        .Name=      "LoggingMask",
+        .Offset=    offsetof(MainCfg, LoggingMask),
+        .UDefVal=   0,
+        .UMinVal=   0,
+        .UMaxVal=   u64_max,
+        .Type=      SEARCH_U64HEX,
     },
     PERDISPLAYWINDOWSETTINGS(0)
     PERDISPLAYWINDOWSETTINGS(1)
@@ -413,7 +422,5 @@ static const ConfigEntry MainCfgData[] =
 #undef PERDISPLAYWINDOWSETTINGS
 #undef PERDISPLAYSETTINGS
 
-FILE* FindFileWithSameName(const char* path, const char* ext, const char* mode);
-bool SOUPParser(const char* haystack, const char* needle, const char* cmpstr, const u8 type, void* ret);
 void Config_Write(const char* path, void* cfgin, const ConfigEntry* cfgref, const size_t cfgnum, bool* dirtyflag, SDL_Mutex* mutex);
 void Config_Load(const char* path, void* cfgout, const ConfigEntry* cfgref, const size_t cfgnum, bool* dirtyflag, SDL_Mutex** mutex);

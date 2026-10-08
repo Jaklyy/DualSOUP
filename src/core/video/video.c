@@ -74,11 +74,10 @@ void LCD_HBlank(Console* sys, timestamp now)
         Sched_AddEvent(sys, now, Evt_EndFrame);
     }
     // schedule irq
-    if (sys->DispStatRW9.HBlankIRQ) Sched_AddEvent(sys, now+DSClk33(2), Evt_IRQ9_HBlank); // CHECKME: delay?
-    if (sys->DispStatRW7.HBlankIRQ) Sched_AddEvent(sys, now+DSClk33(2), Evt_IRQ7_HBlank); // CHECKME: delay?
+    if (sys->DispStatRW9.HBlankIRQ) Sched_AddEvent(sys, now, Evt_IRQ9_HBlank); // CHECKME: delay?
+    if (sys->DispStatRW7.HBlankIRQ) Sched_AddEvent(sys, now, Evt_IRQ7_HBlank); // CHECKME: delay?
 
-    // schedule hblank
-    sys->TEMPHBLANK = false;
+    // schedule scanline start
     Sched_AddEvent(sys, now + DSClk33(HBlank_Cycles), Evt_Scanline);
 }
 
@@ -149,11 +148,10 @@ void LCD_Scanline(Console* sys, timestamp now)
 
     // vcount match
     sys->DispStatRO7.VCountMatch = (sys->TargetVCount7 == sys->VCount);
-    if (sys->DispStatRW7.VCountMatchIRQ && (sys->TargetVCount7 == sys->VCount)) Sched_AddEvent(sys, now+DSClk33(2), Evt_IRQ9_VCount); // checkme: delay?
+    if (sys->DispStatRW7.VCountMatchIRQ && (sys->TargetVCount7 == sys->VCount)) Sched_AddEvent(sys, now+DSClk33(2), Evt_IRQ7_VCount); // checkme: delay?
     sys->DispStatRO9.VCountMatch = (sys->TargetVCount9 == sys->VCount);
-    if (sys->DispStatRW9.VCountMatchIRQ && (sys->TargetVCount9 == sys->VCount)) Sched_AddEvent(sys, now+DSClk33(2), Evt_IRQ7_VCount); // checkme: delay?
+    if (sys->DispStatRW9.VCountMatchIRQ && (sys->TargetVCount9 == sys->VCount)) Sched_AddEvent(sys, now+DSClk33(2), Evt_IRQ9_VCount); // checkme: delay?
 
     // schedule hblank
-    sys->TEMPHBLANK = true;
-    Sched_AddEvent(sys, now + DSClk33(ActiveRender_Cycles), Evt_Scanline);
+    Sched_AddEvent(sys, now + DSClk33(ActiveRender_Cycles), Evt_HBlank);
 }

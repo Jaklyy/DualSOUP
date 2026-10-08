@@ -85,7 +85,7 @@ void IPC_FIFOWrite(Console* sys, const u32 val, const u32 mask, const timestamp 
             recv->CR.SendFIFOEmpty = false;
             // send irq
             if (send->CR.RecvFIFONotEmptyIRQ)
-            Sched_AddEvent(sys, now+DSClk33(1) /*checkme: delay?*/, (!a9 ? Evt_IRQ9_IPCFIFONotEmpty : Evt_IRQ7_IPCFIFONotEmpty));
+                Sched_AddEvent(sys, now+DSClk33(1) /*checkme: delay?*/, (!a9 ? Evt_IRQ9_IPCFIFONotEmpty : Evt_IRQ7_IPCFIFONotEmpty));
         }
         send->FillPtr = (send->FillPtr + 1) % countof(send->FIFO);
 
@@ -346,6 +346,7 @@ void IO9_Read(Console* sys, const u32 addr, const timestamp now)
         rdata = 0;
         break;
     }
+    LogPrint(LOG_IOALL|LOG_ARM9, "IO9 READ: ADDR:%08X RDATA:%08X\n", addr, rdata);
 
     Bus_TransferPostSetup(sys, rdata, true, now, false, true);
 }
@@ -540,6 +541,7 @@ void IO9_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
         LogPrint(LOG_ARM9 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO9 WRITE: %08"PRIX32" %08"PRIX32" %08"PRIX32" @ %08"PRIX32"\n", addr, wrdata, mask, sys->A946ES.ARM.PC);
         break;
     }
+    LogPrint(LOG_IOALL|LOG_ARM9, "IO9 WRITE: ADDR:%08X WRDATA:%08X LANES:%08X\n", addr, wrdata, mask);
 
     AddBusContention(sys, now, Dev_IO9);
     Bus_TransferPostSetup(sys, 0, false, now, false, true);
@@ -615,6 +617,7 @@ void IO7_Read(Console* sys, const u32 addr, const timestamp now)
         rdata = 0;
         break;
     }
+    LogPrint(LOG_IOALL|LOG_ARM7, "IO7 READ: ADDR:%08X RDATA:%08X\n", addr, rdata);
 
     Bus_TransferPostSetup(sys, rdata, true, now, false, false);
 }
@@ -815,6 +818,7 @@ void IO7_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
         LogPrint(LOG_ARM7 | LOG_UNIMP | LOG_IO, "UNIMPLEMENTED IO7 WRITE: %08"PRIX32" %08"PRIX32" %08"PRIX32" @ %08"PRIX32"\n", addr, wrdata, mask, sys->A7TDMI.ARM.PC);
         break;
     }
+    LogPrint(LOG_IOALL|LOG_ARM7, "IO7 WRITE: ADDR:%08X WRDATA:%08X LANES:%08X\n", addr, wrdata, mask);
 
     AddBusContention(sys, now, Dev_IO7);
     Bus_TransferPostSetup(sys, 0, false, now, false, false);

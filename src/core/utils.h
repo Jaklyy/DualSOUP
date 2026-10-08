@@ -244,7 +244,7 @@ typedef enum : u8
     //ARM11ID,
 } CPU_IDs;
 
-enum LoggingLevels : u64
+typedef enum : u64
 {
     LOG_ALWAYS  = (0    ), // Always logged; used for emulator error logging.
     LOG_ARM7    = (1<<0 ), // Things under ownership of the ARM7TDMI.
@@ -267,6 +267,34 @@ enum LoggingLevels : u64
     LOG_SOUND   = (1<<17), // Sound Processing.
     LOG_PAK     = (1<<18), // Game Pak.
     LOG_FCRAM   = (1<<19), // FCRAM (aka Main RAM).
+    LOG_IOALL   = (1<<20), // Always Log Memory mapped IO Accesses.
+
+    LOG_MAX     = (1<<21),
+} LoggingLevels;
+
+static constexpr char LoggingLevelsNames[][24] =
+{
+    "ARM7",
+    "ARM9",
+    "ARM11",
+    "Unimplemented",
+    "Oddities",
+    "Hardware Exceptions",
+    "Hardware Bugs",
+    "Video RAM",
+    "PPU",
+    "Flash",
+    "I/O",
+    "Game Card",
+    "3D Geometry",
+    "Real Time Clock",
+    "DMA",
+    "WiFi",
+    "Touch Screen Controller",
+    "Sound",
+    "Game Pak",
+    "Main RAM",
+    "Log All IO",
 };
 
 #define LOG_CPUID (1 << cpu->CPUID)

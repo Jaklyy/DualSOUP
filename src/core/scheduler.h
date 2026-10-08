@@ -158,6 +158,7 @@ typedef enum : u8
     Evt_MainRAM,
 
     Evt_Scanline,
+    Evt_HBlank,
     Evt_CardROM,
     Evt_CardSPI9,
     Evt_CardSPI7,

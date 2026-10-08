@@ -516,7 +516,7 @@ void IF9_Clear(Console* sys, u32 wrdata, const timestamp now)
 
 void IF9_Set(Console* sys, const IRQIDs id, const timestamp now)
 {
-    sys->IF9 |= 1<<id;
+    sys->IF9 |= (u32)1<<id;
     sys->IF9Persist |= ((u32)1<<id) & IRQ9_LevelSens;
     Sched_AddEvent(sys, now+DSClk33(1), Evt_UpdateIRQ9);
 }
@@ -551,7 +551,7 @@ void IF7_Clear(Console* sys, u32 wrdata, const timestamp now)
 
 void IF7_Set(Console* sys, const IRQIDs id, const timestamp now)
 {
-    sys->IF7 |= 1<<id;
+    sys->IF7 |= (u64)1<<id;
     sys->IF7Persist |= ((u64)1<<id) & IRQ7_LevelSens;
     Sched_AddEvent(sys, now+DSClk33(1), Evt_UpdateIRQ7);
 }

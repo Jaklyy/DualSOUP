@@ -12,66 +12,6 @@
 
 
 
-FILE* FindFileWithSameName(const char* path, const char* ext, const char* mode)
-{
-    char newpath[KiB(4)]; // if you make a longer file path i *will* cry.
-    size_t extlen = strlen(ext);
-    strncpy(newpath, path, KiB(4)-extlen-1);
-    char* end = strrchr(newpath, '.'); // find extension marker
-
-    if (end == NULL)
-    {
-        printf("ERROR: Strange File Path?\n");
-        return NULL;
-    }
-
-    // add extension.
-    strcpy(&end[1], ext);
-
-    FILE* file = fopen(newpath, mode);
-    if (file != NULL) LogPrint(LOG_ALWAYS, ".%s located: %s\n", ext, newpath);
-    return file;
-}
-
-bool SOUPParser(const char* haystack, const char* needle, const char* cmpstr, const u8 type, void* ret)
-{
-    const char* spoon = strstr(haystack, needle);
-
-    u64 offs = strlen(needle);
-    if (spoon != NULL)
-    {
-        switch(type)
-        {
-        case SEARCH_S32DEC:
-            *(u32*)ret = (u32)strtoll(&spoon[offs], NULL, 10);
-            return true;
-        case SEARCH_U32DEC:
-            *(u32*)ret = (u32)strtoull(&spoon[offs], NULL, 10);
-            return true;
-        case SEARCH_U32HEX:
-            *(u32*)ret = (u32)strtoull(&spoon[offs], NULL, 16);
-            return true;
-        case SEARCH_S64DEC:
-            *(u64*)ret = strtoll(&spoon[offs], NULL, 10);
-            return true;
-        case SEARCH_U64DEC:
-            *(u64*)ret = strtoull(&spoon[offs], NULL, 10);
-            return true;
-        case SEARCH_U64HEX:
-            *(u64*)ret = strtoull(&spoon[offs], NULL, 16);
-            return true;
-        case SEARCH_STRING:
-            while(spoon[offs] == ' ') offs++;
-            return memcmp(&spoon[offs], cmpstr, strlen(cmpstr)) == 0;
-        case SEARCH_EXISTS:
-            return true;
-        default:
-            CrashSpectacularly("INVALID SOUP PARSER TYPE: %"PRIu8"???\n", type);
-        }
-    }
-    return false;
-}
-
 
 typedef union
 {
@@ -148,6 +88,7 @@ void Config_Write(const char* path, void* cfgin, const ConfigEntry* cfgref, cons
         STOREVAL(U8HEX, "%"PRIX8, u8)
         STOREVAL(U16HEX, "%"PRIX16, u16)
         STOREVAL(U32HEX, "%"PRIX32, u32)
+        STOREVAL(U64HEX, "%"PRIX64, u64)
 
 #undef STOREVAL
 
@@ -387,7 +328,8 @@ void Config_Load(const char* path, void* cfgout, const ConfigEntry* cfgref, cons
         READNUMBER(S8DEC, s8, isdigit, S, strtoll, NULL, 10)
         READNUMBER(U8HEX, u8, isxdigit, U, strtoull, NULL, 16)
         READNUMBER(U16HEX, u16, isxdigit, U, strtoull, NULL, 16)
-        READNUMBER(U32HEX, u32, isdigit, U, strtoull, NULL, 16)
+        READNUMBER(U32HEX, u32, isxdigit, U, strtoull, NULL, 16)
+        READNUMBER(U64HEX, u64, isxdigit, U, strtoull, NULL, 16)
 
 #undef READNUMBER
 
