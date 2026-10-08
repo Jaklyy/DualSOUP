@@ -130,14 +130,25 @@ void ConfigGUI_Loop(MainGUI* mgui, MainCfg* mcfg)
         }
         if (ImGui_BeginTabItem("Logging", NULL, ImGuiTabItemFlags_None))
         {
+            if (ImGui_Button("Disable All\n")) 
+            {
+                mcfg->LoggingMask = (LogMask = 0);
+                mcfg->Dirty = true;
+            }
+            ImGui_SameLine();
+            if (ImGui_Button("Enable All\n")) 
+            {
+                mcfg->LoggingMask = (LogMask = (LOG_MAX-1));
+                mcfg->Dirty = true;
+            }
+
             for (u32 i = 0; i < stdc_trailing_zeros((u64)LOG_MAX); i++)
             {
                 ImGui_PushIDInt(i);
                 bool pass = LogMask & (1 << i);
                 if (ImGui_Checkbox(LoggingLevelsNames[i], &pass))
                 {
-                    LogMask ^= 1<<i;
-                    mcfg->LoggingMask = LogMask;
+                    mcfg->LoggingMask = (LogMask ^= (1<<i));
                     mcfg->Dirty = true;
                 }
                 ImGui_PopID();
