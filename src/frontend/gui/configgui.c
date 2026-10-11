@@ -294,7 +294,7 @@ char* FindFileWithDifferentExtension(char* path, char* ext)
     return out;
 }
 
-void SysImportGui_Loop(MainGUI* mgui)
+void SysImportGui_Loop(MainGUI* mgui, MainCfg* mcfg)
 {
     SysImportGui* igui = &mgui->SysImportGui;
     CoreCfg* cfg = &igui->Cfg;
@@ -362,12 +362,12 @@ void SysImportGui_Loop(MainGUI* mgui)
         SDL_CopyFile(igui->NvramPath, nvramfile);
         igui->Show = false;
         // refresh library list
-        LibraryGui_InitList(mgui);
+        LibraryGui_InitList(mgui, mcfg);
     }
     ImGui_End();
 }
 
-void NDSImportGui_Loop(MainGUI* mgui)
+void NDSImportGui_Loop(MainGUI* mgui, MainCfg* mcfg)
 {
     NDSImportGui* igui = &mgui->NDSImportGui;
     if (!igui->Show)
@@ -657,7 +657,7 @@ void NDSImportGui_Loop(MainGUI* mgui)
         igui->Show = false;
         exit:
         // refresh library list
-        LibraryGui_InitList(mgui);
+        LibraryGui_InitList(mgui, mcfg);
     }
     out:
     ImGui_End();

@@ -59,6 +59,7 @@ typedef struct
     int MainWinY;
     bool MainWinMaximized;
     DisplayWindow DisplayWindow[GUI_MaxDisplayWindows];
+    char* LibrarySel[3];
 } GuiCfg;
 
  // this is declared differently because otherwise i can't figure out how to forward declare this...
@@ -386,6 +387,21 @@ static const ConfigEntry MainCfgData[] =
         .SMinVal=   GUI_MinDisplayWindows,
         .SMaxVal=   GUI_MaxDisplayWindows,
         .Type=      SEARCH_INT,
+    },
+    {
+        .Name=      "SysLibrarySelected",
+        .Offset=    offsetof(MainCfg, GuiCfg.LibrarySel[LibType_Sys]),
+        .Type=      SEARCH_STRING,
+    },
+    {
+        .Name=      "NDSLibrarySelected",
+        .Offset=    offsetof(MainCfg, GuiCfg.LibrarySel[LibType_NDS]),
+        .Type=      SEARCH_STRING,
+    },
+    {
+        .Name=      "GBALibrarySelected",
+        .Offset=    offsetof(MainCfg, GuiCfg.LibrarySel[LibType_GBA]),
+        .Type=      SEARCH_STRING,
     },
     {
         .Name=      "LoggingMask",

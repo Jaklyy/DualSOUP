@@ -169,7 +169,6 @@ typedef enum : u8
 
 typedef struct
 {
-    int Sel;
     int Num;
     const char* Paths[GUI_LibMax];
     const char* Names[GUI_LibMax];
@@ -195,6 +194,7 @@ typedef struct
 
     LibraryDat Libs[LibType_MAX];
     SDL_Texture* NDSLibIcons[GUI_LibMax];
+    char* LibrarySelName[3];
 } MainGUI;
 
 typedef struct MainCfg MainCfg;
@@ -205,9 +205,9 @@ void MainGUI_Loop(Console* sys, MailBox* mailbox, MainGUI* mgui, MainCfg* mcfg, 
 void Mailbox_UpdateTouch(MailBox* mailbox, u16 x, u16 y, bool touched);
 
 void DebugGUI_Loop(MailBox* mail, MainGUI* mgui, Console* sys);
-void NDSImportGui_Loop(MainGUI* mgui);
-void SysImportGui_Loop(MainGUI* mgui);
-void GBAImportGui_Loop(MainGUI* mgui);
+void NDSImportGui_Loop(MainGUI* mgui, MainCfg* mcfg);
+void SysImportGui_Loop(MainGUI* mgui, MainCfg* mcfg);
+void GBAImportGui_Loop(MainGUI* mgui, MainCfg* mcfg);
 
-void LibraryGui_InitList(MainGUI* mgui);
+void LibraryGui_InitList(MainGUI* mgui, MainCfg* mcfg);
 void LibraryGui_Loop(MainGUI* mgui, MainCfg* mcfg);

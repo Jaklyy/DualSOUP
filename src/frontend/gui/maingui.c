@@ -80,7 +80,7 @@ MainGUI MainGUI_Init(MainCfg* mcfg)
     for (int i = 0; i < GUI_LibMax; i++)
         mgui.NDSLibIcons[i] = SDL_CreateTexture(mgui.Ren, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STATIC, 32, 32);
 
-    LibraryGui_InitList(&mgui);
+    LibraryGui_InitList(&mgui, mcfg);
     return mgui;
 }
 
@@ -157,8 +157,8 @@ void MainGUI_Loop(Console* sys, MailBox* mailbox, MainGUI* mgui, MainCfg* mcfg, 
 
     ConfigGUI_Loop(mgui, mcfg);
     DebugGUI_Loop(mailbox, mgui, sys);
-    SysImportGui_Loop(mgui);
-    NDSImportGui_Loop(mgui);
+    SysImportGui_Loop(mgui, mcfg);
+    NDSImportGui_Loop(mgui, mcfg);
     if (mgui->DemoDisplay) ImGui_ShowDemoWindow(&mgui->DemoDisplay);
 
     if (active)
