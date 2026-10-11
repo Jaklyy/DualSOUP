@@ -318,12 +318,14 @@ void SysImportGui_Loop(MainGUI* mgui, MainCfg* mcfg)
         igui->NeedReset = false;
     }
 
-    ImGui_InputTextEx("Name", cfg->FriendlyName, strlen(cfg->FriendlyName), ImGuiInputTextFlags_CallbackResize, FilePathTextCallback, &cfg->FriendlyName);
-
     if (ImGui_ComboChar("Console Type", &igui->ConsoleType, &ConsoleModelsStr[1], 2))
     {
         cfg->Model = igui->ConsoleType + ConsoleModel_NTR001; // TEMP
     }
+
+    ImGui_InputTextEx("Name", cfg->FriendlyName, strlen(cfg->FriendlyName), ImGuiInputTextFlags_CallbackResize, FilePathTextCallback, &cfg->FriendlyName);
+
+    ImGui_SeparatorText("Files");
 
     SelectFile(cfg->NTR.Bios7, "NDS ARM7 Bios", "bin;rom", 1, igui->Mutex, igui->NTR7Dirty)
     SelectFile(cfg->NTR.Bios9, "NDS ARM9 Bios", "bin;rom", 1, igui->Mutex, igui->NTR9Dirty)
@@ -337,6 +339,8 @@ void SysImportGui_Loop(MainGUI* mgui, MainCfg* mcfg)
         if (ImGui_IsItemDeactivatedAfterEdit()) // TODO: add dirty flag once system configs are worked out?
             cfg->TSC.Arr[i] = strtoul(igui->TSCRange[i], NULL, 16);
     }
+
+    ImGui_SeparatorText("");
 
     if (ImGui_Button("Create") && (cfg->FriendlyName[0] != '\0'))
     {
@@ -438,7 +442,8 @@ void NDSImportGui_Loop(MainGUI* mgui, MainCfg* mcfg)
         }
     }
 
-    if (ImGui_Button("Infer from provided Files\n"))
+    ImGui_Text("Note: Infer doesn't auto-select\nnon-standard card hw (ie. IR)");
+    if (ImGui_Button("Infer from provided files\n"))
     {
         ImportGui_ParseNDSROM(igui);
         ImportGui_ParseNDSSRAM(igui);
@@ -515,12 +520,21 @@ void NDSImportGui_Loop(MainGUI* mgui, MainCfg* mcfg)
         }
     }
 
+
+    ImGui_SeparatorText("");
+
     ImGui_InputTextMultilineEx("Game Title", igui->Name, strlen(igui->Name)+1, (ImVec2){0, 45}, ImGuiInputTextFlags_CallbackResize, FilePathTextCallback, &igui->Name);
+
+
+    ImGui_SeparatorText("ROM Chip");
 
     const char* const romsizes[] = {"1 MiB", "2 MiB", "4 MiB", "8 MiB", "16 MiB", "32 MiB", "64 MiB", "128 MiB", "256 MiB", "512 MiB"};
     ImGui_ComboChar("ROM Chip Size", &igui->ROMSize, romsizes, countof(romsizes));
 
     ImGui_InputIntEx("ROM Chip ID", &igui->ROMChipID, 0, 0, ImGuiInputTextFlags_CharsHexadecimal|ImGuiInputTextFlags_CharsUppercase);
+
+
+    ImGui_SeparatorText("SPI/SRAM Chip");
 
     const char* const spitype[] = {"None", "Direct SRAM Chip", "Infrared (HLE)"};
     ImGui_ComboChar("SPI Bus Type", &igui->SPIType, spitype, countof(spitype));
@@ -541,6 +555,8 @@ void NDSImportGui_Loop(MainGUI* mgui, MainCfg* mcfg)
     ImGui_EndDisabled();
     ImGui_EndDisabled();
     ImGui_EndDisabled();
+
+    ImGui_SeparatorText("");
 
     if (ImGui_Button("Import") && (igui->ROMPath[0] != '\0'))
     {

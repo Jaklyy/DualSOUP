@@ -8,6 +8,36 @@
 #include "../soupparser/soupparser.h"
 #include "core/utils.h"
 
+constexpr u32 LibStrMax = 20;
+char* LibrarySelName_Construct(const char* str)
+{
+    // parse utf-8 string
+    size_t inlen = strlen(str);
+    const char* pstr = str;
+    for (u32 i = 0; i < LibStrMax; i++)
+    {
+        const char* prev = pstr;
+        u32 codepoint = SDL_StepUTF8(&pstr, &inlen);
+
+        // sanitize characters
+        switch(codepoint)
+        {
+        case u8'\n': // new line; terminate string
+        {
+            pstr = prev;
+            goto done;
+        }
+        default: break;
+        }
+    }
+    done:
+    // allocate out string
+    size_t outlen = pstr-str;
+    char* outstr = malloc(outlen+1);
+    memcpy(outstr, str, outlen);
+    outstr[outlen] = u8'\0';
+    return outstr;
+}
 
 typedef struct LibGui_EnumPass
 {
@@ -65,10 +95,11 @@ SDL_EnumerationResult SDLCALL LibraryGui_EnumerateLoop(void* userdata, const cha
         break;
     }
     }
+
     if (strcmp(pass->LibPaths[*pass->LibNum], pass->Sel) == 0)
     {
         free((void*)*pass->NameOut);
-        *pass->NameOut = strdup(pass->LibNames[*pass->LibNum]);
+        *pass->NameOut = LibrarySelName_Construct(pass->LibNames[*pass->LibNum]);
     }
 
     if (pass->LibIcons != nullptr)
@@ -166,7 +197,7 @@ void LibraryRender(MainGUI* mgui, MainCfg* mcfg, const LibGui_Type type)
                     free(mcfg->GuiCfg.LibrarySel[type]);
                     mcfg->GuiCfg.LibrarySel[type] = strdup(mgui->Libs[type].Paths[i]);
                     free(mgui->LibrarySelName[type]);
-                    mgui->LibrarySelName[type] = strdup(mgui->Libs[type].Names[i]);
+                    mgui->LibrarySelName[type] = LibrarySelName_Construct(mgui->Libs[type].Names[i]);
                     mcfg->Dirty = true;
                 }
                 ImGui_PopID();
@@ -178,12 +209,6 @@ void LibraryRender(MainGUI* mgui, MainCfg* mcfg, const LibGui_Type type)
 
 void LibraryGui_Loop(MainGUI* mgui, MainCfg* mcfg)
 {
-    ImGui_SameLine();
-    ImGui_Text("Console: %s", mgui->LibrarySelName[LibType_Sys]);
-    ImGui_SameLine();
-    ImGui_Text("NDS Slot: %s", mgui->LibrarySelName[LibType_NDS]);
-    ImGui_SameLine();
-    ImGui_Text("GBA Slot: %s", mgui->LibrarySelName[LibType_GBA]);
     if (ImGui_Button("Boot Console"))
     {
         {
@@ -208,31 +233,62 @@ void LibraryGui_Loop(MainGUI* mgui, MainCfg* mcfg)
         if (!SDL_PushEvent(&evt)) printf("%s\n", SDL_GetError());
         mgui->ShowList = false;
     }
+
+
+#define AllocStupidString(title, type) \
+    size_t len = strlen(mgui->LibrarySelName[type]); \
+    char str[sizeof(#title": ###"#title)+len]; \
+    char* neostr = str; \
+    memcpy(neostr, #title": ", sizeof(#title": ")-1); \
+    neostr += sizeof(#title": ")-1; \
+    memcpy(neostr, mgui->LibrarySelName[type], len); \
+    neostr += len; \
+    memcpy(neostr, "###"#title, sizeof("###"#title));
+
     ImGui_BeginTabBar("Libraries", 0);
     {
-        if (ImGui_BeginTabItem("Console", NULL, 0))
         {
-            if (ImGui_Button("Configure Consoles")) mgui->SysImportGui.Show = !mgui->SysImportGui.Show;
+            AllocStupidString(Console, LibType_Sys)
+            if (ImGui_BeginTabItem(str, NULL, 0))
+            {
+                if (ImGui_Button("Configure Consoles")) mgui->SysImportGui.Show = !mgui->SysImportGui.Show;
 
-            LibraryRender(mgui, mcfg, LibType_Sys);
-            ImGui_EndTabItem();
+                LibraryRender(mgui, mcfg, LibType_Sys);
+                ImGui_EndTabItem();
+            }
         }
 
-        if (ImGui_BeginTabItem("NDS Slot", NULL, 0))
         {
-            if (ImGui_Button("Import NDS")) mgui->NDSImportGui.Show = !mgui->NDSImportGui.Show;
+            AllocStupidString(NDS Slot, LibType_NDS)
+            if (ImGui_BeginTabItem(str, NULL, 0))
+            {
+                if (ImGui_Button("Import NDS")) mgui->NDSImportGui.Show = !mgui->NDSImportGui.Show;
 
-            LibraryRender(mgui, mcfg, LibType_NDS);
-            ImGui_EndTabItem();
+                LibraryRender(mgui, mcfg, LibType_NDS);
+                ImGui_EndTabItem();
+            }
         }
 
         ImGui_BeginDisabled(true);
-        if (ImGui_BeginTabItem("GBA Slot", NULL, 0))
         {
-            if (ImGui_Button("Import GBA")) mgui->GBAImportGui.Show = !mgui->GBAImportGui.Show;
+            #if 0
+            size_t len = strlen(mgui->LibrarySelName[LibType_GBA]);
+            char str[sizeof("GBA Slot: ###GBA Slot")+len];
+            char* neostr = str;
+            memcpy(neostr, "GBA Slot: ", sizeof("GBA Slot: ")-1);
+            neostr += sizeof("GBA Slot: ");
+            memcpy(neostr, mgui->LibrarySelName[LibType_GBA], len);
+            neostr += len+1;
+            memcpy(neostr, "###GBA Slot", sizeof("###GBA Slot"));
 
-            LibraryRender(mgui, mcfg, LibType_NDS);
-            ImGui_EndTabItem();
+            if (ImGui_BeginTabItem(str, NULL, 0))
+            {
+                if (ImGui_Button("Import GBA")) mgui->GBAImportGui.Show = !mgui->GBAImportGui.Show;
+
+                LibraryRender(mgui, mcfg, LibType_NDS);
+                ImGui_EndTabItem();
+            }
+            #endif
         }
         ImGui_EndDisabled();
         ImGui_EndTabBar();
