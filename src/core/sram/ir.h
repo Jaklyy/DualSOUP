@@ -14,3 +14,4 @@ typedef struct
 
 u8 IRhle_CMDSend(IRhle* ir, GameCard_SRAMChip sramtype, const u8 val, const bool chipsel);
 void IRhle_Cleanup(IRhle* ir, GameCard_SRAMChip sramtype);
+bool IRhle_FlushToDisk(IRhle* ir, GameCard_SRAMChip sramtype, u8** outbuf, u64* size, bool force);

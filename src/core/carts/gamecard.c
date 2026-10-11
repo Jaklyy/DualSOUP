@@ -10,7 +10,7 @@
 
 
 
-bool GameCard_Init(GameCard* card, const GameCardConfig* cfg, u8* bios7)
+bool GameCard_Init(GameCard* card, const GameCardCfg* cfg, u8* bios7)
 {
     size_t romsize = (size_t)1<<cfg->ROMChipSize;
     card->RomSize = romsize;
@@ -72,12 +72,22 @@ bool GameCard_Init(GameCard* card, const GameCardConfig* cfg, u8* bios7)
         memset(srambuffer, 0xFF, sramsize);
 
         SDL_IOStream* sram;
-        if ((sram = SDL_IOFromFile(cfg->SRAMPath, "rb")) == NULL)
         {
-            LogPrint(LOG_ALWAYS, "Could not open SRAM: %s\n%s", cfg->SRAMPath, SDL_GetError());
+            card->SavFolder = malloc(strlen(cfg->FolderPath)+sizeof(DSSavFolder));
+            strcpy(card->SavFolder, cfg->FolderPath);
+            strcat(card->SavFolder, DSSavFolder);
 
-            free(srambuffer);
-            goto fail;
+            char savpath[strlen(card->SavFolder)+sizeof(DSSavFile)];
+            strcpy(savpath, card->SavFolder);
+            strcat(savpath, DSSavFile);
+
+            if ((sram = SDL_IOFromFile(savpath, "rb")) == NULL)
+            {
+                LogPrint(LOG_ALWAYS, "Could not open SRAM: %s\n%s", savpath, SDL_GetError());
+
+                free(srambuffer);
+                goto fail;
+            }
         }
 
         size_t srambytes = SDL_ReadIO(sram, srambuffer, sramsize);
@@ -139,6 +149,32 @@ u8 GameCardSPI_CmdSend(GCSPI* self, GameCard_SPIBus spi, GameCard_SRAMChip sram,
     }
 }
 
+bool GameCardSRAM_FlushToDisk(GCSRAM* self, GameCard_SRAMChip sram, u8** outbuf, u64* size, bool force)
+{
+    switch(sram)
+    {
+    case GameCard_SRAMChip_None: return false;
+    case GameCard_SRAMChip_Flash24BitAddr:
+        return Flash_FlushToDisk((Flash*)self, outbuf, size, force);
+    case GameCard_SRAMChip_EEPROM9BitAddr
+    ... GameCard_SRAMChip_EEPROM24BitAddr:
+        return EEPROM_FlushToDisk((EEPROM*)self, outbuf, size, force);
+    }
+}
+
+bool GameCardSPI_FlushToDisk(GameCard* card, u8** outbuf, u64* size, bool force)
+{
+    switch(card->SPIType)
+    {
+    case GameCard_SPIBus_None:
+        return false; // checkme
+    case GameCard_SPIBus_DirectSRAM:
+        return GameCardSRAM_FlushToDisk(&card->SPI.SRAM, card->SRAMType, outbuf, size, force);
+    case GameCard_SPIBus_InfraredHLE:
+        return IRhle_FlushToDisk((IRhle*)&card->SPI.IRhle, card->SRAMType, outbuf, size, force);
+    }
+}
+
 void GameCardSRAM_Cleanup(GCSRAM* self, GameCard_SRAMChip sram)
 {
     switch(sram)
@@ -162,6 +198,7 @@ void GameCard_Cleanup(GameCard* card)
     case GameCard_SPIBus_InfraredHLE:
         IRhle_Cleanup((IRhle*)&card->SPI, card->SRAMType); break;
     }
+    free(card->SavFolder);
     free(card->ROM);
     card->ROM = nullptr;
 }

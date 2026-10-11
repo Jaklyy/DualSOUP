@@ -85,39 +85,6 @@ void ConfigGUI_Loop(MainGUI* mgui, MainCfg* mcfg)
 
     if (ImGui_BeginTabBar("ConfigTabBar", ImGuiTabBarFlags_None))
     {
-        if (ImGui_BeginTabItem("Main", NULL, ImGuiTabItemFlags_None))
-        {
-            SelectFile(mcfg->CoreCfg.NTR.Bios7, "NDS ARM7 Bios", "bin;rom", 1, mcfg->Mutex, mcfg->Dirty)
-            SelectFile(mcfg->CoreCfg.NTR.Bios9, "NDS ARM9 Bios", "bin;rom", 1, mcfg->Mutex, mcfg->Dirty)
-            SelectFile(mcfg->CoreCfg.NTR.NVRAM, "NDS Firmware", "bin;rom;mem", 1, mcfg->Mutex, mcfg->Dirty)
-
-            ImGui_SeparatorText("TSC Range");
-            ImGui_InputText("TSC Left", mgui->TSCRange[0], sizeof(mgui->TSCRange[0]), ImGuiInputTextFlags_CharsHexadecimal|ImGuiInputTextFlags_CharsUppercase);
-            if (ImGui_IsItemDeactivatedAfterEdit())
-            {
-                // TODO: add dirty flag once system configs are worked out?
-                mcfg->CoreCfg.SysCfg.TSCL = strtoul(mgui->TSCRange[0], NULL, 16);
-            }
-            ImGui_InputText("TSC Right", mgui->TSCRange[1], sizeof(mgui->TSCRange[1]), ImGuiInputTextFlags_CharsHexadecimal|ImGuiInputTextFlags_CharsUppercase);
-            if (ImGui_IsItemDeactivatedAfterEdit())
-            {
-                // TODO: add dirty flag once system configs are worked out?
-                mcfg->CoreCfg.SysCfg.TSCR = strtoul(mgui->TSCRange[1], NULL, 16);
-            }
-            ImGui_InputText("TSC Top", mgui->TSCRange[2], sizeof(mgui->TSCRange[2]), ImGuiInputTextFlags_CharsHexadecimal|ImGuiInputTextFlags_CharsUppercase);
-            if (ImGui_IsItemDeactivatedAfterEdit())
-            {
-                // TODO: add dirty flag once system configs are worked out?
-                mcfg->CoreCfg.SysCfg.TSCT = strtoul(mgui->TSCRange[2], NULL, 16);
-            }
-            ImGui_InputText("TSC Bottom", mgui->TSCRange[3], sizeof(mgui->TSCRange[3]), ImGuiInputTextFlags_CharsHexadecimal|ImGuiInputTextFlags_CharsUppercase);
-            if (ImGui_IsItemDeactivatedAfterEdit())
-            {
-                // TODO: add dirty flag once system configs are worked out?
-                mcfg->CoreCfg.SysCfg.TSCB = strtoul(mgui->TSCRange[3], NULL, 16);
-            }
-            ImGui_EndTabItem();
-        }
         if (ImGui_BeginTabItem("Layout", NULL, ImGuiTabItemFlags_None))
         {
             if (ImGui_InputIntEx("Window", &mcfg->GuiCfg.NumDisplayWindows, 1, 1, ImGuiInputFlags_None))
@@ -160,7 +127,7 @@ void ConfigGUI_Loop(MainGUI* mgui, MainCfg* mcfg)
     ImGui_End();
 }
 
-void ImportGui_ParseNDSROM(ImportGui* igui)
+void ImportGui_ParseNDSROM(NDSImportGui* igui)
 {
     if (!igui->ROMDirty) return;
     igui->ROMDirty = false;
@@ -246,7 +213,7 @@ void ImportGui_ParseNDSROM(ImportGui* igui)
     SDL_UnlockMutex(igui->Mutex);
 }
 
-void ImportGui_ParseNDSSRAM(ImportGui* igui)
+void ImportGui_ParseNDSSRAM(NDSImportGui* igui)
 {
     if (!igui->SRAMDirty) return;
     igui->SRAMDirty = false;
@@ -271,7 +238,7 @@ void ImportGui_ParseNDSSRAM(ImportGui* igui)
 
 // note: this is probably not a standard meant to be stable, but w/e.
 // we can work on a proper standard later.
-void ImportGui_ParseNDSTxt(ImportGui* igui)
+void ImportGui_ParseNDSTxt(NDSImportGui* igui)
 {
     if (!igui->TxtDirty) return;
     igui->TxtDirty = false;
@@ -327,8 +294,82 @@ char* FindFileWithDifferentExtension(char* path, char* ext)
     return out;
 }
 
-void ImportGui_Loop(MainGUI* mgui, ImportGui* igui, const bool NDS)
+void SysImportGui_Loop(MainGUI* mgui)
 {
+    SysImportGui* igui = &mgui->SysImportGui;
+    CoreCfg* cfg = &igui->Cfg;
+    if (!igui->Show)
+    {
+        igui->NeedReset = true;
+        return;
+    }
+
+    ImGui_SetNextWindowSize((ImVec2){340.0, 400.0}, ImGuiCond_FirstUseEver);
+    if (!ImGui_Begin("Configure DS System", &igui->Show, 0))
+        return ImGui_End();
+
+    if (igui->NeedReset)
+    {
+        memset(&igui->Cfg, 0, (sizeof(SysImportGui) - offsetof(SysImportGui, NvramDat)));
+        Config_Load(NULL, cfg, CoreCfgData, countof(CoreCfgData), NULL, NULL);
+        igui->ConsoleType = cfg->Model-ConsoleModel_NTR001; // TEMP
+        for (int i = 0; i < 4; i++) snprintf(igui->TSCRange[i], 4, "%03X", cfg->TSC.Arr[i]);
+
+        igui->NeedReset = false;
+    }
+
+    ImGui_InputTextEx("Name", cfg->FriendlyName, strlen(cfg->FriendlyName), ImGuiInputTextFlags_CallbackResize, FilePathTextCallback, &cfg->FriendlyName);
+
+    if (ImGui_ComboChar("Console Type", &igui->ConsoleType, &ConsoleModelsStr[1], 2))
+    {
+        cfg->Model = igui->ConsoleType + ConsoleModel_NTR001; // TEMP
+    }
+
+    SelectFile(cfg->NTR.Bios7, "NDS ARM7 Bios", "bin;rom", 1, igui->Mutex, igui->NTR7Dirty)
+    SelectFile(cfg->NTR.Bios9, "NDS ARM9 Bios", "bin;rom", 1, igui->Mutex, igui->NTR9Dirty)
+    SelectFile(igui->NvramPath, "NDS Firmware", "bin;rom;mem", 1, igui->Mutex, igui->NvramDirty)
+
+    ImGui_SeparatorText("TSC Range");
+    for (int i = 0; i < 4; i++)
+    {
+        const char* strs[4] = {"TSC Left", "TSC Right", "TSC Top", "TSC Bottom"};
+        ImGui_InputText(strs[i], igui->TSCRange[i], sizeof(igui->TSCRange[i]), ImGuiInputTextFlags_CharsHexadecimal|ImGuiInputTextFlags_CharsUppercase);
+        if (ImGui_IsItemDeactivatedAfterEdit()) // TODO: add dirty flag once system configs are worked out?
+            cfg->TSC.Arr[i] = strtoul(igui->TSCRange[i], NULL, 16);
+    }
+
+    if (ImGui_Button("Create") && (cfg->FriendlyName[0] != '\0'))
+    {
+        // todo: sanitize filepath
+        char basepath[strlen(DualSOUPFolder)+sizeof(ConsoleFolder)+strlen(cfg->FriendlyName)+sizeof("/")];
+        strcpy(basepath, DualSOUPFolder);
+        strcat(basepath, ConsoleFolder);
+        strcat(basepath, cfg->FriendlyName);
+        strcat(basepath, "/");
+
+        SDL_CreateDirectory(basepath);
+
+        char cfgfile[strlen(basepath)+sizeof(DSCfgName)];
+        strcpy(cfgfile, basepath);
+        strcat(cfgfile, DSCfgName);
+
+        Config_Write(cfgfile, cfg, CoreCfgData, countof(CoreCfgData), nullptr, nullptr);
+
+        char nvramfile[strlen(basepath)+sizeof(ConsoleWiFiNvram)];
+        strcpy(nvramfile, basepath);
+        strcat(nvramfile, ConsoleWiFiNvram);
+
+        SDL_CopyFile(igui->NvramPath, nvramfile);
+        igui->Show = false;
+        // refresh library list
+        LibraryGui_InitList(mgui);
+    }
+    ImGui_End();
+}
+
+void NDSImportGui_Loop(MainGUI* mgui)
+{
+    NDSImportGui* igui = &mgui->NDSImportGui;
     if (!igui->Show)
     {
         igui->NeedReset = true;
@@ -347,7 +388,7 @@ void ImportGui_Loop(MainGUI* mgui, ImportGui* igui, const bool NDS)
         igui->TxtPath[0] = '\0';
         if (igui->ROMDat.FriendlyName != NULL)
             SDL_free(igui->ROMDat.FriendlyName);
-        memset(&igui->ROMDat, 0, sizeof(ImportGui) - offsetof(ImportGui, ROMDat));
+        memset(&igui->ROMDat, 0, sizeof(NDSImportGui) - offsetof(NDSImportGui, ROMDat));
         igui->TxtDat.SRAMID = 0xFFFFFF;
 
         igui->NeedReset = false;
@@ -474,10 +515,10 @@ void ImportGui_Loop(MainGUI* mgui, ImportGui* igui, const bool NDS)
         }
     }
 
-    ImGui_InputTextMultilineEx("Game Title", igui->Name, strlen(igui->Name)+1, (ImVec2){0, 45}, ImGuiInputTextFlags_AutoSelectAll|ImGuiInputTextFlags_CallbackResize, FilePathTextCallback, &igui->Name);
+    ImGui_InputTextMultilineEx("Game Title", igui->Name, strlen(igui->Name)+1, (ImVec2){0, 45}, ImGuiInputTextFlags_CallbackResize, FilePathTextCallback, &igui->Name);
 
     const char* const romsizes[] = {"1 MiB", "2 MiB", "4 MiB", "8 MiB", "16 MiB", "32 MiB", "64 MiB", "128 MiB", "256 MiB", "512 MiB"};
-    ImGui_ComboChar("ROM Chip Size", &igui->ROMSize, romsizes, NDS ? countof(romsizes) : 6);
+    ImGui_ComboChar("ROM Chip Size", &igui->ROMSize, romsizes, countof(romsizes));
 
     ImGui_InputIntEx("ROM Chip ID", &igui->ROMChipID, 0, 0, ImGuiInputTextFlags_CharsHexadecimal|ImGuiInputTextFlags_CharsUppercase);
 
@@ -509,12 +550,6 @@ void ImportGui_Loop(MainGUI* mgui, ImportGui* igui, const bool NDS)
         size_t sramsize = (size_t)1<<(igui->SRAMChipSize + 9);
         u8 srambuffer[sramsize];
 
-        constexpr char cfgname[] = "/cfg.soup";
-        constexpr char savfolder[] = "/sav";
-        constexpr char savfile[] = "/sav.sav"; // TODO: backups
-        constexpr char iconfile[] = "/icon.bin";
-        constexpr char ndsfolder[] = "GameCard/";
-
         char* start; char* end;
         if ((start = strrchr(igui->ROMPath, '/')) == NULL)
             start = igui->ROMPath;
@@ -526,41 +561,40 @@ void ImportGui_Loop(MainGUI* mgui, ImportGui* igui, const bool NDS)
         if ((romfoldername = calloc(1, end-start+1)) == NULL)
             goto out;
         strncpy(romfoldername, start, end-start);
-        char* path = SDL_GetPrefPath("DualSOUP", "DualSOUP");
 
-        size_t basefolderlen = strlen(path)+sizeof(ndsfolder)+strlen(romfoldername);
-        char submpath[basefolderlen+sizeof(cfgname)];
-        char savpath[basefolderlen+sizeof(savfolder)+sizeof(savfile)];
-        char iconpath[basefolderlen+sizeof(iconfile)];
-        if (NDS)
-        {
-            strcpy(submpath, path);
-            strcat(submpath, ndsfolder);
-            strcat(submpath, romfoldername);
-            strcpy(savpath, submpath);
-            strcpy(iconpath, submpath);
-            strcat(submpath, cfgname);
-            strcat(iconpath, iconfile);
-            strcat(savpath, savfolder);
-            // make folder
-            if (!SDL_CreateDirectory(savpath))
-            {
-                printf("Directory creation failure: %s\n", SDL_GetError());
-                goto exit;
-            }
-            strcat(savpath, savfile);
-        }
-        else
-        {
-            constexpr char gbafolder[] = "GamePak/";
-            //submpath = malloc(strlen(path)+sizeof(gbafolder)+strlen(igui->Name));
-            strcpy(submpath, path);
-            strcat(submpath, gbafolder);
-            strcat(submpath, igui->Name);
-        }
-        printf("%s\n%s\n", submpath, savpath);
+        size_t basefolderlen = strlen(DualSOUPFolder)+sizeof(NDSFolder)+strlen(romfoldername)+1;
+        char basepath[basefolderlen];
+        char cfgpath[basefolderlen+sizeof(DSCfgName)];
+        char savfolderpath[basefolderlen+sizeof(DSSavFolder)];
+        char savpath[basefolderlen+sizeof(DSSavFolder)+sizeof(DSSavFile)];
+        char iconpath[basefolderlen+sizeof(DSIconFile)];
+        // base folder name
+        strcpy(basepath, DualSOUPFolder);
+        strcat(basepath, NDSFolder);
+        strcat(basepath, romfoldername);
+        strcat(basepath, "/");
 
-        GameCardConfig cfg = {
+        // copy to other paths
+        strcpy(savfolderpath, basepath);
+        strcpy(iconpath, basepath);
+        strcpy(cfgpath, basepath);
+
+        // finish set up
+        strcat(cfgpath, DSCfgName);
+        strcat(iconpath, DSIconFile);
+        strcat(savfolderpath, DSSavFolder);
+        // make folder
+        if (!SDL_CreateDirectory(savfolderpath))
+        {
+            printf("Directory creation failure: %s\n", SDL_GetError());
+            goto exit;
+        }
+        // copy one more time
+        strcpy(savpath, savfolderpath);
+        strcat(savpath, DSSavFile);
+        printf("%s\n", basepath);
+
+        GameCardCfg cfg = {
             .ROMBusType = GameCard_ROMBus_Standard,
             .ROMChipSize = igui->ROMSize + 20,
             .ROMPaddingByte = 0xFF,
@@ -570,13 +604,12 @@ void ImportGui_Loop(MainGUI* mgui, ImportGui* igui, const bool NDS)
             .SRAMChipType = igui->SRAMType,
             .SRAMChipSize = igui->SRAMChipSize + 9,
             .FlashChipID = igui->FlashChipID,
-            .SRAMPath = savpath,
             .ImportKey1FromNTRBios7 = true,
             .ManualKey1Path = nullptr,
             .FriendlyName = igui->Name,
         };
 
-        Config_Write(submpath, &cfg, GameCardCfgData, countof(GameCardCfgData), nullptr, igui->Mutex);
+        Config_Write(cfgpath, &cfg, GameCardCfgData, countof(GameCardCfgData), nullptr, igui->Mutex);
 
         if ((igui->SPIType == GameCard_SPIBus_None) || (igui->SRAMType == GameCard_SRAMChip_None)) // exit if no sram
             goto skipsav;
@@ -623,7 +656,6 @@ void ImportGui_Loop(MainGUI* mgui, ImportGui* igui, const bool NDS)
 
         igui->Show = false;
         exit:
-        SDL_free(path);
         // refresh library list
         LibraryGui_InitList(mgui);
     }

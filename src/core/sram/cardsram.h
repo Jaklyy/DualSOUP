@@ -24,3 +24,4 @@ typedef enum : u8
 
 u8 GameCardSRAM_CmdSend(GCSRAM* self, GameCard_SRAMChip sram, u8 val, bool chipsel);
 void GameCardSRAM_Cleanup(GCSRAM* self, GameCard_SRAMChip sram);
+bool GameCardSRAM_FlushToDisk(GCSRAM* self, GameCard_SRAMChip sram, u8** outbuf, u64* size, bool force);

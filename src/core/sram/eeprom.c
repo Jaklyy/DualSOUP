@@ -1,3 +1,4 @@
+#include <SDL3/SDL_timer.h>
 #include <stdckdint.h>
 #include <stdlib.h>
 #include "eeprom.h"
@@ -29,6 +30,27 @@ void EEPROM_Reset(EEPROM* eep)
     eep->CmdLen = 0;
     eep->Busy = 0;
     eep->PrevChipSelect = false;
+}
+
+void EEPROM_SetDirty(EEPROM* eep)
+{
+    if (!eep->Dirty)
+    {
+        eep->Dirty = true;
+        eep->DirtyCycle = SDL_GetPerformanceCounter() + SDL_GetPerformanceFrequency();
+    }
+}
+
+bool EEPROM_FlushToDisk(EEPROM* eep, u8** outbuf, u64* size, bool force)
+{
+    if (eep->Dirty && (force || (SDL_GetPerformanceCounter() >= eep->DirtyCycle)))
+    {
+        *outbuf = eep->RAM;
+        *size = eep->RAMSize;
+        eep->Dirty = false;
+        return true;
+    }
+    return false;
 }
 
 
@@ -101,6 +123,10 @@ u8 EEPROM_WriteData(EEPROM* eep, const u8 val, const bool chipsel)
     {
         // checkme: how does it actually do masking?
         eep->CurAddr &= (eep->RAMSize-1);
+
+        if (eep->RAM[eep->CurAddr] != val)
+            EEPROM_SetDirty(eep);
+
         eep->RAM[eep->CurAddr++] = val;
         // TODO: handle pages?
         // TODO: write protection?

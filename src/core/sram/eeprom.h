@@ -6,7 +6,9 @@
 
 typedef struct
 {
+    u64 DirtyCycle;
     u16 CmdLen;
+    bool Dirty;
     bool Busy;
     bool WriteEnabled;
     bool PrevChipSelect;
@@ -25,3 +27,4 @@ u8 EEPROM_CMDSend(EEPROM* eep, const u8 val, const bool chipsel);
 void EEPROM_Init(EEPROM* eep, u8* ram, u64 size, u8 addrbytes, u8 writeprot);
 void EEPROM_Cleanup(EEPROM* eep);
 void EEPROM_Reset(EEPROM* eep);
+bool EEPROM_FlushToDisk(EEPROM* eep, u8** outbuf, u64* size, bool force);

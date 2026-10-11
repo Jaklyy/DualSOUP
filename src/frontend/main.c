@@ -224,16 +224,13 @@ int main()
 
     atexit(SDL_Quit); // apparently this is a thing i should be doing.
 
-    char* path = SDL_GetPrefPath("DualSOUP", "DualSOUP");
-    constexpr char ininame[] = "DualSOUP.ini";
-    char* cfgpath = malloc(strlen(path)+sizeof(ininame));
-    strcpy(cfgpath, path);
-    strcat(cfgpath, ininame);
-    SDL_free(path);
+    DualSOUPFolder = SDL_GetPrefPath("DualSOUP", "DualSOUP");
+    char cfgpath[strlen(DualSOUPFolder)+sizeof(DualSOUPCfgName)];
+    strcpy(cfgpath, DualSOUPFolder);
+    strcat(cfgpath, DualSOUPCfgName);
 
     MainCfg mcfg = {.Dirty = false};
     Config_Load(cfgpath, &mcfg, MainCfgData, countof(MainCfgData), &mcfg.Dirty, &mcfg.Mutex);
-    Config_Load(NULL, &mcfg.CoreCfg.SysCfg, SystemCfgData, countof(SystemCfgData), NULL, &mcfg.Mutex);
     LogMask = mcfg.LoggingMask;
 
     MainGUI mgui = MainGUI_Init(&mcfg);

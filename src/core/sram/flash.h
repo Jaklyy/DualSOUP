@@ -6,11 +6,13 @@
 
 typedef struct
 {
+    u64 DirtyCycle;
     u16 CmdLen;
-    bool WriteEnabled;
+    bool Dirty;
     bool Busy;
-    bool PowerDown;
+    bool WriteEnabled;
     bool PrevChipSelect;
+    bool PowerDown;
     u8 CurCmd;
     u8 WritePos;
     u32 CurAddr;
@@ -26,3 +28,4 @@ u8 Flash_CMDSend(Flash* flash, const u8 val, const bool chipsel);
 void Flash_Init(Flash* flash, u8* ram, u64 size, bool writeprot, const int id);
 void Flash_Cleanup(Flash* flash);
 void Flash_Reset(Flash* flash);
+bool Flash_FlushToDisk(Flash* flash, u8** outbuf, u64* size, bool force);

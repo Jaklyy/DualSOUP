@@ -220,45 +220,79 @@ typedef enum : u8
     ConsoleModel_MAX [[maybe_unused]],
 } ConsoleModel;
 
+static const char* ConsoleModelsStr[] =
+{
+    "Custom",
+    "Original (NTR)",
+    "Lite (USG)",
+    "DSi (TWL)",
+    "DSi XL (UTL)",
+    "Original 3DS (CTR)",
+    "Original 3DS XL (SPR)",
+    "Original 2DS (FTR)",
+    "New 3DS (KTR)",
+    "New 3DS XL (RED)",
+    "New 2DS XL (JAN)"
+};
+
 // cfg used at runtime to determine what model the core should emulate for each component
 typedef struct
 {
-    GameCardConfig GameCard;
     NTRAudioOut NTRAudioOut;
     NTRPMIC NTRPMIC;
     NTRFCRAM NTRFCRAM;
     WiFiNVRAMSize WiFiNVRAMSize;
-    WiFiNVRAMWriteProt WiFiNVRAMWriteProt;
-    u16 TSCL;
-    u16 TSCR;
-    u16 TSCT;
-    u16 TSCB;
 } SysCfg;
+
+constexpr SysCfg SysCfg_Defaults[ConsoleModel_MAX] =
+{
+    [ConsoleModel_NTR001] = {
+        .NTRAudioOut = NTRAudioOut_10,
+        .NTRPMIC = NTRPMIC_NTR,
+        .NTRFCRAM = NTRFCRAM_4MiB,
+        .WiFiNVRAMSize = WiFiNVRAM_256KiB,
+    },
+    [ConsoleModel_USG001] = {
+        .NTRAudioOut = NTRAudioOut_10,
+        .NTRPMIC = NTRPMIC_USG,
+        .NTRFCRAM = NTRFCRAM_4MiB,
+        .WiFiNVRAMSize = WiFiNVRAM_256KiB,
+    },
+};
 
 // cfg used to initialize the emulator core
 typedef struct
 {
+    union {
+        u16 Arr[4];
+        struct {
+            u16 L;
+            u16 R;
+            u16 T;
+            u16 B;
+        };
+    } TSC;
     SysCfg SysCfg;
     ConsoleModel Model;
-    char* CustomModel;
+    char* FolderPath;
     struct {
         char* Bios7;
     } AGB; // AGB+ (excl. TWL)
     struct {
         char* Bios7;
         char* Bios9;
-        char* NVRAM;
+        GameCardCfg GameCard;
     } NTR; // NTR+
     struct {
         char* Bios7;
         char* Bios9;
-        char* NAND;
-        char* SDCard;
     } TWL;// TWL+
     struct {
         char* Boot9;
         char* Boot11;
     } CTR; // CTR+
+
+    char* FriendlyName;
 } CoreCfg;
 
 typedef struct Console
@@ -642,7 +676,7 @@ typedef struct Console
 
     u64 dummy; // for debugging i guess
     FILE* log;
-
+    char* WiFiNVRAMFolder;
 
     alignas(HOST_CACHEALIGN)
     // WRAM

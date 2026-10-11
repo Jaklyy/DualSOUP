@@ -9,98 +9,126 @@
 #include "core/utils.h"
 
 
-typedef struct LibraryGui_EnumPass
+typedef struct LibGui_EnumPass
 {
-    const char** LibrarySoups;
-    const char** LibraryNames;
-    SDL_Texture** LibraryIcons;
-    int* LibraryNum;
-} LibraryGui_EnumPass;
+    const char** LibPaths;
+    const char** LibNames;
+    SDL_Texture** LibIcons;
+    LibGui_Type Type;
+    int* LibNum;
+} LibGui_EnumPass;
 
 SDL_EnumerationResult SDLCALL LibraryGui_EnumerateLoop(void* userdata, const char* dirname [[maybe_unused]], const char* fname)
 {
-    LibraryGui_EnumPass* pass = userdata;
+    LibGui_EnumPass* pass = userdata;
 
-    char folder[strlen(dirname)+strlen(fname)+1];
+    char folder[strlen(dirname)+strlen(fname)+sizeof("/")];
     strcpy(folder, dirname);
     strcat(folder, fname);
+    strcat(folder, "/");
     SDL_PathInfo info;
     if (!SDL_GetPathInfo(folder, &info) || (info.type != SDL_PATHTYPE_DIRECTORY))
         return SDL_ENUM_CONTINUE;
 
-    char cfg[strlen(folder)+sizeof("/cfg.soup")];
+    printf("loading: %s\n", folder);
+
+    char cfg[strlen(folder)+sizeof(DSCfgName)];
     strcpy(cfg, folder);
-    strcat(cfg, "/cfg.soup");
+    strcat(cfg, DSCfgName);
 
     if (!SDL_GetPathInfo(cfg, &info) || (info.type != SDL_PATHTYPE_FILE))
         return SDL_ENUM_CONTINUE;
 
-    char icon[strlen(folder)+sizeof("/icon.bin")];
-    strcpy(icon, folder);
-    strcat(icon, "/icon.bin");
-
-    GameCardConfig cfgtmp;
-    Config_Load(cfg, &cfgtmp, GameCardCfgData, countof(GameCardCfgData), NULL, NULL);
-    pass->LibrarySoups[*pass->LibraryNum] = strdup(cfg);
-    pass->LibraryNames[*pass->LibraryNum] = strdup(cfgtmp.FriendlyName);
-
-    size_t size;
-    void* buf = SDL_LoadFile(icon, &size);
-    if ((buf != NULL) && (size == (32*32*4)))
+    switch(pass->Type)
     {
-        if (!SDL_UpdateTexture(pass->LibraryIcons[*pass->LibraryNum], NULL, buf, 4*32))
-            printf("%s\n", SDL_GetError());
-    }
-    else
+    case LibType_Sys:
     {
-        if (buf != NULL)  SDL_free(buf);
-        u8 nobodysHome[32*32*8] = {};
-        if (SDL_UpdateTexture(pass->LibraryIcons[*pass->LibraryNum], NULL, nobodysHome, 4*32))
-            printf("%s\n", SDL_GetError());
+        GameCardCfg cfgtmp = {};
+        Config_Load(cfg, &cfgtmp, GameCardCfgData, countof(GameCardCfgData), NULL, NULL);
+        pass->LibPaths[*pass->LibNum] = strdup(folder);
+        pass->LibNames[*pass->LibNum] = strdup(cfgtmp.FriendlyName);
+        break;
     }
-    (*pass->LibraryNum)++;
-    return (*pass->LibraryNum >= GUI_LibraryMax) ? SDL_ENUM_SUCCESS : SDL_ENUM_CONTINUE;
+    case LibType_NDS:
+    {
+        CoreCfg cfgtmp = {};
+        Config_Load(cfg, &cfgtmp, CoreCfgData, countof(CoreCfgData), NULL, NULL);
+        pass->LibPaths[*pass->LibNum] = strdup(folder);
+        pass->LibNames[*pass->LibNum] = strdup(cfgtmp.FriendlyName);
+        break;
+    }
+    case LibType_GBA:
+    {
+        printf("GRAOOWWWWWWWWW\n");
+        break;
+    }
+    }
+
+    if (pass->LibIcons != nullptr)
+    {
+        char icon[strlen(folder)+sizeof(DSIconFile)];
+        strcpy(icon, folder);
+        strcat(icon, DSIconFile);
+        size_t size;
+        void* buf = SDL_LoadFile(icon, &size);
+        if ((buf != NULL) && (size == (32*32*4)))
+        {
+            if (!SDL_UpdateTexture(pass->LibIcons[*pass->LibNum], NULL, buf, 4*32))
+                printf("%s\n", SDL_GetError());
+        }
+        else
+        {
+            if (buf != NULL)  SDL_free(buf);
+            u8 nobodysHome[32*32*8] = {};
+            if (SDL_UpdateTexture(pass->LibIcons[*pass->LibNum], NULL, nobodysHome, 4*32))
+                printf("%s\n", SDL_GetError());
+        }
+    }
+    (*pass->LibNum)++;
+    return (*pass->LibNum >= GUI_LibMax) ? SDL_ENUM_SUCCESS : SDL_ENUM_CONTINUE;
 }
 
 void LibraryGui_InitList(MainGUI* mgui)
 {
-    char* path = SDL_GetPrefPath("DualSOUP", "DualSOUP");
-    constexpr char ndsfolder[] = "GameCard/";
-    char* librarypath = malloc(strlen(path)+sizeof(ndsfolder));
-    strcpy(librarypath, path);
-    strcat(librarypath, ndsfolder);
-    SDL_free(path);
-
-    mgui->LibraryNum = 0;
-    LibraryGui_EnumPass pass = {
-        .LibrarySoups = mgui->LibrarySoups,
-        .LibraryNames = mgui->LibraryNames,
-        .LibraryIcons = mgui->LibraryIcons,
-        .LibraryNum = &mgui->LibraryNum,
-    };
-
-    for (int i = 0; i < *pass.LibraryNum; i++)
+    for (int i = 0; i < LibType_GBA/*LibType_MAX*/; i++)
     {
-        free((void*)mgui->LibrarySoups[i]);
-        free((void*)mgui->LibraryNames[i]);
-    }
+        const char* folder[] = {
+            [LibType_Sys]=ConsoleFolder,
+            [LibType_NDS]=NDSFolder,
+            [LibType_GBA]=GBAFolder,
+        };
 
-    SDL_EnumerateDirectory(librarypath, LibraryGui_EnumerateLoop, &pass);
-    free(librarypath);
+        char librarypath[strlen(DualSOUPFolder)+strlen(folder[i])+1];
+        strcpy(librarypath, DualSOUPFolder);
+        strcat(librarypath, folder[i]);
+
+        mgui->Libs[i].Num = 0;
+        LibGui_EnumPass pass = {
+            .LibPaths = mgui->Libs[i].Paths,
+            .LibNames = mgui->Libs[i].Names,
+            .LibIcons = ((i == LibType_NDS) ? mgui->NDSLibIcons : nullptr),
+            .Type = i,
+            .LibNum = &mgui->Libs[i].Num,
+        };
+
+        for (int i = 0; i < *pass.LibNum; i++)
+        {
+            free((void*)mgui->Libs[i].Paths);
+            free((void*)mgui->Libs[i].Names);
+        }
+
+        SDL_EnumerateDirectory(librarypath, LibraryGui_EnumerateLoop, &pass);
+    }
 }
 
-void LibraryGui_Loop(MainGUI* mgui, MainCfg* mcfg)
+void LibraryRender(MainGUI* mgui, const LibGui_Type type)
 {
-    if (ImGui_Button("Import NDS")) mgui->NDSImportGui.Show = !mgui->NDSImportGui.Show ;
-    ImGui_SameLine();
-    if (ImGui_Button("Import GBA")) mgui->GBAImportGui.Show = !mgui->GBAImportGui.Show;
-
-    if (ImGui_BeginTable("library", 2, ImGuiTableFlags_Hideable|ImGuiTableFlags_Sortable|ImGuiTableFlags_Borders|ImGuiTableFlags_ScrollY))
+    if (ImGui_BeginTable("Library", ((type == LibType_NDS) ? 2 : 1), ImGuiTableFlags_Hideable|ImGuiTableFlags_Sortable|ImGuiTableFlags_Borders|ImGuiTableFlags_ScrollY))
     {
-        ImGui_TableSetupColumn("Icon", ImGuiTableColumnFlags_WidthFixed);
+        if (type == LibType_NDS) ImGui_TableSetupColumn("Icon", ImGuiTableColumnFlags_WidthFixed);
         ImGui_TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed);
         ImGuiListClipper clip;
-        ImGuiListClipper_Begin(&clip, mgui->LibraryNum, -1);
+        ImGuiListClipper_Begin(&clip, mgui->Libs[type].Num, -1);
         while (ImGuiListClipper_Step(&clip))
         {
             for (int i = clip.DisplayStart; i < clip.DisplayEnd; i++)
@@ -108,22 +136,80 @@ void LibraryGui_Loop(MainGUI* mgui, MainCfg* mcfg)
                 ImGui_TableNextRow();
                 if (i % 2) ImGui_TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui_GetColorU32(ImGuiCol_TableRowBg), -1);
                 else       ImGui_TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui_GetColorU32(ImGuiCol_TableRowBgAlt), -1);
-                ImGui_TableNextColumn();
-                ImGui_Dummy((ImVec2){0.0, 0.0});
-                ImGui_Image((ImTextureRef){._TexID = (intptr_t)(mgui->LibraryIcons[i])}, (ImVec2){32,32});
+
+                if (type == LibType_NDS)
+                {
+                    ImGui_TableNextColumn();
+                    ImGui_Dummy((ImVec2){0.0, 0.0});
+                    ImGui_Image((ImTextureRef){._TexID = (intptr_t)(mgui->NDSLibIcons[i])}, (ImVec2){32,32});
+                }
+
                 ImGui_TableNextColumn();
                 ImGui_PushIDInt(i);
-                if (ImGui_SelectableEx(mgui->LibraryNames[i], false, ImGuiSelectableFlags_SpanAllColumns|ImGuiSelectableFlags_AllowOverlap, (ImVec2){0, 39}))
+                if (ImGui_SelectableEx(mgui->Libs[type].Names[i], false, ImGuiSelectableFlags_SpanAllColumns|ImGuiSelectableFlags_AllowOverlap, (ImVec2){0, 39}))
                 {
-                    Config_Load(mgui->LibrarySoups[i], &mcfg->CoreCfg.SysCfg.GameCard, GameCardCfgData, countof(GameCardCfgData), nullptr, nullptr);
-
-                    SDL_Event evt = {.user = {.type = mgui->UserEventBase+UserEvent_BootRom}};
-                    if (!SDL_PushEvent(&evt)) printf("%s\n", SDL_GetError());
-                    mgui->ShowList = false;
+                    mgui->Libs[type].Sel = i;
                 }
                 ImGui_PopID();
             }
         }
         ImGui_EndTable();
+    }
+}
+
+void LibraryGui_Loop(MainGUI* mgui, MainCfg* mcfg)
+{
+    if (ImGui_Button("Boot Console"))
+    {
+        {
+            const char* path = mgui->Libs[LibType_NDS].Paths[mgui->Libs[LibType_NDS].Sel];
+            char souppath[strlen(path)+sizeof(DSCfgName)];
+            strcpy(souppath, path);
+            strcat(souppath, DSCfgName);
+            Config_Load(souppath, &mcfg->CoreCfg.NTR.GameCard, GameCardCfgData, countof(GameCardCfgData), nullptr, nullptr);
+            mcfg->CoreCfg.NTR.GameCard.FolderPath = strdup(path);
+        }
+        {
+            const char* path = mgui->Libs[LibType_Sys].Paths[mgui->Libs[LibType_Sys].Sel];
+            char souppath[strlen(path)+sizeof(DSCfgName)];
+            strcpy(souppath, path);
+            strcat(souppath, DSCfgName);
+            Config_Load(souppath, &mcfg->CoreCfg, CoreCfgData, countof(CoreCfgData), nullptr, nullptr);
+            mcfg->CoreCfg.FolderPath = strdup(path);
+
+            mcfg->CoreCfg.SysCfg = SysCfg_Defaults[mcfg->CoreCfg.Model];
+        }
+        SDL_Event evt = {.user = {.type = mgui->UserEventBase+UserEvent_BootRom}};
+        if (!SDL_PushEvent(&evt)) printf("%s\n", SDL_GetError());
+        mgui->ShowList = false;
+    }
+    ImGui_BeginTabBar("Libraries", 0);
+    {
+        if (ImGui_BeginTabItem("Console", NULL, 0))
+        {
+            if (ImGui_Button("Configure Consoles")) mgui->SysImportGui.Show = !mgui->SysImportGui.Show;
+
+            LibraryRender(mgui, LibType_Sys);
+            ImGui_EndTabItem();
+        }
+
+        if (ImGui_BeginTabItem("NDS Slot", NULL, 0))
+        {
+            if (ImGui_Button("Import NDS")) mgui->NDSImportGui.Show = !mgui->NDSImportGui.Show;
+
+            LibraryRender(mgui, LibType_NDS);
+            ImGui_EndTabItem();
+        }
+
+        ImGui_BeginDisabled(true);
+        if (ImGui_BeginTabItem("GBA Slot", NULL, 0))
+        {
+            if (ImGui_Button("Import GBA")) mgui->GBAImportGui.Show = !mgui->GBAImportGui.Show;
+
+            LibraryRender(mgui, LibType_NDS);
+            ImGui_EndTabItem();
+        }
+        ImGui_EndDisabled();
+        ImGui_EndTabBar();
     }
 }

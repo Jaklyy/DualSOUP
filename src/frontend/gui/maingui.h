@@ -40,7 +40,7 @@ constexpr float GUI_MaxDisplayPosX = 999999.0;
 constexpr float GUI_MinDisplayPosY = 0;
 constexpr float GUI_MaxDisplayPosY = 999999.0;
 
-constexpr int GUI_LibraryMax = 1000;
+constexpr int GUI_LibMax = 1000;
 
 #define GUI_INPUTCLAMPED(type, label, var, rangelo, rangehi) \
     if (ImGui_Input##type(label, &var)) \
@@ -105,6 +105,7 @@ typedef struct
     char* SRAMPath;
     char* TxtPath;
     bool Show;
+    bool NeedReset;
     struct
     {
         char* FriendlyName;
@@ -126,14 +127,53 @@ typedef struct
     bool ROMDirtyB;
     bool SRAMDirtyB;
     bool TxtDirtyB;
-    bool NeedReset;
     int ROMSize;
     int ROMChipID;
     int SPIType;
     int SRAMType;
     int SRAMChipSize;
     int FlashChipID;
-} ImportGui;
+} NDSImportGui;
+
+typedef struct
+{
+    SDL_Mutex* Mutex;
+    char* NvramPath;
+    bool Show;
+    bool NeedReset;
+    CoreCfg Cfg;
+    struct
+    {
+        u8 NvramSize;
+    } NvramDat;
+    char TSCRange[4][4];
+    int ConsoleType;
+    bool NvramDirty;
+    bool NTR7Dirty;
+    bool NTR9Dirty;
+} SysImportGui;
+
+typedef struct
+{
+    bool Show;
+} GBAImportGui;
+
+typedef enum : u8
+{
+    LibType_Sys,
+    LibType_NDS,
+    LibType_GBA,
+
+    LibType_MAX [[maybe_unused]],
+} LibGui_Type;
+
+typedef struct
+{
+    int Sel;
+    int Num;
+    const char* Paths[GUI_LibMax];
+    const char* Names[GUI_LibMax];
+} LibraryDat;
 
 typedef struct
 {
@@ -142,8 +182,9 @@ typedef struct
     SDL_Texture* Top;
     SDL_Texture* Bot;
     DebugGui dbg;
-    ImportGui NDSImportGui;
-    ImportGui GBAImportGui;
+    SysImportGui SysImportGui;
+    NDSImportGui NDSImportGui;
+    GBAImportGui GBAImportGui;
     u32 UserEventBase;
     bool CfgDisplay;
     bool DemoDisplay;
@@ -152,12 +193,8 @@ typedef struct
     bool Paused;
     bool FrameLimit;
 
-    int LibraryNum;
-    const char* LibrarySoups[GUI_LibraryMax];
-    const char* LibraryNames[GUI_LibraryMax];
-    SDL_Texture* LibraryIcons[GUI_LibraryMax];
-
-    char TSCRange[4][4];
+    LibraryDat Libs[LibType_MAX];
+    SDL_Texture* NDSLibIcons[GUI_LibMax];
 } MainGUI;
 
 typedef struct MainCfg MainCfg;
@@ -168,7 +205,9 @@ void MainGUI_Loop(Console* sys, MailBox* mailbox, MainGUI* mgui, MainCfg* mcfg, 
 void Mailbox_UpdateTouch(MailBox* mailbox, u16 x, u16 y, bool touched);
 
 void DebugGUI_Loop(MailBox* mail, MainGUI* mgui, Console* sys);
-void ImportGui_Loop(MainGUI* mgui, ImportGui* igui, const bool NDS);
+void NDSImportGui_Loop(MainGUI* mgui);
+void SysImportGui_Loop(MainGUI* mgui);
+void GBAImportGui_Loop(MainGUI* mgui);
 
 void LibraryGui_InitList(MainGUI* mgui);
 void LibraryGui_Loop(MainGUI* mgui, MainCfg* mcfg);

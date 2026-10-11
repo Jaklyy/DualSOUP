@@ -1,5 +1,4 @@
 #include <stdckdint.h>
-#include <stdlib.h>
 #include "ir.h"
 
 
@@ -29,6 +28,11 @@ u8 IRhle_CMDSend(IRhle* ir, GameCard_SRAMChip sramtype, const u8 val, const bool
     ir->PrevChipSelect = chipsel;
 
     return ret;
+}
+
+bool IRhle_FlushToDisk(IRhle* ir, GameCard_SRAMChip sramtype, u8** outbuf, u64* size, bool force)
+{
+    return GameCardSRAM_FlushToDisk(&ir->SRAM, sramtype, outbuf, size, force);
 }
 
 void IRhle_Cleanup(IRhle* ir, GameCard_SRAMChip sramtype)

@@ -1,3 +1,4 @@
+#include <SDL3/SDL_timer.h>
 #include <stdckdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -35,6 +36,28 @@ void Flash_Reset(Flash* flash)
     flash->Busy = 0;
     flash->PrevChipSelect = false;
 }
+
+void Flash_SetDirty(Flash* flash)
+{
+    if (!flash->Dirty)
+    {
+        flash->Dirty = true;
+        flash->DirtyCycle = SDL_GetPerformanceCounter() + SDL_GetPerformanceFrequency();
+    }
+}
+
+bool Flash_FlushToDisk(Flash* flash, u8** outbuf, u64* size, bool force)
+{
+    if (flash->Dirty && (force || (SDL_GetPerformanceCounter() >= flash->DirtyCycle)))
+    {
+        *outbuf = flash->RAM;
+        *size = flash->RAMSize;
+        flash->Dirty = false;
+        return true;
+    }
+    return false;
+}
+
 
 
 u8 Flash_WriteEnable(Flash* flash, const bool chipsel)
@@ -191,6 +214,7 @@ u8 Flash_PageWrite(Flash* flash, const u8 val, const bool chipsel)
         if (!chipsel)
         {
             // CHECKME: is this correct behavior for buffer overflow?
+            Flash_SetDirty(flash);
             memcpy(&flash->RAM[flash->CurAddr & ~0xFF], flash->DataBuffer, 256);
         }
     }
@@ -233,6 +257,7 @@ u8 Flash_PageProgram(Flash* flash, const u8 val, const bool chipsel)
         if (!chipsel)
         {
             // CHECKME: is this correct behavior for buffer overflow?
+            Flash_SetDirty(flash);
             memcpy(&flash->RAM[flash->CurAddr & ~0xFF], flash->DataBuffer, 256);
         }
     }
@@ -264,6 +289,7 @@ u8 Flash_PageErase(Flash* flash, const u8 val, const bool chipsel)
     { 
         if (flash->CurAddr >= flash->WriteProt)
         {
+            Flash_SetDirty(flash);
             memset(&flash->RAM[flash->CurAddr&~0xFF], 0xFF, 256);
         }
         else
@@ -295,6 +321,7 @@ u8 Flash_SectorErase(Flash* flash, const u8 val, const bool chipsel)
     {
         if (flash->CurAddr >= flash->WriteProt)
         {
+            Flash_SetDirty(flash);
             memset(&flash->RAM[flash->CurAddr&~65536], 0xFF, 65536);
         }
         else

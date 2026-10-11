@@ -1,5 +1,6 @@
 #include <SDL3/SDL_timer.h>
 #include <SDL3/SDL_gamepad.h>
+#include <SDL3/SDL_filesystem.h>
 #include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
@@ -126,10 +127,43 @@ bool Console_ReadFile(u8* buf, const char* path, const size_t num, const char* n
     return false;
 }
 
+void Console_SaveFiles(Console* sys, char* cardsram, char* wifinvram, bool force)
+{
+    if (cardsram && cardsram[0] != '\0')
+    {
+        u8* buf;
+        u64 size;
+        if (GameCardSPI_FlushToDisk(&sys->GameCard, &buf, &size, force))
+        {
+            char path[strlen(cardsram)+sizeof(DSSavFile)];
+            strcpy(path, cardsram);
+            strcat(path, DSSavFile);
+            SDL_SaveFile(path, buf, size);
+        }
+    }
+
+    if (wifinvram && wifinvram[0] != '\0')
+    {
+        u8* buf;
+        u64 size;
+        if (Flash_FlushToDisk(&sys->Firmware, &buf, &size, force))
+        {
+            char path[strlen(wifinvram)+sizeof(ConsoleWiFiNvram)];
+            strcpy(path, wifinvram);
+            strcat(path, ConsoleWiFiNvram);
+            SDL_SaveFile(path, buf, size);
+        }
+    }
+}
+
 
 void Console_Cleanup(Console* sys, bool full)
 {
     if (sys == nullptr) return;
+
+    Console_SaveFiles(sys, sys->GameCard.SavFolder, sys->WiFiNVRAMFolder, true);
+
+    SDL_free(sys->WiFiNVRAMFolder);
 
     // these dont need to be re-init actually?
     int dummy;
@@ -244,11 +278,17 @@ Console* Console_Init(Console* sys, CoreCfg* cfg, void* aud)
         goto fail;
     }
     cleanup++;
-    if (!Console_ReadFile(nvram, cfg->NTR.NVRAM, nvramsize, "DS Firmware")) goto fail;
+    {
+        sys->WiFiNVRAMFolder = cfg->FolderPath;
+        char nvrampath[strlen(sys->WiFiNVRAMFolder)+sizeof(ConsoleWiFiNvram)];
+        strcpy(nvrampath, sys->WiFiNVRAMFolder);
+        strcat(nvrampath, ConsoleWiFiNvram);
+        if (!Console_ReadFile(nvram, nvrampath, nvramsize, "DS Firmware")) goto fail;
+    }
     cleanup++;
-    Flash_Init(&sys->Firmware, nvram, nvramsize, sys->SysCfg.WiFiNVRAMWriteProt, 0x010101);
+    Flash_Init(&sys->Firmware, nvram, nvramsize, true, 0x010101);
 
-    if (!GameCard_Init(&sys->GameCard, &cfg->SysCfg.GameCard, sys->NTRBios7.b8)) goto fail;
+    if (!GameCard_Init(&sys->GameCard, &cfg->NTR.GameCard, sys->NTRBios7.b8)) goto fail;
     cleanup++;
 
     GamePak_Init(&sys->GamePak);

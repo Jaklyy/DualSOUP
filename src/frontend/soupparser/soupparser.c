@@ -43,8 +43,8 @@ void Config_Write(const char* path, void* cfgin, const ConfigEntry* cfgref, cons
         const ConfigEntry entry = cfgref[i];
         const char* entrystr = entry.Name;
         char* outstr;
-        size_t baselen = strlen(entrystr)+sizeof(char);
-        size_t fulllen = baselen+sizeof(char[2]);
+        size_t baselen = strlen(entrystr)+1;
+        size_t fulllen = baselen+2;
 
         bool valstrneedssdlfree = false;
         bool valstrneedsnormalfree = false;
@@ -61,7 +61,7 @@ void Config_Write(const char* path, void* cfgin, const ConfigEntry* cfgref, cons
         typeof(pun.type[0]) val = pun.type[entry.Offset/sizeof(pun.type[0])]; \
         if (val >= entry.prefix##MaxVal) \
         { \
-            printf("Config Error: value of %s == %"fmt" >= max value of: %zu", entrystr, val, entry.prefix##MaxVal); \
+            printf("Config Error: value of %s == %"fmt" >= max value of: %zu\n", entrystr, val, entry.prefix##MaxVal); \
             continue; \
         } \
         valstr = entry.EnumNames[val]; \
@@ -287,16 +287,18 @@ void Config_Load(const char* path, void* cfgout, const ConfigEntry* cfgref, cons
         case SEARCH_STRING:
         {
             size_t vallen;
+            char** str = &pun.str[entry.Offset/sizeof(pun.str[0])];
+            if (*str != NULL) free(*str);
             if (!loaddefaults && ((vallen = strnlen(&cfgdat[pos], cfgsize-pos-1)) != (cfgsize-pos-1)))
             {
-                pun.str[entry.Offset/sizeof(pun.str[0])] = malloc(vallen+1);
-                strcpy(pun.str[entry.Offset/sizeof(pun.str[0])], &cfgdat[pos]);
+                *str = malloc(vallen+1);
+                strcpy(*str, &cfgdat[pos]);
                 pos += vallen + 2;
             }
             else
             {
-                pun.str[entry.Offset/sizeof(pun.str[0])] = malloc(1);
-                (pun.str[entry.Offset/sizeof(pun.str[0])])[0] = 0;
+                *str = malloc(1);
+                (*str)[0] = '\0';
                 dirty = true;
             }
             break;

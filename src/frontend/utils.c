@@ -10,6 +10,7 @@
 
 
 u64 LogMask;
+char* DualSOUPFolder;
 
 void LogPrint(const u64 logtype, const char* str, ...)
 {

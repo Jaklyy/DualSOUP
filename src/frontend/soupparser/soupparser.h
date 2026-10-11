@@ -78,7 +78,7 @@ static const ConfigEntry GameCardCfgData[] =
     {
         .Name=      "ROMBusType",
         .EnumNames= (const char*[]){"Standard"},
-        .Offset=    offsetof(GameCardConfig, ROMBusType),
+        .Offset=    offsetof(GameCardCfg, ROMBusType),
         .UDefVal=   GameCard_ROMBus_Standard,
         .UMinVal=   0,
         .UMaxVal=   GameCard_ROMBus_MAX,
@@ -86,7 +86,7 @@ static const ConfigEntry GameCardCfgData[] =
     },
     {
         .Name=      "ROMChipSize",
-        .Offset=    offsetof(GameCardConfig, ROMChipSize),
+        .Offset=    offsetof(GameCardCfg, ROMChipSize),
         .SDefVal=   -1, // auto
         .SMinVal=   16,
         .SMaxVal=   32, // standard card protocol doesn't support >32 bit addresses
@@ -94,7 +94,7 @@ static const ConfigEntry GameCardCfgData[] =
     },
     {
         .Name=      "ROMPaddingByte", // TODO: consider allowing multi-byte patterns?
-        .Offset=    offsetof(GameCardConfig, ROMPaddingByte),
+        .Offset=    offsetof(GameCardCfg, ROMPaddingByte),
         .UDefVal=   0xFF,
         .UMinVal=   0,
         .UMaxVal=   0xFF,
@@ -102,7 +102,7 @@ static const ConfigEntry GameCardCfgData[] =
     },
     {
         .Name=      "ROMChipID",
-        .Offset=    offsetof(GameCardConfig, ROMChipID),
+        .Offset=    offsetof(GameCardCfg, ROMChipID),
         .UDefVal=   DefaultChipID,
         .UMinVal=   0x00000000, // NOTE: should i allow the user to submit an 0x0 value? supposedly games dont like that...
         .UMaxVal=   0xFFFFFFFF,
@@ -110,13 +110,13 @@ static const ConfigEntry GameCardCfgData[] =
     },
     {
         .Name=      "ROMPath",
-        .Offset=    offsetof(GameCardConfig, ROMPath),
+        .Offset=    offsetof(GameCardCfg, ROMPath),
         .Type=      SEARCH_STRING,
     },
     {
         .Name=      "SPIBusType",
         .EnumNames= (const char*[]){"None", "DirectSRAM", "InfraredHLE"},
-        .Offset=    offsetof(GameCardConfig, SPIBusType),
+        .Offset=    offsetof(GameCardCfg, SPIBusType),
         .UDefVal=   GameCard_SPIBus_DirectSRAM,
         .UMinVal=   0,
         .UMaxVal=   GameCard_SPIBus_MAX,
@@ -125,7 +125,7 @@ static const ConfigEntry GameCardCfgData[] =
     {
         .Name=      "SRAMChipType",
         .EnumNames= (const char*[]){"None", "Flash24", "EEPROM9", "EEPROM16", "EEPROM24"},
-        .Offset=    offsetof(GameCardConfig, SRAMChipType),
+        .Offset=    offsetof(GameCardCfg, SRAMChipType),
         .UDefVal=   GameCard_SRAMChip_None,
         .UMinVal=   0,
         .UMaxVal=   GameCard_SRAMChip_MAX,
@@ -133,7 +133,7 @@ static const ConfigEntry GameCardCfgData[] =
     },
     {
         .Name=      "SRAMChipSize",
-        .Offset=    offsetof(GameCardConfig, SRAMChipSize),
+        .Offset=    offsetof(GameCardCfg, SRAMChipSize),
         .UDefVal=   -1, // auto
         .UMinVal=   0,
         .UMaxVal=   24, // standard sram chips dont seem to support > 24 bit address indexing
@@ -141,36 +141,31 @@ static const ConfigEntry GameCardCfgData[] =
     },
     {
         .Name=      "FlashChipID",
-        .Offset=    offsetof(GameCardConfig, FlashChipID),
+        .Offset=    offsetof(GameCardCfg, FlashChipID),
         .UDefVal=   DefaultFlashID,
         .UMinVal=   0x000000,
         .UMaxVal=   0xFFFFFF,
         .Type=      SEARCH_U32HEX,
     },
     {
-        .Name=      "SRAMPath",
-        .Offset=    offsetof(GameCardConfig, SRAMPath),
-        .Type=      SEARCH_STRING,
-    },
-    {
         .Name=      "Key1FromBios",
-        .Offset=    offsetof(GameCardConfig, ImportKey1FromNTRBios7),
+        .Offset=    offsetof(GameCardCfg, ImportKey1FromNTRBios7),
         .BDefVal=   true,
         .Type=      SEARCH_BOOL,
     },
     {
         .Name=      "ManualKey1Path",
-        .Offset=    offsetof(GameCardConfig, ManualKey1Path),
+        .Offset=    offsetof(GameCardCfg, ManualKey1Path),
         .Type=      SEARCH_STRING,
     },
     {
         .Name=      "FriendlyName",
-        .Offset=    offsetof(GameCardConfig, FriendlyName),
+        .Offset=    offsetof(GameCardCfg, FriendlyName),
         .Type=      SEARCH_STRING,
     },
 };
 
-static const ConfigEntry SystemCfgData[] =
+static const ConfigEntry SysCfgData[] =
 {
     {
         .Name=      "NTRAudioOut",
@@ -199,18 +194,13 @@ static const ConfigEntry SystemCfgData[] =
         .UMaxVal=   WiFiNVRAM_MAX,
         .Type=      SEARCH_ENUMU8,
     },
-    {
-        .Name=      "WiFiNVRAMWriteProt",
-        .EnumNames= (const char*[]){"Enable", "Disable"},
-        .Offset=    offsetof(SysCfg, WiFiNVRAMWriteProt),
-        .UDefVal=   WiFiNVRAMWriteProt_Enabled,
-        .UMinVal=   0,
-        .UMaxVal=   WiFiNVRAMWriteProt_MAX,
-        .Type=      SEARCH_ENUMU8,
-    },
+};
+
+static const ConfigEntry CoreCfgData[] =
+{
     {
         .Name=      "TSCLeftMax",
-        .Offset=    offsetof(SysCfg, TSCL),
+        .Offset=    offsetof(CoreCfg, TSC.L),
         .UDefVal=   0,
         .UMinVal=   0,
         .UMaxVal=   0xFFF,
@@ -218,7 +208,7 @@ static const ConfigEntry SystemCfgData[] =
     },
     {
         .Name=      "TSCRightMax",
-        .Offset=    offsetof(SysCfg, TSCR),
+        .Offset=    offsetof(CoreCfg, TSC.R),
         .UDefVal=   0xFFF,
         .UMinVal=   0,
         .UMaxVal=   0xFFF,
@@ -226,7 +216,7 @@ static const ConfigEntry SystemCfgData[] =
     },
     {
         .Name=      "TSCTopMax",
-        .Offset=    offsetof(SysCfg, TSCT),
+        .Offset=    offsetof(CoreCfg, TSC.T),
         .UDefVal=   0,
         .UMinVal=   0,
         .UMaxVal=   0xFFF,
@@ -234,11 +224,35 @@ static const ConfigEntry SystemCfgData[] =
     },
     {
         .Name=      "TSCBottomMax",
-        .Offset=    offsetof(SysCfg, TSCB),
+        .Offset=    offsetof(CoreCfg, TSC.B),
         .UDefVal=   0xBFF,
         .UMinVal=   0,
         .UMaxVal=   0xFFF,
         .Type=      SEARCH_U16HEX,
+    },
+    {
+        .Name=      "ConsoleModel",
+        .EnumNames= (const char*[]){"Custom", "NTR001", "USG001"},
+        .Offset=    offsetof(CoreCfg, Model),
+        .UMinVal=   0,
+        .UMaxVal=   ConsoleModel_TWL001,
+        .UDefVal=   ConsoleModel_USG001,
+        .Type=      SEARCH_ENUMU8,
+    },
+    {
+        .Name=      "NTRBios7Path",
+        .Offset=    offsetof(CoreCfg, NTR.Bios7),
+        .Type=      SEARCH_STRING,
+    },
+    {
+        .Name=      "NTRBios9Path",
+        .Offset=    offsetof(CoreCfg, NTR.Bios9),
+        .Type=      SEARCH_STRING,
+    },
+    {
+        .Name=      "FriendlyName",
+        .Offset=    offsetof(CoreCfg, FriendlyName),
+        .Type=      SEARCH_STRING,
     },
 };
 
@@ -252,7 +266,7 @@ static_assert(countof(GUI_DisplayOffsetDefaults) >= GUI_MaxDisplaysPerWindow);
         .FDefVal=   GUI_DisplayOffsetDefaults[dispnum].x, \
         .FMinVal=   GUI_MinDisplayPosX, \
         .FMaxVal=   GUI_MaxDisplayPosX, \
-        .Type=      SEARCH_FLOAT,\
+        .Type=      SEARCH_FLOAT, \
     }, \
     { \
         .Name=      "DispWin"#winnum"_Disp"#dispnum"_OffsetY", \
@@ -260,7 +274,7 @@ static_assert(countof(GUI_DisplayOffsetDefaults) >= GUI_MaxDisplaysPerWindow);
         .FDefVal=   GUI_DisplayOffsetDefaults[dispnum].y, \
         .FMinVal=   GUI_MinDisplayPosY, \
         .FMaxVal=   GUI_MaxDisplayPosY, \
-        .Type=      SEARCH_FLOAT,\
+        .Type=      SEARCH_FLOAT, \
     }, \
     { \
         .Name=      "DispWin"#winnum"_Disp"#dispnum"_SizeX", \
@@ -268,7 +282,7 @@ static_assert(countof(GUI_DisplayOffsetDefaults) >= GUI_MaxDisplaysPerWindow);
         .FDefVal=   256.0, \
         .FMinVal=   GUI_MinDisplayWidth, \
         .FMaxVal=   GUI_MaxDisplayWidth, \
-        .Type=      SEARCH_FLOAT,\
+        .Type=      SEARCH_FLOAT, \
     }, \
     { \
         .Name=      "DispWin"#winnum"_Disp"#dispnum"_SizeY", \
@@ -276,14 +290,14 @@ static_assert(countof(GUI_DisplayOffsetDefaults) >= GUI_MaxDisplaysPerWindow);
         .FDefVal=   192.0, \
         .FMinVal=   GUI_MinDisplayHeight, \
         .FMaxVal=   GUI_MaxDisplayHeight, \
-        .Type=      SEARCH_FLOAT,\
+        .Type=      SEARCH_FLOAT, \
     }, \
     { \
         .Name=      "DispWin"#winnum"_Disp"#dispnum"_IsBottomScreen", \
         .Offset=    offsetof(MainCfg, GuiCfg.DisplayWindow[winnum].Display[dispnum].Bottom), \
         .BDefVal=   (dispnum&1), \
-        .Type=      SEARCH_BOOL,\
-    }, \
+        .Type=      SEARCH_BOOL, \
+    },
 
 #define PERDISPLAYWINDOWSETTINGS(num) \
     { \
@@ -327,38 +341,6 @@ constexpr int menubarheight = 19; // todo: un-hardcode
 
 static const ConfigEntry MainCfgData[] =
 {
-    // todo move this junk to SystemCfg
-#if 0
-    {
-        .Name=      "ConsoleModel",
-        .EnumNames= (char*[]){"Custom, USG"},
-        .Offset=    offsetof(CoreCfg, Model),
-        .UMinVal=   0,
-        .UMaxVal=   2,
-        .UDefVal=   ConsoleModel_USG,
-        .Type=      SEARCH_ENUMU8,
-    },
-    {
-        .Name=      "CustomModelPath",
-        .Offset=    offsetof(CoreCfg, CustomModel),
-        .Type=      SEARCH_STRING,
-    },
-#endif
-    {
-        .Name=      "NTRBios7Path",
-        .Offset=    offsetof(MainCfg, CoreCfg.NTR.Bios7),
-        .Type=      SEARCH_STRING,
-    },
-    {
-        .Name=      "NTRBios9Path",
-        .Offset=    offsetof(MainCfg, CoreCfg.NTR.Bios9),
-        .Type=      SEARCH_STRING,
-    },
-    {
-        .Name=      "WiFiNVRAMPath",
-        .Offset=    offsetof(MainCfg, CoreCfg.NTR.NVRAM),
-        .Type=      SEARCH_STRING,
-    },
     {
         .Name=      "MainWinMaximized",
         .Offset=    offsetof(MainCfg, GuiCfg.MainWinMaximized),

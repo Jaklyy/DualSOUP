@@ -50,13 +50,13 @@ typedef struct
     GameCard_SRAMChip SRAMChipType;
     u8 SRAMChipSize;
     u32 FlashChipID;
-    char* SRAMPath;
+    char* FolderPath;
 
     bool ImportKey1FromNTRBios7;
     char* ManualKey1Path;
 
     char* FriendlyName;
-} GameCardConfig;
+} GameCardCfg;
 
 typedef union
 {
@@ -72,6 +72,7 @@ struct GameCard
     u32 RomSize;
     u32 ChipID;
     u32* ROM;
+    char* SavFolder;
     GameCard_SPIBus SPIType;
     GameCard_SRAMChip SRAMType;
     GCSPI SPI;
@@ -86,7 +87,8 @@ struct GameCard
 };
 
 
-bool GameCard_Init(GameCard* card, const GameCardConfig* cfg, u8* bios7);
+bool GameCard_Init(GameCard* card, const GameCardCfg* cfg, u8* bios7);
+bool GameCardSPI_FlushToDisk(GameCard* card, u8** outbuf, u64* size, bool force);
 void GameCard_Cleanup(GameCard* card);
 u32 GameCard_ROMDataRead(Console* sys, timestamp cur, const bool a9);
 u32 GameCard_IOReadHandler(Console* sys, u32 addr, const bool a9);

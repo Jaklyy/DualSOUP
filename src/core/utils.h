@@ -342,6 +342,20 @@ struct Pattern
 #endif
 }
 
+extern char* DualSOUPFolder; // global var because idk what else to do with it rn
+constexpr char DualSOUPCfgName[] = "DualSOUP.soup";
+
+constexpr char ConsoleFolder[] = "Console/";
+constexpr char ConsoleWiFiNvram[] = "firmware.bin";
+
+constexpr char NDSFolder[] = "GameCard/";
+constexpr char GBAFolder[] = "GamePak/";
+
+constexpr char DSCfgName[] = "cfg.soup";
+constexpr char DSSavFolder[] = "sav/";
+constexpr char DSSavFile[] = "sav.sav";
+constexpr char DSIconFile[] = "icon.bin";
+
 // TODO: should this be per thread?
 extern u64 LogMask;
 // printf but with support for filtering out the noise

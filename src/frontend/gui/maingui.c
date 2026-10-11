@@ -66,11 +66,6 @@ MainGUI MainGUI_Init(MainCfg* mcfg)
     cImGui_ImplSDL3_InitForSDLRenderer(mgui.Win, mgui.Ren);
     cImGui_ImplSDLRenderer3_Init(mgui.Ren);
 
-    snprintf(mgui.TSCRange[0], 4, "%03X", mcfg->CoreCfg.SysCfg.TSCL);
-    snprintf(mgui.TSCRange[1], 4, "%03X", mcfg->CoreCfg.SysCfg.TSCR);
-    snprintf(mgui.TSCRange[2], 4, "%03X", mcfg->CoreCfg.SysCfg.TSCT);
-    snprintf(mgui.TSCRange[3], 4, "%03X", mcfg->CoreCfg.SysCfg.TSCB);
-
     mgui.NDSImportGui.NeedReset = true;
     mgui.NDSImportGui.Name = calloc(1, 1);
     mgui.NDSImportGui.ROMPath = calloc(1, 1);
@@ -78,15 +73,12 @@ MainGUI MainGUI_Init(MainCfg* mcfg)
     mgui.NDSImportGui.TxtPath = calloc(1, 1);
     mgui.NDSImportGui.Mutex = SDL_CreateMutex();
 
-    mgui.GBAImportGui.NeedReset = true;
-    mgui.GBAImportGui.Name = calloc(1, 1);
-    mgui.GBAImportGui.ROMPath = calloc(1, 1);
-    mgui.GBAImportGui.SRAMPath = calloc(1, 1);
-    mgui.GBAImportGui.TxtPath = calloc(1, 1);
-    mgui.GBAImportGui.Mutex = SDL_CreateMutex();
+    mgui.SysImportGui.NvramPath = calloc(1,1);
+    mgui.SysImportGui.Mutex = SDL_CreateMutex();
+    mgui.SysImportGui.Mutex = SDL_CreateMutex();
 
-    for (int i = 0; i < GUI_LibraryMax; i++)
-        mgui.LibraryIcons[i] = SDL_CreateTexture(mgui.Ren, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STATIC, 32, 32);
+    for (int i = 0; i < GUI_LibMax; i++)
+        mgui.NDSLibIcons[i] = SDL_CreateTexture(mgui.Ren, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STATIC, 32, 32);
 
     LibraryGui_InitList(&mgui);
     return mgui;
@@ -95,7 +87,7 @@ MainGUI MainGUI_Init(MainCfg* mcfg)
 void MainGUI_Loop(Console* sys, MailBox* mailbox, MainGUI* mgui, MainCfg* mcfg, const bool active)
 {
     GuiCfg* gcfg = &mcfg->GuiCfg;
-    SysCfg* scfg = &mcfg->CoreCfg.SysCfg;
+    CoreCfg* ccfg = &mcfg->CoreCfg;
     cImGui_ImplSDLRenderer3_NewFrame();
     cImGui_ImplSDL3_NewFrame();
     ImGui_NewFrame();
@@ -165,8 +157,8 @@ void MainGUI_Loop(Console* sys, MailBox* mailbox, MainGUI* mgui, MainCfg* mcfg, 
 
     ConfigGUI_Loop(mgui, mcfg);
     DebugGUI_Loop(mailbox, mgui, sys);
-    ImportGui_Loop(mgui, &mgui->NDSImportGui, true);
-    //ImportGui_Loop(mgui, &mgui->GBAImportGui, mcfg, false);
+    SysImportGui_Loop(mgui);
+    NDSImportGui_Loop(mgui);
     if (mgui->DemoDisplay) ImGui_ShowDemoWindow(&mgui->DemoDisplay);
 
     if (active)
@@ -367,9 +359,9 @@ void MainGUI_Loop(Console* sys, MailBox* mailbox, MainGUI* mgui, MainCfg* mcfg, 
                     ImVec2 moupos = ImGui_GetMousePos();
                     u16 x, y;
                     if (dispsz.x == 0.0) x = 0; // dont div by 0 pls
-                    else x = (((moupos.x-curpos.x) * (scfg->TSCR - scfg->TSCL)) / dispsz.x) + scfg->TSCL;
+                    else x = (((moupos.x-curpos.x) * (ccfg->TSC.R - ccfg->TSC.L)) / dispsz.x) + ccfg->TSC.L;
                     if (dispsz.y == 0.0) y = 0; // dont div by 0 pls
-                    else y = (((moupos.y-curpos.y) * (scfg->TSCB - scfg->TSCT)) / dispsz.y) + scfg->TSCT;
+                    else y = (((moupos.y-curpos.y) * (ccfg->TSC.B - ccfg->TSC.T)) / dispsz.y) + ccfg->TSC.T;
                     Mailbox_UpdateTouch(mailbox, x, y, true);
                 }
                 else Mailbox_UpdateTouch(mailbox, 0xFFF, 0xFFF, false);
