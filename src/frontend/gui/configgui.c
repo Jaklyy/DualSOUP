@@ -548,7 +548,7 @@ void NDSImportGui_Update(MainGUI* mgui, MainCfg* mcfg)
     memset(srambuffer, 0xFF, sramsize);
 
     // load provided save
-    if (!igui->SavFromFile && (igui->SRAMPath[0] != '\0'))
+    if (igui->SavFromFile && (igui->SRAMPath[0] != '\0'))
     {
         SDL_IOStream* file;
         if ((file = SDL_IOFromFile(igui->SRAMPath, "rb")) != NULL)
