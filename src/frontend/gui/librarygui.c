@@ -5,6 +5,7 @@
 
 #include "../main.h"
 #include "maingui.h"
+#include "configgui.h"
 #include "../soupparser/soupparser.h"
 #include "core/utils.h"
 
@@ -251,7 +252,7 @@ void LibraryGui_Loop(MainGUI* mgui, MainCfg* mcfg)
             AllocStupidString(Console, LibType_Sys)
             if (ImGui_BeginTabItem(str, NULL, 0))
             {
-                if (ImGui_Button("Configure Consoles")) mgui->SysImportGui.Show = !mgui->SysImportGui.Show;
+                if (ImGui_Button("Configure Consoles")) SysImportGui_Toggle(mgui, nullptr);
 
                 LibraryRender(mgui, mcfg, LibType_Sys);
                 ImGui_EndTabItem();
@@ -262,7 +263,7 @@ void LibraryGui_Loop(MainGUI* mgui, MainCfg* mcfg)
             AllocStupidString(NDS Slot, LibType_NDS)
             if (ImGui_BeginTabItem(str, NULL, 0))
             {
-                if (ImGui_Button("Import NDS")) mgui->NDSImportGui.Show = !mgui->NDSImportGui.Show;
+                if (ImGui_Button("Import NDS")) NDSImportGui_Toggle(mgui, nullptr);
 
                 LibraryRender(mgui, mcfg, LibType_NDS);
                 ImGui_EndTabItem();

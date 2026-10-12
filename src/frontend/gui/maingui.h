@@ -100,12 +100,11 @@ typedef struct
 typedef struct
 {
     SDL_Mutex* Mutex;
-    char* Name;
-    char* ROMPath;
+    GameCardCfg Cfg;
     char* SRAMPath;
     char* TxtPath;
     bool Show;
-    bool NeedReset;
+    bool Edit;
     struct
     {
         char* FriendlyName;
@@ -127,12 +126,8 @@ typedef struct
     bool ROMDirtyB;
     bool SRAMDirtyB;
     bool TxtDirtyB;
-    int ROMSize;
-    int ROMChipID;
-    int SPIType;
-    int SRAMType;
-    int SRAMChipSize;
-    int FlashChipID;
+    bool SavFromFile;
+    bool InitSav;
 } NDSImportGui;
 
 typedef struct
@@ -140,7 +135,7 @@ typedef struct
     SDL_Mutex* Mutex;
     char* NvramPath;
     bool Show;
-    bool NeedReset;
+    bool Edit;
     CoreCfg Cfg;
     struct
     {
@@ -151,6 +146,7 @@ typedef struct
     bool NvramDirty;
     bool NTR7Dirty;
     bool NTR9Dirty;
+    bool InitNvram;
 } SysImportGui;
 
 typedef struct
@@ -205,9 +201,6 @@ void MainGUI_Loop(Console* sys, MailBox* mailbox, MainGUI* mgui, MainCfg* mcfg, 
 void Mailbox_UpdateTouch(MailBox* mailbox, u16 x, u16 y, bool touched);
 
 void DebugGUI_Loop(MailBox* mail, MainGUI* mgui, Console* sys);
-void NDSImportGui_Loop(MainGUI* mgui, MainCfg* mcfg);
-void SysImportGui_Loop(MainGUI* mgui, MainCfg* mcfg);
-void GBAImportGui_Loop(MainGUI* mgui, MainCfg* mcfg);
 
 void LibraryGui_InitList(MainGUI* mgui, MainCfg* mcfg);
 void LibraryGui_Loop(MainGUI* mgui, MainCfg* mcfg);

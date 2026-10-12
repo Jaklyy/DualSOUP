@@ -66,9 +66,6 @@ MainGUI MainGUI_Init(MainCfg* mcfg)
     cImGui_ImplSDL3_InitForSDLRenderer(mgui.Win, mgui.Ren);
     cImGui_ImplSDLRenderer3_Init(mgui.Ren);
 
-    mgui.NDSImportGui.NeedReset = true;
-    mgui.NDSImportGui.Name = calloc(1, 1);
-    mgui.NDSImportGui.ROMPath = calloc(1, 1);
     mgui.NDSImportGui.SRAMPath = calloc(1, 1);
     mgui.NDSImportGui.TxtPath = calloc(1, 1);
     mgui.NDSImportGui.Mutex = SDL_CreateMutex();

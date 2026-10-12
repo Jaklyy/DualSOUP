@@ -88,8 +88,8 @@ static const ConfigEntry GameCardCfgData[] =
     {
         .Name=      "ROMChipSize",
         .Offset=    offsetof(GameCardCfg, ROMChipSize),
-        .SDefVal=   -1, // auto
-        .SMinVal=   16,
+        .SDefVal=   20,
+        .SMinVal=   20,
         .SMaxVal=   32, // standard card protocol doesn't support >32 bit addresses
         .Type=      SEARCH_S8DEC,
     },
@@ -135,8 +135,8 @@ static const ConfigEntry GameCardCfgData[] =
     {
         .Name=      "SRAMChipSize",
         .Offset=    offsetof(GameCardCfg, SRAMChipSize),
-        .UDefVal=   -1, // auto
-        .UMinVal=   0,
+        .UDefVal=   9,
+        .UMinVal=   9,
         .UMaxVal=   24, // standard sram chips dont seem to support > 24 bit address indexing
         .Type=      SEARCH_U8DEC,
     },

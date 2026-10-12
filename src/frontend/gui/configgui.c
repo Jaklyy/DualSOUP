@@ -138,7 +138,7 @@ void ImportGui_ParseNDSROM(NDSImportGui* igui)
     memset(igui->ROMDat.Bitmap, 0, sizeof(igui->ROMDat.Bitmap));
 
     SDL_IOStream* rom;
-    if ((rom = SDL_IOFromFile(igui->ROMPath, "rb")) != NULL)
+    if ((rom = SDL_IOFromFile(igui->Cfg.ROMPath, "rb")) != NULL)
     {
         s64 sz;
         if ((sz = SDL_GetIOSize(rom)) <= 0) goto kill;
@@ -229,6 +229,7 @@ void ImportGui_ParseNDSSRAM(NDSImportGui* igui)
         if ((sz = SDL_GetIOSize(sram)) <= 0) goto kill;
 
         igui->SRAMDat.Size = ceil(log2(sz));
+        igui->SavFromFile = true;
 
         kill:
         SDL_CloseIO(sram);
@@ -294,42 +295,50 @@ char* FindFileWithDifferentExtension(char* path, char* ext)
     return out;
 }
 
+void SysImportGui_Toggle(MainGUI* mgui, const char* editfolder)
+{
+    SysImportGui* igui = &mgui->SysImportGui;
+    CoreCfg* cfg = &igui->Cfg;
+    if (igui->Show)
+    {
+        igui->Show = false;
+        return;
+    }
+    igui->Show = true;
+    igui->Edit = (editfolder != nullptr);
+    igui->InitNvram = !igui->Edit;
+
+    memset(&igui->Cfg, 0, (sizeof(SysImportGui) - offsetof(SysImportGui, NvramDat)));
+    Config_Load(editfolder, cfg, CoreCfgData, countof(CoreCfgData), NULL, NULL);
+    igui->ConsoleType = cfg->Model-ConsoleModel_NTR001; // TEMP
+    for (int i = 0; i < 4; i++) snprintf(igui->TSCRange[i], 4, "%03X", cfg->TSC.Arr[i]);
+}
+
 void SysImportGui_Loop(MainGUI* mgui, MainCfg* mcfg)
 {
     SysImportGui* igui = &mgui->SysImportGui;
     CoreCfg* cfg = &igui->Cfg;
-    if (!igui->Show)
-    {
-        igui->NeedReset = true;
-        return;
-    }
+    if (!igui->Show) return;
 
     ImGui_SetNextWindowSize((ImVec2){340.0, 400.0}, ImGuiCond_FirstUseEver);
     if (!ImGui_Begin("Configure DS System", &igui->Show, 0))
         return ImGui_End();
 
-    if (igui->NeedReset)
-    {
-        memset(&igui->Cfg, 0, (sizeof(SysImportGui) - offsetof(SysImportGui, NvramDat)));
-        Config_Load(NULL, cfg, CoreCfgData, countof(CoreCfgData), NULL, NULL);
-        igui->ConsoleType = cfg->Model-ConsoleModel_NTR001; // TEMP
-        for (int i = 0; i < 4; i++) snprintf(igui->TSCRange[i], 4, "%03X", cfg->TSC.Arr[i]);
-
-        igui->NeedReset = false;
-    }
 
     if (ImGui_ComboChar("Console Type", &igui->ConsoleType, &ConsoleModelsStr[1], 2))
     {
         cfg->Model = igui->ConsoleType + ConsoleModel_NTR001; // TEMP
     }
 
-    ImGui_InputTextEx("Name", cfg->FriendlyName, strlen(cfg->FriendlyName), ImGuiInputTextFlags_CallbackResize, FilePathTextCallback, &cfg->FriendlyName);
+    ImGui_InputTextEx("Name", cfg->FriendlyName, strlen(cfg->FriendlyName)+1, ImGuiInputTextFlags_CallbackResize, FilePathTextCallback, &cfg->FriendlyName);
 
     ImGui_SeparatorText("Files");
 
     SelectFile(cfg->NTR.Bios7, "NDS ARM7 Bios", "bin;rom", 1, igui->Mutex, igui->NTR7Dirty)
     SelectFile(cfg->NTR.Bios9, "NDS ARM9 Bios", "bin;rom", 1, igui->Mutex, igui->NTR9Dirty)
     SelectFile(igui->NvramPath, "NDS Firmware", "bin;rom;mem", 1, igui->Mutex, igui->NvramDirty)
+
+    if (igui->Edit) ImGui_Checkbox("Reimport Firmware", &igui->InitNvram);
 
     ImGui_SeparatorText("TSC Range");
     for (int i = 0; i < 4; i++)
@@ -359,11 +368,15 @@ void SysImportGui_Loop(MainGUI* mgui, MainCfg* mcfg)
 
         Config_Write(cfgfile, cfg, CoreCfgData, countof(CoreCfgData), nullptr, nullptr);
 
-        char nvramfile[strlen(basepath)+sizeof(ConsoleWiFiNvram)];
-        strcpy(nvramfile, basepath);
-        strcat(nvramfile, ConsoleWiFiNvram);
+        if (igui->InitNvram)
+        {
+            char nvramfile[strlen(basepath)+sizeof(ConsoleWiFiNvram)];
+            strcpy(nvramfile, basepath);
+            strcat(nvramfile, ConsoleWiFiNvram);
 
-        SDL_CopyFile(igui->NvramPath, nvramfile);
+            SDL_CopyFile(igui->NvramPath, nvramfile);
+        }
+
         igui->Show = false;
         // refresh library list
         LibraryGui_InitList(mgui, mcfg);
@@ -371,34 +384,225 @@ void SysImportGui_Loop(MainGUI* mgui, MainCfg* mcfg)
     ImGui_End();
 }
 
+void NDSImportGui_Infer(NDSImportGui* igui, GameCardCfg* cfg)
+{
+    ImportGui_ParseNDSROM(igui);
+    ImportGui_ParseNDSSRAM(igui);
+    ImportGui_ParseNDSTxt(igui);
+
+    if (igui->ROMDat.FriendlyName != NULL)
+    {
+        free(cfg->FriendlyName);
+        cfg->FriendlyName = strdup(igui->ROMDat.FriendlyName);
+    }
+
+    if (igui->TxtDat.ROMID != 0)
+    {
+        cfg->ROMChipID = igui->TxtDat.ROMID;
+        u8 szbyte = (igui->TxtDat.ROMID >> 8) & 0xFF;
+        if (szbyte < 0x80)
+        {
+            szbyte+=1;
+            if (stdc_count_ones(szbyte) != 1)
+            {
+                printf("Unknown ROM ChipID size field: %08"PRIX8"\n", igui->TxtDat.ROMID);
+                goto romSizeError;
+            }
+            cfg->ROMChipSize = stdc_trailing_zeros(szbyte) + 20;
+        }
+        else if (szbyte > 0xF0)
+        {
+            u32 sz = (0x100-szbyte) * MiB(256);
+            if (stdc_count_ones(sz) != 1)
+            {
+                printf("Unknown ROM ChipID size field: %08"PRIX8"\n", igui->TxtDat.ROMID);
+                goto romSizeError;
+            }
+            cfg->ROMChipSize = stdc_trailing_zeros(sz);
+        }
+        else
+        {
+            printf("Unknown ROM ChipID size field: %08"PRIX8"\n", igui->TxtDat.ROMID);
+            goto romSizeError;
+        }
+    }
+    else
+    {
+        romSizeError:
+        if (igui->ROMDat.Size != 0)
+        {
+            cfg->ROMChipSize = igui->ROMDat.Size;
+            DS_CLAMP(cfg->ROMChipSize, <, CTZ_CONSTEXPR(MiB(1)));
+        }
+    }
+
+    printf("%u\n", cfg->ROMChipSize);
+
+    cfg->SPIBusType = GameCard_SPIBus_DirectSRAM;
+
+    if (igui->SRAMDat.Size != 0)
+    {
+        cfg->SRAMChipSize = igui->SRAMDat.Size;
+        DS_CLAMP(cfg->SRAMChipSize, <, CTZ_CONSTEXPR((int)512));
+    }
+
+    if (igui->TxtDat.SRAMID == 0xFFFFFF)
+    {
+        if (cfg->SRAMChipSize == 9)
+        {
+            cfg->SRAMChipType = GameCard_SRAMChip_EEPROM9BitAddr;
+        }
+        else if (cfg->SRAMChipSize <= 16)
+        {
+            cfg->SRAMChipType = GameCard_SRAMChip_EEPROM16BitAddr;
+        }
+        else
+        {
+            cfg->SRAMChipType = GameCard_SRAMChip_EEPROM24BitAddr;
+        }
+        cfg->FlashChipID = 0xFFFFFF;
+    }
+    else
+    {
+        cfg->SRAMChipType = GameCard_SRAMChip_Flash24BitAddr;
+        cfg->FlashChipID = igui->TxtDat.SRAMID;
+    }
+}
+
+void NDSImportGui_Toggle(MainGUI* mgui, const char* editfolder)
+{
+    NDSImportGui* igui = &mgui->NDSImportGui;
+    GameCardCfg* cfg = &igui->Cfg;
+    if (igui->Show)
+    {
+        igui->Show = false;
+        return;
+    }
+    igui->Show = true;
+    igui->Edit = (editfolder != nullptr);
+    igui->InitSav = !igui->Edit;
+
+    Config_Load(editfolder, cfg, GameCardCfgData, countof(GameCardCfgData), NULL, NULL);
+    igui->SRAMPath[0] = '\0';
+    igui->TxtPath[0] = '\0';
+    SDL_free(igui->ROMDat.FriendlyName);
+    memset(&igui->ROMDat, 0, sizeof(NDSImportGui) - offsetof(NDSImportGui, ROMDat));
+    igui->TxtDat.SRAMID = 0xFFFFFF;
+}
+
+void NDSImportGui_Update(MainGUI* mgui, MainCfg* mcfg)
+{
+    NDSImportGui* igui = &mgui->NDSImportGui;
+    GameCardCfg* cfg = &igui->Cfg;
+
+    size_t sramsize = ((size_t)1)<<cfg->SRAMChipSize;
+    u8 srambuffer[sramsize];
+
+    char* start;
+    if ((start = strrchr(cfg->ROMPath, '/')) == NULL)
+        start = cfg->ROMPath;
+    else start+=1;
+    char* end;
+    if ((end = strrchr(start, '.')) == NULL)
+        end = start+strlen(start)+1;
+
+    char romfoldername[end-start+1] = {};
+    strncpy(romfoldername, start, end-start);
+
+    size_t basefolderlen = strlen(DualSOUPFolder)+sizeof(NDSFolder)+strlen(romfoldername)+1;
+    char basepath[basefolderlen];
+    char cfgpath[basefolderlen+sizeof(DSCfgName)];
+    char savfolderpath[basefolderlen+sizeof(DSSavFolder)];
+    char savpath[basefolderlen+sizeof(DSSavFolder)+sizeof(DSSavFile)];
+    char iconpath[basefolderlen+sizeof(DSIconFile)];
+    // base folder name
+    strcpy(basepath, DualSOUPFolder);
+    strcat(basepath, NDSFolder);
+    strcat(basepath, romfoldername);
+    strcat(basepath, "/");
+
+    // copy to other paths
+    strcpy(savfolderpath, basepath);
+    strcpy(iconpath, basepath);
+    strcpy(cfgpath, basepath);
+
+    // finish set up
+    strcat(cfgpath, DSCfgName);
+    strcat(iconpath, DSIconFile);
+    strcat(savfolderpath, DSSavFolder);
+    // make folder
+    if (!SDL_CreateDirectory(savfolderpath))
+    {
+        printf("Directory creation failure: %s\n", SDL_GetError());
+        goto exit;
+    }
+    // copy one more time
+    strcpy(savpath, savfolderpath);
+    strcat(savpath, DSSavFile);
+    printf("%s\n", basepath);
+
+    Config_Write(cfgpath, cfg, GameCardCfgData, countof(GameCardCfgData), nullptr, igui->Mutex);
+
+    if ((cfg->SPIBusType == GameCard_SPIBus_None) || (cfg->SRAMChipType == GameCard_SRAMChip_None)) // exit if no sram
+        goto skipsav;
+    memset(srambuffer, 0xFF, sramsize);
+
+    // load provided save
+    if (!igui->SavFromFile && (igui->SRAMPath[0] != '\0'))
+    {
+        SDL_IOStream* file;
+        if ((file = SDL_IOFromFile(igui->SRAMPath, "rb")) != NULL)
+        {
+            s64 sz;
+            if ((sz = SDL_GetIOSize(file)) <= 0)
+            {
+                if (sz == 0) printf("SRAM file is empty.\n");
+                else         printf("SRAM filesize get error. sz: %"PRIi64" %s\n", sz, SDL_GetError());
+            }
+            else if ((SDL_ReadIO(file, srambuffer, sz) != (u64)sz) && (SDL_GetIOStatus(file) != SDL_IO_STATUS_EOF))
+                printf("SRAM File read error: %s\n", SDL_GetError());
+
+            if (!SDL_CloseIO(file))
+                printf("SRAM File close error: %s\n", SDL_GetError());
+        }
+        else printf("Could not open provided SRAM file %s\n", SDL_GetError());
+    }
+
+    // write save to destination
+    {
+        SDL_IOStream* file;
+        if ((file = SDL_IOFromFile(savpath, "wb")) != NULL)
+        {
+            if (SDL_WriteIO(file, srambuffer, sramsize) != sramsize)
+                printf("SRAM File write error: %s\n", SDL_GetError());
+
+            if (!SDL_CloseIO(file))
+                printf("SRAM File close error: %s\n", SDL_GetError());
+        }
+        else printf("Could not create file %s to write SRAM to %s\n", savpath, SDL_GetError());
+    }
+    skipsav:
+
+    ImportGui_ParseNDSROM(igui);
+    SDL_SaveFile(iconpath, igui->ROMDat.Bitmap, sizeof(igui->ROMDat.Bitmap));
+
+    igui->Show = false;
+    exit:
+    // refresh library list
+    LibraryGui_InitList(mgui, mcfg);
+}
+
 void NDSImportGui_Loop(MainGUI* mgui, MainCfg* mcfg)
 {
     NDSImportGui* igui = &mgui->NDSImportGui;
-    if (!igui->Show)
-    {
-        igui->NeedReset = true;
-        return;
-    }
+    GameCardCfg* cfg = &igui->Cfg;
+    if (!igui->Show) return;
 
     ImGui_SetNextWindowSize((ImVec2){340.0, 400.0}, ImGuiCond_FirstUseEver);
     if (!ImGui_Begin("Import NDS Game Card", &igui->Show, 0))
         return ImGui_End();
 
-    if (igui->NeedReset)
-    {
-        igui->Name[0] = '\0';
-        igui->ROMPath[0] = '\0';
-        igui->SRAMPath[0] = '\0';
-        igui->TxtPath[0] = '\0';
-        if (igui->ROMDat.FriendlyName != NULL)
-            SDL_free(igui->ROMDat.FriendlyName);
-        memset(&igui->ROMDat, 0, sizeof(NDSImportGui) - offsetof(NDSImportGui, ROMDat));
-        igui->TxtDat.SRAMID = 0xFFFFFF;
-
-        igui->NeedReset = false;
-    }
-
-    SelectFile(igui->ROMPath, "NDS ROM", "nds", 1, igui->Mutex, igui->ROMDirtyB);
+    SelectFile(cfg->ROMPath, "NDS ROM", "nds", 1, igui->Mutex, igui->ROMDirtyB);
     igui->ROMDirty |= igui->ROMDirtyB;
     SelectFile(igui->SRAMPath, "NDS SRAM", "sav", 1, igui->Mutex, igui->SRAMDirtyB);
     igui->SRAMDirty |= igui->SRAMDirtyB;
@@ -407,16 +611,16 @@ void NDSImportGui_Loop(MainGUI* mgui, MainCfg* mcfg)
     if (igui->ROMDirtyB || igui->SRAMDirtyB || igui->TxtDirtyB)
     {
         char* str = NULL;
-        if (igui->ROMDirtyB) str = igui->ROMPath;
+        if (igui->ROMDirtyB) str = cfg->ROMPath;
         if (igui->SRAMDirtyB) str = igui->SRAMPath;
         if (igui->TxtDirtyB) str = igui->TxtPath;
-        if (igui->ROMPath[0] == '\0')
+        if (cfg->ROMPath[0] == '\0')
         {
             char* new;
             if (((new = FindFileWithDifferentExtension(str, "nds")) != NULL))
             {
-                free(igui->ROMPath);
-                igui->ROMPath = new;
+                free(cfg->ROMPath);
+                cfg->ROMPath = new;
                 igui->ROMDirty = true;
             }
         }
@@ -442,115 +646,100 @@ void NDSImportGui_Loop(MainGUI* mgui, MainCfg* mcfg)
         }
     }
 
+    // TODO: infer from game code?
     ImGui_Text("Note: Infer doesn't auto-select\nnon-standard card hw (ie. IR)");
     if (ImGui_Button("Infer from provided files\n"))
-    {
-        ImportGui_ParseNDSROM(igui);
-        ImportGui_ParseNDSSRAM(igui);
-        ImportGui_ParseNDSTxt(igui);
+        NDSImportGui_Infer(igui, cfg);
 
-        if (igui->ROMDat.FriendlyName != NULL)
-        {
-            free(igui->Name);
-            igui->Name = strdup(igui->ROMDat.FriendlyName);
-        }
-
-        if (igui->TxtDat.ROMID != 0)
-        {
-            igui->ROMChipID = igui->TxtDat.ROMID;
-            u8 szbyte = (igui->TxtDat.ROMID >> 8) & 0xFF;
-            if (szbyte < 0x80)
-            {
-                szbyte+=1;
-                if (stdc_count_ones(szbyte) != 1)
-                {
-                    printf("Unknown ROM ChipID size field: %08"PRIX8"\n", igui->TxtDat.ROMID);
-                    goto romSizeError;
-                }
-                igui->ROMSize = stdc_trailing_zeros(szbyte);
-            }
-            else if (szbyte > 0xF0)
-            {
-                u32 sz = (0x100-szbyte) * MiB(256);
-                if (stdc_count_ones(sz) != 1)
-                {
-                    printf("Unknown ROM ChipID size field: %08"PRIX8"\n", igui->TxtDat.ROMID);
-                    goto romSizeError;
-                }
-                igui->ROMSize = stdc_trailing_zeros(sz) - 20;
-            }
-        }
-        else
-        {
-            romSizeError:
-            if (igui->ROMDat.Size != 0)
-            {
-                if (igui->ROMDat.Size < 20) igui->ROMSize = 0;
-                else igui->ROMSize = igui->ROMDat.Size - 20;
-            }
-        }
-
-        igui->SPIType = GameCard_SPIBus_DirectSRAM;
-
-        if (igui->SRAMDat.Size != 0)
-        {
-            if (igui->SRAMDat.Size < 9) igui->SRAMChipSize = 0;
-            else igui->SRAMChipSize = igui->SRAMDat.Size - 9;
-        }
-
-        if (igui->TxtDat.SRAMID == 0xFFFFFF)
-        {
-            if (igui->SRAMChipSize == 0)
-            {
-                igui->SRAMType = GameCard_SRAMChip_EEPROM9BitAddr;
-            }
-            else if (igui->SRAMChipSize <= 7)
-            {
-                igui->SRAMType = GameCard_SRAMChip_EEPROM16BitAddr;
-            }
-            else
-            {
-                igui->SRAMType = GameCard_SRAMChip_EEPROM24BitAddr;
-            }
-        }
-        else
-        {
-            igui->SRAMType = GameCard_SRAMChip_Flash24BitAddr;
-            igui->FlashChipID = igui->TxtDat.SRAMID;
-        }
-    }
-
+    if (igui->Edit) ImGui_Checkbox("Reimport sav\n", &igui->SavFromFile);
+    ImGui_BeginDisabled(igui->SRAMPath[0] == '\0');
+    ImGui_Checkbox("Initialize sav from file\n", &igui->SavFromFile);
+    ImGui_EndDisabled();
 
     ImGui_SeparatorText("");
 
-    ImGui_InputTextMultilineEx("Game Title", igui->Name, strlen(igui->Name)+1, (ImVec2){0, 45}, ImGuiInputTextFlags_CallbackResize, FilePathTextCallback, &igui->Name);
+    ImGui_InputTextMultilineEx("Game Title", cfg->FriendlyName, strlen(cfg->FriendlyName)+1, (ImVec2){0, 45}, ImGuiInputTextFlags_CallbackResize, FilePathTextCallback, &cfg->FriendlyName);
 
 
     ImGui_SeparatorText("ROM Chip");
 
-    const char* const romsizes[] = {"1 MiB", "2 MiB", "4 MiB", "8 MiB", "16 MiB", "32 MiB", "64 MiB", "128 MiB", "256 MiB", "512 MiB"};
-    ImGui_ComboChar("ROM Chip Size", &igui->ROMSize, romsizes, countof(romsizes));
+    {
+        const char* const romsizes[] = {"1 MiB", "2 MiB", "4 MiB", "8 MiB", "16 MiB", "32 MiB", "64 MiB", "128 MiB", "256 MiB", "512 MiB"};
+        constexpr u64 romsizebase = CTZ_CONSTEXPR(MiB(1));
+        u8 cursel = cfg->ROMChipSize-romsizebase;
+        if (ImGui_BeginCombo("ROM Chip Size", romsizes[cursel], 0))
+        {
+            for (u64 i = 0; i < countof(romsizes); i++)
+            {
+                if (ImGui_SelectableEx(romsizes[i], cursel==i, 0, (ImVec2){0,0}))
+                    cfg->ROMChipSize = i+romsizebase;
 
-    ImGui_InputIntEx("ROM Chip ID", &igui->ROMChipID, 0, 0, ImGuiInputTextFlags_CharsHexadecimal|ImGuiInputTextFlags_CharsUppercase);
+                if (cursel==i) ImGui_SetItemDefaultFocus();
+            }
+            ImGui_EndCombo();
+        }
+    }
+
+    ImGui_InputIntEx("ROM Chip ID", (s32*)&cfg->ROMChipID, 0, 0, ImGuiInputTextFlags_CharsHexadecimal|ImGuiInputTextFlags_CharsUppercase);
 
 
     ImGui_SeparatorText("SPI/SRAM Chip");
 
-    const char* const spitype[] = {"None", "Direct SRAM Chip", "Infrared (HLE)"};
-    ImGui_ComboChar("SPI Bus Type", &igui->SPIType, spitype, countof(spitype));
+    {
+        const char* const spitype[] = {"None", "Direct SRAM Chip", "Infrared (HLE)"};
+        u8 cursel = cfg->SPIBusType;
+        if (ImGui_BeginCombo("SPI Bus Type", spitype[cursel], 0))
+        {
+            for (u64 i = 0; i < countof(spitype); i++)
+            {
+                if (ImGui_SelectableEx(spitype[i], cursel==i, 0, (ImVec2){0,0}))
+                    cfg->SPIBusType = i;
 
-    ImGui_BeginDisabled(igui->SPIType == GameCard_SPIBus_None);
-    const char* const sramchiptype[] = {"None", "Flash (Max: 16 MiB)", "EEPROM w/ 9 Bit Addr (Max: 512 Bytes)", "EEPROM w/ 16 Bit Addr (Max: 64 KiB)", "EEPROM w/ 24 Bit Addr (Max: 16 MiB)"};
-    ImGui_ComboChar("SRAM Chip Type", &igui->SRAMType, sramchiptype, countof(sramchiptype));
+                if (cursel==i) ImGui_SetItemDefaultFocus();
+            }
+            ImGui_EndCombo();
+        }
+    }
 
-    ImGui_BeginDisabled(igui->SRAMType == GameCard_SRAMChip_None);
-    const char* const sramsizes[] = {"512 B", "1 KiB", "2 KiB", "4 KiB", "8 KiB", "16 KiB", "32 KiB", "64 KiB", "128 KiB", "256 KiB", "512 KiB", "1 MiB", "2 MiB", "4 MiB", "8 MiB", "16 MiB"};
-    ImGui_ComboChar("SRAM Chip Size", &igui->SRAMChipSize, sramsizes, countof(sramsizes));
+    ImGui_BeginDisabled(cfg->SPIBusType == GameCard_SPIBus_None);
+    {
+        const char* const sramchiptype[] = {"None", "Flash (Max: 16 MiB)", "EEPROM w/ 9 Bit Addr (Max: 512 Bytes)", "EEPROM w/ 16 Bit Addr (Max: 64 KiB)", "EEPROM w/ 24 Bit Addr (Max: 16 MiB)"};
+        u8 cursel = cfg->SRAMChipType;
+        if (ImGui_BeginCombo("SRAM Chip Type", sramchiptype[cursel], 0))
+        {
+            for (u64 i = 0; i < countof(sramchiptype); i++)
+            {
+                if (ImGui_SelectableEx(sramchiptype[i], cursel==i, 0, (ImVec2){0,0}))
+                    cfg->SRAMChipType = i;
+
+                if (cursel==i) ImGui_SetItemDefaultFocus();
+            }
+            ImGui_EndCombo();
+        }
+    }
+
+    ImGui_BeginDisabled(cfg->SRAMChipType == GameCard_SRAMChip_None);
+    {
+        const char* const sramsizes[] = {"512 B", "1 KiB", "2 KiB", "4 KiB", "8 KiB", "16 KiB", "32 KiB", "64 KiB", "128 KiB", "256 KiB", "512 KiB", "1 MiB", "2 MiB", "4 MiB", "8 MiB", "16 MiB"};
+        constexpr u64 sramsizebase = CTZ_CONSTEXPR((int)512);
+        u8 cursel = cfg->SRAMChipSize - sramsizebase;
+        if (ImGui_BeginCombo("SRAM Chip Size", sramsizes[cursel], 0))
+        {
+            for (u64 i = 0; i < countof(sramsizes); i++)
+            {
+                if (ImGui_SelectableEx(sramsizes[i], cursel==i, 0, (ImVec2){0,0}))
+                    cfg->SRAMChipSize = i+sramsizebase;
+
+                if (cursel==i) ImGui_SetItemDefaultFocus();
+            }
+            ImGui_EndCombo();
+        }
+    }
 
 
-    ImGui_BeginDisabled(igui->SRAMType != GameCard_SRAMChip_Flash24BitAddr);
-    ImGui_InputIntEx("Flash Chip ID", &igui->FlashChipID, 0, 0, ImGuiInputTextFlags_CharsHexadecimal|ImGuiInputTextFlags_CharsUppercase);
-    igui->FlashChipID &= 0xFFFFFF;
+    ImGui_BeginDisabled(cfg->SRAMChipType != GameCard_SRAMChip_Flash24BitAddr);
+    ImGui_InputIntEx("Flash Chip ID", (s32*)&cfg->FlashChipID, 0, 0, ImGuiInputTextFlags_CharsHexadecimal|ImGuiInputTextFlags_CharsUppercase);
+    cfg->FlashChipID &= 0xFFFFFF;
 
     ImGui_EndDisabled();
     ImGui_EndDisabled();
@@ -558,123 +747,8 @@ void NDSImportGui_Loop(MainGUI* mgui, MainCfg* mcfg)
 
     ImGui_SeparatorText("");
 
-    if (ImGui_Button("Import") && (igui->ROMPath[0] != '\0'))
-    {
-        if (igui->ROMPath[0] == '\0')
-            return ImGui_End();
+    if (ImGui_Button("Import") && (cfg->ROMPath[0] != '\0'))
+        NDSImportGui_Update(mgui, mcfg);
 
-        size_t sramsize = (size_t)1<<(igui->SRAMChipSize + 9);
-        u8 srambuffer[sramsize];
-
-        char* start; char* end;
-        if ((start = strrchr(igui->ROMPath, '/')) == NULL)
-            start = igui->ROMPath;
-        else start+=1;
-        if ((end = strrchr(start, '.')) == NULL)
-            end = start+strlen(start)+1;
-
-        char* romfoldername;
-        if ((romfoldername = calloc(1, end-start+1)) == NULL)
-            goto out;
-        strncpy(romfoldername, start, end-start);
-
-        size_t basefolderlen = strlen(DualSOUPFolder)+sizeof(NDSFolder)+strlen(romfoldername)+1;
-        char basepath[basefolderlen];
-        char cfgpath[basefolderlen+sizeof(DSCfgName)];
-        char savfolderpath[basefolderlen+sizeof(DSSavFolder)];
-        char savpath[basefolderlen+sizeof(DSSavFolder)+sizeof(DSSavFile)];
-        char iconpath[basefolderlen+sizeof(DSIconFile)];
-        // base folder name
-        strcpy(basepath, DualSOUPFolder);
-        strcat(basepath, NDSFolder);
-        strcat(basepath, romfoldername);
-        strcat(basepath, "/");
-
-        // copy to other paths
-        strcpy(savfolderpath, basepath);
-        strcpy(iconpath, basepath);
-        strcpy(cfgpath, basepath);
-
-        // finish set up
-        strcat(cfgpath, DSCfgName);
-        strcat(iconpath, DSIconFile);
-        strcat(savfolderpath, DSSavFolder);
-        // make folder
-        if (!SDL_CreateDirectory(savfolderpath))
-        {
-            printf("Directory creation failure: %s\n", SDL_GetError());
-            goto exit;
-        }
-        // copy one more time
-        strcpy(savpath, savfolderpath);
-        strcat(savpath, DSSavFile);
-        printf("%s\n", basepath);
-
-        GameCardCfg cfg = {
-            .ROMBusType = GameCard_ROMBus_Standard,
-            .ROMChipSize = igui->ROMSize + 20,
-            .ROMPaddingByte = 0xFF,
-            .ROMChipID = igui->ROMChipID,
-            .ROMPath = igui->ROMPath,
-            .SPIBusType = igui->SPIType,
-            .SRAMChipType = igui->SRAMType,
-            .SRAMChipSize = igui->SRAMChipSize + 9,
-            .FlashChipID = igui->FlashChipID,
-            .ImportKey1FromNTRBios7 = true,
-            .ManualKey1Path = nullptr,
-            .FriendlyName = igui->Name,
-        };
-
-        Config_Write(cfgpath, &cfg, GameCardCfgData, countof(GameCardCfgData), nullptr, igui->Mutex);
-
-        if ((igui->SPIType == GameCard_SPIBus_None) || (igui->SRAMType == GameCard_SRAMChip_None)) // exit if no sram
-            goto skipsav;
-        memset(srambuffer, 0xFF, sramsize);
-
-        // load provided save
-        if (igui->SRAMPath[0] != '\0')
-        {
-            SDL_IOStream* file;
-            if ((file = SDL_IOFromFile(igui->SRAMPath, "rb")) != NULL)
-            {
-                s64 sz;
-                if ((sz = SDL_GetIOSize(file)) <= 0)
-                {
-                    if (sz == 0) printf("SRAM file is empty.\n");
-                    else         printf("SRAM filesize get error. sz: %"PRIi64" %s\n", sz, SDL_GetError());
-                }
-                else if ((SDL_ReadIO(file, srambuffer, sz) != (u64)sz) && (SDL_GetIOStatus(file) != SDL_IO_STATUS_EOF))
-                    printf("SRAM File read error: %s\n", SDL_GetError());
-
-                if (!SDL_CloseIO(file))
-                    printf("SRAM File close error: %s\n", SDL_GetError());
-            }
-            else printf("Could not open provided SRAM file %s\n", SDL_GetError());
-        }
-
-        // write save to destination
-        {
-            SDL_IOStream* file;
-            if ((file = SDL_IOFromFile(savpath, "wb")) != NULL)
-            {
-                if (SDL_WriteIO(file, srambuffer, sramsize) != sramsize)
-                    printf("SRAM File write error: %s\n", SDL_GetError());
-
-                if (!SDL_CloseIO(file))
-                    printf("SRAM File close error: %s\n", SDL_GetError());
-            }
-            else printf("Could not create file %s to write SRAM to %s\n", savpath, SDL_GetError());
-        }
-        skipsav:
-
-        ImportGui_ParseNDSROM(igui);
-        SDL_SaveFile(iconpath, igui->ROMDat.Bitmap, sizeof(igui->ROMDat.Bitmap));
-
-        igui->Show = false;
-        exit:
-        // refresh library list
-        LibraryGui_InitList(mgui, mcfg);
-    }
-    out:
     ImGui_End();
 }
