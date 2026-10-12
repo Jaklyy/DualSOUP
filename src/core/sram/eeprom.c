@@ -158,11 +158,11 @@ u8 EEPROM_CMDSend(EEPROM* eep, const u8 val, const bool chipsel)
                 ret = 0xFF; /* checkme */
                 break;
             }
-            else
+            else if (eep->CmdLen == 0)
             {
                 eep->CurAddr = 0x01;
-                [[fallthrough]];
             }
+            [[fallthrough]];
         case 0x03: ret = EEPROM_ReadData(eep, val); break;
         case 0x0A:
             if (eep->AddrBytes != 1)
@@ -170,11 +170,11 @@ u8 EEPROM_CMDSend(EEPROM* eep, const u8 val, const bool chipsel)
                 ret = 0xFF; /* checkme */
                 break;
             }
-            else
+            else if (eep->CmdLen == 0)
             {
                 eep->CurAddr = 0x01;
-                [[fallthrough]];
             }
+            [[fallthrough]];
         case 0x02: ret = EEPROM_WriteData(eep, val, chipsel); break;
 
         default: ret = 0xFF; LogPrint(LOG_FLASH | LOG_ODD, "UNKNOWN EEPROM COMMAND %02X\n", eep->CurCmd); break;
