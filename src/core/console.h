@@ -731,6 +731,8 @@ void Console_Reset(Console* sys);
 // actually run the emulation.
 Core_Ret Console_MainLoop(Console* sys);
 
+void Console_SaveFiles(Console* sys, bool force);
+
 void Console_DirectBoot(Console* sys);
 
 void Console_DebugLog(Console* sys);

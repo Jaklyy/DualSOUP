@@ -95,9 +95,12 @@ int SDLCALL Core_Init(void* pass)
         case Core_Continue: unreachable();
         }
 
+        Console_SaveFiles(sys, false);
+
         while (pausechk && mailbox->Pause)
         {
             mailbox->PauseConfirm = true;
+            Console_SaveFiles(sys, false);
             if (killchk && mailbox->CoreKill) break; // note: internal kills probably shouldn't override pause
             SDL_Delay(5); // arbitrary delay
         }
@@ -114,7 +117,11 @@ int SDLCALL Core_Init(void* pass)
                 u64 target = sys->OldTime + (((len * SDL_GetPerformanceFrequency()) + sys->TimeFrac) / Sched_Clock);
                 sys->TimeFrac =              ((len * SDL_GetPerformanceFrequency()) + sys->TimeFrac) % Sched_Clock;
 
-                while(SDL_GetPerformanceCounter() < target) SDL_CPUPauseInstruction();
+                while(SDL_GetPerformanceCounter() < target)
+                {
+                    Console_SaveFiles(sys, false);
+                    SDL_CPUPauseInstruction();
+                }
 
                 if ((SDL_GetPerformanceCounter() - (SDL_GetPerformanceFrequency() / 60)) > target)
                 {
@@ -155,6 +162,8 @@ int SDLCALL Core_Init(void* pass)
 
         ret = Console_MainLoop(sys);
     }
+
+    Console_SaveFiles(sys, true);
 
     if (internalkill)
     {

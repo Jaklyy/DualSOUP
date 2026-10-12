@@ -127,14 +127,17 @@ bool Console_ReadFile(u8* buf, const char* path, const size_t num, const char* n
     return false;
 }
 
-void Console_SaveFiles(Console* sys, char* cardsram, char* wifinvram, bool force)
+void Console_SaveFiles(Console* sys, bool force)
 {
+    char* const cardsram = sys->GameCard.SavFolder;
+    char* const wifinvram = sys->WiFiNVRAMFolder;
     if (cardsram && cardsram[0] != '\0')
     {
         u8* buf;
         u64 size;
         if (GameCardSPI_FlushToDisk(&sys->GameCard, &buf, &size, force))
         {
+            printf("SRAM Flushed\n");
             char path[strlen(cardsram)+sizeof(DSSavFile)];
             strcpy(path, cardsram);
             strcat(path, DSSavFile);
@@ -148,6 +151,7 @@ void Console_SaveFiles(Console* sys, char* cardsram, char* wifinvram, bool force
         u64 size;
         if (Flash_FlushToDisk(&sys->Firmware, &buf, &size, force))
         {
+            printf("Firmware Flushed\n");
             char path[strlen(wifinvram)+sizeof(ConsoleWiFiNvram)];
             strcpy(path, wifinvram);
             strcat(path, ConsoleWiFiNvram);
@@ -161,7 +165,7 @@ void Console_Cleanup(Console* sys, bool full)
 {
     if (sys == nullptr) return;
 
-    Console_SaveFiles(sys, sys->GameCard.SavFolder, sys->WiFiNVRAMFolder, true);
+    Console_SaveFiles(sys, true);
 
     SDL_free(sys->WiFiNVRAMFolder);
 

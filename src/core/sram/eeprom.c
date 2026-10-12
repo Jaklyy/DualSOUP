@@ -37,7 +37,7 @@ void EEPROM_SetDirty(EEPROM* eep)
     if (!eep->Dirty)
     {
         eep->Dirty = true;
-        eep->DirtyCycle = SDL_GetPerformanceCounter() + SDL_GetPerformanceFrequency();
+        eep->DirtyCycle = SDL_GetPerformanceCounter() + (SDL_GetPerformanceFrequency() * 10);
     }
 }
 

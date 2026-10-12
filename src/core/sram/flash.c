@@ -42,7 +42,7 @@ void Flash_SetDirty(Flash* flash)
     if (!flash->Dirty)
     {
         flash->Dirty = true;
-        flash->DirtyCycle = SDL_GetPerformanceCounter() + SDL_GetPerformanceFrequency();
+        flash->DirtyCycle = SDL_GetPerformanceCounter() + (SDL_GetPerformanceFrequency() * 10);
     }
 }
 
