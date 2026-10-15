@@ -35,7 +35,7 @@ typedef enum : u8
     GameCard_SPIBus_MAX [[maybe_unused]],
 } GameCard_SPIBus;
 
-constexpr u32 DefaultChipID  = 0x04030201;
+constexpr u32 DefaultChipID  = 0x00000201;
 constexpr u32 DefaultFlashID = 0x030201;
 
 typedef struct

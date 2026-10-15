@@ -170,29 +170,32 @@ void LibraryGui_InitList(MainGUI* mgui, MainCfg* mcfg)
 
 void LibraryRender(MainGUI* mgui, MainCfg* mcfg, const LibGui_Type type)
 {
-    if (ImGui_BeginTable("Library", ((type == LibType_NDS) ? 2 : 1), ImGuiTableFlags_Hideable|ImGuiTableFlags_Sortable|ImGuiTableFlags_Borders|ImGuiTableFlags_ScrollY))
+    if (ImGui_BeginTable("Library", (3 + (type == LibType_NDS)), ImGuiTableFlags_Hideable|ImGuiTableFlags_Sortable|ImGuiTableFlags_Borders|ImGuiTableFlags_ScrollY))
     {
         if (type == LibType_NDS) ImGui_TableSetupColumn("Icon", ImGuiTableColumnFlags_WidthFixed);
-        ImGui_TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed);
+        ImGui_TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch);
+        ImGui_TableSetupColumn("Edit", ImGuiTableColumnFlags_WidthFixed);
+        ImGui_TableSetupColumn("Open", ImGuiTableColumnFlags_WidthFixed);
         ImGuiListClipper clip;
         ImGuiListClipper_Begin(&clip, mgui->Libs[type].Num, -1);
         while (ImGuiListClipper_Step(&clip))
         {
             for (int i = clip.DisplayStart; i < clip.DisplayEnd; i++)
             {
+                ImGui_PushIDInt(i);
+
                 ImGui_TableNextRow();
+                ImGui_TableNextColumn();
                 if (i % 2) ImGui_TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui_GetColorU32(ImGuiCol_TableRowBg), -1);
                 else       ImGui_TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui_GetColorU32(ImGuiCol_TableRowBgAlt), -1);
 
                 if (type == LibType_NDS)
                 {
-                    ImGui_TableNextColumn();
                     ImGui_Dummy((ImVec2){0.0, 0.0});
                     ImGui_Image((ImTextureRef){._TexID = (intptr_t)(mgui->NDSLibIcons[i])}, (ImVec2){32,32});
+                    ImGui_TableNextColumn();
                 }
 
-                ImGui_TableNextColumn();
-                ImGui_PushIDInt(i);
                 if (ImGui_SelectableEx(mgui->Libs[type].Names[i], strcmp(mcfg->GuiCfg.LibrarySel[type], mgui->Libs[type].Paths[i]) == 0, ImGuiSelectableFlags_SpanAllColumns|ImGuiSelectableFlags_AllowOverlap, (ImVec2){0, 39}))
                 {
                     free(mcfg->GuiCfg.LibrarySel[type]);
@@ -201,6 +204,25 @@ void LibraryRender(MainGUI* mgui, MainCfg* mcfg, const LibGui_Type type)
                     mgui->LibrarySelName[type] = LibrarySelName_Construct(mgui->Libs[type].Names[i]);
                     mcfg->Dirty = true;
                 }
+
+                ImGui_TableNextColumn();
+                if (ImGui_Button("Edit"))
+                {
+                    switch(type)
+                    {
+                    case LibType_Sys: SysImportGui_Toggle(mgui, mgui->Libs[type].Paths[i]); break;
+                    case LibType_NDS: NDSImportGui_Toggle(mgui, mgui->Libs[type].Paths[i]); break;
+                    }
+                }
+                ImGui_TableNextColumn();
+                if (ImGui_Button("Open Folder"))
+                {
+                    char path[sizeof("file://")+strlen(mgui->Libs[type].Paths[i])];
+                    strcpy(path, "file://");
+                    strcat(path, mgui->Libs[type].Paths[i]);
+                    if (!SDL_OpenURL(path)) printf("Couldn't open folder: %s", SDL_GetError());
+                }
+
                 ImGui_PopID();
             }
         }
@@ -252,7 +274,7 @@ void LibraryGui_Loop(MainGUI* mgui, MainCfg* mcfg)
             AllocStupidString(Console, LibType_Sys)
             if (ImGui_BeginTabItem(str, NULL, 0))
             {
-                if (ImGui_Button("Configure Consoles")) SysImportGui_Toggle(mgui, nullptr);
+                if (ImGui_Button("Import Console")) SysImportGui_Toggle(mgui, nullptr);
 
                 LibraryRender(mgui, mcfg, LibType_Sys);
                 ImGui_EndTabItem();

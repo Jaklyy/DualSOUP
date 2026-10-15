@@ -104,7 +104,7 @@ typedef struct
     char* SRAMPath;
     char* TxtPath;
     bool Show;
-    bool Edit;
+    char* EditFolder;
     struct
     {
         char* FriendlyName;
@@ -135,7 +135,7 @@ typedef struct
     SDL_Mutex* Mutex;
     char* NvramPath;
     bool Show;
-    bool Edit;
+    char* EditFolder;
     CoreCfg Cfg;
     struct
     {

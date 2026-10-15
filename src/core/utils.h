@@ -351,6 +351,9 @@ constexpr char ConsoleWiFiNvram[] = "firmware.bin";
 constexpr char NDSFolder[] = "GameCard/";
 constexpr char GBAFolder[] = "GamePak/";
 
+constexpr char LibraryFolderPH[] = "000/";
+constexpr char LibraryFolderFmt[] = "%03i/";
+
 constexpr char DSCfgName[] = "cfg.soup";
 constexpr char DSSavFolder[] = "sav/";
 constexpr char DSSavFile[] = "sav.sav";

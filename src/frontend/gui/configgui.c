@@ -122,6 +122,13 @@ void ConfigGUI_Loop(MainGUI* mgui, MainCfg* mcfg)
             }
             ImGui_EndTabItem();
         }
+        if (ImGui_TabItemButton("Open DualSOUP Folder", 0))
+        {
+            char path[sizeof("file://")+strlen(DualSOUPFolder)];
+            strcpy(path, "file://");
+            strcat(path, DualSOUPFolder);
+            if (!SDL_OpenURL(path)) printf("Couldn't open folder: %s", SDL_GetError());
+        }
         ImGui_EndTabBar();
     }
     ImGui_End();
@@ -295,21 +302,55 @@ char* FindFileWithDifferentExtension(char* path, char* ext)
     return out;
 }
 
+bool GetLibraryString(char* path)
+{
+    size_t base = strlen(path);
+    int i = 0;
+    for (; i <= GUI_LibMax; i++)
+    {
+        snprintf(&path[base], sizeof(LibraryFolderPH), LibraryFolderFmt, i);
+        SDL_ClearError();
+        if (!SDL_GetPathInfo(path, NULL)) break; // fuck if i know how to use this properly
+    }
+
+    if (i == GUI_LibMax)
+    {
+        printf("arbitrary folder limit reached: kill the developer\n");
+        return false;
+    }
+    return true;
+}
+
 void SysImportGui_Toggle(MainGUI* mgui, const char* editfolder)
 {
     SysImportGui* igui = &mgui->SysImportGui;
     CoreCfg* cfg = &igui->Cfg;
-    if (igui->Show)
+    bool prevedit = (igui->EditFolder != nullptr);
+    bool newedit = (editfolder != nullptr);
+    if (igui->Show && (prevedit == newedit) && (!prevedit || !newedit || !strcmp(igui->EditFolder, editfolder)))
     {
         igui->Show = false;
         return;
     }
     igui->Show = true;
-    igui->Edit = (editfolder != nullptr);
-    igui->InitNvram = !igui->Edit;
+    free(igui->EditFolder);
+    igui->EditFolder = ((editfolder == nullptr) ? nullptr : strdup(editfolder));
+    igui->NvramPath[0] = '\0';
+    igui->InitNvram = (igui->EditFolder == nullptr);
 
     memset(&igui->Cfg, 0, (sizeof(SysImportGui) - offsetof(SysImportGui, NvramDat)));
-    Config_Load(editfolder, cfg, CoreCfgData, countof(CoreCfgData), NULL, NULL);
+
+    char* souppath = nullptr;
+    if (editfolder != nullptr)
+    {
+        if ((souppath = SDL_stack_alloc(char, strlen(editfolder)+sizeof(DSCfgName))) == NULL)
+            CrashSpectacularly("stack alloc failure...\n");
+        strcpy(souppath, editfolder);
+        strcat(souppath, DSCfgName);
+    }
+
+    Config_Load(souppath, cfg, CoreCfgData, countof(CoreCfgData), NULL, NULL);
+    if (souppath != nullptr) SDL_stack_free(souppath);
     igui->ConsoleType = cfg->Model-ConsoleModel_NTR001; // TEMP
     for (int i = 0; i < 4; i++) snprintf(igui->TSCRange[i], 4, "%03X", cfg->TSC.Arr[i]);
 }
@@ -321,7 +362,7 @@ void SysImportGui_Loop(MainGUI* mgui, MainCfg* mcfg)
     if (!igui->Show) return;
 
     ImGui_SetNextWindowSize((ImVec2){340.0, 400.0}, ImGuiCond_FirstUseEver);
-    if (!ImGui_Begin("Configure DS System", &igui->Show, 0))
+    if (!ImGui_Begin(((igui->EditFolder != nullptr) ? "Edit DS System" : "Import DS System"), &igui->Show, 0))
         return ImGui_End();
 
 
@@ -338,7 +379,18 @@ void SysImportGui_Loop(MainGUI* mgui, MainCfg* mcfg)
     SelectFile(cfg->NTR.Bios9, "NDS ARM9 Bios", "bin;rom", 1, igui->Mutex, igui->NTR9Dirty)
     SelectFile(igui->NvramPath, "NDS Firmware", "bin;rom;mem", 1, igui->Mutex, igui->NvramDirty)
 
-    if (igui->Edit) ImGui_Checkbox("Reimport Firmware", &igui->InitNvram);
+    if (igui->NvramDirty)
+    {
+        igui->NvramDirty = false;
+        igui->InitNvram = (igui->EditFolder == nullptr) || (igui->NvramPath[0] != '\0');
+    }
+
+    if (igui->EditFolder != nullptr)
+    {
+        ImGui_BeginDisabled(igui->NvramPath[0] == '\0');
+        ImGui_Checkbox("Reimport Firmware", &igui->InitNvram);
+        ImGui_EndDisabled();
+    }
 
     ImGui_SeparatorText("TSC Range");
     for (int i = 0; i < 4; i++)
@@ -351,16 +403,35 @@ void SysImportGui_Loop(MainGUI* mgui, MainCfg* mcfg)
 
     ImGui_SeparatorText("");
 
-    if (ImGui_Button("Create") && (cfg->FriendlyName[0] != '\0'))
+    bool hasName = (cfg->FriendlyName[0] != '\0');
+    bool hasFirmware = (!igui->InitNvram || (igui->NvramPath[0] != '\0'));
+    bool hasBios7 = (cfg->NTR.Bios7[0] != '\0');
+    bool hasBios9 = (cfg->NTR.Bios9[0] != '\0');
+    ImGui_BeginDisabled(!hasName || !hasFirmware || !hasBios7 || !hasBios9);
+    if (ImGui_Button((igui->EditFolder != nullptr) ? "Update" : "Import"))
     {
         // todo: sanitize filepath
-        char basepath[strlen(DualSOUPFolder)+sizeof(ConsoleFolder)+strlen(cfg->FriendlyName)+sizeof("/")];
-        strcpy(basepath, DualSOUPFolder);
-        strcat(basepath, ConsoleFolder);
-        strcat(basepath, cfg->FriendlyName);
-        strcat(basepath, "/");
+        char* basepath;
+        if (igui->EditFolder != nullptr)
+        {
+            basepath = igui->EditFolder;
+        }
+        else
+        {
+            basepath = SDL_stack_alloc(char, strlen(DualSOUPFolder)+sizeof(ConsoleFolder)+sizeof(LibraryFolderPH)-1);
+            if (basepath == NULL)
+            {
+                printf("alloca failure :C\n");
+                return;
+            }
+            strcpy(basepath, DualSOUPFolder);
+            strcat(basepath, ConsoleFolder);
 
-        SDL_CreateDirectory(basepath);
+            if (!GetLibraryString(basepath))
+                return SDL_stack_free(basepath);
+
+            SDL_CreateDirectory(basepath);
+        }
 
         char cfgfile[strlen(basepath)+sizeof(DSCfgName)];
         strcpy(cfgfile, basepath);
@@ -377,9 +448,22 @@ void SysImportGui_Loop(MainGUI* mgui, MainCfg* mcfg)
             SDL_CopyFile(igui->NvramPath, nvramfile);
         }
 
+        if (basepath != igui->EditFolder) SDL_stack_free(basepath);
         igui->Show = false;
         // refresh library list
         LibraryGui_InitList(mgui, mcfg);
+    }
+    ImGui_EndDisabled();
+    if (!hasName || !hasFirmware || !hasBios7 || !hasBios9)
+    {
+        if (ImGui_BeginItemTooltip())
+        {
+            if (!hasName)     ImGui_Text("You must provide a name!");
+            if (!hasFirmware) ImGui_Text("You must provide a firmware image!");
+            if (!hasBios7)    ImGui_Text("You must provide an NDS ARM7 Bios!");
+            if (!hasBios9)    ImGui_Text("You must provide an NDS ARM9 Bios!");
+            ImGui_EndTooltip();
+        }
     }
     ImGui_End();
 }
@@ -469,24 +553,37 @@ void NDSImportGui_Infer(NDSImportGui* igui, GameCardCfg* cfg)
     }
 }
 
+
 void NDSImportGui_Toggle(MainGUI* mgui, const char* editfolder)
 {
     NDSImportGui* igui = &mgui->NDSImportGui;
     GameCardCfg* cfg = &igui->Cfg;
-    if (igui->Show)
+    bool prevedit = (igui->EditFolder != nullptr);
+    bool newedit = (editfolder != nullptr);
+    if (igui->Show && (prevedit == newedit) && (!prevedit || !newedit || !strcmp(igui->EditFolder, editfolder)))
     {
         igui->Show = false;
         return;
     }
     igui->Show = true;
-    igui->Edit = (editfolder != nullptr);
-    igui->InitSav = !igui->Edit;
+    free(igui->EditFolder);
+    igui->EditFolder = ((editfolder == nullptr) ? nullptr : strdup(editfolder));
+    igui->InitSav = (igui->EditFolder == nullptr);
 
-    Config_Load(editfolder, cfg, GameCardCfgData, countof(GameCardCfgData), NULL, NULL);
+    char* souppath = nullptr;
+    if (editfolder != nullptr)
+    {
+        if ((souppath = SDL_stack_alloc(char, strlen(editfolder)+sizeof(DSCfgName))) == NULL)
+            CrashSpectacularly("stack alloc failure...\n");
+        strcpy(souppath, editfolder);
+        strcat(souppath, DSCfgName);
+    }
+    Config_Load(souppath, cfg, GameCardCfgData, countof(GameCardCfgData), NULL, NULL);
     igui->SRAMPath[0] = '\0';
     igui->TxtPath[0] = '\0';
     SDL_free(igui->ROMDat.FriendlyName);
     memset(&igui->ROMDat, 0, sizeof(NDSImportGui) - offsetof(NDSImportGui, ROMDat));
+    if (souppath != nullptr) SDL_stack_free(souppath);
     igui->TxtDat.SRAMID = 0xFFFFFF;
 }
 
@@ -498,28 +595,28 @@ void NDSImportGui_Update(MainGUI* mgui, MainCfg* mcfg)
     size_t sramsize = ((size_t)1)<<cfg->SRAMChipSize;
     u8 srambuffer[sramsize];
 
-    char* start;
-    if ((start = strrchr(cfg->ROMPath, '/')) == NULL)
-        start = cfg->ROMPath;
-    else start+=1;
-    char* end;
-    if ((end = strrchr(start, '.')) == NULL)
-        end = start+strlen(start)+1;
+    size_t basefolderlen = strlen(DualSOUPFolder)+(sizeof(NDSFolder))+(sizeof(LibraryFolderPH)-1);
+    // base folder name
+    char* basepath;
+    if (igui->EditFolder != nullptr)
+    {
+        basepath = igui->EditFolder;
+    }
+    else
+    {
+        basepath = SDL_stack_alloc(char, strlen(DualSOUPFolder)+sizeof(NDSFolder)+sizeof(LibraryFolderPH)-1);
+        if (basepath == NULL) return (void)printf("alloca failure :C\n");
+        strcpy(basepath, DualSOUPFolder);
+        strcat(basepath, NDSFolder);
 
-    char romfoldername[end-start+1] = {};
-    strncpy(romfoldername, start, end-start);
+        if (!GetLibraryString(basepath))
+            return SDL_stack_free(basepath);
+    }
 
-    size_t basefolderlen = strlen(DualSOUPFolder)+sizeof(NDSFolder)+strlen(romfoldername)+1;
-    char basepath[basefolderlen];
     char cfgpath[basefolderlen+sizeof(DSCfgName)];
     char savfolderpath[basefolderlen+sizeof(DSSavFolder)];
     char savpath[basefolderlen+sizeof(DSSavFolder)+sizeof(DSSavFile)];
     char iconpath[basefolderlen+sizeof(DSIconFile)];
-    // base folder name
-    strcpy(basepath, DualSOUPFolder);
-    strcat(basepath, NDSFolder);
-    strcat(basepath, romfoldername);
-    strcat(basepath, "/");
 
     // copy to other paths
     strcpy(savfolderpath, basepath);
@@ -587,9 +684,10 @@ void NDSImportGui_Update(MainGUI* mgui, MainCfg* mcfg)
     SDL_SaveFile(iconpath, igui->ROMDat.Bitmap, sizeof(igui->ROMDat.Bitmap));
 
     igui->Show = false;
-    exit:
     // refresh library list
     LibraryGui_InitList(mgui, mcfg);
+    exit:
+    if (basepath != igui->EditFolder) SDL_stack_free(basepath);
 }
 
 void NDSImportGui_Loop(MainGUI* mgui, MainCfg* mcfg)
@@ -599,7 +697,7 @@ void NDSImportGui_Loop(MainGUI* mgui, MainCfg* mcfg)
     if (!igui->Show) return;
 
     ImGui_SetNextWindowSize((ImVec2){340.0, 400.0}, ImGuiCond_FirstUseEver);
-    if (!ImGui_Begin("Import NDS Game Card", &igui->Show, 0))
+    if (!ImGui_Begin(((igui->EditFolder != nullptr) ? "Edit NDS Game Card" : "Import NDS Game Card"), &igui->Show, 0))
         return ImGui_End();
 
     SelectFile(cfg->ROMPath, "NDS ROM", "nds", 1, igui->Mutex, igui->ROMDirtyB);
@@ -651,9 +749,9 @@ void NDSImportGui_Loop(MainGUI* mgui, MainCfg* mcfg)
     if (ImGui_Button("Infer from provided files\n"))
         NDSImportGui_Infer(igui, cfg);
 
-    if (igui->Edit) ImGui_Checkbox("Reimport sav\n", &igui->SavFromFile);
+    if (igui->EditFolder != nullptr) ImGui_Checkbox("Overwrite save\n", &igui->InitSav);
     ImGui_BeginDisabled(igui->SRAMPath[0] == '\0');
-    ImGui_Checkbox("Initialize sav from file\n", &igui->SavFromFile);
+    ImGui_Checkbox("Use save from file\n", &igui->SavFromFile);
     ImGui_EndDisabled();
 
     ImGui_SeparatorText("");
@@ -747,8 +845,21 @@ void NDSImportGui_Loop(MainGUI* mgui, MainCfg* mcfg)
 
     ImGui_SeparatorText("");
 
-    if (ImGui_Button("Import") && (cfg->ROMPath[0] != '\0'))
+    bool hasROM = (cfg->ROMPath[0] != '\0');
+    bool hasName = (cfg->FriendlyName[0] != '\0');
+    ImGui_BeginDisabled(!hasROM || !hasName);
+    if (ImGui_Button((igui->EditFolder != nullptr) ? "Update" : "Import") && (cfg->ROMPath[0] != '\0'))
         NDSImportGui_Update(mgui, mcfg);
+    ImGui_EndDisabled();
+    if (!hasROM || !hasName)
+    {
+        if (ImGui_BeginItemTooltip())
+        {
+            if (!hasName) ImGui_Text("You must provide a name!");
+            if (!hasROM)  ImGui_Text("You must provide a ROM file!");
+            ImGui_EndTooltip();
+        }
+    }
 
     ImGui_End();
 }
