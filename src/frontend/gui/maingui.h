@@ -163,6 +163,13 @@ typedef enum : u8
     LibType_MAX [[maybe_unused]],
 } LibGui_Type;
 
+constexpr char LibEmptyNames[LibType_MAX][8] =
+{
+[LibType_Sys] = "None",
+[LibType_NDS] = "Ejected",
+[LibType_GBA] = "Ejected",
+};
+
 typedef struct
 {
     int Num;
@@ -191,6 +198,7 @@ typedef struct
     LibraryDat Libs[LibType_MAX];
     SDL_Texture* NDSLibIcons[GUI_LibMax];
     char* LibrarySelName[3];
+    bool NDSOpen;
 } MainGUI;
 
 typedef struct MainCfg MainCfg;

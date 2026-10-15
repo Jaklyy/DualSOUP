@@ -16,6 +16,7 @@ enum EncryptMode : u8
 
 typedef enum : u8
 {
+    GameCard_ROMBus_Ejected,
     GameCard_ROMBus_Standard,
     //GameCard_ROMBus_NAND,
     //GameCard_ROMBus_FlashcardGeneric,
@@ -68,7 +69,7 @@ typedef union
 typedef struct GameCard GameCard;
 struct GameCard
 {
-    //void* (*CmdHandler) (Console*, bool);
+    GameCard_ROMBus ROMBusType;
     u32 RomSize;
     u32 ChipID;
     u32* ROM;

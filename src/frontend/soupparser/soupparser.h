@@ -78,7 +78,10 @@ static const ConfigEntry GameCardCfgData[] =
 {
     {
         .Name=      "ROMBusType",
-        .EnumNames= (const char*[]){"Standard"},
+        .EnumNames= (const char*[]){
+            [GameCard_ROMBus_Ejected]="Ejected",
+            [GameCard_ROMBus_Standard]="Standard",
+        },
         .Offset=    offsetof(GameCardCfg, ROMBusType),
         .UDefVal=   GameCard_ROMBus_Standard,
         .UMinVal=   0,
@@ -116,7 +119,11 @@ static const ConfigEntry GameCardCfgData[] =
     },
     {
         .Name=      "SPIBusType",
-        .EnumNames= (const char*[]){"None", "DirectSRAM", "InfraredHLE"},
+        .EnumNames= (const char*[]){
+            [GameCard_SPIBus_None]="None",
+            [GameCard_SPIBus_DirectSRAM]="DirectSRAM",
+            [GameCard_SPIBus_InfraredHLE]="InfraredHLE",
+        },
         .Offset=    offsetof(GameCardCfg, SPIBusType),
         .UDefVal=   GameCard_SPIBus_DirectSRAM,
         .UMinVal=   0,
@@ -125,7 +132,13 @@ static const ConfigEntry GameCardCfgData[] =
     },
     {
         .Name=      "SRAMChipType",
-        .EnumNames= (const char*[]){"None", "Flash24", "EEPROM9", "EEPROM16", "EEPROM24"},
+        .EnumNames= (const char*[]){
+            [GameCard_SRAMChip_None]="None",
+            [GameCard_SRAMChip_Flash24BitAddr]="Flash24",
+            [GameCard_SRAMChip_EEPROM9BitAddr]="EEPROM9",
+            [GameCard_SRAMChip_EEPROM16BitAddr]="EEPROM16",
+            [GameCard_SRAMChip_EEPROM24BitAddr]="EEPROM24",
+        },
         .Offset=    offsetof(GameCardCfg, SRAMChipType),
         .UDefVal=   GameCard_SRAMChip_None,
         .UMinVal=   0,
@@ -170,7 +183,10 @@ static const ConfigEntry SysCfgData[] =
 {
     {
         .Name=      "NTRAudioOut",
-        .EnumNames= (const char*[]){"10bit", "16bit"},
+        .EnumNames= (const char*[]){
+            [NTRAudioOut_10]="10bit",
+            [NTRAudioOut_16]="16bit",
+        },
         .Offset=    offsetof(SysCfg, NTRAudioOut),
         .UDefVal=   NTRAudioOut_10,
         .UMinVal=   0,
@@ -179,7 +195,11 @@ static const ConfigEntry SysCfgData[] =
     },
     {
         .Name=      "NTRPMIC",
-        .EnumNames= (const char*[]){"NTR", "USG", "TWL"},
+        .EnumNames= (const char*[]){
+            [NTRPMIC_NTR]="NTR",
+            [NTRPMIC_USG]="USG",
+            [NTRPMIC_TWL]="TWL",
+        },
         .Offset=    offsetof(SysCfg, NTRPMIC),
         .UDefVal=   NTRPMIC_USG,
         .UMinVal=   0,
@@ -188,7 +208,12 @@ static const ConfigEntry SysCfgData[] =
     },
     {
         .Name=      "WiFiNVRAMSize",
-        .EnumNames= (const char*[]){"256KiB", "512KiB", "128KiB", "4KiB"},
+        .EnumNames= (const char*[]){
+            [WiFiNVRAM_256KiB]="256KiB",
+            [WiFiNVRAM_512KiB]="512KiB",
+            [WiFiNVRAM_128KiB]="128KiB",
+            [WiFiNVRAM_4KiB]="4KiB",
+        },
         .Offset=    offsetof(SysCfg, WiFiNVRAMSize),
         .UDefVal=   WiFiNVRAM_256KiB,
         .UMinVal=   0,
@@ -233,7 +258,11 @@ static const ConfigEntry CoreCfgData[] =
     },
     {
         .Name=      "ConsoleModel",
-        .EnumNames= (const char*[]){"Custom", "NTR001", "USG001"},
+        .EnumNames= (const char*[]){
+            [ConsoleModel_Custom]="Custom",
+            [ConsoleModel_NTR001]="NTR001",
+            [ConsoleModel_USG001]="USG001",
+        },
         .Offset=    offsetof(CoreCfg, Model),
         .UMinVal=   0,
         .UMaxVal=   ConsoleModel_TWL001,
@@ -315,7 +344,12 @@ static_assert(countof(GUI_DisplayOffsetDefaults) >= GUI_MaxDisplaysPerWindow);
     }, \
     { \
         .Name =     "DispWin"#num"_ScaleMode", \
-        .EnumNames= (const char*[]){"NoScale", "Stretch", "PreserveAspectRatio", "Integer"}, \
+        .EnumNames= (const char*[]){ \
+            [DispWinScaleMode_NoScale]="NoScale", \
+            [DispWinScaleMode_Stretch]="Stretch", \
+            [DispWinScaleMode_PreserveAspectRatio]="PreserveAspectRatio", \
+            [DispWinScaleMode_Integer]="Integer" \
+        }, \
         .Offset=    offsetof(MainCfg, GuiCfg.DisplayWindow[num].ScaleMode), \
         .UDefVal=   DispWinScaleMode_PreserveAspectRatio, \
         .SMinVal=   0, \

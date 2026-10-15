@@ -163,7 +163,7 @@ void LibraryGui_InitList(MainGUI* mgui, MainCfg* mcfg)
         {
             free(mcfg->GuiCfg.LibrarySel[i]);
             mcfg->GuiCfg.LibrarySel[i] = calloc(1, 1);
-            mgui->LibrarySelName[i] = strdup("None");
+            mgui->LibrarySelName[i] = strdup(LibEmptyNames[i]);
         }
     }
 }
@@ -184,6 +184,8 @@ void LibraryRender(MainGUI* mgui, MainCfg* mcfg, const LibGui_Type type)
             {
                 ImGui_PushIDInt(i);
 
+                int cur = i;
+
                 ImGui_TableNextRow();
                 ImGui_TableNextColumn();
                 if (i % 2) ImGui_TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui_GetColorU32(ImGuiCol_TableRowBg), -1);
@@ -192,16 +194,16 @@ void LibraryRender(MainGUI* mgui, MainCfg* mcfg, const LibGui_Type type)
                 if (type == LibType_NDS)
                 {
                     ImGui_Dummy((ImVec2){0.0, 0.0});
-                    ImGui_Image((ImTextureRef){._TexID = (intptr_t)(mgui->NDSLibIcons[i])}, (ImVec2){32,32});
+                    ImGui_Image((ImTextureRef){._TexID = (intptr_t)(mgui->NDSLibIcons[cur])}, (ImVec2){32,32});
                     ImGui_TableNextColumn();
                 }
 
-                if (ImGui_SelectableEx(mgui->Libs[type].Names[i], strcmp(mcfg->GuiCfg.LibrarySel[type], mgui->Libs[type].Paths[i]) == 0, ImGuiSelectableFlags_SpanAllColumns|ImGuiSelectableFlags_AllowOverlap, (ImVec2){0, 39}))
+                if (ImGui_SelectableEx(mgui->Libs[type].Names[cur], strcmp(mcfg->GuiCfg.LibrarySel[type], mgui->Libs[type].Paths[cur]) == 0, ImGuiSelectableFlags_SpanAllColumns|ImGuiSelectableFlags_AllowOverlap, (ImVec2){0, 39}))
                 {
                     free(mcfg->GuiCfg.LibrarySel[type]);
-                    mcfg->GuiCfg.LibrarySel[type] = strdup(mgui->Libs[type].Paths[i]);
+                    mcfg->GuiCfg.LibrarySel[type] = strdup(mgui->Libs[type].Paths[cur]);
                     free(mgui->LibrarySelName[type]);
-                    mgui->LibrarySelName[type] = LibrarySelName_Construct(mgui->Libs[type].Names[i]);
+                    mgui->LibrarySelName[type] = LibrarySelName_Construct(mgui->Libs[type].Names[cur]);
                     mcfg->Dirty = true;
                 }
 
@@ -210,16 +212,17 @@ void LibraryRender(MainGUI* mgui, MainCfg* mcfg, const LibGui_Type type)
                 {
                     switch(type)
                     {
-                    case LibType_Sys: SysImportGui_Toggle(mgui, mgui->Libs[type].Paths[i]); break;
-                    case LibType_NDS: NDSImportGui_Toggle(mgui, mgui->Libs[type].Paths[i]); break;
+                    case LibType_Sys: SysImportGui_Toggle(mgui, mgui->Libs[type].Paths[cur]); break;
+                    case LibType_NDS: NDSImportGui_Toggle(mgui, mgui->Libs[type].Paths[cur]); break;
+                    case LibType_GBA: CrashSpectacularly("GBAAAAAAA\n");
                     }
                 }
                 ImGui_TableNextColumn();
                 if (ImGui_Button("Open Folder"))
                 {
-                    char path[sizeof("file://")+strlen(mgui->Libs[type].Paths[i])];
+                    char path[sizeof("file://")+strlen(mgui->Libs[type].Paths[cur])];
                     strcpy(path, "file://");
-                    strcat(path, mgui->Libs[type].Paths[i]);
+                    strcat(path, mgui->Libs[type].Paths[cur]);
                     if (!SDL_OpenURL(path)) printf("Couldn't open folder: %s", SDL_GetError());
                 }
 
@@ -232,8 +235,10 @@ void LibraryRender(MainGUI* mgui, MainCfg* mcfg, const LibGui_Type type)
 
 void LibraryGui_Loop(MainGUI* mgui, MainCfg* mcfg)
 {
+    ImGui_BeginDisabled(mcfg->GuiCfg.LibrarySel[LibType_Sys][0] == '\0');
     if (ImGui_Button("Boot Console"))
     {
+        if (mcfg->GuiCfg.LibrarySel[LibType_NDS][0] != '\0')
         {
             const char* path = mcfg->GuiCfg.LibrarySel[LibType_NDS];
             char souppath[strlen(path)+sizeof(DSCfgName)];
@@ -242,6 +247,8 @@ void LibraryGui_Loop(MainGUI* mgui, MainCfg* mcfg)
             Config_Load(souppath, &mcfg->CoreCfg.NTR.GameCard, GameCardCfgData, countof(GameCardCfgData), nullptr, nullptr);
             mcfg->CoreCfg.NTR.GameCard.FolderPath = strdup(path);
         }
+        else mcfg->CoreCfg.NTR.GameCard.ROMBusType = GameCard_ROMBus_Ejected;
+
         {
             const char* path = mcfg->GuiCfg.LibrarySel[LibType_Sys];
             char souppath[strlen(path)+sizeof(DSCfgName)];
@@ -256,6 +263,7 @@ void LibraryGui_Loop(MainGUI* mgui, MainCfg* mcfg)
         if (!SDL_PushEvent(&evt)) printf("%s\n", SDL_GetError());
         mgui->ShowList = false;
     }
+    ImGui_EndDisabled();
 
 
 #define AllocStupidString(title, type) \
@@ -282,14 +290,26 @@ void LibraryGui_Loop(MainGUI* mgui, MainCfg* mcfg)
         }
 
         {
+            ImGui_BeginDisabled(mcfg->GuiCfg.LibrarySel[LibType_Sys][0] == '\0');
             AllocStupidString(NDS Slot, LibType_NDS)
-            if (ImGui_BeginTabItem(str, NULL, 0))
+            if (ImGui_BeginTabItem(str, NULL, (mgui->NDSOpen ? ImGuiTabItemFlags_SetSelected : 0)))
             {
                 if (ImGui_Button("Import NDS")) NDSImportGui_Toggle(mgui, nullptr);
+                ImGui_SameLine();
+                if (ImGui_Button("Eject Card"))
+                {
+                    free(mcfg->GuiCfg.LibrarySel[LibType_NDS]);
+                    mcfg->GuiCfg.LibrarySel[LibType_NDS] = calloc(1, 1);
+                    free(mgui->LibrarySelName[LibType_NDS]);
+                    mgui->LibrarySelName[LibType_NDS] = strdup(LibEmptyNames[LibType_NDS]);
+                    mcfg->Dirty = true;
+                }
 
                 LibraryRender(mgui, mcfg, LibType_NDS);
                 ImGui_EndTabItem();
             }
+            ImGui_EndDisabled();
+            mgui->NDSOpen = false;
         }
 
         ImGui_BeginDisabled(true);

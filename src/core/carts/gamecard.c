@@ -12,6 +12,16 @@
 
 bool GameCard_Init(GameCard* card, const GameCardCfg* cfg, u8* bios7)
 {
+    card->ROMBusType = cfg->ROMBusType;
+
+    // handle ejected gamecards
+    if (card->ROMBusType == GameCard_ROMBus_Ejected)
+    {
+        card->SPIType = GameCard_SPIBus_None;
+        return true;
+    }
+
+
     size_t romsize = (size_t)1<<cfg->ROMChipSize;
     card->RomSize = romsize;
     card->ChipID = cfg->ROMChipID;
@@ -509,7 +519,11 @@ void GameCard_ROMCommandSubmit(Console* sys, timestamp cur, const bool a9)
                             ? 0
                             : (0x40 << sys->GCROMCR[a9].NumWords)));
 
-    card->ReadHandler = GameCardMisc_ROMCommandHandler(sys, a9);
+    switch(card->ROMBusType)
+    {
+    case GameCard_ROMBus_Ejected: card->ReadHandler = GameCardMisc_InvalidCmdHandler; break;
+    case GameCard_ROMBus_Standard: card->ReadHandler = GameCardMisc_ROMCommandHandler(sys, a9); break;
+    }
 
     // calc timings
     timestamp transfertime = 10;

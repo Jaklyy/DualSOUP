@@ -78,6 +78,8 @@ MainGUI MainGUI_Init(MainCfg* mcfg)
         mgui.NDSLibIcons[i] = SDL_CreateTexture(mgui.Ren, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STATIC, 32, 32);
 
     LibraryGui_InitList(&mgui, mcfg);
+
+    mgui.NDSOpen = (mcfg->GuiCfg.LibrarySel[LibType_Sys][0] != '\0');
     return mgui;
 }
 
