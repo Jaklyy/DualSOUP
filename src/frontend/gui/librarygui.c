@@ -168,7 +168,61 @@ void LibraryGui_InitList(MainGUI* mgui, MainCfg* mcfg)
     }
 }
 
-void LibraryRender(MainGUI* mgui, MainCfg* mcfg, const LibGui_Type type)
+void LibraryGui_Boot(MainGUI* mgui, MainCfg* mcfg)
+{
+    if (mcfg->GuiCfg.LibrarySel[LibType_NDS][0] != '\0')
+    {
+        const char* path = mcfg->GuiCfg.LibrarySel[LibType_NDS];
+        char souppath[strlen(path)+sizeof(DSCfgName)];
+        strcpy(souppath, path);
+        strcat(souppath, DSCfgName);
+        Config_Load(souppath, &mcfg->CoreCfg.NTR.GameCard, GameCardCfgData, countof(GameCardCfgData), nullptr, nullptr);
+        mcfg->CoreCfg.NTR.GameCard.FolderPath = strdup(path);
+    }
+    else mcfg->CoreCfg.NTR.GameCard.ROMBusType = GameCard_ROMBus_Ejected;
+
+    {
+        const char* path = mcfg->GuiCfg.LibrarySel[LibType_Sys];
+        char souppath[strlen(path)+sizeof(DSCfgName)];
+        strcpy(souppath, path);
+        strcat(souppath, DSCfgName);
+        Config_Load(souppath, &mcfg->CoreCfg, CoreCfgData, countof(CoreCfgData), nullptr, nullptr);
+        mcfg->CoreCfg.FolderPath = strdup(path);
+
+        mcfg->CoreCfg.SysCfg = SysCfg_Defaults[mcfg->CoreCfg.Model];
+    }
+    SDL_Event evt = {.user = {.type = mgui->UserEventBase+UserEvent_BootRom}};
+    if (!SDL_PushEvent(&evt)) printf("%s\n", SDL_GetError());
+    mgui->ShowList = false;
+}
+
+void LibraryGui_ShutdownModal(MainGUI* mgui, MainCfg* mcfg)
+{
+    if (ImGui_BeginPopupModal("Shut down running system?", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+    {
+        // this formatting is criminal
+        ImGui_NewLine();
+        ImGui_NewLine();
+        ImGui_SameLineEx(0.0, 10.0);
+        if (ImGui_Button("   Yes   "))
+            LibraryGui_Boot(mgui, mcfg);
+        ImGui_SameLineEx(0.0, 30.0);
+        if (ImGui_Button("   No   "))
+            ImGui_CloseCurrentPopup();
+        ImGui_SameLineEx(0.0, 10.0);
+        ImGui_NewLine();
+        ImGui_NewLine();
+        ImGui_EndPopup();
+    }
+}
+
+void LibraryGui_BootCheck(MainGUI* mgui, MainCfg* mcfg, const bool active)
+{
+    if (active) return (void)ImGui_OpenPopup("Shut down running system?", 0);
+    return LibraryGui_Boot(mgui, mcfg);
+}
+
+void LibraryRender(MainGUI* mgui, MainCfg* mcfg, const bool active, const LibGui_Type type)
 {
     if (ImGui_BeginTable("Library", (3 + (type == LibType_NDS)), ImGuiTableFlags_Hideable|ImGuiTableFlags_Sortable|ImGuiTableFlags_Borders|ImGuiTableFlags_ScrollY))
     {
@@ -184,6 +238,8 @@ void LibraryRender(MainGUI* mgui, MainCfg* mcfg, const LibGui_Type type)
             {
                 ImGui_PushIDInt(i);
 
+                LibraryGui_ShutdownModal(mgui, mcfg);
+
                 int cur = i;
 
                 ImGui_TableNextRow();
@@ -198,13 +254,15 @@ void LibraryRender(MainGUI* mgui, MainCfg* mcfg, const LibGui_Type type)
                     ImGui_TableNextColumn();
                 }
 
-                if (ImGui_SelectableEx(mgui->Libs[type].Names[cur], strcmp(mcfg->GuiCfg.LibrarySel[type], mgui->Libs[type].Paths[cur]) == 0, ImGuiSelectableFlags_SpanAllColumns|ImGuiSelectableFlags_AllowOverlap, (ImVec2){0, 39}))
+                if (ImGui_SelectableEx(mgui->Libs[type].Names[cur], strcmp(mcfg->GuiCfg.LibrarySel[type], mgui->Libs[type].Paths[cur]) == 0, ImGuiSelectableFlags_SpanAllColumns|ImGuiSelectableFlags_AllowOverlap|ImGuiSelectableFlags_AllowDoubleClick, (ImVec2){0, 39}))
                 {
                     free(mcfg->GuiCfg.LibrarySel[type]);
                     mcfg->GuiCfg.LibrarySel[type] = strdup(mgui->Libs[type].Paths[cur]);
                     free(mgui->LibrarySelName[type]);
                     mgui->LibrarySelName[type] = LibrarySelName_Construct(mgui->Libs[type].Names[cur]);
                     mcfg->Dirty = true;
+                    if ((type != LibType_Sys) && ImGui_IsMouseDoubleClicked(ImGuiMouseButton_Left))
+                        LibraryGui_BootCheck(mgui, mcfg, active);
                 }
 
                 ImGui_TableNextColumn();
@@ -233,38 +291,14 @@ void LibraryRender(MainGUI* mgui, MainCfg* mcfg, const LibGui_Type type)
     }
 }
 
-void LibraryGui_Loop(MainGUI* mgui, MainCfg* mcfg)
+void LibraryGui_Loop(MainGUI* mgui, MainCfg* mcfg, const bool active)
 {
     ImGui_BeginDisabled(mcfg->GuiCfg.LibrarySel[LibType_Sys][0] == '\0');
-    if (ImGui_Button("Boot Console"))
-    {
-        if (mcfg->GuiCfg.LibrarySel[LibType_NDS][0] != '\0')
-        {
-            const char* path = mcfg->GuiCfg.LibrarySel[LibType_NDS];
-            char souppath[strlen(path)+sizeof(DSCfgName)];
-            strcpy(souppath, path);
-            strcat(souppath, DSCfgName);
-            Config_Load(souppath, &mcfg->CoreCfg.NTR.GameCard, GameCardCfgData, countof(GameCardCfgData), nullptr, nullptr);
-            mcfg->CoreCfg.NTR.GameCard.FolderPath = strdup(path);
-        }
-        else mcfg->CoreCfg.NTR.GameCard.ROMBusType = GameCard_ROMBus_Ejected;
-
-        {
-            const char* path = mcfg->GuiCfg.LibrarySel[LibType_Sys];
-            char souppath[strlen(path)+sizeof(DSCfgName)];
-            strcpy(souppath, path);
-            strcat(souppath, DSCfgName);
-            Config_Load(souppath, &mcfg->CoreCfg, CoreCfgData, countof(CoreCfgData), nullptr, nullptr);
-            mcfg->CoreCfg.FolderPath = strdup(path);
-
-            mcfg->CoreCfg.SysCfg = SysCfg_Defaults[mcfg->CoreCfg.Model];
-        }
-        SDL_Event evt = {.user = {.type = mgui->UserEventBase+UserEvent_BootRom}};
-        if (!SDL_PushEvent(&evt)) printf("%s\n", SDL_GetError());
-        mgui->ShowList = false;
-    }
+    if (ImGui_Button("Power on console")) 
+        LibraryGui_BootCheck(mgui, mcfg, active);
     ImGui_EndDisabled();
 
+    LibraryGui_ShutdownModal(mgui, mcfg);
 
 #define AllocStupidString(title, type) \
     size_t len = strlen(mgui->LibrarySelName[type]); \
@@ -284,7 +318,7 @@ void LibraryGui_Loop(MainGUI* mgui, MainCfg* mcfg)
             {
                 if (ImGui_Button("Import Console")) SysImportGui_Toggle(mgui, nullptr);
 
-                LibraryRender(mgui, mcfg, LibType_Sys);
+                LibraryRender(mgui, mcfg, active, LibType_Sys);
                 ImGui_EndTabItem();
             }
         }
@@ -305,7 +339,7 @@ void LibraryGui_Loop(MainGUI* mgui, MainCfg* mcfg)
                     mcfg->Dirty = true;
                 }
 
-                LibraryRender(mgui, mcfg, LibType_NDS);
+                LibraryRender(mgui, mcfg, active, LibType_NDS);
                 ImGui_EndTabItem();
             }
             ImGui_EndDisabled();

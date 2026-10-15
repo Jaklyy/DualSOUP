@@ -211,4 +211,4 @@ void Mailbox_UpdateTouch(MailBox* mailbox, u16 x, u16 y, bool touched);
 void DebugGUI_Loop(MailBox* mail, MainGUI* mgui, Console* sys);
 
 void LibraryGui_InitList(MainGUI* mgui, MainCfg* mcfg);
-void LibraryGui_Loop(MainGUI* mgui, MainCfg* mcfg);
+void LibraryGui_Loop(MainGUI* mgui, MainCfg* mcfg, const bool active);

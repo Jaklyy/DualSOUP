@@ -239,7 +239,7 @@ void MainGUI_Loop(Console* sys, MailBox* mailbox, MainGUI* mgui, MainCfg* mcfg, 
         {
             if ((i == 0) && (!active || mgui->ShowList))
             {
-                LibraryGui_Loop(mgui, mcfg);
+                LibraryGui_Loop(mgui, mcfg, active);
                 ImGui_End();
                 continue;
             }
