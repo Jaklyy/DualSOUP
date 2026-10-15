@@ -60,6 +60,10 @@ MainGUI MainGUI_Init(MainCfg* mcfg)
     ImGuiIO* io = ImGui_GetIO();
     io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     io->ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+    char* tmp = malloc(strlen(DualSOUPFolder)+sizeof("imgui.ini"));
+    strcpy(tmp, DualSOUPFolder);
+    strcat(tmp, "imgui.ini");
+    io->IniFilename = tmp;
 
     ImGui_StyleColorsDark(NULL);
 

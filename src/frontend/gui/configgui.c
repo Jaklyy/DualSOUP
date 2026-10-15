@@ -76,7 +76,7 @@ static int FilePathTextCallback(ImGuiInputTextCallbackData* data)
 void ConfigGUI_Loop(MainGUI* mgui, MainCfg* mcfg)
 {
     if (!mgui->CfgDisplay) return;
-    ImGui_SetNextWindowSize((ImVec2){284, 292}, ImGuiCond_FirstUseEver);
+    ImGui_SetNextWindowSize((ImVec2){408, 372}, ImGuiCond_FirstUseEver);
     if (!ImGui_Begin("Config", &mgui->CfgDisplay, ImGuiWindowFlags_None))
     {
         ImGui_End();
@@ -361,7 +361,7 @@ void SysImportGui_Loop(MainGUI* mgui, MainCfg* mcfg)
     CoreCfg* cfg = &igui->Cfg;
     if (!igui->Show) return;
 
-    ImGui_SetNextWindowSize((ImVec2){340.0, 400.0}, ImGuiCond_FirstUseEver);
+    ImGui_SetNextWindowSize((ImVec2){340.0, (igui->EditFolder != nullptr) ? 404.0 : 382.0}, ImGuiCond_FirstUseEver);
     if (!ImGui_Begin(((igui->EditFolder != nullptr) ? "Edit DS System" : "Import DS System"), &igui->Show, 0))
         return ImGui_End();
 
@@ -696,7 +696,7 @@ void NDSImportGui_Loop(MainGUI* mgui, MainCfg* mcfg)
     GameCardCfg* cfg = &igui->Cfg;
     if (!igui->Show) return;
 
-    ImGui_SetNextWindowSize((ImVec2){340.0, 400.0}, ImGuiCond_FirstUseEver);
+    ImGui_SetNextWindowSize((ImVec2){340.0, (igui->EditFolder != nullptr) ? 553.0 : 530.0}, ImGuiCond_FirstUseEver);
     if (!ImGui_Begin(((igui->EditFolder != nullptr) ? "Edit NDS Game Card" : "Import NDS Game Card"), &igui->Show, 0))
         return ImGui_End();
 
