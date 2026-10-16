@@ -179,7 +179,7 @@ void ARM_LoadStoreMisc(ARM* cpu, const ARM_Instr instr_data)
     case 0b101: ARM_LDR(cpu, addr, instr.Rd, cpu->Privileged, instr.Rn, wbaddr, baserestore, writeback, ARMDataWidth_16, false); break; // LDRH
     case 0b110: ARM_LDR(cpu, addr, instr.Rd, cpu->Privileged, instr.Rn, wbaddr, baserestore, writeback, ARMDataWidth_8, true); break; // LDRSB
     case 0b111: ARM_LDR(cpu, addr, instr.Rd, cpu->Privileged, instr.Rn, wbaddr, baserestore, writeback, ARMDataWidth_16, true); break; // LDRSH
-    default: CrashSpectacularly("ARM%i: INVALID LOAD/STORE MISC OPCODE: %"PRIu8" @ %08"PRIX32"\n", CPUIDtoCPUNum, opcode, cpu->PC);
+    default: LogPrint(LOG_CPUID|LOG_UNIMP, "ARM%i: INVALID LOAD/STORE MISC OPCODE: %"PRIu8" @ %08"PRIX32"\n", CPUIDtoCPUNum, opcode, cpu->PC);
     }
 }
 

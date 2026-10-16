@@ -45,7 +45,6 @@ void A7TDMI_RaiseUDF(ARM* ARM, const ARM_Instr instr_data, const int cycles)
     else
         LogPrint(LOG_ARM9 | LOG_EXCEP, "ARM7 - UNDEF INSTR: %08X @ %08X\n", instr_data.Raw, cpu->PC);
 
-    //CrashSpectacularly("FARK\n");
     // addr of next instr
     u32 oldpc = cpu->PC - (cpu->CPSR.Thumb ? 2 : 4);
     ARM_PSR oldcpsr = cpu->CPSR;
