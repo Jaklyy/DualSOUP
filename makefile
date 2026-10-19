@@ -43,7 +43,7 @@ ifeq ($(USEGCC), 1) # compile with gcc, not recommended, its pretty slow
 	CC := gcc
 	CXX := g++
 endif
-ifeq ($(USECROSSGCC), 1) # cross compile with gcc, used to
+ifeq ($(USECROSSGCC), 1) # used to compile for windows on linux via gcc
 	CC := i686-w64-mingw32-gcc
 	CXX := i686-w64-mingw32-g++
 endif
