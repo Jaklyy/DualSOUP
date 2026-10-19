@@ -1029,7 +1029,7 @@ void Bus_Req(Console* sys, const BusReq* req, const timestamp now, const bool a9
     if (!bus->LockSched)
     {
         bus->LockSched = true;
-        Sched_AddEventIfEarlier(sys, now, a9 ? Evt_Bus9Cmp : Evt_Bus7Cmp);
+        Sched_AddEventIfEarlier(sys, now, a9 ? Evt_Bus9Arb : Evt_Bus7Arb);
     }
 }
 
@@ -1172,7 +1172,7 @@ void Bus_RunArb(Console* sys, timestamp now, const bool a9)
         if (bus->PipeNum < 0)
         {
             Console_DebugLog(sys);
-            CrashSpectacularly("PIPE OVERFILL!!!\n");
+            CrashSpectacularly("PIPE UNDERFILL!!!\n");
         }
 
         if (req->Type >= HTRANS_NONSEQ)
