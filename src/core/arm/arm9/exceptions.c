@@ -1,7 +1,6 @@
 #include "arm.h"
 #include "core/utils.h"
 
-#include "core/console.h"
 
 
 

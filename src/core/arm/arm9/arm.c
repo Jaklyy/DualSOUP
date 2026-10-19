@@ -243,7 +243,7 @@ void A9ES_Exec(ARM946ES* a9es)
         {
             if (cpu->CurExec != (cpu->PC-4))
             {
-                printf("arm9: bad address?");
+                printf("arm9: bad address? got:%08X exp:%08X\n", cpu->CurExec, cpu->PC-4);
                 Sched_AddEvent(cpu->Sys, cpu->Timestamp, Evt_DebugBreak);
             }
             const ARM_Instr instr = cpu->Instr[0];
@@ -255,7 +255,7 @@ void A9ES_Exec(ARM946ES* a9es)
         {
             if (cpu->CurExec != (cpu->PC-8))
             {
-                printf("arm9: bad address?");
+                printf("arm9: bad address? got:%08X exp:%08X\n", cpu->CurExec, cpu->PC-8);
                 Sched_AddEvent(cpu->Sys, cpu->Timestamp, Evt_DebugBreak);
             }
             const ARM_Instr instr = cpu->Instr[0];

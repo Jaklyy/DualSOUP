@@ -119,6 +119,10 @@ typedef struct
 } ARM_Instr;
 
 #define ARM_CoprocReg(Op1, CRn, CRm, Op2) (((Op1) << 11) | ((CRn) << 7) | ((CRm) << 3) | (Op2))
+#define ARM_CoprocRegOp2(pack) (((pack) >>  0) & 0x7)
+#define ARM_CoprocRegCRm(pack) (((pack) >>  3) & 0xF)
+#define ARM_CoprocRegCRn(pack) (((pack) >>  7) & 0xF)
+#define ARM_CoprocRegOp1(pack) (((pack) >> 11) & 0x7)
 
 typedef struct
 {

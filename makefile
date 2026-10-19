@@ -15,8 +15,8 @@ LIBS := -lSDL3
 
 CC := clang
 CXX := clang++
-CFLAGS := -MP -MMD -std=gnu23 -fwrapv -Wimplicit-fallthrough -Wall -Wextra -Werror=implicit-fallthrough -Isrc -Ilibs
-CPPFLAGS := -MP -MMD -std=gnu++23 -fwrapv -Wimplicit-fallthrough -Wall -Wextra -Werror=implicit-fallthrough -Isrc -Ilibs
+CFLAGS := -MP -MMD -std=gnu23 -fwrapv -Wimplicit-fallthrough -Wall -Wextra -Werror=implicit-fallthrough -Isrc -Ilibs -mno-ms-bitfields
+CPPFLAGS := -MP -MMD -std=gnu++23 -fwrapv -Wimplicit-fallthrough -Wall -Wextra -Werror=implicit-fallthrough -Isrc -Ilibs -mno-ms-bitfields
 
 ifeq ($(FPS), 1) # monitor performance -- outputs frametime info via printf
 	CFLAGS += -DFPSLOG
@@ -39,9 +39,13 @@ endif
 ifeq ($(DIRBOOT), 1) # boot rom file directly, requires unencrypted rom
 	CFLAGS += -DUSEDIRECTBOOT
 endif
-ifeq ($(USEGCC), 1) # compile with gcc, strongly recommended against, gcc hates my codebase and it runs really slowly
+ifeq ($(USEGCC), 1) # compile with gcc, not recommended, its pretty slow
 	CC := gcc
 	CXX := g++
+endif
+ifeq ($(USECROSSGCC), 1) # cross compile with gcc, used to
+	CC := i686-w64-mingw32-gcc
+	CXX := i686-w64-mingw32-g++
 endif
 
 

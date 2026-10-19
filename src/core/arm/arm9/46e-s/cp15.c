@@ -144,7 +144,7 @@ void A946_ConfigureMPURegionPerms(ARM946ES* ARM9)
             ARM9->CP15.MPURegionPermsUser[rgn].Exec = true;
             break;
         default: // "Unpredictable"
-            LogPrint(LOG_ARM9 | LOG_UNIMP, "UNPREDICTABLE REGION PERMISSIONS %i FOR REGION %i!!\n", ((ARM9->CP15.DataPermsReg >> (rgn*4)) & 0xF), rgn);
+            LogPrint(LOG_ARM9 | LOG_UNIMP, "UNPREDICTABLE REGION PERMISSIONS %"PRIX32" FOR REGION %"PRIi32"!!\n", ((ARM9->CP15.InstrPermsReg >> (rgn*4)) & 0xF), rgn);
             ARM9->CP15.MPURegionPermsPriv[rgn].Exec = false;
             ARM9->CP15.MPURegionPermsUser[rgn].Exec = false;
             break;
@@ -331,6 +331,7 @@ void A946_CP15Write(ARM946ES* ARM9, const u16 cmd, const u32 val)
     case ARM_CoprocReg(0, 13, 0, 1): // pid
     case ARM_CoprocReg(0, 13, 1, 1): // pid
         ARM9->CP15.TraceProcIdReg = val;
+        A9ES_ExecuteCycles(ARM9, 1);
         break;
 
     // BIST
@@ -365,7 +366,7 @@ void A946_CP15Write(ARM946ES* ARM9, const u16 cmd, const u32 val)
     case ARM_CoprocReg(1, 15, 1, 0):
     default:
     {
-        LogPrint(LOG_ARM9 | LOG_UNIMP, "ARM9 - UNIMPLEMENTED MCR CMD: %04hX %08X %08X @ %08X\n", cmd, val, ARM9->ARM.Instr[0].Raw, ARM9->ARM.PC);
+        LogPrint(LOG_ARM9 | LOG_UNIMP, "ARM9 - UNIMPLEMENTED MCR CMD: %"PRIu16" %"PRIu16" %"PRIu16" %"PRIu16" val: %"PRIX32"\n", ARM_CoprocRegOp1(cmd), ARM_CoprocRegCRn(cmd), ARM_CoprocRegCRm(cmd), ARM_CoprocRegOp2(cmd), val);
         // CHECKME: this is a placeholder basically.
         A9ES_ExecuteCycles(ARM9, 1);
         break;
@@ -489,14 +490,14 @@ u32 A946_CP15Read(ARM946ES* ARM9, const u16 cmd)
     case ARM_CoprocReg(3, 15, 2, 0): // dtag
     case ARM_CoprocReg(3, 15, 3, 0): // icache
     case ARM_CoprocReg(3, 15, 4, 0): // dcache
-        LogPrint(LOG_ARM9 | LOG_UNIMP, "ARM9 - UNIMPLEMENTED MRC CMD: %i\n", cmd);
+        LogPrint(LOG_ARM9 | LOG_UNIMP, "ARM9 - UNIMPLEMENTED MRC CMD: %"PRIu16" %"PRIu16" %"PRIu16" %"PRIu16"\n", ARM_CoprocRegOp1(cmd), ARM_CoprocRegCRn(cmd), ARM_CoprocRegCRm(cmd), ARM_CoprocRegOp2(cmd));
         return 0;
 
     case ARM_CoprocReg(1, 15, 1, 0):
         return ARM9->CP15.TraceProcCR;
 
     default: // all unmapped commands return 0
-        LogPrint(LOG_ARM9 | LOG_ODD, "ARM9 - INVALID MRC CMD: %i\n", cmd);
+        LogPrint(LOG_ARM9 | LOG_ODD, "ARM9 - INVALID MRC CMD: %"PRIu16" %"PRIu16" %"PRIu16" %"PRIu16"\n", ARM_CoprocRegOp1(cmd), ARM_CoprocRegCRn(cmd), ARM_CoprocRegCRm(cmd), ARM_CoprocRegOp2(cmd));
         return 0;
     }
 }

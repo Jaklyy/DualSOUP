@@ -78,11 +78,11 @@ void A946_ICacheFlushAll(ARM946ES* a946)
         a946->ITagRAM[i].Valid = false;
 }
 
-void A946_ICachePrefetch(ARM946ES* a946, const u32 addr, timestamp now)
+void A946_ICachePrefetch(ARM946ES* a946, timestamp now, const u32 addr)
 {
     // TODO: TIMINGS
     // TODO: IMPROVE CACHE STREAMING HANDLING
-    if (a946->BIU.InstrCompCur != a946->BIU.InstrMax) // hacky; should (?) wait for istream to complete
+    if (a946->BIU.InstrCompCur == a946->BIU.InstrMax) // hacky; should (?) wait for istream to complete
     {
         u32 dummy;
         if (!A946_ICacheLookup(a946, addr, now /* idfk how to pass this along */, &dummy))

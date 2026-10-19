@@ -168,6 +168,10 @@ typedef uint64_t timestamp;
 #endif
 #endif
 
+#ifndef unreachable
+#define unreachable() __builtin_unreachable()
+#endif
+
 #define bswap(x) _Generic((x), \
     s16: __builtin_bswap16, u16: __builtin_bswap16, \
     s32: __builtin_bswap32, u32: __builtin_bswap32, \

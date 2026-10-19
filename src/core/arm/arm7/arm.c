@@ -146,7 +146,7 @@ void A7TDMI_Exec(ARM7TDMI* a7tdmi)
         {
             if (cpu->CurExec != (cpu->PC-4))
             {
-                printf("arm7: bad address?");
+                printf("arm7: bad address? got:%08X exp:%08X\n", cpu->CurExec, cpu->PC-4);
                 Sched_AddEvent(cpu->Sys, cpu->Timestamp, Evt_DebugBreak);
             }
             const ARM_Instr instr = cpu->Instr[0];
@@ -158,7 +158,7 @@ void A7TDMI_Exec(ARM7TDMI* a7tdmi)
         {
             if (cpu->CurExec != (cpu->PC-8))
             {
-                printf("arm7: bad address?");
+                printf("arm7: bad address? got:%08X exp:%08X\n", cpu->CurExec, cpu->PC-8);
                 Sched_AddEvent(cpu->Sys, cpu->Timestamp, Evt_DebugBreak);
             }
             const ARM_Instr instr = cpu->Instr[0];

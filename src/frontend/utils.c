@@ -21,7 +21,7 @@ void LogPrint(const u64 logtype, const char* str, ...)
 #endif
 
     va_list args;
-    va_start(args);
+    va_start(args, str);
 
     vprintf(str, args);
 
@@ -31,7 +31,7 @@ void LogPrint(const u64 logtype, const char* str, ...)
 [[noreturn]] void CrashSpectacularly(const char* str, ...)
 {
     va_list args;
-    va_start(args);
+    va_start(args, str);
 
     vprintf(str, args);
 

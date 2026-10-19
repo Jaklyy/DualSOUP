@@ -631,7 +631,7 @@ void A946_DCacheCleanFlushAddr(ARM946ES* a946, timestamp now, const u32 addr);
 bool A946_ICacheLookup(ARM946ES* a946, const u32 addr, timestamp now, u32* instr);
 void A946_ICacheFlushAddr(ARM946ES* a946, u32 addr);
 void A946_ICacheFlushAll(ARM946ES* a946);
-void A946_ICachePrefetch(ARM946ES* a946, const u32 addr, timestamp now);
+void A946_ICachePrefetch(ARM946ES* a946, timestamp now, const u32 addr);
 
 void A946_DCacheStream_Post(ARM946ES* a946, u32 rdata, timestamp now);
 void A946_ICacheStream_Post(ARM946ES* a946, u32 rdata, timestamp now);
