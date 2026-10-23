@@ -408,7 +408,7 @@ void DebugGui_Sched(DebugGui* dgui, Console* sys)
                     evt = sched->Next[evt];
                     ImGui_TableNextRow();
                     ImGui_TableNextColumn();
-                    ImGui_Text("%3"PRIi8, evt);
+                    ImGui_Text("%3"PRIu8, evt);
                     ImGui_TableNextColumn();
                     ImGui_Text("%16"PRIX64, sched->Times[evt]);
                 } while(sched->Next[evt] != Evt_Invalid);
@@ -430,13 +430,13 @@ void DebugGui_Sched(DebugGui* dgui, Console* sys)
                 {
                     ImGui_TableNextRow();
                     ImGui_TableNextColumn();
-                    ImGui_Text("%3"PRIi8, evt);
+                    ImGui_Text("%3"PRIu8, evt);
                     ImGui_TableNextColumn();
                     ImGui_Text("%16"PRIX64, sched->Times[evt]);
                     ImGui_TableNextColumn();
-                    ImGui_Text("%3"PRIi8, sched->Prev[evt]);
+                    ImGui_Text("%3"PRIu8, sched->Prev[evt]);
                     ImGui_TableNextColumn();
-                    ImGui_Text("%3"PRIi8, sched->Next[evt]);
+                    ImGui_Text("%3"PRIu8, sched->Next[evt]);
                 }
                 ImGui_EndTable();
             }

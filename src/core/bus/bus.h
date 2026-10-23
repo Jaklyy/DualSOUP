@@ -236,7 +236,14 @@ typedef struct
     u32 ReadBus; // used by arm7 bus for open bus emulation
     bool NoPrev;
     s8 PipeNum;
-    u8 CmpMan;
+    bool CBDIRTY;
+    BusCallbacks GrantCB;
+    u8 GrantMan;
+    BusCallbacks ComplCB;
+    u8 ComplMan;
+    u32 ComplRead;
+    bool ComplLoad;
+
 } BusImpl;
 
 typedef enum : u8
@@ -352,8 +359,11 @@ void AddBusContention(Console* sys, const timestamp cur, const NTRAHB_Devices de
 void Bus7_A7Wake(Console* sys, const timestamp now);
 // handlers
 void Bus_Req(Console* sys, const BusReq* req, const timestamp now, const bool a9);
-void Bus_RunCmp(Console* sys, const timestamp now, const bool a9);
-void Bus_RunArb(Console* sys, timestamp now, const bool a9);
+void Bus_ReqSched(Console* sys, const Bus9_Managers man, const timestamp now, const bool a9);
+void Bus_RunCompCB(Console* sys, timestamp now, const bool a9);
+void Bus_RunGrantCB(Console* sys, timestamp now, const bool a9);
+void Bus_RunComp(Console* sys, const timestamp now, const bool a9);
+void Bus_RunGrant(Console* sys, timestamp now, const bool a9);
 void Bus_TransferPostSetup(Console* sys, const u32 rdata, const bool isread, const timestamp end, const bool noprev, const bool a9);
 
 void MainRAM_TestKillBurst(Console* sys, timestamp now, bool a9);

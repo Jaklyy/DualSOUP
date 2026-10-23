@@ -158,8 +158,10 @@ Core_Ret Sched_RunEvent(Console* sys)
     case Evt_Timer90Run
      ... Evt_Timer93Run:    Timer_Run(sys, sys->Timers9, evt-Evt_Timer90Run, now, TimerType_9); break;
 
-    case Evt_Bus9Cmp:       Bus_RunCmp(sys, now, true); break;
-    case Evt_Bus9Arb:       Bus_RunArb(sys, now, true); break;
+    case Evt_BusReq9_DMA0
+     ... Evt_BusReq9_ARM9:  Bus_ReqSched(sys, evt-Evt_BusReq9_DMA0, now, true); break;
+    case Evt_Bus9CB:        Bus_RunCompCB(sys, now, true); break;
+    case Evt_Bus9:          Bus_RunComp(sys, now, true); break;
     case Evt_Divider:       IO9_FinishDiv(sys); break;
     case Evt_Sqrt:          IO9_FinishSqrt(sys); break;
 
@@ -184,8 +186,8 @@ Core_Ret Sched_RunEvent(Console* sys)
     case Evt_Timer70Run
      ... Evt_Timer73Run:    Timer_Run(sys, sys->Timers7, evt-Evt_Timer70Run, now, TimerType_7); break;
 
-    case Evt_Bus7Cmp:       Bus_RunCmp(sys, now, false); break;
-    case Evt_Bus7Arb:       Bus_RunArb(sys, now, false); break;
+    case Evt_Bus7Comp:      Bus_RunComp(sys, now, false); break;
+    case Evt_Bus7Grant:     Bus_RunGrant(sys, now, false); break;
 
     case Evt_SPI:           SPI_Finish(sys, now); break;
     case Evt_MixAudio:      AudioMixer_Sample(sys, now); break;

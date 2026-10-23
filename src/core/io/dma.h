@@ -116,6 +116,7 @@ typedef struct
 typedef struct Console Console;
 
 void DMA_Init(Console* sys);
+void DMA_RDataHack(Console* sys, const u8 id, const bool a9, const u32 rdata);
 void DMA7_IOWriteHandler(Console* sys, timestamp now, DMA_Channel* channels, u32 addr, u32 val, const u32 mask);
 void DMA9_IOWriteHandler(Console* sys, timestamp now, DMA_Channel* channels, u32 addr, u32 val, u32 mask);
 u32 DMA_IOReadHandler(DMA_Channel* channels, u32 addr);

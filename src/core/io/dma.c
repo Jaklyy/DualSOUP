@@ -291,6 +291,7 @@ void DMA_CompPost(Console* sys, timestamp now, const u8 id, u32 rdata, const boo
     }
     else
     {
+        #if 0
         channel->RData = rdata;
         if (!channel->Latched_Width32)
         {
@@ -298,6 +299,20 @@ void DMA_CompPost(Console* sys, timestamp now, const u8 id, u32 rdata, const boo
             channel->RData &= 0xFFFF;
             channel->RData |= channel->RData << 16;
         }
+        #endif
+    }
+}
+
+void DMA_RDataHack(Console* sys, const u8 id, const bool a9, const u32 rdata)
+{
+    //if (id == 0 && a9) printf("update\n");
+    DMA_Channel* channel = (a9 ? &sys->DMA9[id] : &sys->DMA7[id]);
+    channel->RData = rdata;
+    if (!channel->Latched_Width32)
+    {
+        channel->RData = ROR32(channel->RData , (((channel->Latched_SrcAddr - channel->SrcInc) & 2) * 8));
+        channel->RData &= 0xFFFF;
+        channel->RData |= channel->RData << 16;
     }
 }
 
@@ -455,6 +470,7 @@ void DMA_Step(Console* sys, const u8 id, timestamp now, const bool a9)
         channel->WriteCur++;
         channel->Latched_NumWords--;
     }
+    //if (a9 && id == 0) printf("run %i %i %lu\n", req.Type, req.Write, now);
     Bus_Req(sys, &req, now, a9);
 }
 
@@ -522,7 +538,7 @@ void DMA9_IOWriteHandler(Console* sys, timestamp now, DMA_Channel* channels, u32
             if (cur->CR.Enable == true)
             {
                 // starting dma channel
-                DMA9_Enable(sys, cur, now+DSClk33(2));
+                DMA9_Enable(sys, cur, now+DSClk33(3));
             }
             else
             {

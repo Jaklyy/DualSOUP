@@ -37,9 +37,10 @@ bool Bus_DebugBreak(Console* sys, timestamp now, Bus_Breakpoint bkptlist[const B
 
 void Bus9_Init(BusImpl* bus)
 {
-    bus->PipeCycles = DSClk33(3);
+    bus->PipeCycles = DSClk33(1);
     bus->HLockGeneric = MAN_NONE; // todo: put in a reset handler
-    bus->CmpMan = MAN_NONE;
+    bus->ComplMan = MAN_NONE;
+    bus->GrantMan = MAN_NONE;
     bus->NoPrev = true;
     bus->FIFOEmpty = true;
 }
@@ -49,7 +50,8 @@ void Bus7_Init(BusImpl* bus)
     // TODO: RE-ENABLE
     bus->PipeCycles = DSClk33(0);
     bus->HLockGeneric = MAN_NONE; // todo: put in a reset handler
-    bus->CmpMan = MAN_NONE;
+    bus->ComplMan = MAN_NONE;
+    bus->GrantMan = MAN_NONE;
     bus->NoPrev = true;
     bus->FIFOEmpty = true;
 }
@@ -1014,39 +1016,55 @@ void Bus7_Busy(Console* sys [[maybe_unused]], const timestamp now [[maybe_unused
     // speculation: do *not* kill bursts
 }
 
+void Bus7_A7Wake(Console* sys, const timestamp now)
+{
+    sys->A7ClkDisable = false;
+    if ((sys->Bus7.ReqList & (1<<MAN7_ARM7)) && !sys->Bus7.LockSched)
+    {
+        sys->Bus7.LockSched = true;
+        Sched_AddEventIfEarlier(sys, now, Evt_Bus7Comp);
+    }
+}
+
 void Bus_Req(Console* sys, const BusReq* req, const timestamp now, const bool a9)
 {
     BusImpl* bus = (a9 ? &sys->Bus9 : &sys->Bus7);
 
-    if (bus->ReqList & (1<<(req->Man)))
+    if (!a9)
     {
-        Sched_AddEvent(sys, now, Evt_DebugBreak);
-        LogPrint(LOG_ALWAYS, "BUS REQ OVERWRITE!!!!! %i %"PRIu8"\n", a9, req->Man);
+        if (bus->ReqList & ((typeof(bus->ReqList))1 << req->Man))
+        {
+            Sched_AddEvent(sys, now, Evt_DebugBreak);
+            LogPrint(LOG_ALWAYS, "BUS REQ OVERWRITE!!!!! %i %"PRIu8"\n", a9, req->Man);
+        }
+        bus->ReqList |= ((typeof(bus->ReqList))1 << req->Man);
     }
-    bus->ReqList |= (1<<(req->Man));
     bus->Reqs[req->Man] = *req;
 
     if (!bus->LockSched)
     {
         bus->LockSched = true;
-        Sched_AddEventIfEarlier(sys, now, a9 ? Evt_Bus9Arb : Evt_Bus7Arb);
+        Sched_AddEventIfEarlier(sys, now, a9 ? Evt_Bus9 : Evt_Bus7Comp);
     }
+
+    if (a9) Sched_AddEventIfEarlier(sys, now+DSClk33(1), Evt_BusReq9_DMA0+req->Man9);
 }
 
-void Bus7_A7Wake(Console* sys, const timestamp now)
+void Bus_ReqSched(Console* sys, const Bus9_Managers man, const timestamp now, const bool a9)
 {
-    sys->A7ClkDisable = false;
-    if (sys->Bus7.ReqList & (1<<MAN7_ARM7))
+    BusImpl* bus = (a9 ? &sys->Bus9 : &sys->Bus7);
+
+    if (bus->ReqList & ((typeof(bus->ReqList))1 << man))
     {
-        if (!sys->Bus7.LockSched)
-        {
-            sys->Bus7.LockSched = true;
-            Sched_AddEventIfEarlier(sys, now, Evt_Bus7Cmp);
-        }
+        Sched_AddEvent(sys, now, Evt_DebugBreak);
+        LogPrint(LOG_ALWAYS, "BUS REQ OVERWRITE!!!!! %i %"PRIu8"\n", a9, man);
     }
-    else
+    bus->ReqList |= ((typeof(bus->ReqList))1 << man);
+
+    if (!bus->LockSched)
     {
-        CrashSpectacularly("what?\n");
+        bus->LockSched = true;
+        Sched_AddEventIfEarlier(sys, now, Evt_Bus9);
     }
 }
 
@@ -1055,36 +1073,82 @@ void Bus_TransferPostSetup(Console* sys, const u32 rdata, const bool isread, con
     BusImpl* bus = (a9 ? &sys->Bus9 : &sys->Bus7);
     if (isread) bus->ReadBus = rdata;
     bus->NoPrev = noprev;
-    Sched_AddEvent(sys, end, a9 ? Evt_Bus9Cmp : Evt_Bus7Cmp);
+    Sched_AddEvent(sys, end+DSClk33(1), a9 ? Evt_Bus9 : Evt_Bus7Comp);
+}
+
+void Bus_RunCompCB(Console* sys, timestamp now, const bool a9)
+{
+    BusImpl* bus = (a9 ? &sys->Bus9 : &sys->Bus7);
+
+#if 0
+    if (a9 && bus->ComplMan == MAN9_DMA0 && bus->GrantMan == MAN9_DMA0) printf("COMP + GRANT %lu\n", now);
+    else if (a9 && bus->ComplMan == MAN9_DMA0) printf("COMP %lu\n", now);
+    else if (a9 && bus->GrantMan == MAN9_DMA0) printf("GRANT %lu\n", now);
+#endif
+
+    // completion callback
+    bus->CBDIRTY = false;
+    switch(bus->ComplCB)
+    {
+    case CB_None: break;
+    case CB9_BIU9InstrNormal ... CB9_BIU9Idle: A946_BIUCompPost(&sys->A946ES, now, bus->ComplRead, bus->ComplCB); break;
+    case CB9_DMA: DMA_CompPost(sys, now, bus->ComplMan-MAN9_DMA0, bus->ComplRead, bus->ComplLoad, true); break;
+    case CB7_7TDMIData: A7TDMI_DataPost(&sys->A7TDMI, now, bus->ComplRead); break;
+    case CB7_7TDMIInstr: A7TDMI_InstrReadPost(&sys->A7TDMI, now, bus->ComplRead); break;
+    case CB7_DMA: DMA_CompPost(sys, now, bus->ComplMan-MAN7_SCAPDMA0, bus->ComplRead, bus->ComplLoad, false); break;
+    }
+
+    if (a9) Bus_RunGrantCB(sys, now, a9);
+}
+
+void Bus_RunGrantCB(Console* sys, timestamp now, const bool a9)
+{
+    BusImpl* bus = (a9 ? &sys->Bus9 : &sys->Bus7);
+
+    // arbitration grant
+    switch(bus->GrantCB)
+    {
+    case CB_None: break;
+    case CB9_BIU9InstrNormal ... CB9_BIU9Idle: A946_BIUSubmPost(&sys->A946ES, now); break;
+    case CB9_DMA: DMA_Step(sys, bus->GrantMan-MAN9_DMA0, now, true); break;
+    case CB7_7TDMIData: break;
+    case CB7_7TDMIInstr: break;
+    case CB7_DMA: DMA_Step(sys, bus->GrantMan-MAN7_SCAPDMA0, now, false); break;
+    }
 }
 
 #define reqlista7deny (((a9 || !sys->A7ClkDisable) ? u32_max : ~(1<<MAN7_ARM7)) & bus->ReqList) // speculative method of implementing arm7 halt
 
-void Bus_RunCmp(Console* sys, timestamp now, const bool a9)
+void Bus_RunComp(Console* sys, timestamp now, const bool a9)
 {
     BusImpl* bus = (a9 ? &sys->Bus9 : &sys->Bus7);
-    u32 rdata = bus->ReadBus;
-    BusCallbacks cmpcb = CB_None;
-    bus->CmpMan = MAN_NONE;
-    bool wasload = false;
+    bus->ComplRead = bus->ReadBus;
+    bus->ComplCB = CB_None;
+    bus->ComplMan = MAN_NONE;
+    bus->ComplLoad = false;
 
-    now += DSClk33(1);
     timestamp len = DSClk33(1);
 
     // process last completion
     if (!bus->NoPrev)
     {
         BusReq* reqold = &bus->PipeFIFO[bus->ReqActivePtr];
-        bus->CmpMan = reqold->Man;
-        u8 mandebug = bus->CmpMan;
-        cmpcb = reqold->CB;
-        wasload = !reqold->Write;
+        bus->ComplMan = reqold->Man;
+        u8 mandebug = bus->ComplMan;
+        bus->ComplCB = reqold->CB;
+        bus->ComplLoad = !reqold->Write;
+
         if (a9 && mandebug == MAN9_ARM9)
         {
-            if ((cmpcb != CB9_BIU9InstrNormal) && (cmpcb != CB9_BIU9DataNormal))
+            if ((bus->ComplCB != CB9_BIU9InstrNormal) && (bus->ComplCB != CB9_BIU9DataNormal))
                 mandebug = MAN9_A9EXTERNALWONKY;
         }
-        Bus_DebugBreak(sys, now, a9 ? sys->Bus9_Watch : sys->Bus7_Watch, a9 ? sys->Bus9_NumWatch : sys->Bus7_NumWatch, reqold->Addr, reqold->Size, reqold->Write, mandebug, (reqold->Write ? reqold->WrData : rdata));
+        Bus_DebugBreak(sys, now, a9 ? sys->Bus9_Watch : sys->Bus7_Watch, a9 ? sys->Bus9_NumWatch : sys->Bus7_NumWatch, reqold->Addr, reqold->Size, reqold->Write, mandebug, (reqold->Write ? reqold->WrData : bus->ComplRead));
+
+        // hack for dma
+        if (reqold->CB == CB9_DMA && !reqold->Write) DMA_RDataHack(sys, bus->GrantMan-MAN9_DMA0, true, bus->ReadBus);
+        if (reqold->CB == CB7_DMA && !reqold->Write) DMA_RDataHack(sys, bus->GrantMan-MAN7_SCAPDMA0, false, bus->ReadBus);
+
         len = now - bus->PipeExitTs[bus->ReqActivePtr];
         // apply waitstate delays
         if (len > DSClk33(1))
@@ -1094,24 +1158,19 @@ void Bus_RunCmp(Console* sys, timestamp now, const bool a9)
         }
     }
 
-    // completion callback
-    switch(cmpcb)
+    if (a9) Bus_RunGrant(sys, now, a9);
+    else
     {
-    case CB_None: break;
-    case CB9_BIU9InstrNormal ... CB9_BIU9Idle: A946_BIUCompPost(&sys->A946ES, now, rdata, cmpcb); break;
-    case CB9_DMA: DMA_CompPost(sys, now, bus->CmpMan-MAN9_DMA0, rdata, wasload, true); break;
-    case CB7_7TDMIData: A7TDMI_DataPost(&sys->A7TDMI, now, rdata); break;
-    case CB7_7TDMIInstr: A7TDMI_InstrReadPost(&sys->A7TDMI, now, rdata); break;
-    case CB7_DMA: DMA_CompPost(sys, now, bus->CmpMan-MAN7_SCAPDMA0, rdata, wasload, false); break;
+        Bus_RunCompCB(sys, now, a9);
+        Sched_AddEvent(sys, now, Evt_Bus7Grant);
     }
-    Sched_AddEvent(sys, now, a9 ? Evt_Bus9Arb : Evt_Bus7Arb);
 }
 
-void Bus_RunArb(Console* sys, timestamp now, const bool a9)
+void Bus_RunGrant(Console* sys, timestamp now, const bool a9)
 {
     BusImpl* bus = (a9 ? &sys->Bus9 : &sys->Bus7);
-    BusCallbacks arbcb = CB_None;
-    u8 arbman = MAN_NONE;
+    bus->GrantCB = CB_None;
+    bus->GrantMan = MAN_NONE;
     // arbitrate next req
     if (reqlista7deny)
     {
@@ -1130,8 +1189,8 @@ void Bus_RunArb(Console* sys, timestamp now, const bool a9)
         // put entry into fifo
         bus->PipeFIFO[bus->FIFOFillPtr] = bus->Reqs[manager];
         bus->PipeExitTs[bus->FIFOFillPtr] = now + bus->PipeCycles;
-        arbcb = bus->Reqs[manager].CB;
-        arbman = manager;
+        bus->GrantCB = bus->Reqs[manager].CB;
+        bus->GrantMan = manager;
 
         bus->ReqList &= ~(1<<manager); // clear req list
         // update lock flag
@@ -1149,15 +1208,12 @@ void Bus_RunArb(Console* sys, timestamp now, const bool a9)
     }
     nvm:
 
-    // run callbacks
-    switch(arbcb) // arbitration grant
+    if (!a9) Bus_RunGrantCB(sys, now, a9);
+    else if (bus->ComplCB != CB_None || bus->GrantCB != CB_None)
     {
-    case CB_None: break;
-    case CB9_BIU9InstrNormal ... CB9_BIU9Idle: A946_BIUSubmPost(&sys->A946ES, now); break;
-    case CB9_DMA: DMA_Step(sys, arbman-MAN9_DMA0, now, true); break;
-    case CB7_7TDMIData: break;
-    case CB7_7TDMIInstr: break;
-    case CB7_DMA: DMA_Step(sys, arbman-MAN7_SCAPDMA0, now, false); break;
+        if (bus->CBDIRTY) CrashSpectacularly("CBDIRTY SETTTTTTTTTTT!!!!!!!!!!!!!!\n");
+        bus->CBDIRTY = true;
+        Sched_AddEvent(sys, now, Evt_Bus9CB);
     }
 
     // try to run next access
@@ -1177,7 +1233,7 @@ void Bus_RunArb(Console* sys, timestamp now, const bool a9)
 
         if (req->Type >= HTRANS_NONSEQ)
         {
-            if (req->Man != bus->CmpMan) req->Type = HTRANS_NONSEQ; // note: this should technically be enforced by the manager
+            if (req->Man != bus->ComplMan) req->Type = HTRANS_NONSEQ; // note: this should technically be enforced by the manager
 
             // split bursts on nonsequential access
             if (req->Type == HTRANS_NONSEQ) a9 ? Bus9_KillBursts(sys, now) : Bus7_KillBursts(sys, now);
@@ -1188,7 +1244,7 @@ void Bus_RunArb(Console* sys, timestamp now, const bool a9)
         }
         else if (req->Type == HTRANS_BUSY)
         {
-            if (req->Man != bus->CmpMan) a9 ? Bus9_KillBursts(sys, now) : Bus7_KillBursts(sys, now); // HACK
+            if (req->Man != bus->ComplMan) a9 ? Bus9_KillBursts(sys, now) : Bus7_KillBursts(sys, now); // HACK
             if (a9) Bus9_Busy(sys, now);
             else    Bus7_Busy(sys, now);
         }
@@ -1216,11 +1272,11 @@ void Bus_RunArb(Console* sys, timestamp now, const bool a9)
     timestamp new;
     if ((bus->HLockGeneric != MAN_NONE) ? (bus->ReqList & (1<<bus->HLockGeneric)) : reqlista7deny) // check if something can be granted bus
     {
-        new = now;
+        new = now+DSClk33(1);
     }
     else if (!bus->FIFOEmpty) // if something is progressing through the pipeline just wait for it's time
     {
-        new = now;
+        new = now+DSClk33(1);
         //bus->LockSched = false;
         //new = bus->PipeExitTs[bus->FIFODrainPtr]
     }
@@ -1230,5 +1286,5 @@ void Bus_RunArb(Console* sys, timestamp now, const bool a9)
         return; // nothing to do; ahb go nini
     }
 
-    Sched_AddEvent(sys, new, a9 ? Evt_Bus9Cmp : Evt_Bus7Cmp);
+    Sched_AddEvent(sys, new, a9 ? Evt_Bus9 : Evt_Bus7Comp);
 }
