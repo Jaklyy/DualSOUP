@@ -175,13 +175,19 @@ typedef enum : u8
     CB9_BIU9DataStream,
     CB9_BIU9Idle,
 
-    CB9_DMA,
+    CB9_DMARead,
+    CB9_DMAWrite,
+    CB9_DMABusy,
+    CB9_DMABusyCancellable,
 
 
     CB7_7TDMIInstr,
     CB7_7TDMIData,
 
-    CB7_DMA,
+    CB7_DMARead,
+    CB7_DMAWrite,
+    CB7_DMABusy,
+    CB7_DMABusyCancellable,
 } BusCallbacks;
 
 typedef struct

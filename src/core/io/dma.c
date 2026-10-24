@@ -240,7 +240,7 @@ void DMA9_Enable(Console* sys, DMA_Channel* channel, timestamp now)
     }
 }
 
-void DMA_CompPost(Console* sys, timestamp now, const u8 id, u32 rdata, const bool load, const bool a9)
+void DMA_CompPost(Console* sys, timestamp now, const u8 id, u32 rdata, const DMA_CBType cb, const bool a9)
 {
     DMA_Channel* channel = (a9 ? &sys->DMA9[id] : &sys->DMA7[id]);
 
@@ -278,35 +278,24 @@ void DMA_CompPost(Console* sys, timestamp now, const u8 id, u32 rdata, const boo
         }
     }
 
-    if (!load)
+    if (cb == DMACB_Write)
     {
         if (channel->CurrentMode == DMAStart_Audio) SoundFIFO_Fill(sys, channel->RData, id-DMA7_SoundBase); // spaghetti...
-        return;
     }
 
-    if (channel->CurrentMode == DMAStart_AudioCap)
+    if (cb == DMACB_Read && channel->CurrentMode == DMAStart_AudioCap)
     {
         channel->RData = sys->SoundCaptures[id-DMA7_SoundCapBase].FIFO.Raw;
         sys->SoundCaptures[id-DMA7_SoundCapBase].Flush = false;
     }
-    else
-    {
-        #if 0
-        channel->RData = rdata;
-        if (!channel->Latched_Width32)
-        {
-            channel->RData = ROR32(channel->RData , (((channel->Latched_SrcAddr - channel->SrcInc) & 2) * 8));
-            channel->RData &= 0xFFFF;
-            channel->RData |= channel->RData << 16;
-        }
-        #endif
-    }
 }
 
-void DMA_RDataHack(Console* sys, const u8 id, const bool a9, const u32 rdata)
+void DMA_RDataHack(Console* sys, const u8 id, const bool a9, const u32 rdata, const timestamp len)
 {
-    //if (id == 0 && a9) printf("update\n");
     DMA_Channel* channel = (a9 ? &sys->DMA9[id] : &sys->DMA7[id]);
+    if (len > DSClk33(1)) // TODO: ~~support GBA clock~~ disable in gba mode
+        channel->AnyReadHadWaitstates = true;
+
     channel->RData = rdata;
     if (!channel->Latched_Width32)
     {
@@ -316,52 +305,73 @@ void DMA_RDataHack(Console* sys, const u8 id, const bool a9, const u32 rdata)
     }
 }
 
+void DMA_CancelBusyHack(Console* sys, const u8 id, const bool a9)
+{
+    DMA_Channel* channel = (a9 ? &sys->DMA9[id] : &sys->DMA7[id]);
+    channel->CompMax -= 1;
+}
+
 void DMA_Step(Console* sys, const u8 id, timestamp now, const bool a9)
 {
     DMA_Channel* channel = (a9 ? &sys->DMA9[id] : &sys->DMA7[id]);
 
-    if (!channel->NeedsInit && (channel->WriteCur == channel->BurstMax)) return;
-
-    if (channel->NeedsInit)
+    if (channel->WriteCur == channel->BurstMax)
     {
-        if (channel->Latched_NumWords <= 0)
+        if (channel->NeedsInit)
         {
-            // CHECKME: idk, where and when things are latched needs testing.
-            if (channel->CR.SourceCR == 3) channel->Latched_SrcAddr = channel->SrcAddr;
-            if (channel->CR.DestCR   == 3) channel->Latched_DstAddr = channel->DstAddr;
+            if (channel->Latched_NumWords <= 0)
+            {
+                // CHECKME: idk, where and when things are latched needs testing.
+                if (channel->CR.SourceCR == 3) channel->Latched_SrcAddr = channel->SrcAddr;
+                if (channel->CR.DestCR   == 3) channel->Latched_DstAddr = channel->DstAddr;
 
-            channel->Latched_NumWords = channel->NumWords;
-            channel->Latched_Width32 = channel->CR.Width32; // idk
+                channel->Latched_NumWords = channel->NumWords;
+                channel->Latched_Width32 = channel->CR.Width32; // idk
+            }
+
+            if (channel->WriteCur == channel->BurstMax) // burst complete
+            {
+                channel->BurstMax = channel->Latched_NumWords;
+                if (channel->CurrentMode == DMAStart_3DFIFO)
+                    DS_CLAMP(channel->BurstMax, >, 112)
+                if (channel->CurrentMode == DMAStart_Audio)
+                    DS_CLAMP(channel->BurstMax, >, 4)
+                if (channel->CurrentMode == DMAStart_AudioCap)
+                    DS_CLAMP(channel->BurstMax, >, 1)
+
+                channel->ReadCur = 0;
+                channel->WriteCur = 0;
+                channel->CompCur = 0;
+                channel->CompMax = channel->BurstMax*2;
+                channel->AnyReadHadWaitstates = false;
+                channel->ReadBusyDone = false;
+                if (!a9)
+                {
+                    channel->CompMax += 1;
+                    channel->DoBusy = true;
+                }
+                else channel->DoBusy = false;
+            }
+            channel->NeedsInit = false;
         }
-
-        if (channel->WriteCur == channel->BurstMax) // burst complete
+        else if (channel->AnyReadHadWaitstates || channel->ReadBusyDone) return;
+        else
         {
-            channel->BurstMax = channel->Latched_NumWords;
-            if (channel->CurrentMode == DMAStart_3DFIFO)
-                DS_CLAMP(channel->BurstMax, >, 112)
-            if (channel->CurrentMode == DMAStart_Audio)
-                DS_CLAMP(channel->BurstMax, >, 4)
-            if (channel->CurrentMode == DMAStart_AudioCap)
-                DS_CLAMP(channel->BurstMax, >, 1)
-
-            channel->ReadCur = 0;
-            channel->WriteCur = 0;
-            channel->CompCur = 0;
-            channel->CompMax = channel->BurstMax*2;
+            channel->ReadBusyDone = true;
+            channel->DoBusy = true;
+            channel->CompMax += 1;
         }
-        channel->NeedsInit = false;
     }
 
     BusReq req;
-#if 0
     if (channel->DoBusy)
     {
         req = (BusReq){
-            .Addr = channel->Latched_DstAddr, // guess
+            .Addr = channel->Latched_SrcAddr, // guess
             .WrData = 0,
             .Write = false,
             .Lock = false,
-            .Man9 = MAN9_DMA0+id,
+            .Man9 = (a9 ? MAN9_DMA0 : MAN7_SCAPDMA0) + id,
             .Prot = {
                 .Data = true,
                 .Privileged = false,
@@ -370,13 +380,11 @@ void DMA_Step(Console* sys, const u8 id, timestamp now, const bool a9)
             },
             .Size = (channel->Latched_Width32 ? HSIZE_32 : HSIZE_16),
             .Type = HTRANS_BUSY,
-            .CB = CB9_DMA,
+            .CB = (channel->ReadBusyDone ? (a9 ? CB9_DMABusyCancellable : CB7_DMABusyCancellable) : (a9 ? CB9_DMABusy : CB7_DMABusy)),
         };
         channel->DoBusy = false;
     }
-    else 
-#endif
-    if (channel->ReadCur == channel->WriteCur) // read
+    else if (channel->ReadCur == channel->WriteCur) // read
     {
         if (channel->CurrentMode == DMAStart_AudioCap)
         {
@@ -394,11 +402,8 @@ void DMA_Step(Console* sys, const u8 id, timestamp now, const bool a9)
                 },
                 .Size = (channel->Latched_Width32 ? HSIZE_32 : HSIZE_16),
                 .Type = HTRANS_BUSY, // checkme: complete guess
-                .CB = CB7_DMA,
+                .CB = CB7_DMARead,
             };
-
-            //channel->RData = sys->SoundCaptures[id-DMA7_SoundCapBase].FIFO.Raw;
-            //sys->SoundCaptures[id-DMA7_SoundCapBase].Flush = false;
         }
         else
         {
@@ -417,13 +422,11 @@ void DMA_Step(Console* sys, const u8 id, timestamp now, const bool a9)
                 .Size = (channel->Latched_Width32 ? HSIZE_32 : HSIZE_16),
                 // NOTE: really stupid theory i have on dma burst logic: they always signal sequential after the first load. (which is being handled by the bus logic currently)
                 .Type = HTRANS_SEQ, //(((channel->ReadCur == 0) || channel->SrcInc <= 0) ? HTRANS_NONSEQ : HTRANS_SEQ),
-                .CB = (a9 ? CB9_DMA : CB7_DMA),
+                .CB = (a9 ? CB9_DMARead : CB7_DMARead),
             };
             channel->Latched_SrcAddr = (channel->Latched_SrcAddr + channel->SrcInc) & channel->SrcAddrMask;
         }
         channel->ReadCur++;
-
-        //if (channel->ReadCur == 0) channel->DoBusy = true; // idk
     }
     else
     {
@@ -443,7 +446,7 @@ void DMA_Step(Console* sys, const u8 id, timestamp now, const bool a9)
                 },
                 .Size = (channel->Latched_Width32 ? HSIZE_32 : HSIZE_16),
                 .Type = HTRANS_BUSY, // checkme: complete guess
-                .CB = CB7_DMA,
+                .CB = CB7_DMAWrite,
             };
         }
         else
@@ -463,14 +466,13 @@ void DMA_Step(Console* sys, const u8 id, timestamp now, const bool a9)
                 .Size = (channel->Latched_Width32 ? HSIZE_32 : HSIZE_16),
                 // NOTE: really stupid theory i have on dma burst logic: they always signal sequential after the first load. (which is being handled by the bus logic currently)
                 .Type = HTRANS_SEQ, //((channel->WriteCur == 0 || channel->DstInc <= 0) ? HTRANS_NONSEQ : HTRANS_SEQ),
-                .CB = (a9 ? CB9_DMA : CB7_DMA),
+                .CB = (a9 ? CB9_DMAWrite : CB7_DMAWrite),
             };
             channel->Latched_DstAddr = (channel->Latched_DstAddr + channel->DstInc) & channel->DstAddrMask;
         }
         channel->WriteCur++;
         channel->Latched_NumWords--;
     }
-    //if (a9 && id == 0) printf("run %i %i %lu\n", req.Type, req.Write, now);
     Bus_Req(sys, &req, now, a9);
 }
 

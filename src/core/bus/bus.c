@@ -1092,10 +1092,10 @@ void Bus_RunCompCB(Console* sys, timestamp now, const bool a9)
     {
     case CB_None: break;
     case CB9_BIU9InstrNormal ... CB9_BIU9Idle: A946_BIUCompPost(&sys->A946ES, now, bus->ComplRead, bus->ComplCB); break;
-    case CB9_DMA: DMA_CompPost(sys, now, bus->ComplMan-MAN9_DMA0, bus->ComplRead, bus->ComplLoad, true); break;
+    case CB9_DMARead ... CB9_DMABusyCancellable: DMA_CompPost(sys, now, bus->ComplMan-MAN9_DMA0, bus->ComplRead, bus->ComplCB-CB9_DMARead, true); break;
     case CB7_7TDMIData: A7TDMI_DataPost(&sys->A7TDMI, now, bus->ComplRead); break;
     case CB7_7TDMIInstr: A7TDMI_InstrReadPost(&sys->A7TDMI, now, bus->ComplRead); break;
-    case CB7_DMA: DMA_CompPost(sys, now, bus->ComplMan-MAN7_SCAPDMA0, bus->ComplRead, bus->ComplLoad, false); break;
+    case CB7_DMARead ... CB7_DMABusyCancellable: DMA_CompPost(sys, now, bus->ComplMan-MAN7_SCAPDMA0, bus->ComplRead, bus->ComplCB-CB7_DMARead, false); break;
     }
 
     if (a9) Bus_RunGrantCB(sys, now, a9);
@@ -1110,10 +1110,10 @@ void Bus_RunGrantCB(Console* sys, timestamp now, const bool a9)
     {
     case CB_None: break;
     case CB9_BIU9InstrNormal ... CB9_BIU9Idle: A946_BIUSubmPost(&sys->A946ES, now); break;
-    case CB9_DMA: DMA_Step(sys, bus->GrantMan-MAN9_DMA0, now, true); break;
+    case CB9_DMARead ... CB9_DMABusyCancellable: DMA_Step(sys, bus->GrantMan-MAN9_DMA0, now, true); break;
     case CB7_7TDMIData: break;
     case CB7_7TDMIInstr: break;
-    case CB7_DMA: DMA_Step(sys, bus->GrantMan-MAN7_SCAPDMA0, now, false); break;
+    case CB7_DMARead ... CB7_DMABusyCancellable: DMA_Step(sys, bus->GrantMan-MAN7_SCAPDMA0, now, false); break;
     }
 }
 
@@ -1145,12 +1145,10 @@ void Bus_RunComp(Console* sys, timestamp now, const bool a9)
         }
         Bus_DebugBreak(sys, now, a9 ? sys->Bus9_Watch : sys->Bus7_Watch, a9 ? sys->Bus9_NumWatch : sys->Bus7_NumWatch, reqold->Addr, reqold->Size, reqold->Write, mandebug, (reqold->Write ? reqold->WrData : bus->ComplRead));
 
-        // hack for dma
-        if (reqold->CB == CB9_DMA && !reqold->Write) DMA_RDataHack(sys, bus->GrantMan-MAN9_DMA0, true, bus->ReadBus);
-        if (reqold->CB == CB7_DMA && !reqold->Write) DMA_RDataHack(sys, bus->GrantMan-MAN7_SCAPDMA0, false, bus->ReadBus);
-
         len = now - bus->PipeExitTs[bus->ReqActivePtr];
-        // apply waitstate delays
+        // hack for dma
+        if (reqold->CB == CB9_DMARead) DMA_RDataHack(sys, bus->GrantMan-MAN9_DMA0, true, bus->ReadBus, len);
+        if (reqold->CB == CB7_DMARead) DMA_RDataHack(sys, bus->GrantMan-MAN7_SCAPDMA0, false, bus->ReadBus, len);
         if (len > DSClk33(1))
         {
             for (size_t i = 0; i < countof(bus->PipeExitTs); i++)
@@ -1172,6 +1170,7 @@ void Bus_RunGrant(Console* sys, timestamp now, const bool a9)
     bus->GrantCB = CB_None;
     bus->GrantMan = MAN_NONE;
     // arbitrate next req
+    retry:
     if (reqlista7deny)
     {
         u8 manager;
@@ -1186,13 +1185,21 @@ void Bus_RunGrant(Console* sys, timestamp now, const bool a9)
                 goto nvm; // assume its holding lock with idle transfers
         }
 
+        bus->ReqList &= ~(1<<manager); // clear req list
+
+        // hack for dma busy cycles; i suspect it drops hreq if any waitstates occur??
+        if (a9 ? ((bus->Reqs[manager].CB == CB9_DMABusyCancellable) && sys->DMA9[manager - MAN9_DMA0    ].AnyReadHadWaitstates)
+               : ((bus->Reqs[manager].CB == CB7_DMABusyCancellable) && sys->DMA7[manager - MAN7_SCAPDMA0].AnyReadHadWaitstates))
+        {
+            DMA_CancelBusyHack(sys, (a9 ? (manager - MAN9_DMA0) : (manager - MAN7_SCAPDMA0)), a9);
+            goto retry;
+        }
+
         // put entry into fifo
         bus->PipeFIFO[bus->FIFOFillPtr] = bus->Reqs[manager];
         bus->PipeExitTs[bus->FIFOFillPtr] = now + bus->PipeCycles;
         bus->GrantCB = bus->Reqs[manager].CB;
         bus->GrantMan = manager;
-
-        bus->ReqList &= ~(1<<manager); // clear req list
         // update lock flag
         bus->HLockGeneric = ((bus->Reqs[manager].Lock) ? manager : MAN_NONE);
 

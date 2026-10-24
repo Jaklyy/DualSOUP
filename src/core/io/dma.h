@@ -86,6 +86,14 @@ constexpr u64 DMA9_NewMax = DMA9_NewBase + DMA9_NumNew;
 constexpr u64 DMA9_Max = DMA9_NewMax;
 
 
+typedef enum
+{
+    DMACB_Read,
+    DMACB_Write,
+    DMACB_Busy,
+    DMACB_BusyCancellable,
+} DMA_CBType;
+
 typedef struct
 {
     u32 SrcAddr;
@@ -109,6 +117,8 @@ typedef struct
     s8 DstInc;
     u8 CurrentMode;
     bool Latched_Width32;
+    bool AnyReadHadWaitstates;
+    bool ReadBusyDone;
     bool DoBusy;
     bool NeedsInit;
 } DMA_Channel;
@@ -116,7 +126,6 @@ typedef struct
 typedef struct Console Console;
 
 void DMA_Init(Console* sys);
-void DMA_RDataHack(Console* sys, const u8 id, const bool a9, const u32 rdata);
 void DMA7_IOWriteHandler(Console* sys, timestamp now, DMA_Channel* channels, u32 addr, u32 val, const u32 mask);
 void DMA9_IOWriteHandler(Console* sys, timestamp now, DMA_Channel* channels, u32 addr, u32 val, u32 mask);
 u32 DMA_IOReadHandler(DMA_Channel* channels, u32 addr);
@@ -125,5 +134,7 @@ void StartSoundCapDMA(Console* sys, u8 id, timestamp start);
 void StartSoundDMA(Console* sys, u8 id, timestamp start);
 timestamp DMA_GetNext(Console* sys, const timestamp now, const bool sync, const bool a9);
 
-void DMA_CompPost(Console* sys, timestamp now, const u8 id, u32 rdata, const bool load, const bool a9);
+void DMA_CancelBusyHack(Console* sys, const u8 id, const bool a9);
+void DMA_RDataHack(Console* sys, const u8 id, const bool a9, const u32 rdata, const timestamp len);
+void DMA_CompPost(Console* sys, timestamp now, const u8 id, u32 rdata, const DMA_CBType cb, const bool a9);
 void DMA_Step(Console* sys, const u8 id, timestamp now, const bool a9);
