@@ -259,7 +259,14 @@ typedef enum : u8
     MainRAM_A7,
 } MainRAM_Buses;
 
-#define MRTURBOLOG
+typedef enum : u8
+{
+    MRPrefetch_Off,
+    MRPrefetch_Starting,
+    MRPrefetch_Running,
+} MainRAM_Prefetch;
+
+//#define MRTURBOLOG
 
 // MainRAM is a type of FCRAM.
 // gbatek lists the following chips as being used in retail DS models:
@@ -286,6 +293,7 @@ typedef struct
     bool IsReq9;
     bool IsReq7;
     bool BurstActive;
+    MainRAM_Prefetch Prefetch;
     MainRAM_Buses CurReq;
     MainRAM_Buses Locked;
     // Internal control reg for the FCRAM chip on the NDS.

@@ -111,6 +111,7 @@ bool MainRAM_KillBurst(Console* sys, timestamp now)
             Sched_AddEvent(sys, now, Evt_MainRAM);
         }
         mr->BurstLimitTs = timestamp_max;
+        mr->Prefetch = MRPrefetch_Off;
         mr->LastFetchTs = now;
         mr->BurstActive = false;
         mr->CurReq = MainRAM_None;
@@ -177,11 +178,8 @@ void MainRAM_Run(Console* sys, timestamp now)
 
     if (!mr->BurstActive) nseq = true;
     if (write != mr->PrevWrite) nseq = true; // split burst if switching from read to write
-    mr->PrevWrite = write;
     if (addr <= mr->PrevAddr) nseq = true; // this is part of a really stupid theory i have on how dma bursts work
-    mr->PrevAddr = addr;
     if (grant != mr->CurReq) nseq = true; // split burst if switching which bus has grant
-    mr->CurReq = grant;
     if (now > mr->BurstLimitTs) nseq = true; // TODO: this should probably be regardless of an access occuring
 
     // this is presumably enforced by the SoC main ram interface?
@@ -190,6 +188,9 @@ void MainRAM_Run(Console* sys, timestamp now)
     if (mr->WeirdStart && !nseq && !(addr & 0x1E)) nseq = true;
 
     if (nseq && MainRAM_KillBurst(sys, now)) return;
+    mr->PrevWrite = write;
+    mr->PrevAddr = addr;
+    mr->CurReq = grant;
 
     mr->BurstActive = true;
 
@@ -239,13 +240,13 @@ void MainRAM_Run(Console* sys, timestamp now)
         else
         {
             sys->MainRAM.b16[mr->AddrLatch] = wrdata & 0xFFFF;
-            if (size == HSIZE_32)
+            if (size < HSIZE_32) now += (nseq ? DSClk33(2) : DSClk33(0));
+            else // 32 bit
             {
                 MRStepAddr
                 sys->MainRAM.b16[mr->AddrLatch] = wrdata >> 16;
                 now += nseq ? DSClk33(3) : DSClk33(1);
             }
-            else now += nseq ? DSClk33(2) : DSClk33(0);
         }
     }
     else // read
@@ -253,18 +254,30 @@ void MainRAM_Run(Console* sys, timestamp now)
         rdata = sys->MainRAM.b16[mr->AddrLatch];
         if (size < HSIZE_32)
         {
-            now += (nseq) ? DSClk33(4) : DSClk33(0);
-            rdata |= rdata << 16; // mirror onto both halves of word
+            if (nseq)
+                now += DSClk33(4);
+            else if (mr->Prefetch != MRPrefetch_Starting)
+                now += DSClk33(0);
+            else // the first sequential of a 16 dma burst has a waitstate, probably the prefetcher's fault...?
+                now += DSClk33(1);
+
+            rdata |= rdata << 16; // duplicate data onto both halves of word
         }
         else // 32 bit; do another fetch for high bytes
         {
-            now += ((nseq)  ? DSClk33(5)
-                            : ((now <= mr->LastFetchTs) // questionably emulate read prefetching
-                                ? DSClk33(1)
-                                : DSClk33(0)));
             MRStepAddr
+            // TODO: i forgot until recently that main ram read prefetching only kicks in after the first *sequential* read
+            // this may have more implications on the way main ram is modelled
+            if (nseq)
+                now += DSClk33(5);
+            else if ((mr->Prefetch == MRPrefetch_Running) && (now > mr->LastFetchTs)) // questionably emulate read prefetching
+                now += DSClk33(0);
+            else
+                now += DSClk33(1);
             rdata |= sys->MainRAM.b16[mr->AddrLatch] << 16;
         }
+        if (nseq) mr->Prefetch = MRPrefetch_Starting;
+        else mr->Prefetch = MRPrefetch_Running;
     }
 
     mr->LastFetchTs = now + DSClk33(1);
