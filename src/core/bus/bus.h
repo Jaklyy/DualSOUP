@@ -187,7 +187,6 @@ typedef enum : u8
     CB7_DMARead,
     CB7_DMAWrite,
     CB7_DMABusy,
-    CB7_DMABusyCancellable,
 } BusCallbacks;
 
 typedef struct

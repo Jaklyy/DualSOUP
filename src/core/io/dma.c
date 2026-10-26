@@ -240,7 +240,7 @@ void DMA9_Enable(Console* sys, DMA_Channel* channel, timestamp now)
     }
 }
 
-void DMA_CompPost(Console* sys, timestamp now, const u8 id, u32 rdata, const DMA_CBType cb, const bool a9)
+void DMA_CompPost(Console* sys, timestamp now, const u8 id, const DMA_CBType cb, const bool a9)
 {
     DMA_Channel* channel = (a9 ? &sys->DMA9[id] : &sys->DMA7[id]);
 
@@ -293,8 +293,8 @@ void DMA_CompPost(Console* sys, timestamp now, const u8 id, u32 rdata, const DMA
 void DMA_RDataHack(Console* sys, const u8 id, const bool a9, const u32 rdata, const timestamp len)
 {
     DMA_Channel* channel = (a9 ? &sys->DMA9[id] : &sys->DMA7[id]);
-    if (len > DSClk33(1)) // TODO: ~~support GBA clock~~ disable in gba mode
-        channel->AnyReadHadWaitstates = true;
+
+    if (a9 && (len > DSClk33(1))) channel->AnyReadHadWaitstates = true;
 
     channel->RData = rdata;
     if (!channel->Latched_Width32)
@@ -305,9 +305,9 @@ void DMA_RDataHack(Console* sys, const u8 id, const bool a9, const u32 rdata, co
     }
 }
 
-void DMA_CancelBusyHack(Console* sys, const u8 id, const bool a9)
+void DMA9_CancelBusyHack(Console* sys, const u8 id)
 {
-    DMA_Channel* channel = (a9 ? &sys->DMA9[id] : &sys->DMA7[id]);
+    DMA_Channel* channel = &sys->DMA9[id];
     channel->CompMax -= 1;
 }
 
@@ -343,18 +343,21 @@ void DMA_Step(Console* sys, const u8 id, timestamp now, const bool a9)
                 channel->WriteCur = 0;
                 channel->CompCur = 0;
                 channel->CompMax = channel->BurstMax*2;
-                channel->AnyReadHadWaitstates = false;
                 channel->ReadBusyDone = false;
-                if (!a9)
+                if (!a9) // arm7 dma does a busy cycle
                 {
                     channel->CompMax += 1;
                     channel->DoBusy = true;
                 }
-                else channel->DoBusy = false;
+                else
+                {
+                    channel->DoBusy = false;
+                    channel->AnyReadHadWaitstates = false;
+                }
             }
             channel->NeedsInit = false;
         }
-        else if (channel->AnyReadHadWaitstates || channel->ReadBusyDone) return;
+        else if ((a9 && channel->AnyReadHadWaitstates) || channel->ReadBusyDone) return;
         else
         {
             channel->ReadBusyDone = true;
@@ -379,8 +382,8 @@ void DMA_Step(Console* sys, const u8 id, timestamp now, const bool a9)
                 .Cacheable = false,
             },
             .Size = (channel->Latched_Width32 ? HSIZE_32 : HSIZE_16),
-            .Type = HTRANS_BUSY,
-            .CB = (channel->ReadBusyDone ? (a9 ? CB9_DMABusyCancellable : CB7_DMABusyCancellable) : (a9 ? CB9_DMABusy : CB7_DMABusy)),
+            .Type = HTRANS_IDLE,
+            .CB = (a9 ? (channel->ReadBusyDone ? CB9_DMABusyCancellable : CB9_DMABusy) : CB7_DMABusy),
         };
         channel->DoBusy = false;
     }

@@ -134,7 +134,7 @@ void StartSoundCapDMA(Console* sys, u8 id, timestamp start);
 void StartSoundDMA(Console* sys, u8 id, timestamp start);
 timestamp DMA_GetNext(Console* sys, const timestamp now, const bool sync, const bool a9);
 
-void DMA_CancelBusyHack(Console* sys, const u8 id, const bool a9);
+void DMA9_CancelBusyHack(Console* sys, const u8 id);
 void DMA_RDataHack(Console* sys, const u8 id, const bool a9, const u32 rdata, const timestamp len);
-void DMA_CompPost(Console* sys, timestamp now, const u8 id, u32 rdata, const DMA_CBType cb, const bool a9);
+void DMA_CompPost(Console* sys, timestamp now, const u8 id, const DMA_CBType cb, const bool a9);
 void DMA_Step(Console* sys, const u8 id, timestamp now, const bool a9);

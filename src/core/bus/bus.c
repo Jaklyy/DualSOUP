@@ -276,7 +276,7 @@ void MainRAM_Run(Console* sys, timestamp now)
                 now += DSClk33(1);
             rdata |= sys->MainRAM.b16[mr->AddrLatch] << 16;
         }
-        if (nseq) mr->Prefetch = MRPrefetch_Starting;
+        if (nseq && (grant == MainRAM_A9)) mr->Prefetch = MRPrefetch_Starting; // bug that seemingly only impacts arm9 side??? (TODO: somehow the post latency on a 4 len dma from mr -> vram is less and i assume its this to blame..?)
         else mr->Prefetch = MRPrefetch_Running;
     }
 
@@ -1105,10 +1105,10 @@ void Bus_RunCompCB(Console* sys, timestamp now, const bool a9)
     {
     case CB_None: break;
     case CB9_BIU9InstrNormal ... CB9_BIU9Idle: A946_BIUCompPost(&sys->A946ES, now, bus->ComplRead, bus->ComplCB); break;
-    case CB9_DMARead ... CB9_DMABusyCancellable: DMA_CompPost(sys, now, bus->ComplMan-MAN9_DMA0, bus->ComplRead, bus->ComplCB-CB9_DMARead, true); break;
+    case CB9_DMARead ... CB9_DMABusyCancellable: DMA_CompPost(sys, now, bus->ComplMan-MAN9_DMA0, bus->ComplCB-CB9_DMARead, true); break;
     case CB7_7TDMIData: A7TDMI_DataPost(&sys->A7TDMI, now, bus->ComplRead); break;
     case CB7_7TDMIInstr: A7TDMI_InstrReadPost(&sys->A7TDMI, now, bus->ComplRead); break;
-    case CB7_DMARead ... CB7_DMABusyCancellable: DMA_CompPost(sys, now, bus->ComplMan-MAN7_SCAPDMA0, bus->ComplRead, bus->ComplCB-CB7_DMARead, false); break;
+    case CB7_DMARead ... CB7_DMABusy: DMA_CompPost(sys, now, bus->ComplMan-MAN7_SCAPDMA0, bus->ComplCB-CB7_DMARead, false); break;
     }
 
     if (a9) Bus_RunGrantCB(sys, now, a9);
@@ -1126,7 +1126,7 @@ void Bus_RunGrantCB(Console* sys, timestamp now, const bool a9)
     case CB9_DMARead ... CB9_DMABusyCancellable: DMA_Step(sys, bus->GrantMan-MAN9_DMA0, now, true); break;
     case CB7_7TDMIData: break;
     case CB7_7TDMIInstr: break;
-    case CB7_DMARead ... CB7_DMABusyCancellable: DMA_Step(sys, bus->GrantMan-MAN7_SCAPDMA0, now, false); break;
+    case CB7_DMARead ... CB7_DMABusy: DMA_Step(sys, bus->GrantMan-MAN7_SCAPDMA0, now, false); break;
     }
 }
 
@@ -1201,10 +1201,9 @@ void Bus_RunGrant(Console* sys, timestamp now, const bool a9)
         bus->ReqList &= ~(1<<manager); // clear req list
 
         // hack for dma busy cycles; i suspect it drops hreq if any waitstates occur??
-        if (a9 ? ((bus->Reqs[manager].CB == CB9_DMABusyCancellable) && sys->DMA9[manager - MAN9_DMA0    ].AnyReadHadWaitstates)
-               : ((bus->Reqs[manager].CB == CB7_DMABusyCancellable) && sys->DMA7[manager - MAN7_SCAPDMA0].AnyReadHadWaitstates))
+        if (a9 && (bus->Reqs[manager].CB == CB9_DMABusyCancellable) && sys->DMA9[manager-MAN9_DMA0].AnyReadHadWaitstates)
         {
-            DMA_CancelBusyHack(sys, (a9 ? (manager - MAN9_DMA0) : (manager - MAN7_SCAPDMA0)), a9);
+            DMA9_CancelBusyHack(sys, manager-MAN9_DMA0);
             goto retry;
         }
 
