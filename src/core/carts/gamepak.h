@@ -3,7 +3,6 @@
 
 
 
-
 typedef enum : u8
 {
     GamePakSRAM_None,
@@ -41,11 +40,39 @@ typedef enum : u8
     GPFCmdProg_WriteDataBase,
 } GamePakFlashCmdProg;
 
+constexpr timestamp GamePak_AGBWaitStates[4][4] =
+{
+    {4, 3, 2, 8}, // nseq
+    {2, 1}, // seq 0
+    {4, 1}, // seq 1
+    {8, 1}, // seq 2
+};
+
+constexpr timestamp GamePak_NTRWaitStates[2][4] =
+{
+    {9, 7, 5, 17}, // nseq
+    {5, 3}, // seq
+};
+
 typedef struct
 {
+    // state
+    union {
+        u32 LatchedAddr_Full;
+        struct {
+            u16 LatchedAddr_Lo;
+            u8 LatchedAddr_Hi;
+        };
+    };
+    bool Write_Sel;
+    bool Read_Sel;
+    bool ROM_CSel;
+    bool RAM_CSel;
+    bool IRQ_Out;
+
     // rom
-    struct
-    {
+    bool Inserted;
+    struct {
         u8 IODir;
         bool ReadEnable;
         bool Present;
@@ -71,12 +98,39 @@ typedef struct
     u8* SRAM;
 } GamePak;
 
+typedef struct
+{
+    //bool Power_Out; // pin 0
+    //bool Clock_Out; // pin 1
+    bool Write_Sel; // pin 2
+    bool Read_Sel; // pin 3
+    bool ROM_CSel; // pin 4
+    union {
+        u32 Addr_Full;
+        struct {
+            union {
+                u16 Addr_Lo;
+                u16 ROM_Data;
+            }; // pins 5 ... 22
+            union {
+                u8 Addr_Hi;
+                u8 RAM_Data;
+            }; // pins 23 ... 28
+        };
+    };
+    bool RAM_CSel; // pin 29
+    bool IRQ_In; // pin 30
+    //bool Ground; // pin 31
+
+    bool ROMBurst;
+    bool RAMBurst;
+} BusGamePak;
+
+
+typedef struct Console Console;
 
 // handlers for cart hardware
 void GamePak_Init(GamePak* pak);
-
-u16 GamePak_ROMRead(GamePak* pak, u32 addr);
-void GamePak_ROMWrite(GamePak* pak, u32 addr, u16 val);
-
-u8 GamePak_SRAMRead(GamePak* pak, const u16 addr);
-void GamePak_SRAMWrite(GamePak* pak, const u16 addr, const u8 val);
+void GamePak_Step(BusGamePak* bus, GamePak* pak);
+void GamePakBus_ROMHandler(Console* sys, timestamp now, bool a9);
+void GamePakBus_RAMHandler(Console* sys, timestamp now, bool a9);

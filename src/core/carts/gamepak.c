@@ -1,8 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "gamepak.h"
 #include "core/utils.h"
+#include "core/console.h"
+#include "gamepak.h"
 
 
 
@@ -16,9 +17,6 @@ void GamePak_Init(GamePak* pak)
 
 u16 GamePak_ROMRead(GamePak* pak, u32 addr)
 {
-    addr /= 2; // ROM is halfword indexable
-    addr &= ((1<<24)-1); // 24 bit address bus
-
     // check if access is to GPIO ports
     if (((addr <= 0x64) && (addr >= 0x62)) // address range check
         && (pak->GPIO.Present && pak->GPIO.ReadEnable))
@@ -59,8 +57,6 @@ void GamePak_ROMWrite(GamePak* pak, u32 addr, u16 val)
     // byte writes are either rejected by the interface, or mirrored? (or only update part of the halfword?)
     // game pak does not have a byte enable signal, so it likely can't support actual byte accesses.
     // word writes are either split into two halfword writes or one of them is ignored?
-    addr /= 2; // ROM is halfword indexable
-    addr &= ((1<<24)-1); // 24 bit address bus
 
     // check if access is to GPIO ports
     if (((addr <= 0x64) && (addr >= 0x62)) // address range check
@@ -115,7 +111,7 @@ void GamePak_FlashCmdSubmit(GamePak* pak, const u16 addr, const u8 val)
     {
     case GPFCmdProg_Begin:
     {
-        if ((addr == 0x5555))
+        if (addr == 0x5555)
         {
             if (val == 0xAA)
             {
@@ -276,4 +272,282 @@ void GamePak_SRAMWrite(GamePak* pak, const u16 addr, const u8 val)
         break;
     }
     }
+}
+
+#define romsel (pak->ROM_CSel)
+#define ramsel (pak->RAM_CSel)
+#define readsel (pak->Read_Sel)
+#define writesel (pak->Write_Sel)
+void GamePak_Step(BusGamePak* bus, GamePak* pak)
+{
+    if (!pak->Inserted) return;
+    // toggle rom chipselect
+    if (pak->ROM_CSel != bus->ROM_CSel)
+    {
+        pak->ROM_CSel = bus->ROM_CSel;
+
+        if (romsel) // TODO: what the hell happens to the high address lanes, since those aren't reused for data out?
+            pak->LatchedAddr_Full = bus->Addr_Full;
+    }
+
+    // toggle ram chipselect
+    if (pak->RAM_CSel != bus->RAM_CSel)
+    {
+        pak->RAM_CSel = bus->RAM_CSel;
+    }
+
+    if (ramsel && romsel)
+        LogPrint(LOG_PAK|LOG_UNIMP, "GAMEPAK: RAM AND ROM CHIPSEL BOTH ACTIVE; EXPLODE???\n");
+
+    bool stepaddr;
+    if (pak->Read_Sel != bus->Read_Sel)
+    {
+        pak->Read_Sel = bus->Read_Sel;
+
+        if (readsel)
+        {
+            if (romsel)      bus->ROM_Data = GamePak_ROMRead(pak, pak->LatchedAddr_Full);
+            else if (ramsel) bus->RAM_Data = GamePak_SRAMRead(pak, bus->Addr_Lo);
+            else             LogPrint(LOG_PAK|LOG_UNIMP, "GAMEPAK: READ SIGNALED BUT NO CHIP SELECT HELD.\n");
+        }
+        else stepaddr = true;
+    }
+
+    if (pak->Write_Sel != bus->Write_Sel)
+    {
+        pak->Write_Sel = bus->Write_Sel;
+
+        if (writesel)
+        {
+            if (romsel)      GamePak_ROMWrite(pak, pak->LatchedAddr_Full, bus->ROM_Data);
+            else if (ramsel) GamePak_SRAMWrite(pak, bus->Addr_Lo, bus->RAM_Data);
+            else             LogPrint(LOG_PAK|LOG_UNIMP, "GAMEPAK: WRITE SIGNALED BUT NO CHIP SELECT HELD.\n");
+        }
+        else stepaddr = true;
+    }
+
+    if ((readsel || writesel) && !(romsel || ramsel))
+        LogPrint(LOG_PAK|LOG_UNIMP, "GAMEPAK: A DATA REQ ACTIVE BUT NO CHIP SELECT HELD; EXPLODE???\n");
+    if (readsel && writesel)
+        LogPrint(LOG_PAK|LOG_UNIMP, "GAMEPAK: READ AND WRITE SEL BOTH ACTIVE; EXPLODE???\n");
+
+    // this does not step the upper address
+    if (stepaddr) pak->LatchedAddr_Lo = (pak->LatchedAddr_Lo + 1) & 0xFFFF;
+}
+
+void GamePakBus_ROMHandler(Console* sys, timestamp now, bool a9)
+{
+    const u8 ns  = GamePak_NTRWaitStates[0][a9 ? sys->ExtMemCR_9.GBAROMTimingsNS  : sys->ExtMemCR_7.GBAROMTimingsNS];
+    const u8 seq = GamePak_NTRWaitStates[1][a9 ? sys->ExtMemCR_9.GBAROMTimingsSeq : sys->ExtMemCR_7.GBAROMTimingsSeq];
+    BusReq* req = (a9 ? &sys->Bus9.PipeFIFO[sys->Bus9.ReqActivePtr] : &sys->Bus7.PipeFIFO[sys->Bus7.ReqActivePtr]);
+    BusGamePak* bus = &sys->BusGP;
+    GamePak* pak = &sys->GamePak;
+
+    u32 rdata = 0;
+    if (a9 == sys->ExtMemCR_Shared.GBAPakA7Access) // unmapped
+    {
+        failure:
+        now += DSClk33(0);
+    }
+    else
+    {
+        // checkme: does the gamepak interface support 32 bit writes?
+        // i would assume so because of the ram cart addons, but that's not a guarantee.
+        u32 addr = (req->Addr & (~req->Size /* dumb way to align addr for words */)) >> 1; // 16 bit addressable
+
+        if (!(addr & 0xFFFF)) // 128 KiB boundaries are enforced by the gamepak interface
+            bus->ROMBurst = false;
+
+        if (req->Write)
+        {
+            if (req->Size == HSIZE_8) // byte writes are not permitted (nds only?)
+                goto failure;
+
+            for (int i = 0; i < req->Size; i++) // 32 bit is 2, 16 bit is 1; it just works:tm:
+            {
+                u16 wrdata = ROR32(req->WrData, (addr&2)*8) & 0xFFFF;
+
+                if (!bus->ROMBurst) // nseq
+                {
+                    // pull cs hi (in case it was low before?)
+                    // note: im not sure if anything on the arm7 bus can realistically trigger two ns cycles back to back
+                    // speculation: the lack of time to pull cs high could be why dma does weird shit to game pak?
+                    // ie. fixed/decrementing bursts / rom -> rom transfers
+                    // ...probably not that sounds like a really stupid problem to have and not fix
+                    // unless they just didn't give a shit, which is possible...
+                    bus->ROM_CSel = false;
+                    GamePak_Step(bus, pak);
+                    // pull cs lo (latch addr?)
+                    bus->Addr_Full = addr;
+                    bus->ROM_CSel = true;
+                    GamePak_Step(bus, pak);
+                    // pull wr low (start write?)
+                    bus->ROM_Data = wrdata;
+                    bus->Write_Sel = true;
+                    GamePak_Step(bus, pak);
+                    // pull wr high (incr addr?)
+                    bus->Write_Sel = false;
+                    GamePak_Step(bus, pak);
+
+                    now += DSClk33(ns);
+                }
+                else
+                {
+                    // pull wr low (start write?)
+                    bus->ROM_Data = wrdata;
+                    bus->Write_Sel = true;
+                    GamePak_Step(bus, pak);
+                    // pull wr high (incr addr?)
+                    bus->Write_Sel = false;
+                    GamePak_Step(bus, pak);
+
+                    now += DSClk33(seq);
+                }
+            }
+        }
+        else
+        {
+            for (int i = 0; i < req->Size; i++) // 32 bit is 2, 16 bit is 1; it just works:tm:
+            {
+                if (!bus->ROMBurst) // nseq
+                {
+                    // pull cs hi (in case it was low before?)
+                    // note: im not sure if anything on the arm7 bus can realistically trigger two ns cycles back to back
+                    // speculation: the lack of time to pull cs high could be why dma does weird shit to game pak?
+                    // ie. fixed/decrementing bursts / rom -> rom transfers
+                    // ...probably not that sounds like a really stupid problem to have and not fix
+                    // unless they just didn't give a shit, which is possible...
+                    bus->ROM_CSel = false;
+                    GamePak_Step(bus, pak);
+                    // pull cs lo (latch addr?)
+                    bus->Addr_Full = addr;
+                    bus->ROM_CSel = true;
+                    GamePak_Step(bus, pak);
+                    // pull rd low (start read?)
+                    bus->Read_Sel = true;
+                    GamePak_Step(bus, pak);
+                    // pull rd high (incr addr?)
+                    bus->Read_Sel = false;
+                    GamePak_Step(bus, pak);
+                    // read data off bus
+                    rdata |= bus->ROM_Data;
+                    rdata = ROR32(rdata, 16); // this results in data being in the right lanes for 32 bit loads
+
+                    now += DSClk33(ns);
+                }
+                else
+                {
+                    // pull rd low (start read?)
+                    bus->Read_Sel = true;
+                    GamePak_Step(bus, pak);
+                    // pull rd high (incr addr?)
+                    bus->Read_Sel = false;
+                    GamePak_Step(bus, pak);
+                    // read data off bus
+                    rdata |= bus->ROM_Data;
+                    rdata = ROR32(rdata, 16); // this results in data being in the right lanes for 32 bit loads
+
+                    now += DSClk33(seq);
+                }
+            }
+            if (req->Size != HSIZE_32)
+                rdata |= rdata >> 16; // rdata is in the high portion after earlier rotate
+        }
+    }
+    Bus_TransferPostSetup(sys, rdata, !req->Write, now, false, a9);
+}
+
+void GamePakBus_RAMRead(Console* sys, u32* rdata, timestamp* now, const u32 addr, const AHB_HSIZE size, const bool a9)
+{
+    // note: 8 bit bus, only supports byte reads, does not ignore low bits of address for larger accesses.
+    if (a9 != sys->ExtMemCR_Shared.GBAPakA7Access)
+    {
+        if (size != HSIZE_8) LogPrint((a9 ? LOG_ARM9 : LOG_ARM7)|LOG_ODD|LOG_PAK, "NTR_Bus%"PRIu8": %"PRIu32" bit read from GBA Game Pak SRAM, width > 8 bit are weird, probably not correct?\n", 7+(a9*2), 8<<size);
+        *now += DSClk33(0); // TODO
+        *rdata = GamePak_SRAMRead(&sys->GamePak, addr);
+    }
+    else // unmapped
+    {
+        *now += DSClk33(0); // checkme: should this use configured waitstates?
+        *rdata = 0; // always returns 0
+    }
+    *rdata = *rdata | (*rdata << 8) | (*rdata << 16) | (*rdata << 24); // byte is mirrored across all bus lanes.
+}
+void GamePakBus_RAMWrite(Console* sys, const u32 wrdata, timestamp* now, const u32 addr, const AHB_HSIZE size [[maybe_unused]], const bool a9)
+{
+    if (a9 != sys->ExtMemCR_Shared.GBAPakA7Access)
+    {
+        //if (size != HSIZE_8) LogPrint((a9 ? LOG_ARM9 : LOG_ARM7)|LOG_ODD|LOG_PAK, "NTR_Bus%"PRIu8": %"PRIu32" bit write to GBA Game Pak SRAM, width > 8 bit are weird, probably not correct?\n", 7+(a9*2), 8<<size);
+        *now += DSClk33(0); // TODO
+        GamePak_SRAMWrite(&sys->GamePak, addr, ROR32(wrdata, 8*addr) /* select proper byte lanes */); // CHECKME
+    }
+    else *now += DSClk33(0); // unmapped; checkme: should this use configured waitstates?
+}
+
+void GamePakBus_RAMHandler(Console* sys, timestamp now, bool a9)
+{
+    const u8 ns = GamePak_NTRWaitStates[0][a9 ? sys->ExtMemCR_9.GBARAMTimings : sys->ExtMemCR_7.GBARAMTimings];
+    BusReq* req = (a9 ? &sys->Bus9.PipeFIFO[sys->Bus9.ReqActivePtr] : &sys->Bus7.PipeFIFO[sys->Bus7.ReqActivePtr]);
+    BusGamePak* bus = &sys->BusGP;
+    GamePak* pak = &sys->GamePak;
+
+    u32 rdata;
+
+    // note: 8 bit bus, only supports byte r/w, does not ignore low bits of address for larger accesses.
+    if (a9 == sys->ExtMemCR_Shared.GBAPakA7Access)
+    {
+        failure:
+        now += DSClk33(0);
+        rdata = 0;
+    }
+    else
+    {
+        u32 addr = req->Addr & 0xFFFF; // byte addressable
+
+        if (req->Write)
+        {
+            if (req->Size != HSIZE_8) // only byte writes are permitted (nds only)
+                goto failure;
+
+            u8 wrdata = ROR32(req->WrData, (addr&3)*8) & 0xFF;
+
+            // pull cs lo (sample addr?)
+            bus->Addr_Lo = addr;
+            bus->RAM_Data = wrdata;
+            bus->RAM_CSel = true;
+            GamePak_Step(bus, pak);
+            // pull wr low (sample data?)
+            bus->Write_Sel = true;
+            GamePak_Step(bus, pak);
+            // pull wr high (???)
+            bus->Write_Sel = false;
+            GamePak_Step(bus, pak);
+            // pull cs hi (complete access ???)
+            bus->RAM_CSel = false;
+            GamePak_Step(bus, pak);
+
+            rdata = 0;
+        }
+        else
+        {
+            // pull cs lo (sample addr?)
+            bus->Addr_Lo = addr;
+            bus->RAM_CSel = true;
+            GamePak_Step(bus, pak);
+            // pull rd low (sample data?)
+            bus->Read_Sel = true;
+            GamePak_Step(bus, pak);
+            // pull rd high (???)
+            bus->Read_Sel = false;
+            GamePak_Step(bus, pak);
+            // pull cs hi (complete access ???)
+            bus->RAM_CSel = false;
+            GamePak_Step(bus, pak);
+            // read data off bus
+            rdata = bus->ROM_Data;
+            rdata |= (rdata << 8) | (rdata << 16) | (rdata << 24); // mirror across all lanes
+        }
+        now += DSClk33(ns);
+    }
+    Bus_TransferPostSetup(sys, rdata, !req->Write, now, false, a9);
 }

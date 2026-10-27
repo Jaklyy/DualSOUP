@@ -517,67 +517,6 @@ void Bus_VRAM(Console* sys, u32* rdata, timestamp* now, u32 addr, const BusReq* 
     }
 }
 
-void GamePakBus_ROMRead(Console* sys, u32* rdata, timestamp* now, const u32 addr, const AHB_HSIZE size, const bool a9)
-{
-    if (a9 != sys->ExtMemCR_Shared.GBAPakA7Access)
-    {
-        *now += DSClk33(0); // TODO
-        if (size == HSIZE_32)
-        {
-            *rdata = GamePak_ROMRead(&sys->GamePak, addr & ~3);
-            *rdata |= GamePak_ROMRead(&sys->GamePak, (addr & ~3) | 2) << 16;
-        }
-        else
-        {
-            *rdata = GamePak_ROMRead(&sys->GamePak, addr);
-            *rdata |= *rdata << 16;
-        }
-    }
-    else // unmapped
-    {
-        *now += DSClk33(0); // checkme: should this use configured waitstates?
-        *rdata = 0;
-    }
-}
-void GamePakBus_ROMWrite(Console* sys, const u32 wrdata, timestamp* now, const u32 addr, const AHB_HSIZE size, const bool a9)
-{
-    if (a9 != sys->ExtMemCR_Shared.GBAPakA7Access)
-    {
-        *now += DSClk33(0); // TODO
-        GamePak_ROMWrite(&sys->GamePak, addr, wrdata);
-        if (size == HSIZE_32) // TODO: how does this actually work?
-            GamePak_ROMWrite(&sys->GamePak, addr+2, wrdata);
-    }
-    else *now += DSClk33(0); // unmapped; checkme: should this use configured waitstates?
-}
-
-void GamePakBus_RAMRead(Console* sys, u32* rdata, timestamp* now, const u32 addr, const AHB_HSIZE size, const bool a9)
-{
-    // note: 8 bit bus, only supports byte reads, does not ignore low bits of address for larger accesses.
-    if (a9 != sys->ExtMemCR_Shared.GBAPakA7Access)
-    {
-        if (size != HSIZE_8) LogPrint((a9 ? LOG_ARM9 : LOG_ARM7)|LOG_ODD|LOG_PAK, "NTR_Bus%"PRIu8": %"PRIu32" bit read from GBA Game Pak SRAM, width > 8 bit are weird, probably not correct?\n", 7+(a9*2), 8<<size);
-        *now += DSClk33(0); // TODO
-        *rdata = GamePak_SRAMRead(&sys->GamePak, addr);
-    }
-    else // unmapped
-    {
-        *now += DSClk33(0); // checkme: should this use configured waitstates?
-        *rdata = 0; // always returns 0
-    }
-    *rdata = *rdata | (*rdata << 8) | (*rdata << 16) | (*rdata << 24); // byte is mirrored across all bus lanes.
-}
-void GamePakBus_RAMWrite(Console* sys, const u32 wrdata, timestamp* now, const u32 addr, const AHB_HSIZE size [[maybe_unused]], const bool a9)
-{
-    if (a9 != sys->ExtMemCR_Shared.GBAPakA7Access)
-    {
-        //if (size != HSIZE_8) LogPrint((a9 ? LOG_ARM9 : LOG_ARM7)|LOG_ODD|LOG_PAK, "NTR_Bus%"PRIu8": %"PRIu32" bit write to GBA Game Pak SRAM, width > 8 bit are weird, probably not correct?\n", 7+(a9*2), 8<<size);
-        *now += DSClk33(0); // TODO
-        GamePak_SRAMWrite(&sys->GamePak, addr, ROR32(wrdata, 8*addr) /* select proper byte lanes */); // CHECKME
-    }
-    else *now += DSClk33(0); // unmapped; checkme: should this use configured waitstates?
-}
-
 u32 Bus9_DebugRead(Console* sys, u32 addr)
 {
     switch(addr >> 24)
@@ -710,10 +649,10 @@ void Bus9_Read(Console* sys, BusReq* req, timestamp now)
         break;
 
     case 0x08 ... 0x09: // GBA Game Pak ROM
-        GamePakBus_ROMRead(sys, &rdata, &now, addr, size, true); break;
+        return GamePakBus_ROMHandler(sys, now, true);
 
     case 0x0A: // GBA Game Pak SRAM
-        GamePakBus_RAMRead(sys, &rdata, &now, addr, size, true); break;
+        return GamePakBus_RAMHandler(sys, now, true);
 
     case 0xFF: // NDS BIOS
         if ((addr & 0xFFFFF000) == 0xFFFF0000)
@@ -829,10 +768,10 @@ void Bus9_Write(Console* sys, BusReq* req, timestamp now)
         break;
 
     case 0x08 ... 0x09: // GBA Game Pak ROM
-        GamePakBus_ROMWrite(sys, wrdata, &now, addr, size, true); break;
+        return GamePakBus_ROMHandler(sys, now, true);
 
     case 0x0A: // GBA Game Pak SRAM
-        GamePakBus_RAMWrite(sys, wrdata, &now, addr, size, true); break;
+        return GamePakBus_RAMHandler(sys, now, true);
 
     default: // Unmapped Device;
         LogPrint(LOG_ODD|LOG_ARM9,"NTR_AHB9: %"PRIu32" bit write to unmapped memory at 0x%08"PRIX32"? Something went wrong?\n", width, addr);
@@ -919,10 +858,10 @@ void Bus7_Read(Console* sys, BusReq* req, timestamp now)
         Bus_VRAM(sys, &rdata, &now, addr, req, false); break;
 
     case 0x080 ... 0x098: // GBA Game Pak ROM
-        GamePakBus_ROMRead(sys, &rdata, &now, addr, size, false); break;
+        return GamePakBus_ROMHandler(sys, now, false);
 
     case 0x0A0 ... 0x0A8: // GBA Game Pak SRAM
-        GamePakBus_RAMRead(sys, &rdata, &now, addr, size, false); break;
+        return GamePakBus_RAMHandler(sys, now, false);
     }
 
     Bus_TransferPostSetup(sys, rdata, true, now, false, false);
@@ -974,10 +913,10 @@ void Bus7_Write(Console* sys, BusReq* req, timestamp now)
         Bus_VRAM(sys, nullptr, &now, addr, req, false); break;
 
     case 0x080 ... 0x098: // GBA Game Pak ROM
-        GamePakBus_ROMWrite(sys, wrdata, &now, addr, size, false); break;
+        return GamePakBus_ROMHandler(sys, now, false);
 
     case 0x0A0 ... 0x0A8: // GBA Game Pak SRAM
-        GamePakBus_RAMWrite(sys, wrdata, &now, addr, size, false); break;
+        return GamePakBus_RAMHandler(sys, now, false);
 
     default: // Unmapped Device;
         LogPrint(LOG_ODD|LOG_ARM7,"NTR_AHB7: %"PRIu32" bit write to unmapped memory at 0x%08"PRIX32"? Something went wrong?\n", width, addr);

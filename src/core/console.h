@@ -306,6 +306,7 @@ typedef struct Console
     BusImpl Bus9;
     BusImpl Bus7;
     BusMainRAM BusMR;
+    BusGamePak BusGP;
     timestamp AHBBusyTS[Dev_Max];
 
     Sched Sched;
