@@ -210,7 +210,6 @@ void GameCard_Cleanup(GameCard* card)
     }
     free(card->SavFolder);
     free(card->ROM);
-    card->ROM = nullptr;
 }
 
 // TODO: reset func?

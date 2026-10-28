@@ -931,7 +931,7 @@ void Bus9_KillBursts(Console* sys, const timestamp now)
     if (sys->BusMR.CurReq == MainRAM_A9)
         MainRAM_KillBurst(sys, now);
 
-    // TODO: kill gba rom/ram chipsel
+    GamePakBus_KillBurst(sys, now, true);
 }
 
 void Bus9_Idle(Console* sys, const timestamp now)
@@ -952,7 +952,7 @@ void Bus7_KillBursts(Console* sys, const timestamp now)
     if (sys->BusMR.CurReq == MainRAM_A7)
         MainRAM_KillBurst(sys, now);
 
-    // TODO: kill gba rom/ram chipsel
+    GamePakBus_KillBurst(sys, now, false);
 }
 
 void Bus7_Idle(Console* sys, const timestamp now)

@@ -277,6 +277,7 @@ typedef struct
     char* FolderPath;
     struct {
         char* Bios7;
+        GamePakCfg GamePak;
     } AGB; // AGB+ (excl. TWL)
     struct {
         char* Bios7;

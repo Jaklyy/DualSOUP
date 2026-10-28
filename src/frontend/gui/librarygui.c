@@ -51,6 +51,15 @@ typedef struct LibGui_EnumPass
     int* LibNum;
 } LibGui_EnumPass;
 
+static const ConfigEntry LibraryLookupCfgData[] =
+{
+    {
+        .Name=      "FriendlyName",
+        .Offset=    0,
+        .Type=      SEARCH_STRING,
+    },
+};
+
 SDL_EnumerationResult SDLCALL LibraryGui_EnumerateLoop(void* userdata, const char* dirname [[maybe_unused]], const char* fname)
 {
     LibGui_EnumPass* pass = userdata;
@@ -72,30 +81,8 @@ SDL_EnumerationResult SDLCALL LibraryGui_EnumerateLoop(void* userdata, const cha
     if (!SDL_GetPathInfo(cfg, &info) || (info.type != SDL_PATHTYPE_FILE))
         return SDL_ENUM_CONTINUE;
 
-    switch(pass->Type)
-    {
-    case LibType_Sys:
-    {
-        GameCardCfg cfgtmp = {};
-        Config_Load(cfg, &cfgtmp, GameCardCfgData, countof(GameCardCfgData), NULL, NULL);
-        pass->LibPaths[*pass->LibNum] = strdup(folder);
-        pass->LibNames[*pass->LibNum] = strdup(cfgtmp.FriendlyName);
-        break;
-    }
-    case LibType_NDS:
-    {
-        CoreCfg cfgtmp = {};
-        Config_Load(cfg, &cfgtmp, CoreCfgData, countof(CoreCfgData), NULL, NULL);
-        pass->LibPaths[*pass->LibNum] = strdup(folder);
-        pass->LibNames[*pass->LibNum] = strdup(cfgtmp.FriendlyName);
-        break;
-    }
-    case LibType_GBA:
-    {
-        printf("GRAOOWWWWWWWWW\n");
-        break;
-    }
-    }
+    Config_Load(cfg, &pass->LibNames[*pass->LibNum], LibraryLookupCfgData, countof(LibraryLookupCfgData), NULL, NULL);
+    pass->LibPaths[*pass->LibNum] = strdup(folder);
 
     if (strcmp(pass->LibPaths[*pass->LibNum], pass->Sel) == 0)
     {
@@ -129,7 +116,7 @@ SDL_EnumerationResult SDLCALL LibraryGui_EnumerateLoop(void* userdata, const cha
 
 void LibraryGui_InitList(MainGUI* mgui, MainCfg* mcfg)
 {
-    for (int i = 0; i < LibType_GBA/*LibType_MAX*/; i++)
+    for (int i = 0; i < LibType_MAX; i++)
     {
         const char* folder[] = {
             [LibType_Sys]=ConsoleFolder,
@@ -180,6 +167,19 @@ void LibraryGui_Boot(MainGUI* mgui, MainCfg* mcfg)
         mcfg->CoreCfg.NTR.GameCard.FolderPath = strdup(path);
     }
     else mcfg->CoreCfg.NTR.GameCard.ROMBusType = GameCard_ROMBus_Ejected;
+
+    if (mcfg->GuiCfg.LibrarySel[LibType_GBA][0] != '\0')
+    {
+        const char* path = mcfg->GuiCfg.LibrarySel[LibType_GBA];
+        char souppath[strlen(path)+sizeof(DSCfgName)];
+        strcpy(souppath, path);
+        strcat(souppath, DSCfgName);
+        Config_Load(souppath, &mcfg->CoreCfg.AGB.GamePak, GamePakCfgData, countof(GamePakCfgData), nullptr, nullptr);
+        mcfg->CoreCfg.AGB.GamePak.FolderPath = strdup(path);
+
+        mcfg->CoreCfg.AGB.GamePak.Inserted = true;
+    }
+    else mcfg->CoreCfg.AGB.GamePak.Inserted = false;
 
     {
         const char* path = mcfg->GuiCfg.LibrarySel[LibType_Sys];
@@ -272,7 +272,7 @@ void LibraryRender(MainGUI* mgui, MainCfg* mcfg, const bool active, const LibGui
                     {
                     case LibType_Sys: SysImportGui_Toggle(mgui, mgui->Libs[type].Paths[cur]); break;
                     case LibType_NDS: NDSImportGui_Toggle(mgui, mgui->Libs[type].Paths[cur]); break;
-                    case LibType_GBA: CrashSpectacularly("GBAAAAAAA\n");
+                    case LibType_GBA: GBAImportGui_Toggle(mgui, mgui->Libs[type].Paths[cur]); break;
                     }
                 }
                 ImGui_TableNextColumn();
@@ -346,26 +346,25 @@ void LibraryGui_Loop(MainGUI* mgui, MainCfg* mcfg, const bool active)
             mgui->NDSOpen = false;
         }
 
-        ImGui_BeginDisabled(true);
         {
-            #if 0
-            size_t len = strlen(mgui->LibrarySelName[LibType_GBA]);
-            char str[sizeof("GBA Slot: ###GBA Slot")+len];
-            char* neostr = str;
-            memcpy(neostr, "GBA Slot: ", sizeof("GBA Slot: ")-1);
-            neostr += sizeof("GBA Slot: ");
-            memcpy(neostr, mgui->LibrarySelName[LibType_GBA], len);
-            neostr += len+1;
-            memcpy(neostr, "###GBA Slot", sizeof("###GBA Slot"));
-
+            ImGui_BeginDisabled(mcfg->GuiCfg.LibrarySel[LibType_Sys][0] == '\0');
+            AllocStupidString(GBA Slot, LibType_GBA)
             if (ImGui_BeginTabItem(str, NULL, 0))
             {
-                if (ImGui_Button("Import GBA")) mgui->GBAImportGui.Show = !mgui->GBAImportGui.Show;
+                if (ImGui_Button("Import GBA")) GBAImportGui_Toggle(mgui, nullptr);
+                ImGui_SameLine();
+                if (ImGui_Button("Pull Pak"))
+                {
+                    free(mcfg->GuiCfg.LibrarySel[LibType_GBA]);
+                    mcfg->GuiCfg.LibrarySel[LibType_GBA] = calloc(1, 1);
+                    free(mgui->LibrarySelName[LibType_GBA]);
+                    mgui->LibrarySelName[LibType_GBA] = strdup(LibEmptyNames[LibType_GBA]);
+                    mcfg->Dirty = true;
+                }
 
-                LibraryRender(mgui, mcfg, LibType_NDS);
+                LibraryRender(mgui, mcfg, active, LibType_GBA);
                 ImGui_EndTabItem();
             }
-            #endif
         }
         ImGui_EndDisabled();
         ImGui_EndTabBar();

@@ -105,6 +105,8 @@ typedef struct
     char* TxtPath;
     bool Show;
     char* EditFolder;
+    bool InitSav;
+
     struct
     {
         char* FriendlyName;
@@ -127,7 +129,6 @@ typedef struct
     bool SRAMDirtyB;
     bool TxtDirtyB;
     bool SavFromFile;
-    bool InitSav;
 } NDSImportGui;
 
 typedef struct
@@ -137,6 +138,8 @@ typedef struct
     bool Show;
     char* EditFolder;
     CoreCfg Cfg;
+    bool InitNvram;
+
     struct
     {
         u8 NvramSize;
@@ -146,12 +149,22 @@ typedef struct
     bool NvramDirty;
     bool NTR7Dirty;
     bool NTR9Dirty;
-    bool InitNvram;
 } SysImportGui;
 
 typedef struct
 {
+    SDL_Mutex* Mutex;
+    char* SRAMPath;
     bool Show;
+    char* EditFolder;
+    GamePakCfg Cfg;
+    bool InitSav;
+
+    bool ROMDirty;
+    bool ROMDirtyB;
+    bool SRAMDirty;
+    bool SRAMDirtyB;
+    bool SavFromFile;
 } GBAImportGui;
 
 typedef enum : u8
@@ -167,7 +180,7 @@ constexpr char LibEmptyNames[LibType_MAX][8] =
 {
 [LibType_Sys] = "None",
 [LibType_NDS] = "Ejected",
-[LibType_GBA] = "Ejected",
+[LibType_GBA] = "Empty",
 };
 
 typedef struct

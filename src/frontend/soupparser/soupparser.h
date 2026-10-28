@@ -94,7 +94,7 @@ static const ConfigEntry GameCardCfgData[] =
         .SDefVal=   20,
         .SMinVal=   20,
         .SMaxVal=   32, // standard card protocol doesn't support >32 bit addresses
-        .Type=      SEARCH_S8DEC,
+        .Type=      SEARCH_U8DEC,
     },
     {
         .Name=      "ROMPaddingByte", // TODO: consider allowing multi-byte patterns?
@@ -175,6 +175,80 @@ static const ConfigEntry GameCardCfgData[] =
     {
         .Name=      "FriendlyName",
         .Offset=    offsetof(GameCardCfg, FriendlyName),
+        .Type=      SEARCH_STRING,
+    },
+};
+
+static const ConfigEntry GamePakCfgData[] =
+{
+    {
+        .Name=      "ROMPath",
+        .Offset=    offsetof(GamePakCfg, ROMPath),
+        .Type=      SEARCH_STRING,
+    },
+    {
+        .Name=      "ROMChipSize",
+        .Offset=    offsetof(GamePakCfg, ROMChipSize),
+        .SDefVal=   20,
+        .SMinVal=   20,
+        .SMaxVal=   25, // TODO: 64 MiB carts
+        .Type=      SEARCH_U8DEC,
+    },
+    {
+        .Name=      "ROMPaddingByte", // TODO: consider allowing multi-byte patterns?
+        .Offset=    offsetof(GamePakCfg, ROMPaddingByte),
+        .UDefVal=   0xFF,
+        .UMinVal=   0,
+        .UMaxVal=   0xFF,
+        .Type=      SEARCH_U8HEX,
+    },
+    {
+        .Name=      "SRAMType",
+        .Offset=    offsetof(GamePakCfg, SRAMType),
+        .EnumNames= (const char*[]){
+            [GamePakSRAM_None]="None",
+            [GamePakSRAM_SRAM]="SRAM",
+            [GamePakSRAM_Flash]="Flash",
+        },
+        .UDefVal=   GamePakSRAM_None,
+        .UMinVal=   0,
+        .UMaxVal=   GamePakSRAM_Max,
+        .Type=      SEARCH_ENUMU8,
+    },
+    {
+        .Name=      "FlashType",
+        .Offset=    offsetof(GamePakCfg, GamePakFlashType),
+        .EnumNames= (const char*[]){
+            [GamePakFlash_Atmel]="Atmel",
+            [GamePakFlash_SST]="SST",
+            [GamePakFlash_Panasonic]="Panasonic",
+            [GamePakFlash_Macronix]="Macronix",
+            [GamePakFlash_Sanyo]="Sanyo",
+        },
+        .UDefVal=   GamePakFlash_Macronix,
+        .UMinVal=   0,
+        .UMaxVal=   GamePakFlash_Max,
+        .Type=      SEARCH_ENUMU8,
+    },
+    {
+        .Name=      "SRAMChipSize",
+        .Offset=    offsetof(GamePakCfg, SRAMChipSize),
+        .UDefVal=   9,
+        .UMinVal=   9,
+        .UMaxVal=   17, // idk
+        .Type=      SEARCH_U8DEC,
+    },
+    {
+        .Name=      "FlashChipID",
+        .Offset=    offsetof(GamePakCfg, FlashChipID),
+        .UDefVal=   0x0000,
+        .UMinVal=   0x0000,
+        .UMaxVal=   0xFFFF,
+        .Type=      SEARCH_U16HEX,
+    },
+    {
+        .Name=      "FriendlyName",
+        .Offset=    offsetof(GamePakCfg, FriendlyName),
         .Type=      SEARCH_STRING,
     },
 };
@@ -456,3 +530,4 @@ static const ConfigEntry MainCfgData[] =
 
 void Config_Write(const char* path, void* cfgin, const ConfigEntry* cfgref, const size_t cfgnum, bool* dirtyflag, SDL_Mutex* mutex);
 void Config_Load(const char* path, void* cfgout, const ConfigEntry* cfgref, const size_t cfgnum, bool* dirtyflag, SDL_Mutex** mutex);
+void Config_Free(void* cfgin, const ConfigEntry* cfgref, const size_t cfgnum);

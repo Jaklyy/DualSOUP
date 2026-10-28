@@ -345,3 +345,22 @@ void Config_Load(const char* path, void* cfgout, const ConfigEntry* cfgref, cons
 
     if (cfgdat != NULL) free(cfgdat);
 }
+
+void Config_Free(void* cfgin, const ConfigEntry* cfgref, const size_t cfgnum)
+{
+    pun pun = {.cfg = cfgin};
+    for (size_t i = 0; i < cfgnum; i++)
+    {
+        const ConfigEntry entry = cfgref[i];
+        switch(entry.Type)
+        {
+        case SEARCH_STRING:
+        {
+            char** str = &pun.str[entry.Offset/sizeof(pun.str[0])];
+            if (*str != NULL) free(*str);
+            break;
+        }
+        default: break;
+        }
+    }
+}

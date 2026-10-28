@@ -70,12 +70,14 @@ MainGUI MainGUI_Init(MainCfg* mcfg)
     cImGui_ImplSDL3_InitForSDLRenderer(mgui.Win, mgui.Ren);
     cImGui_ImplSDLRenderer3_Init(mgui.Ren);
 
+    mgui.GBAImportGui.SRAMPath = calloc(1, 1);
+    mgui.GBAImportGui.Mutex = SDL_CreateMutex();
+
     mgui.NDSImportGui.SRAMPath = calloc(1, 1);
     mgui.NDSImportGui.TxtPath = calloc(1, 1);
     mgui.NDSImportGui.Mutex = SDL_CreateMutex();
 
     mgui.SysImportGui.NvramPath = calloc(1,1);
-    mgui.SysImportGui.Mutex = SDL_CreateMutex();
     mgui.SysImportGui.Mutex = SDL_CreateMutex();
 
     for (int i = 0; i < GUI_LibMax; i++)
@@ -162,6 +164,7 @@ void MainGUI_Loop(Console* sys, MailBox* mailbox, MainGUI* mgui, MainCfg* mcfg, 
     DebugGUI_Loop(mailbox, mgui, sys);
     SysImportGui_Loop(mgui, mcfg);
     NDSImportGui_Loop(mgui, mcfg);
+    GBAImportGui_Loop(mgui, mcfg);
     if (mgui->DemoDisplay) ImGui_ShowDemoWindow(&mgui->DemoDisplay);
 
     if (active)

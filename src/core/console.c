@@ -130,6 +130,7 @@ bool Console_ReadFile(u8* buf, const char* path, const size_t num, const char* n
 void Console_SaveFiles(Console* sys, bool force)
 {
     char* const cardsram = sys->GameCard.SavFolder;
+    char* const paksram = sys->GamePak.SavFolder;
     char* const wifinvram = sys->WiFiNVRAMFolder;
     if (cardsram && cardsram[0] != '\0')
     {
@@ -137,9 +138,23 @@ void Console_SaveFiles(Console* sys, bool force)
         u64 size;
         if (GameCardSPI_FlushToDisk(&sys->GameCard, &buf, &size, force))
         {
-            printf("SRAM Flushed\n");
+            printf("Card SRAM Flushed\n");
             char path[strlen(cardsram)+sizeof(DSSavFile)];
             strcpy(path, cardsram);
+            strcat(path, DSSavFile);
+            SDL_SaveFile(path, buf, size);
+        }
+    }
+
+    if (paksram && paksram[0] != '\0')
+    {
+        u8* buf;
+        u64 size;
+        if (GamePakSRAM_FlushToDisk(&sys->GamePak, &buf, &size, force))
+        {
+            printf("Pak SRAM Flushed\n");
+            char path[strlen(paksram)+sizeof(DSSavFile)];
+            strcpy(path, paksram);
             strcat(path, DSSavFile);
             SDL_SaveFile(path, buf, size);
         }
@@ -295,7 +310,8 @@ Console* Console_Init(Console* sys, CoreCfg* cfg, void* aud)
     if (!GameCard_Init(&sys->GameCard, &cfg->NTR.GameCard, sys->NTRBios7.b8)) goto fail;
     cleanup++;
 
-    GamePak_Init(&sys->GamePak);
+    if (!GamePak_Init(&sys->GamePak, &cfg->AGB.GamePak)) goto fail;
+    cleanup++;
 
     SDL_LockMutex(sys->FrameBufferMutex[sys->BackBuf]);
 
@@ -365,6 +381,7 @@ Console* Console_Init(Console* sys, CoreCfg* cfg, void* aud)
     switch (cleanup)
     {
         default: LogPrint(LOG_ALWAYS, "UNHANDLED CLEANUP SWITCH\n"); [[fallthrough]];
+        case 9: GamePak_Cleanup(&sys->GamePak); [[fallthrough]];
         case 8: GameCard_Cleanup(&sys->GameCard); [[fallthrough]];
         case 7: Flash_Cleanup(&sys->Firmware); [[fallthrough]];
 #ifndef SINGLETHREADRASTER

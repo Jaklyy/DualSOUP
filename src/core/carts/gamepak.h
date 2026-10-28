@@ -6,8 +6,9 @@
 typedef enum : u8
 {
     GamePakSRAM_None,
-    GamePakSRAM_Flash,
     GamePakSRAM_SRAM,
+    GamePakSRAM_Flash,
+    GamePakSRAM_Max [[maybe_unused]],
 } GamePakSRAMType;
 
 typedef enum : u8
@@ -17,6 +18,7 @@ typedef enum : u8
     GamePakFlash_Panasonic,
     GamePakFlash_Macronix,
     GamePakFlash_Sanyo,
+    GamePakFlash_Max [[maybe_unused]],
 } GamePakFlashType;
 
 typedef enum : u8
@@ -56,6 +58,26 @@ constexpr timestamp GamePak_NTRWaitStates[2][4] =
 
 typedef struct
 {
+    char* ROMPath;
+    bool Inserted;
+    u8 ROMChipSize;
+    u8 ROMPaddingByte;
+
+    GamePakSRAMType SRAMType;
+    GamePakFlashType GamePakFlashType;
+    u8 SRAMChipSize;
+    union
+    {
+    u16 FlashChipID;
+    int FlashChipID_Int;
+    };
+    char* FolderPath;
+
+    char* FriendlyName;
+} GamePakCfg;
+
+typedef struct
+{
     // state
     union {
         u32 LatchedAddr_Full;
@@ -77,11 +99,14 @@ typedef struct
         bool ReadEnable;
         bool Present;
     } GPIO;
+    bool EEPROMDirty;
+    u64 EEPROMDirtyCycle;
     u32 EEPROMBegin;
     size_t ROMSize;
     size_t EEPROMSize;
     u64* EEPROM;
     u16* ROM;
+    char* SavFolder;
     // sram
 
     // flash
@@ -93,6 +118,8 @@ typedef struct
 
     // generic
     GamePakSRAMType SRAMType;
+    u64 SRAMDirtyCycle;
+    bool SRAMDirty;
     size_t SRAMSize;
     size_t SRAMBankOffs;
     u8* SRAM;
@@ -122,15 +149,19 @@ typedef struct
     bool IRQ_In; // pin 30
     //bool Ground; // pin 31
 
-    bool ROMBurst;
-    bool RAMBurst;
+    bool BurstActive;
 } BusGamePak;
 
 
 typedef struct Console Console;
 
 // handlers for cart hardware
-void GamePak_Init(GamePak* pak);
+bool GamePak_Init(GamePak* pak, GamePakCfg* cfg);
+void GamePak_Cleanup(GamePak* pak);
+bool GamePakSRAM_FlushToDisk(GamePak* pak, u8** outbuf, u64* size, bool force);
+
 void GamePak_Step(BusGamePak* bus, GamePak* pak);
+
+void GamePakBus_KillBurst(Console* sys, timestamp now, bool a9);
 void GamePakBus_ROMHandler(Console* sys, timestamp now, bool a9);
 void GamePakBus_RAMHandler(Console* sys, timestamp now, bool a9);

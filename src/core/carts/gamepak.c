@@ -1,6 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <SDL3/SDL_iostream.h>
+#include <SDL3/SDL_timer.h>
+
 #include "core/utils.h"
 #include "core/console.h"
 #include "gamepak.h"
@@ -8,11 +11,108 @@
 
 
 
-void GamePak_Init(GamePak* pak)
+bool GamePak_Init(GamePak* pak, GamePakCfg* cfg)
 {
-    // TODO: expose config
-    // dummy
+    pak->Inserted = cfg->Inserted;
+    if (!pak->Inserted) return true;
+
+    // INIT ROM
+    size_t romsize = (size_t)1<<cfg->ROMChipSize;
+    pak->ROMSize = romsize >> 1;
+
+    if ((pak->ROM = malloc(romsize)) == NULL)
+    {
+        LogPrint(LOG_ALWAYS, "Malloc failure in pak init\n");
+        return false;
+    }
+    memset(pak->ROM, cfg->ROMPaddingByte, romsize);
+
+    SDL_IOStream* rom;
+    if ((rom = SDL_IOFromFile(cfg->ROMPath, "rb")) == NULL)
+    {
+        LogPrint(LOG_ALWAYS, "Could not open rom: %s\n%s", cfg->ROMPath, SDL_GetError());
+
+        free(pak->ROM);
+        return false;
+    }
+
+    size_t rombytes = SDL_ReadIO(rom, pak->ROM, romsize);
+    if ((rombytes != romsize) && (SDL_GetIOStatus(rom) != SDL_IO_STATUS_EOF))
+        LogPrint(LOG_ALWAYS, "ROM File read error: %s\n", SDL_GetError());
+
+    LogPrint(LOG_ALWAYS, "Read %zu bytes of ROM\n", rombytes);
+
+    if (!SDL_CloseIO(rom))
+        LogPrint(LOG_ALWAYS, "ROM File close error: %s\n", SDL_GetError());
+
+    // INIT RAM
+
+    // TODO: EEPROM
     pak->EEPROMBegin = u32_max;
+
+    // SRAM BUS
+    pak->SRAMType = cfg->SRAMType;
+
+    size_t sramsize = (size_t)1<<cfg->SRAMChipSize;
+    pak->SRAMSize = sramsize;
+    if (cfg->SRAMType != GamePakSRAM_None)
+    {
+        if ((pak->SRAM = malloc(sramsize)) == NULL)
+        {
+            LogPrint(LOG_ALWAYS, "Could not allocate RAM for Game Card SRAM\n");
+            goto fail;
+        }
+        memset(pak->SRAM, 0xFF, sramsize);
+
+        SDL_IOStream* sram;
+        {
+            pak->SavFolder = malloc(strlen(cfg->FolderPath)+sizeof(DSSavFolder));
+            strcpy(pak->SavFolder, cfg->FolderPath);
+            strcat(pak->SavFolder, DSSavFolder);
+
+            char savpath[strlen(pak->SavFolder)+sizeof(DSSavFile)];
+            strcpy(savpath, pak->SavFolder);
+            strcat(savpath, DSSavFile);
+
+            if ((sram = SDL_IOFromFile(savpath, "rb")) == NULL)
+            {
+                LogPrint(LOG_ALWAYS, "Could not open SRAM: %s\n%s", savpath, SDL_GetError());
+
+                free(pak->SRAM);
+                goto fail;
+            }
+        }
+
+        size_t srambytes = SDL_ReadIO(sram, pak->SRAM, sramsize);
+        if ((srambytes != sramsize) && (SDL_GetIOStatus(sram) != SDL_IO_STATUS_EOF))
+            LogPrint(LOG_ALWAYS, "SRAM File read error: %s\n", SDL_GetError());
+
+        LogPrint(LOG_ALWAYS, "Read %zu bytes of SRAM\n", srambytes);
+
+        if (!SDL_CloseIO(sram))
+            LogPrint(LOG_ALWAYS, "SRAM File close error: %s\n", SDL_GetError());
+
+        if (false)
+        {
+            fail:
+            free(pak->ROM);
+            return false;
+        }
+    }
+
+    switch (pak->SRAMType)
+    {
+    case GamePakSRAM_None: break;
+    case GamePakSRAM_SRAM: break;
+    case GamePakSRAM_Flash:
+    {
+        pak->FlashChipID[0] = cfg->FlashChipID & 0xFF;
+        pak->FlashChipID[1] = (cfg->FlashChipID >> 8) & 0xFF;
+        pak->FlashType = cfg->GamePakFlashType;
+        break;
+    }
+    }
+    return true;
 }
 
 u16 GamePak_ROMRead(GamePak* pak, u32 addr)
@@ -49,6 +149,41 @@ u16 GamePak_ROMRead(GamePak* pak, u32 addr)
     }
 
     return pak->ROM[addr];
+}
+
+void GamePakSRAM_SetDirty(GamePak* pak)
+{
+    if (!pak->SRAMDirty)
+    {
+        pak->SRAMDirty = true;
+        pak->SRAMDirtyCycle = SDL_GetPerformanceCounter() + (SDL_GetPerformanceFrequency() * 10);
+    }
+}
+
+bool GamePakSRAM_FlushToDisk(GamePak* pak, u8** outbuf, u64* size, bool force)
+{
+    if (pak->SRAMDirty && (force || (SDL_GetPerformanceCounter() >= pak->SRAMDirtyCycle)))
+    {
+        *outbuf = pak->SRAM;
+        *size = pak->SRAMSize;
+        pak->SRAMDirty = false;
+        return true;
+    }
+    return false;
+}
+
+void GamePak_Cleanup(GamePak* pak)
+{
+    switch(pak->SRAMType)
+    {
+    case GamePakSRAM_None: break;
+    case GamePakSRAM_Flash: 
+    case GamePakSRAM_SRAM:
+        free(pak->SRAM);
+        break;
+    }
+    free(pak->SavFolder);
+    free(pak->ROM);
 }
 
 void GamePak_ROMWrite(GamePak* pak, u32 addr, u16 val)
@@ -187,6 +322,8 @@ void GamePak_FlashCmdSubmit(GamePak* pak, const u16 addr, const u8 val)
                 pak->FlashCmdProg = GPFCmdProg_Begin;
                 // TODO: timings
                 memset(pak->SRAM, 0xFF, pak->SRAMSize);
+
+                GamePakSRAM_SetDirty(pak);
                 return;
             }
             break;
@@ -198,6 +335,8 @@ void GamePak_FlashCmdSubmit(GamePak* pak, const u16 addr, const u8 val)
                 pak->FlashCmdProg = GPFCmdProg_Begin;
                 // TODO: timings
                 memset(&pak->SRAM[addr & 0xF000], 0xFF, KiB(4));
+
+                GamePakSRAM_SetDirty(pak);
                 return;
             }
             break;
@@ -229,12 +368,16 @@ void GamePak_FlashCmdSubmit(GamePak* pak, const u16 addr, const u8 val)
                     pak->FlashCmdProg = GPFCmdProg_Begin;
                 }
                 else pak->FlashCmdProg++;
+
+                GamePakSRAM_SetDirty(pak);
                 return;
             }
             else
             {
                 pak->SRAM[addr] &= val; // functions as a bitwise AND...?
                 pak->FlashCmdProg = GPFCmdProg_Begin;
+
+                GamePakSRAM_SetDirty(pak);
                 return;
             }
         }
@@ -263,6 +406,8 @@ void GamePak_SRAMWrite(GamePak* pak, const u16 addr, const u8 val)
         else
         {
             pak->SRAM[pak->SRAMSize] = val;
+
+            GamePakSRAM_SetDirty(pak);
         }
         break;
     }
@@ -299,7 +444,7 @@ void GamePak_Step(BusGamePak* bus, GamePak* pak)
     if (ramsel && romsel)
         LogPrint(LOG_PAK|LOG_UNIMP, "GAMEPAK: RAM AND ROM CHIPSEL BOTH ACTIVE; EXPLODE???\n");
 
-    bool stepaddr;
+    bool stepaddr = false;
     if (pak->Read_Sel != bus->Read_Sel)
     {
         pak->Read_Sel = bus->Read_Sel;
@@ -310,7 +455,7 @@ void GamePak_Step(BusGamePak* bus, GamePak* pak)
             else if (ramsel) bus->RAM_Data = GamePak_SRAMRead(pak, bus->Addr_Lo);
             else             LogPrint(LOG_PAK|LOG_UNIMP, "GAMEPAK: READ SIGNALED BUT NO CHIP SELECT HELD.\n");
         }
-        else stepaddr = true;
+        else if (romsel) stepaddr = true;
     }
 
     if (pak->Write_Sel != bus->Write_Sel)
@@ -323,7 +468,7 @@ void GamePak_Step(BusGamePak* bus, GamePak* pak)
             else if (ramsel) GamePak_SRAMWrite(pak, bus->Addr_Lo, bus->RAM_Data);
             else             LogPrint(LOG_PAK|LOG_UNIMP, "GAMEPAK: WRITE SIGNALED BUT NO CHIP SELECT HELD.\n");
         }
-        else stepaddr = true;
+        else if (romsel) stepaddr = true;
     }
 
     if ((readsel || writesel) && !(romsel || ramsel))
@@ -333,6 +478,15 @@ void GamePak_Step(BusGamePak* bus, GamePak* pak)
 
     // this does not step the upper address
     if (stepaddr) pak->LatchedAddr_Lo = (pak->LatchedAddr_Lo + 1) & 0xFFFF;
+}
+
+void GamePakBus_KillBurst(Console* sys, timestamp now [[maybe_unused]], bool a9)
+{
+    if (a9 == sys->ExtMemCR_Shared.GBAPakA7Access) return;
+
+    BusGamePak* bus = &sys->BusGP;
+    bus->BurstActive = false;
+    bus->ROM_CSel = false;
 }
 
 void GamePakBus_ROMHandler(Console* sys, timestamp now, bool a9)
@@ -356,7 +510,7 @@ void GamePakBus_ROMHandler(Console* sys, timestamp now, bool a9)
         u32 addr = (req->Addr & (~req->Size /* dumb way to align addr for words */)) >> 1; // 16 bit addressable
 
         if (!(addr & 0xFFFF)) // 128 KiB boundaries are enforced by the gamepak interface
-            bus->ROMBurst = false;
+            bus->BurstActive = false;
 
         if (req->Write)
         {
@@ -367,7 +521,7 @@ void GamePakBus_ROMHandler(Console* sys, timestamp now, bool a9)
             {
                 u16 wrdata = ROR32(req->WrData, (addr&2)*8) & 0xFFFF;
 
-                if (!bus->ROMBurst) // nseq
+                if (!bus->BurstActive) // nseq
                 {
                     // pull cs hi (in case it was low before?)
                     // note: im not sure if anything on the arm7 bus can realistically trigger two ns cycles back to back
@@ -378,7 +532,7 @@ void GamePakBus_ROMHandler(Console* sys, timestamp now, bool a9)
                     bus->ROM_CSel = false;
                     GamePak_Step(bus, pak);
                     // pull cs lo (latch addr?)
-                    bus->Addr_Full = addr;
+                    bus->Addr_Full = addr & 0xFFFFFF;
                     bus->ROM_CSel = true;
                     GamePak_Step(bus, pak);
                     // pull wr low (start write?)
@@ -390,6 +544,7 @@ void GamePakBus_ROMHandler(Console* sys, timestamp now, bool a9)
                     GamePak_Step(bus, pak);
 
                     now += DSClk33(ns);
+                    bus->BurstActive = true;
                 }
                 else
                 {
@@ -407,9 +562,9 @@ void GamePakBus_ROMHandler(Console* sys, timestamp now, bool a9)
         }
         else
         {
-            for (int i = 0; i < req->Size; i++) // 32 bit is 2, 16 bit is 1; it just works:tm:
+            for (int i = 0; i < ((req->Size == HSIZE_32) ? 2 : 1); i++)
             {
-                if (!bus->ROMBurst) // nseq
+                if (!bus->BurstActive) // nseq
                 {
                     // pull cs hi (in case it was low before?)
                     // note: im not sure if anything on the arm7 bus can realistically trigger two ns cycles back to back
@@ -420,7 +575,7 @@ void GamePakBus_ROMHandler(Console* sys, timestamp now, bool a9)
                     bus->ROM_CSel = false;
                     GamePak_Step(bus, pak);
                     // pull cs lo (latch addr?)
-                    bus->Addr_Full = addr;
+                    bus->Addr_Full = addr & 0xFFFFFF;
                     bus->ROM_CSel = true;
                     GamePak_Step(bus, pak);
                     // pull rd low (start read?)
@@ -434,6 +589,8 @@ void GamePakBus_ROMHandler(Console* sys, timestamp now, bool a9)
                     rdata = ROR32(rdata, 16); // this results in data being in the right lanes for 32 bit loads
 
                     now += DSClk33(ns);
+
+                    bus->BurstActive = true;
                 }
                 else
                 {
@@ -457,33 +614,6 @@ void GamePakBus_ROMHandler(Console* sys, timestamp now, bool a9)
     Bus_TransferPostSetup(sys, rdata, !req->Write, now, false, a9);
 }
 
-void GamePakBus_RAMRead(Console* sys, u32* rdata, timestamp* now, const u32 addr, const AHB_HSIZE size, const bool a9)
-{
-    // note: 8 bit bus, only supports byte reads, does not ignore low bits of address for larger accesses.
-    if (a9 != sys->ExtMemCR_Shared.GBAPakA7Access)
-    {
-        if (size != HSIZE_8) LogPrint((a9 ? LOG_ARM9 : LOG_ARM7)|LOG_ODD|LOG_PAK, "NTR_Bus%"PRIu8": %"PRIu32" bit read from GBA Game Pak SRAM, width > 8 bit are weird, probably not correct?\n", 7+(a9*2), 8<<size);
-        *now += DSClk33(0); // TODO
-        *rdata = GamePak_SRAMRead(&sys->GamePak, addr);
-    }
-    else // unmapped
-    {
-        *now += DSClk33(0); // checkme: should this use configured waitstates?
-        *rdata = 0; // always returns 0
-    }
-    *rdata = *rdata | (*rdata << 8) | (*rdata << 16) | (*rdata << 24); // byte is mirrored across all bus lanes.
-}
-void GamePakBus_RAMWrite(Console* sys, const u32 wrdata, timestamp* now, const u32 addr, const AHB_HSIZE size [[maybe_unused]], const bool a9)
-{
-    if (a9 != sys->ExtMemCR_Shared.GBAPakA7Access)
-    {
-        //if (size != HSIZE_8) LogPrint((a9 ? LOG_ARM9 : LOG_ARM7)|LOG_ODD|LOG_PAK, "NTR_Bus%"PRIu8": %"PRIu32" bit write to GBA Game Pak SRAM, width > 8 bit are weird, probably not correct?\n", 7+(a9*2), 8<<size);
-        *now += DSClk33(0); // TODO
-        GamePak_SRAMWrite(&sys->GamePak, addr, ROR32(wrdata, 8*addr) /* select proper byte lanes */); // CHECKME
-    }
-    else *now += DSClk33(0); // unmapped; checkme: should this use configured waitstates?
-}
-
 void GamePakBus_RAMHandler(Console* sys, timestamp now, bool a9)
 {
     const u8 ns = GamePak_NTRWaitStates[0][a9 ? sys->ExtMemCR_9.GBARAMTimings : sys->ExtMemCR_7.GBARAMTimings];
@@ -491,14 +621,13 @@ void GamePakBus_RAMHandler(Console* sys, timestamp now, bool a9)
     BusGamePak* bus = &sys->BusGP;
     GamePak* pak = &sys->GamePak;
 
-    u32 rdata;
+    u32 rdata = 0;
 
     // note: 8 bit bus, only supports byte r/w, does not ignore low bits of address for larger accesses.
     if (a9 == sys->ExtMemCR_Shared.GBAPakA7Access)
     {
         failure:
         now += DSClk33(0);
-        rdata = 0;
     }
     else
     {
@@ -525,8 +654,6 @@ void GamePakBus_RAMHandler(Console* sys, timestamp now, bool a9)
             // pull cs hi (complete access ???)
             bus->RAM_CSel = false;
             GamePak_Step(bus, pak);
-
-            rdata = 0;
         }
         else
         {
@@ -544,7 +671,7 @@ void GamePakBus_RAMHandler(Console* sys, timestamp now, bool a9)
             bus->RAM_CSel = false;
             GamePak_Step(bus, pak);
             // read data off bus
-            rdata = bus->ROM_Data;
+            rdata = bus->RAM_Data;
             rdata |= (rdata << 8) | (rdata << 16) | (rdata << 24); // mirror across all lanes
         }
         now += DSClk33(ns);

@@ -640,7 +640,7 @@ void NDSImportGui_Update(MainGUI* mgui, MainCfg* mcfg)
 
     Config_Write(cfgpath, cfg, GameCardCfgData, countof(GameCardCfgData), nullptr, igui->Mutex);
 
-    if ((cfg->SPIBusType == GameCard_SPIBus_None) || (cfg->SRAMChipType == GameCard_SRAMChip_None)) // exit if no sram
+    if (!igui->InitSav || (cfg->SPIBusType == GameCard_SPIBus_None) || (cfg->SRAMChipType == GameCard_SRAMChip_None)) // exit if no sram
         goto skipsav;
     memset(srambuffer, 0xFF, sramsize);
 
@@ -862,4 +862,292 @@ void NDSImportGui_Loop(MainGUI* mgui, MainCfg* mcfg)
     }
 
     ImGui_End();
+}
+
+
+void GBAImportGui_Toggle(MainGUI* mgui, const char* editfolder)
+{
+    GBAImportGui* igui = &mgui->GBAImportGui;
+    GamePakCfg* cfg = &igui->Cfg;
+    bool prevedit = (igui->EditFolder != nullptr);
+    bool newedit = (editfolder != nullptr);
+    if (igui->Show && (prevedit == newedit) && (!prevedit || !newedit || !strcmp(igui->EditFolder, editfolder)))
+    {
+        igui->Show = false;
+        return;
+    }
+    igui->Show = true;
+    free(igui->EditFolder);
+    igui->EditFolder = ((editfolder == nullptr) ? nullptr : strdup(editfolder));
+    igui->InitSav = (igui->EditFolder == nullptr);
+
+    char* souppath = nullptr;
+    if (editfolder != nullptr)
+    {
+        if ((souppath = SDL_stack_alloc(char, strlen(editfolder)+sizeof(DSCfgName))) == NULL)
+            CrashSpectacularly("stack alloc failure...\n");
+        strcpy(souppath, editfolder);
+        strcat(souppath, DSCfgName);
+    }
+    Config_Load(souppath, cfg, GamePakCfgData, countof(GamePakCfgData), NULL, NULL);
+    igui->SRAMPath[0] = '\0';
+    memset(&igui->ROMDirty, 0, sizeof(GBAImportGui) - offsetof(GBAImportGui, ROMDirty));
+    if (souppath != nullptr) SDL_stack_free(souppath);
+}
+
+void GBAImportGui_Update(MainGUI* mgui, MainCfg* mcfg)
+{
+    GBAImportGui* igui = &mgui->GBAImportGui;
+    GamePakCfg* cfg = &igui->Cfg;
+
+    size_t sramsize = ((size_t)1)<<cfg->SRAMChipSize;
+    u8 srambuffer[sramsize];
+
+    size_t basefolderlen = strlen(DualSOUPFolder)+(sizeof(GBAFolder))+(sizeof(LibraryFolderPH)-1);
+    // base folder name
+    char* basepath;
+    if (igui->EditFolder != nullptr)
+    {
+        basepath = igui->EditFolder;
+    }
+    else
+    {
+        basepath = SDL_stack_alloc(char, strlen(DualSOUPFolder)+sizeof(GBAFolder)+sizeof(LibraryFolderPH)-1);
+        if (basepath == NULL) return (void)printf("alloca failure :C\n");
+        strcpy(basepath, DualSOUPFolder);
+        strcat(basepath, GBAFolder);
+
+        if (!GetLibraryString(basepath))
+            return SDL_stack_free(basepath);
+    }
+
+    char cfgpath[basefolderlen+sizeof(DSCfgName)];
+    char savfolderpath[basefolderlen+sizeof(DSSavFolder)];
+    char savpath[basefolderlen+sizeof(DSSavFolder)+sizeof(DSSavFile)];
+
+    // copy to other paths
+    strcpy(savfolderpath, basepath);
+    strcpy(cfgpath, basepath);
+
+    // finish set up
+    strcat(cfgpath, DSCfgName);
+    strcat(savfolderpath, DSSavFolder);
+    // make folder
+    if (!SDL_CreateDirectory(savfolderpath))
+    {
+        printf("Directory creation failure: %s\n", SDL_GetError());
+        goto exit;
+    }
+    // copy one more time
+    strcpy(savpath, savfolderpath);
+    strcat(savpath, DSSavFile);
+    printf("%s\n", basepath);
+
+    Config_Write(cfgpath, cfg, GamePakCfgData, countof(GamePakCfgData), nullptr, igui->Mutex);
+
+    if (!igui->InitSav || (cfg->SRAMType == GamePakSRAM_None)) // exit if no sram
+        goto skipsav;
+    memset(srambuffer, 0xFF, sramsize);
+
+    // load provided save
+    if (igui->SavFromFile && (igui->SRAMPath[0] != '\0'))
+    {
+        SDL_IOStream* file;
+        if ((file = SDL_IOFromFile(igui->SRAMPath, "rb")) != NULL)
+        {
+            s64 sz;
+            if ((sz = SDL_GetIOSize(file)) <= 0)
+            {
+                if (sz == 0) printf("SRAM file is empty.\n");
+                else         printf("SRAM filesize get error. sz: %"PRIi64" %s\n", sz, SDL_GetError());
+            }
+            else if ((SDL_ReadIO(file, srambuffer, sz) != (u64)sz) && (SDL_GetIOStatus(file) != SDL_IO_STATUS_EOF))
+                printf("SRAM File read error: %s\n", SDL_GetError());
+
+            if (!SDL_CloseIO(file))
+                printf("SRAM File close error: %s\n", SDL_GetError());
+        }
+        else printf("Could not open provided SRAM file %s\n", SDL_GetError());
+    }
+
+    // write save to destination
+    {
+        SDL_IOStream* file;
+        if ((file = SDL_IOFromFile(savpath, "wb")) != NULL)
+        {
+            if (SDL_WriteIO(file, srambuffer, sramsize) != sramsize)
+                printf("SRAM File write error: %s\n", SDL_GetError());
+
+            if (!SDL_CloseIO(file))
+                printf("SRAM File close error: %s\n", SDL_GetError());
+        }
+        else printf("Could not create file %s to write SRAM to %s\n", savpath, SDL_GetError());
+    }
+    skipsav:
+
+    igui->Show = false;
+    // refresh library list
+    LibraryGui_InitList(mgui, mcfg);
+    exit:
+    if (basepath != igui->EditFolder) SDL_stack_free(basepath);
+}
+
+void GBAImportGui_Loop(MainGUI* mgui, MainCfg* mcfg)
+{
+    GBAImportGui* igui = &mgui->GBAImportGui;
+    GamePakCfg* cfg = &igui->Cfg;
+    if (!igui->Show) return;
+
+    ImGui_SetNextWindowSize((ImVec2){340.0, (igui->EditFolder != nullptr) ? 553.0 : 530.0}, ImGuiCond_FirstUseEver);
+    if (!ImGui_Begin(((igui->EditFolder != nullptr) ? "Edit GBA Game Pak" : "Import GBA Game Pak"), &igui->Show, 0))
+        return ImGui_End();
+
+    SelectFile(cfg->ROMPath, "GBA ROM", "gba", 1, igui->Mutex, igui->ROMDirtyB);
+    igui->ROMDirty |= igui->ROMDirtyB;
+    SelectFile(igui->SRAMPath, "GBA SRAM", "sav", 1, igui->Mutex, igui->SRAMDirtyB);
+    igui->SRAMDirty |= igui->SRAMDirtyB;
+
+    if (igui->ROMDirtyB || igui->SRAMDirtyB)
+    {
+        char* str = NULL;
+        if (igui->ROMDirtyB) str = cfg->ROMPath;
+        if (igui->SRAMDirtyB) str = igui->SRAMPath;
+        if (cfg->ROMPath[0] == '\0')
+        {
+            char* new;
+            if (((new = FindFileWithDifferentExtension(str, "gba")) != NULL))
+            {
+                free(cfg->ROMPath);
+                cfg->ROMPath = new;
+                igui->ROMDirty = true;
+            }
+        }
+        if (igui->SRAMPath[0] == '\0')
+        {
+            char* new;
+            if (((new = FindFileWithDifferentExtension(str, "sav")) != NULL))
+            {
+                free(igui->SRAMPath);
+                igui->SRAMPath = new;
+                igui->SRAMDirty = true;
+            }
+        }
+    }
+
+    //if (ImGui_Button("Infer from provided files\n"))
+    //    GBAImportGui_Infer(igui, cfg);
+
+    if (igui->EditFolder != nullptr) ImGui_Checkbox("Overwrite save\n", &igui->InitSav);
+    ImGui_BeginDisabled(igui->SRAMPath[0] == '\0');
+    ImGui_Checkbox("Use save from file\n", &igui->SavFromFile);
+    ImGui_EndDisabled();
+
+    ImGui_SeparatorText("");
+
+    ImGui_InputTextMultilineEx("Game Title", cfg->FriendlyName, strlen(cfg->FriendlyName)+1, (ImVec2){0, 45}, ImGuiInputTextFlags_CallbackResize, FilePathTextCallback, &cfg->FriendlyName);
+
+    ImGui_SeparatorText("ROM Chip");
+
+    {
+        const char* const romsizes[] = {"1 MiB", "2 MiB", "4 MiB", "8 MiB", "16 MiB", "32 MiB"};
+        constexpr u64 romsizebase = CTZ_CONSTEXPR(MiB(1));
+        u8 cursel = cfg->ROMChipSize-romsizebase;
+        if (ImGui_BeginCombo("ROM Chip Size", romsizes[cursel], 0))
+        {
+            for (u64 i = 0; i < countof(romsizes); i++)
+            {
+                if (ImGui_SelectableEx(romsizes[i], cursel==i, 0, (ImVec2){0,0}))
+                    cfg->ROMChipSize = i+romsizebase;
+
+                if (cursel==i) ImGui_SetItemDefaultFocus();
+            }
+            ImGui_EndCombo();
+        }
+    }
+
+    ImGui_SeparatorText("SPI/SRAM Chip");
+
+    {
+        const char* const sramtype[] = {"None", "SRAM", "Flash"};
+        u8 cursel = cfg->SRAMType;
+        if (ImGui_BeginCombo("SRAM Chip Type", sramtype[cursel], 0))
+        {
+            for (u64 i = 0; i < countof(sramtype); i++)
+            {
+                if (ImGui_SelectableEx(sramtype[i], cursel==i, 0, (ImVec2){0,0}))
+                    cfg->SRAMType = i;
+
+                if (cursel==i) ImGui_SetItemDefaultFocus();
+            }
+            ImGui_EndCombo();
+        }
+    }
+
+    ImGui_BeginDisabled(cfg->SRAMType == GamePakSRAM_None);
+    {
+        const char* const sramsizes[] = {"512 B", "1 KiB", "2 KiB", "4 KiB", "8 KiB", "16 KiB", "32 KiB", "64 KiB", "128 KiB"};
+        constexpr u64 sramsizebase = CTZ_CONSTEXPR((int)512);
+        u8 cursel = cfg->SRAMChipSize - sramsizebase;
+        if (ImGui_BeginCombo("SRAM Chip Size", sramsizes[cursel], 0))
+        {
+            for (u64 i = 0; i < countof(sramsizes); i++)
+            {
+                if (ImGui_SelectableEx(sramsizes[i], cursel==i, 0, (ImVec2){0,0}))
+                    cfg->SRAMChipSize = i+sramsizebase;
+
+                if (cursel==i) ImGui_SetItemDefaultFocus();
+            }
+            ImGui_EndCombo();
+        }
+    }
+
+    ImGui_BeginDisabled(cfg->SRAMType != GamePakSRAM_Flash);
+    {
+        const char* const flashtypes[] = {
+            [GamePakFlash_Atmel]="Atmel",
+            [GamePakFlash_SST]="SST",
+            [GamePakFlash_Panasonic]="Panasonic",
+            [GamePakFlash_Macronix]="Macronix",
+            [GamePakFlash_Sanyo]="Sanyo"};
+        u8 cursel = cfg->GamePakFlashType;
+        if (ImGui_BeginCombo("Flash Chip Variant", flashtypes[cursel], 0))
+        {
+            for (u64 i = 0; i < countof(flashtypes); i++)
+            {
+                if (ImGui_SelectableEx(flashtypes[i], cursel==i, 0, (ImVec2){0,0}))
+                    cfg->GamePakFlashType = i;
+
+                if (cursel==i) ImGui_SetItemDefaultFocus();
+            }
+            ImGui_EndCombo();
+        }
+    }
+
+    ImGui_InputIntEx("Flash Chip ID", &cfg->FlashChipID_Int, 0, 0, ImGuiInputTextFlags_CharsHexadecimal|ImGuiInputTextFlags_CharsUppercase);
+    cfg->FlashChipID &= 0xFFFF;
+
+    ImGui_EndDisabled();
+    ImGui_EndDisabled();
+
+    ImGui_SeparatorText("");
+
+    bool hasROM = (cfg->ROMPath[0] != '\0');
+    bool hasName = (cfg->FriendlyName[0] != '\0');
+    ImGui_BeginDisabled(!hasROM || !hasName);
+    if (ImGui_Button((igui->EditFolder != nullptr) ? "Update" : "Import") && (cfg->ROMPath[0] != '\0'))
+       GBAImportGui_Update(mgui, mcfg);
+
+    ImGui_EndDisabled();
+    if (!hasROM || !hasName)
+    {
+        if (ImGui_BeginItemTooltip())
+        {
+            if (!hasName) ImGui_Text("You must provide a name!");
+            if (!hasROM)  ImGui_Text("You must provide a ROM file!");
+            ImGui_EndTooltip();
+        }
+    }
+
+    ImGui_End();
+
 }
