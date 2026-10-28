@@ -133,7 +133,11 @@ int SDLCALL Core_Init(void* pass)
                 }
 
             }
-            else sys->OldTime = SDL_GetPerformanceCounter();
+            else
+            {
+                SDL_ClearAudioStream(sys->Aud); // hack; prevent uncapped fps from adding audio latency infinitely
+                sys->OldTime = SDL_GetPerformanceCounter();
+            }
             double frametime = (double)(SDL_GetPerformanceCounter() - sys->OldTimeActual) * 1000.0 / SDL_GetPerformanceFrequency();
 
             sys->LastSync = sys->NewSync;
