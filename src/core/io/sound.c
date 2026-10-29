@@ -103,8 +103,8 @@ void AudioMixer_Sample(Console* sys, timestamp now)
     fflush(sys->log);
 #endif
 
-    Sched_AddEvent(sys, now + DSClk33(((timestamp)NTR_SysClock + sys->AudioFrac) / SoundMixerOutput), Evt_MixAudio);
-    sys->AudioFrac = 0;//((timestamp)NTR_SysClock + sys->AudioFrac) % SoundMixerOutput;
+    Sched_AddEvent(sys, now + DSClk33(((timestamp)NTR_SysClock /*+ sys->AudioFrac*/) / SoundMixerOutput), Evt_MixAudio);
+    //sys->AudioFrac = ((timestamp)NTR_SysClock + sys->AudioFrac) % SoundMixerOutput;
 }
 
 void SoundFIFO_Fill(Console* sys, const u32 val, const u8 num)
@@ -140,7 +140,7 @@ u32 SoundFIFO_Drain(Console* sys, SoundChannel* channel, u8 numbytes, const u8 n
     channel->FIFO_Bytes-=numbytes;
     if (channel->FIFO_Bytes <= 16)
     {
-        StartSoundDMA(sys, num, now+1);
+        StartSoundDMA(sys, num, now+DSClk33(1));
     }
     return ret;
 }
@@ -322,7 +322,7 @@ void SoundFIFO_Sample(Console* sys, const u8 num, const timestamp now)
     {
         SoundCapture* cap = &sys->SoundCaptures[num/2];
 
-        if (!cap->CR.Enable || cap->Flush) return;
+        if (!cap->CR.Enable) return;
 
         AudioMixer_Run(sys, now);
 
@@ -352,19 +352,19 @@ void SoundFIFO_Sample(Console* sys, const u8 num, const timestamp now)
 
         if (cap->CR.Format) // pcm8
         {
-            cap->FIFO.PCM8[cap->Prog % sizeof(cap->FIFO)] = (out >> 8) & 0xFF;
+            cap->FIFO[(cap->Prog/4) % countof(cap->FIFO)].PCM8[cap->Prog % 4] = (out >> 8) & 0xFF;
             cap->Prog += 1;
         }
         else // pcm16
         {
-            cap->FIFO.PCM16[(cap->Prog / 2) % (sizeof(cap->FIFO) / 2)] = out;
+            cap->FIFO[(cap->Prog/4) % countof(cap->FIFO)].PCM16[(cap->Prog / 2) % 2] = out;
             cap->Prog += 2;
         }
-        cap->Flush = ((cap->Prog % sizeof(cap->FIFO)) == 0);
+        bool flush = ((cap->Prog % (4*4)) == 0);// || (cap->Prog >= cap->LatchedLength);
 
-        if (cap->Flush)
+        if (flush)
         {
-            StartSoundCapDMA(sys, num/2, now+1);
+            StartSoundCapDMA(sys, num/2, now+DSClk33(1));
         }
 
         if (cap->Prog >= cap->LatchedLength)
@@ -473,7 +473,7 @@ void SoundChannel_Start(Console* sys, SoundChannel* channel, const u8 num, const
     channel->FIFO_DrainPtr = 0;
     channel->FIFO_FillPtr = 0;
     channel->Prog = 0;
-    StartSoundDMA(sys, num, now+1);
+    StartSoundDMA(sys, num, now+DSClk33(5));
 }
 
 void SoundChannel_TryStartAll(Console* sys, const timestamp now)
@@ -562,8 +562,9 @@ void SoundCapture_CRWrite(Console* sys, const u8 val, const timestamp now, const
         if (cap->CR.Enable)
         {
             cap->Prog = 0;
-            cap->Flush = false;
-            cap->LatchedLength = (cap->Length + (cap->Length == 0)) * 4;
+            cap->FIFOPtr = 0;
+            // NOTE: sound capture seemingly only begins a dma once it captures a set of 4 words, even if it doesn't actually need to transfer 4 more words...
+            cap->LatchedLength = ((cap->Length + (cap->Length == 0) + 3) & ~3) * 4;
             sys->DMA7[DMA7_SoundCapBase+num].Latched_NumWords = 0;
             sys->DMA7[DMA7_SoundCapBase+num].DstAddr = cap->DstAddr;
             // set up timers

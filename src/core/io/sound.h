@@ -105,13 +105,12 @@ typedef struct
     u32 LatchedLength;
     u32 Prog;
     u8 FIFOPtr;
-    bool Flush;
     union
     {
         u8 PCM8[4];
         u16 PCM16[2];
         u32 Raw;
-    } FIFO; // checkme: how big is this?
+    } FIFO[8]; // checkme: how big is this? (at least 4 words big.)
 } SoundCapture;
 
 typedef struct Console Console;

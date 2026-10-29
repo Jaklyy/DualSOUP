@@ -274,7 +274,7 @@ void DMA_CompPost(Console* sys, timestamp now, const u8 id, const DMA_CBType cb,
         if (dmaqueued)
         {
             channel->NeedsInit = true;
-            Sched_AddEvent(sys, now+DSClk33(1), ((a9) ? Evt_DMA90 : Evt_SCapDMA70) + id);
+            Sched_AddEvent(sys, now+DSClk33(3 /*checkme*/), ((a9) ? Evt_DMA90 : Evt_SCapDMA70) + id);
         }
     }
 
@@ -285,8 +285,12 @@ void DMA_CompPost(Console* sys, timestamp now, const u8 id, const DMA_CBType cb,
 
     if (cb == DMACB_Read && channel->CurrentMode == DMAStart_AudioCap)
     {
-        channel->RData = sys->SoundCaptures[id-DMA7_SoundCapBase].FIFO.Raw;
-        sys->SoundCaptures[id-DMA7_SoundCapBase].Flush = false;
+        u8* fifoptr = &sys->SoundCaptures[id-DMA7_SoundCapBase].FIFOPtr;
+        u32* fifo = &sys->SoundCaptures[id-DMA7_SoundCapBase].FIFO[0].Raw;
+
+        channel->RData = fifo[*fifoptr];
+        *fifoptr += 1;
+        *fifoptr %= countof(sys->SoundCaptures[id-DMA7_SoundCapBase].FIFO);
     }
 }
 
@@ -337,7 +341,7 @@ void DMA_Step(Console* sys, const u8 id, timestamp now, const bool a9)
                 if (channel->CurrentMode == DMAStart_Audio)
                     DS_CLAMP(channel->BurstMax, >, 4)
                 if (channel->CurrentMode == DMAStart_AudioCap)
-                    DS_CLAMP(channel->BurstMax, >, 1)
+                    DS_CLAMP(channel->BurstMax, >, 4)
 
                 channel->ReadCur = 0;
                 channel->WriteCur = 0;
