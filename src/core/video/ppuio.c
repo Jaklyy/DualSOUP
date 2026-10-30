@@ -4,30 +4,30 @@
 
 
 
-u32 PPU_IORead(PPU* ppu, const u32 addr, const bool agb)
+void PPU_IORead(PPU* ppu, u32* rdata, const u32 addr, const bool agb)
 {
     switch(addr & 0x7C)
     {
     case 0x00: // ppu + lcdc
-        return ppu->DisplayCR.Raw;
+        *rdata = ppu->DisplayCR.Raw; break;
 
     case 0x08:
-        return ppu->BGCR[0].Raw | (ppu->BGCR[1].Raw << 16);
+        *rdata = ppu->BGCR[0].Raw | (ppu->BGCR[1].Raw << 16); break;
     case 0x0C:
-        return ppu->BGCR[2].Raw | (ppu->BGCR[3].Raw << 16);
+        *rdata = ppu->BGCR[2].Raw | (ppu->BGCR[3].Raw << 16); break;
 
     case 0x48:
-        return ppu->Window.Raw[2];
+        *rdata = ppu->Window.Raw[2]; break;
 
     case 0x50:
-        return ppu->BlendCR.Raw | ppu->BlendAlpha[0] << 16 | ppu->BlendAlpha[1] << 24;
+        *rdata = ppu->BlendCR.Raw | ppu->BlendAlpha[0] << 16 | ppu->BlendAlpha[1] << 24; break;
 
     case 0x6C: // lcdc
-        return ppu->Brightness.Raw;
+        *rdata = ppu->Brightness.Raw; break;
 
     default:
         LogPrint(LOG_PPU|LOG_UNIMP|LOG_IO, "Unimplemented PPU Read: %08"PRIX32"\n", addr);
-        return 0;
+        break;
     }
 }
 
@@ -48,7 +48,7 @@ void PPU_IOWrite(PPU* ppu, const u32 addr, const u32 val, u32 mask, const bool b
     case 0x08:
     {
         u32 crmask = 0xFFFF;
-        if (agb) crmask = 0xEFFF;
+        if (agb) crmask = 0xDFFF;
         MaskedWrite(ppu->BGCR[0].Raw, val, mask & crmask); // apparently these bits are not used
         MaskedWrite(ppu->BGCR[1].Raw, val>>16, (mask>>16) & crmask);
         break;

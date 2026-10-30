@@ -259,7 +259,7 @@ void IO9_Read(Console* sys, const u32 addr, const timestamp now)
     case 0x00'00'00: // dispcnt
     case 0x00'00'08 ... 0x00'00'54: // ppu/lcd a block
     case 0x00'00'6C: // bright a
-        rdata = PPU_IORead(&sys->PPU_A, addr, false);  break;
+        PPU_IORead(&sys->PPU_A, &rdata, addr, false);  break;
     case 0x00'00'04: rdata = (sys->VCount << 16) | sys->DispStatRO9.Raw | sys->DispStatRW9.Raw; break;
     case 0x00'00'60: rdata = sys->GX3D.RasterCR.Raw; break;
 
@@ -334,7 +334,7 @@ void IO9_Read(Console* sys, const u32 addr, const timestamp now)
         else rdata = GX_IORead(sys, addr);
         break;
 
-    case 0x00'10'00 ... 0x00'10'6C: rdata = PPU_IORead(&sys->PPU_B, addr, false); break;
+    case 0x00'10'00 ... 0x00'10'6C: PPU_IORead(&sys->PPU_B, &rdata, addr, false); break;
 
     case 0x00'03'00: rdata = sys->PostFlag | (sys->PostFlagA9Bit << 1); break;
 

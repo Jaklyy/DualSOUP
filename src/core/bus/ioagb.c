@@ -10,16 +10,16 @@ void IOAGB_Read(Console* sys, const u32 addr, const timestamp now)
     // video A
     case 0x00'00'00: // dispcnt
     case 0x00'00'08 ... 0x00'00'54: // ppu/lcd block
-        rdata = PPU_IORead(&sys->PPU_A, addr, true);  break;
+        PPU_IORead(&sys->PPU_A, &rdata, addr, true);  break;
 
     case 0x00'00'04: rdata = (sys->VCountAGB << 16) | sys->DispStatRO7.Raw | sys->DispStatRW7.Raw; break;
 
     case 0x00'00'88: rdata = (sys->SoundBias & 0x3FE) | sys->SoundRate<<14; break;
 
-    case 0x00'00'B8:
-    case 0x00'00'C4:
-    case 0x00'00'D0:
-    case 0x00'00'DC: rdata = (sys->DMA7[DMA7_NormalBase].CR.Raw & 0xFFFF0000); break;
+    case 0x00'00'B8: rdata = (sys->DMA7[DMA7_NormalBase+0].CR.Raw & 0xFFFF0000); break;
+    case 0x00'00'C4: rdata = (sys->DMA7[DMA7_NormalBase+1].CR.Raw & 0xFFFF0000); break;
+    case 0x00'00'D0: rdata = (sys->DMA7[DMA7_NormalBase+2].CR.Raw & 0xFFFF0000); break;
+    case 0x00'00'DC: rdata = (sys->DMA7[DMA7_NormalBase+3].CR.Raw & 0xFFFF0000); break;
 
     case 0x00'01'00 ... 0x00'01'0C: rdata = Timer_IOReadHandler(sys, now, addr, false); break;
 

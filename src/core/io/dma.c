@@ -604,7 +604,7 @@ void DMA7_IOWriteHandler(Console* sys, timestamp now, DMA_Channel* channels, u32
     }
     case 2: // control register
     {
-        if (sys->AGB) val &= ((channel == 3) ? 0xFFE0FFFF : 0xFFE03FFF);
+        if (sys->AGB) val &= ((channel == 3) ? 0xFFE0FFFF : 0xF7E03FFF);
         else          val &= ((channel == 3) ? 0xF7E0FFFF : 0xF7E03FFF);
 
         union DMA_CR oldcr = cur->CR;
