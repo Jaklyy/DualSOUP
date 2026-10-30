@@ -212,6 +212,8 @@ timestamp DSClk33(timestamp ts);
  // convert 67 mhz clock to standardized scheduler clock
 timestamp DSClk67(timestamp ts);
 
+ // align standardized scheduler clock with system clock
+timestamp DSClkAlignSys(timestamp ts, bool agb);
  // align standardized scheduler clock with 33 mhz clock
 timestamp DSClkAlign33(timestamp ts);
 

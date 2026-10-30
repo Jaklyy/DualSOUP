@@ -38,6 +38,7 @@ typedef struct
     bool NeedsUpdate;
     bool NeedsEnable;
     bool On;
+    bool AllowIRQ;
     u32 BufferedRegs;
 } Timer;
 

@@ -531,7 +531,6 @@ void GamePakBus_ROMHandler(Console* sys, timestamp now, u8 waitstate, bool agb, 
     if (!agb && (a9 == sys->ExtMemCR_Shared.GBAPakA7Access)) // unmapped
     {
         failure:
-        now += DSClk33(0);
     }
     else
     {
@@ -663,7 +662,6 @@ void GamePakBus_RAMHandler(Console* sys, timestamp now, bool agb, bool a9)
     if (!agb && (a9 == sys->ExtMemCR_Shared.GBAPakA7Access))
     {
         failure:
-        now += DSClk33(0);
     }
     else
     {

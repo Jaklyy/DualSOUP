@@ -31,6 +31,15 @@ inline timestamp DSClkSys(timestamp ts, bool agb)
     else     return ts * (Sched_Clock / NTR_SysClock);
 }
 
+inline timestamp DSClkAlignSys(timestamp ts, bool agb)
+{
+    timestamp adjust;
+    if (agb) adjust = (Sched_Clock / NTR_BaseClock)-1;
+    else     adjust = (Sched_Clock / NTR_SysClock)-1;
+
+    return (ts + adjust) & ~adjust;
+}
+
 inline timestamp DSClk67(timestamp ts)
 {
     return ts * (Sched_Clock / NTR9_Clock);

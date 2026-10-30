@@ -874,7 +874,7 @@ void Bus7_AGBDecodeRead(Console* sys, BusReq* req, const u32 addr, const u32 wid
             if ((req->Man7 != MAN7_ARM7) || addr < sys->Bios7ProtCur)
             {
                 rdata = sys->BiosAGBLast; // *special* open bus
-                LogPrint(LOG_ARM7|LOG_ODD, "Protected Bios7 Read? Addr: %08"PRIX32"\n", addr); //gba; so this will get annoying quickly i presume
+                LogPrint(LOG_ARM7|LOG_ODD, "Protected Bios7 Read? Addr: %08"PRIX32" PC: %08"PRIX32" Something went wrong?\n", addr, sys->A7TDMI.ARM.PC); //gba; so this will get annoying quickly i presume
             }
             else rdata = (sys->BiosAGBLast = MemoryRead(32, sys->AGBBios, addr, AGBBios_Size));
             break;
@@ -882,7 +882,7 @@ void Bus7_AGBDecodeRead(Console* sys, BusReq* req, const u32 addr, const u32 wid
         else { [[fallthrough]]; }
 
     default: // Unmapped Device;
-        LogPrint(LOG_ODD|LOG_ARM7, "AGB Bus7: %"PRIu32" bit read from unmapped memory at %08"PRIX32"? Something went wrong?\n", width, addr);
+        LogPrint(LOG_ODD|LOG_ARM7, "AGB Bus7: %"PRIu32" bit read from unmapped memory at %08"PRIX32"? PC: %08"PRIX32" Something went wrong?\n", width, addr, sys->A7TDMI.ARM.PC);
         break;
 
     case 0x02: // External WRAM
