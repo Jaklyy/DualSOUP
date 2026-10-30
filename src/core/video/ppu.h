@@ -189,7 +189,8 @@ typedef struct
             bool CGBMode : 1; // switches the ppu into a mode for displaying the cbg graphics output; dunno if this works on nds?
             bool FrameSelect : 1;
             bool OBJHBlankDisable : 1;
-            u16 : 10;
+            bool OBJ1D : 1;
+            u16 : 9;
             bool StereoscopyMode : 1; // supposedly still has partial functionality on NDS/3DS?
         } AGB; // agb different bits
     } DisplayCR;

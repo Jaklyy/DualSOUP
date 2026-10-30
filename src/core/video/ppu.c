@@ -659,6 +659,7 @@ void PPU_SpriteAffine(Console* sys, const bool b, const SprAttrs01 attr1, const 
 
     if (attr1.Mode == 3) // bitmap sprite
     {
+        if (sys->AGB) return LogPrint(LOG_PPU|LOG_UNIMP, "BITMAP AFFINE OBJ ON GBA\n");
         u8 alpha = attr2.BitmapAlpha;
         if (!alpha) return; // checkme?
         // increase by one to allow for max alpha value
@@ -669,7 +670,7 @@ void PPU_SpriteAffine(Console* sys, const bool b, const SprAttrs01 attr1, const 
         u32 ystep;
         if (ppu->DisplayCR.BitmapOBJ1D)
         {
-            if (!sys->AGB && ppu->DisplayCR.BitmapOBJ2DDims)
+            if (ppu->DisplayCR.BitmapOBJ2DDims)
             {
                 // apparently does nothing??
                 return; // checkme
@@ -682,7 +683,7 @@ void PPU_SpriteAffine(Console* sys, const bool b, const SprAttrs01 attr1, const 
         }
         else
         {
-            if (!sys->AGB && ppu->DisplayCR.BitmapOBJ2DDims)
+            if (ppu->DisplayCR.BitmapOBJ2DDims)
             {
                 baseaddr = ((attr2.TileNum % 32) * 16) + ((attr2.TileNum / 32) * 32 * 4);
                 ystep = 256;
@@ -694,14 +695,14 @@ void PPU_SpriteAffine(Console* sys, const bool b, const SprAttrs01 attr1, const 
             }
         }
 
-        for (; (sx < widthreal) && (x < PPU_GetWidth(sys->AGB)); x++, sx++, rotx+=params[0], roty+=params[2])
+        for (; (sx < widthreal) && (x < PPU_GetWidth(false)); x++, sx++, rotx+=params[0], roty+=params[2])
         {
             if ((rotx < (width*256)) && (roty < (height*256)))
             {
                 u32 addr = baseaddr + (((roty / 256) * ystep) + ((rotx / 256)) * 2);
                 u16 color = PPU_VRAMLookup(sys, addr, objvram);
 
-                if ((color & 0x8000) && (buffer[x].Empty || sys->AGB || (buffer[x].SprPrio > attr2.Priority)))
+                if ((color & 0x8000) && (buffer[x].Empty || (buffer[x].SprPrio > attr2.Priority)))
                     buffer[x] = (CompositeBuffer){RGB565to666(color & 0x7FFF) | (alpha<<18), attr2.Priority, false, true, false, true, true};
             }
         }
@@ -710,8 +711,7 @@ void PPU_SpriteAffine(Console* sys, const bool b, const SprAttrs01 attr1, const 
     {
         u32 baseaddr = attr2.TileNum;
         u32 ystep;
-
-        if (!sys->AGB && ppu->DisplayCR.TileOBJ1D)
+        if (sys->AGB ? ppu->DisplayCR.AGB.OBJ1D : ppu->DisplayCR.TileOBJ1D)
         {
             baseaddr <<= ppu->DisplayCR.TileOBJ1DBound;
             ystep = (width/8) << attr1.Pal256;
@@ -759,7 +759,7 @@ void PPU_SpriteAffine(Console* sys, const bool b, const SprAttrs01 attr1, const 
 
                 if (attr1.Mode == 2) // window
                     ppu->SpriteWindow[x/64] |= (u64)1<<(x%64);
-                else if (buffer[x].Empty || (buffer[x].SprPrio > attr2.Priority))
+                else if (buffer[x].Empty || (!sys->AGB && (buffer[x].SprPrio > attr2.Priority)))
                     buffer[x] = (CompositeBuffer){index, attr2.Priority, false, false, attr1.Pal256 && ppu->DisplayCR.SprExtPalEn, attr1.Mode == 1, false};
             }
         }
@@ -792,6 +792,7 @@ void PPU_SpriteNormal(Console* sys, const bool b, const SprAttrs01 attr1, const 
 
     if (attr1.Mode == 3) // bitmap
     {
+        if (sys->AGB) return LogPrint(LOG_PPU|LOG_UNIMP, "BITMAP OBJ ON GBA\n");
         u8 alpha = attr2.BitmapAlpha;
         if (!alpha) return; // checkme?
         // increase by one to allow for max alpha value
@@ -801,7 +802,7 @@ void PPU_SpriteNormal(Console* sys, const bool b, const SprAttrs01 attr1, const 
         u32 baseaddr = attr2.TileNum;
         if (ppu->DisplayCR.BitmapOBJ1D)
         {
-            if (!sys->AGB && ppu->DisplayCR.BitmapOBJ2DDims)
+            if (ppu->DisplayCR.BitmapOBJ2DDims)
             {
                 // apparently does nothing??
                 return; // checkme
@@ -814,7 +815,7 @@ void PPU_SpriteNormal(Console* sys, const bool b, const SprAttrs01 attr1, const 
         }
         else
         {
-            if (!sys->AGB && ppu->DisplayCR.BitmapOBJ2DDims)
+            if (ppu->DisplayCR.BitmapOBJ2DDims)
             {
                 baseaddr = ((attr2.TileNum % 32) * 16) + ((attr2.TileNum / 32) * 32 * 128);
                 baseaddr += y * (256*2);
@@ -828,7 +829,7 @@ void PPU_SpriteNormal(Console* sys, const bool b, const SprAttrs01 attr1, const 
 
         if (attr1.HFlip) sx = (width-1) - sx;
 
-        for (; ((attr1.HFlip) ? (sx >= 0) : (sx < width)) && (x < PPU_GetWidth(sys->AGB)); ((attr1.HFlip) ? (sx-=1) : (sx+=1)), x++)
+        for (; ((attr1.HFlip) ? (sx >= 0) : (sx < width)) && (x < PPU_GetWidth(false)); ((attr1.HFlip) ? (sx-=1) : (sx+=1)), x++)
         {
             u32 addr = baseaddr + (sx*2);
 
@@ -841,7 +842,7 @@ void PPU_SpriteNormal(Console* sys, const bool b, const SprAttrs01 attr1, const 
     else // not bitmap
     {
         u32 baseaddr = attr2.TileNum;
-        if (!sys->AGB && ppu->DisplayCR.TileOBJ1D)
+        if (sys->AGB ? ppu->DisplayCR.AGB.OBJ1D : ppu->DisplayCR.TileOBJ1D)
         {
             baseaddr <<= ppu->DisplayCR.TileOBJ1DBound;
             baseaddr += ((y/8) * (width/8)) << attr1.Pal256;
@@ -876,7 +877,7 @@ void PPU_SpriteNormal(Console* sys, const bool b, const SprAttrs01 attr1, const 
 
             if (attr1.Mode == 2) // window
                 ppu->SpriteWindow[x/64] |= (u64)1<<(x%64);
-            else if (buffer[x].Empty || (buffer[x].SprPrio > attr2.Priority))
+            else if (buffer[x].Empty || (!sys->AGB && (buffer[x].SprPrio > attr2.Priority)))
                 buffer[x] = (CompositeBuffer){index, attr2.Priority, false, false, attr1.Pal256 && ppu->DisplayCR.SprExtPalEn, attr1.Mode == 1, false};
         }
     }
