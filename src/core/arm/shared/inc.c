@@ -14,11 +14,11 @@ u32 ARM_ADD(const u32 rn_val, const u32 shifter_out, ARM_FlagsOut* flags_out)
 
 u32 ARM_ADC(const u32 rn_val, const u32 shifter_out, const bool carry_in, ARM_FlagsOut* flags_out)
 {
-    u32 alu_out;
-    ARM_FlagsOut flags[2]; // this can be uninitialized because this instruction sets all flags
-    alu_out = ARM_ADD(rn_val, shifter_out, &flags[0]);
-    alu_out = ARM_ADD(alu_out, carry_in, &flags[1]);
-    flags_out->Raw = flags[0].Raw | flags[1].Raw;
+    u64 alu_out = (u64)rn_val + (u64)shifter_out + carry_in;
+    s64 salu_out = (s64)(s32)rn_val + (s64)(s32)shifter_out + carry_in;
+    flags_out->Carry = (alu_out != (u32)alu_out);
+    flags_out->Overflow = (salu_out != (s32)salu_out);
+
     return alu_out;
 }
 
@@ -32,12 +32,11 @@ u32 ARM_SUB_RSB(const u32 a, const u32 b, ARM_FlagsOut* flags_out)
 
 u32 ARM_SBC_RSC(const u32 a, const u32 b, const bool carry_in, ARM_FlagsOut* flags_out)
 {
-    u32 alu_out;
-    ARM_FlagsOut flags[2]; // this can be uninitialized because this instruction sets all flags
-    alu_out = ARM_SUB_RSB(a, b, &flags[0]);
-    alu_out = ARM_SUB_RSB(alu_out, !carry_in, &flags[1]);
-    flags_out->Carry = flags[0].Carry & flags[1].Carry;
-    flags_out->Overflow = flags[0].Overflow | flags[1].Overflow;
+    u64 alu_out = (u64)a - (u64)b - !carry_in;
+    s64 salu_out = (s64)(s32)a - (s64)(s32)b - !carry_in;
+    flags_out->Carry = (alu_out == (u32)alu_out);
+    flags_out->Overflow = (salu_out != (s32)salu_out);
+
     return alu_out;
 }
 
