@@ -42,18 +42,14 @@ typedef enum : u8
     GPFCmdProg_WriteDataBase,
 } GamePakFlashCmdProg;
 
-constexpr timestamp GamePak_AGBWaitStates[4][4] =
+constexpr timestamp GamePak_WaitStates[6][4] =
 {
-    {4, 3, 2, 8}, // nseq
-    {2, 1}, // seq 0
-    {4, 1}, // seq 1
-    {8, 1}, // seq 2
-};
-
-constexpr timestamp GamePak_NTRWaitStates[2][4] =
-{
-    {9, 7, 5, 17}, // nseq
-    {5, 3}, // seq
+    {9, 7, 5, 17}, // ntr nseq
+    {5, 3}, // ntr seq
+    {4, 3, 2, 8}, // agb nseq
+    {2, 1}, // agb seq 0
+    {4, 1}, // agb seq 1
+    {8, 1}, // agb seq 2
 };
 
 typedef struct
@@ -162,6 +158,7 @@ bool GamePakSRAM_FlushToDisk(GamePak* pak, u8** outbuf, u64* size, bool force);
 
 void GamePak_Step(BusGamePak* bus, GamePak* pak);
 
+void GamePakBus_Reset(Console* sys);
 void GamePakBus_KillBurst(Console* sys, timestamp now, bool a9);
-void GamePakBus_ROMHandler(Console* sys, timestamp now, bool a9);
-void GamePakBus_RAMHandler(Console* sys, timestamp now, bool a9);
+void GamePakBus_ROMHandler(Console* sys, timestamp now, u8 waitstate, bool agb, bool a9);
+void GamePakBus_RAMHandler(Console* sys, timestamp now, bool agb, bool a9);

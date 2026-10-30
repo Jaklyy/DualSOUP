@@ -305,7 +305,7 @@ void ARM_Swap(ARM* cpu, const ARM_Instr instr_data)
             .DataCB = A7TDMIDataCB_SwapLoad,
         };
         a7tdmi->PostMem = pass;
-        A7TDMI_DataRead(a7tdmi, cpu->Timestamp+DSClk33(1));
+        A7TDMI_DataRead(a7tdmi, cpu->Timestamp+DSClkSys(1, a7tdmi->Clk16));
     }
     else
     {

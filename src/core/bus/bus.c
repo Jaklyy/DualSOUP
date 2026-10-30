@@ -49,11 +49,22 @@ void Bus7_Init(BusImpl* bus)
 {
     // TODO: RE-ENABLE
     bus->PipeCycles = DSClk33(0);
-    bus->HLockGeneric = MAN_NONE; // todo: put in a reset handler
+}
+
+void Bus_Reset(BusImpl* bus)
+{
+    bus->HLockGeneric = MAN_NONE;
     bus->ComplMan = MAN_NONE;
     bus->GrantMan = MAN_NONE;
     bus->NoPrev = true;
     bus->FIFOEmpty = true;
+
+    bus->LockSched = false;
+    bus->FIFOFillPtr = 0;
+    bus->FIFODrainPtr = 0;
+    bus->ReqList = 0;
+    bus->PipeNum = 0;
+    bus->CBDIRTY = false;
 }
 
 void MainRAM_Init(Console* sys, NTRFCRAM fcramsize)
@@ -517,6 +528,71 @@ void Bus_VRAM(Console* sys, u32* rdata, timestamp* now, u32 addr, const BusReq* 
     }
 }
 
+void Bus_AGBVRAM(Console* sys, u32* rdata, timestamp* now, u32 addr, const BusReq* req)
+{
+    const struct
+    {
+        u16* bank;
+        size_t size;
+    } vram[VRAMID_MAX] =
+    {
+        {sys->VRAM_A.b16, VRAM_A_Size>>1},
+        {sys->VRAM_B.b16, VRAM_B_Size>>1},
+        {sys->VRAM_C.b16, VRAM_C_Size>>1},
+        {sys->VRAM_D.b16, VRAM_D_Size>>1},
+        {sys->VRAM_E.b16, VRAM_E_Size>>1},
+        {sys->VRAM_F.b16, VRAM_F_Size>>1},
+        {sys->VRAM_G.b16, VRAM_G_Size>>1},
+        {sys->VRAM_H.b16, VRAM_H_Size>>1},
+        {sys->VRAM_I.b16, VRAM_I_Size>>1}
+    };
+
+    addr &= 0x1FFFF;
+    VRAMBankIDs id;
+    switch(addr >> 14)
+    {
+    case 0 ... 3:
+        id = VRAMID_E; break;
+    case 4: case 6:
+        id = VRAMID_F; break;
+    case 5: case 7:
+        id = VRAMID_G; break;
+    }
+
+    addr >>= 1;
+    if (req->Write)
+    {
+        u32 wrdata = req->WrData;
+        if (req->Size == HSIZE_32)
+        {
+            *now += DSClk16(1);
+            vram[id].bank[addr & (vram[id].size-1)] = wrdata & 0xFFFF;
+            addr++;
+            wrdata >>= 16;
+            vram[id].bank[addr & (vram[id].size-1)] = wrdata & 0xFFFF;
+        }
+        else // 16 & 8 bit
+        {
+            vram[id].bank[addr & (vram[id].size-1)] = ROR32(wrdata, (addr&2)*8) & 0xFFFF;
+        }
+    }
+    else
+    {
+        if (req->Size == HSIZE_32)
+        {
+            *now += DSClk16(1);
+            *rdata = vram[id].bank[addr & (vram[id].size-1)];
+            addr++;
+            *rdata |= vram[id].bank[addr & (vram[id].size-1)] << 16;
+        }
+        else // 16 & 8 bit
+        {
+            *rdata = vram[id].bank[addr & (vram[id].size-1)];
+            *rdata |= *rdata << 16;
+        }
+    }
+}
+
 u32 Bus9_DebugRead(Console* sys, u32 addr)
 {
     switch(addr >> 24)
@@ -571,6 +647,7 @@ u32 Bus7_DebugRead(Console* sys, u32 addr)
 
 void Bus9_Read(Console* sys, BusReq* req, timestamp now)
 {
+    if (sys->AGB) CrashSpectacularly("ARM9 READ IN GBA MODE %i\n", req->Man9);
     const u32 addr = req->Addr;
     const AHB_HSIZE size = req->Size;
     const u32 width = 8<<size;
@@ -649,10 +726,10 @@ void Bus9_Read(Console* sys, BusReq* req, timestamp now)
         break;
 
     case 0x08 ... 0x09: // GBA Game Pak ROM
-        return GamePakBus_ROMHandler(sys, now, true);
+        return GamePakBus_ROMHandler(sys, now, 0, false, true);
 
     case 0x0A: // GBA Game Pak SRAM
-        return GamePakBus_RAMHandler(sys, now, true);
+        return GamePakBus_RAMHandler(sys, now, false, true);
 
     case 0xFF: // NDS BIOS
         if ((addr & 0xFFFFF000) == 0xFFFF0000)
@@ -674,6 +751,7 @@ void Bus9_Read(Console* sys, BusReq* req, timestamp now)
 
 void Bus9_Write(Console* sys, BusReq* req, timestamp now)
 {
+    if (sys->AGB) CrashSpectacularly("ARM9 WRITE IN GBA MODE %i\n", req->Man9);
     const u32 addr = req->Addr;
     const AHB_HSIZE size = req->Size;
     const u32 width = 8<<size;
@@ -768,10 +846,10 @@ void Bus9_Write(Console* sys, BusReq* req, timestamp now)
         break;
 
     case 0x08 ... 0x09: // GBA Game Pak ROM
-        return GamePakBus_ROMHandler(sys, now, true);
+        return GamePakBus_ROMHandler(sys, now, 0, false, true);
 
     case 0x0A: // GBA Game Pak SRAM
-        return GamePakBus_RAMHandler(sys, now, true);
+        return GamePakBus_RAMHandler(sys, now, false, true);
 
     default: // Unmapped Device;
         LogPrint(LOG_ODD|LOG_ARM9,"NTR_AHB9: %"PRIu32" bit write to unmapped memory at 0x%08"PRIX32"? Something went wrong?\n", width, addr);
@@ -781,24 +859,91 @@ void Bus9_Write(Console* sys, BusReq* req, timestamp now)
     Bus_TransferPostSetup(sys, 0, false, now, false, true);
 }
 
-void Bus7_Read(Console* sys, BusReq* req, timestamp now)
+void Bus7_AGBDecodeRead(Console* sys, BusReq* req, const u32 addr, const u32 width, const AHB_HSIZE size, timestamp now)
 {
-    const u32 addr = req->Addr;
-    const AHB_HSIZE size = req->Size;
-    const u32 width = 8<<size;
-
-    if (size > HSIZE_32) CrashSpectacularly("ARM7 BUS READ TOO WIDE: %"PRIu32"\n", width);
-    // checkme: are there any devices on the bus with weird handling of addr misalignment or weird access widths?
-
-    if (!req->Prot.Data && (req->Man7 == MAN7_ARM7)) // code access by ARM7TDMI
+    u32 rdata = sys->Bus7.ReadBus;
+    switch((addr>>24) & 0xFF) // check most signficant byte
     {
-        // set bios protection level depending on if bios is selected by arbiter and word address sent to bios rom interface
-        if (addr >= 0x4000) sys->Bios7ProtCur = 0x4000; // bios fully protected
-        else if (addr >= sys->Bios7Prot) sys->Bios7ProtCur = sys->Bios7Prot;
-        else sys->Bios7ProtCur = 0;
+    case 0x00: // ARM7 BIOS
+        if (addr < 0x4000)
+        {
+            // a7 bios reads have protection
+            // TODO: contemplate exact bios protection mechanism further
+            // non-arm7 accesses are rejected entirely
+            // CHECKME: this may or may not avoid accessing the bus entirely judging by gba dma behavior?
+            if ((req->Man7 != MAN7_ARM7) || addr < sys->Bios7ProtCur)
+            {
+                rdata = sys->BiosAGBLast; // *special* open bus
+                LogPrint(LOG_ARM7|LOG_ODD, "Protected Bios7 Read? Addr: %08"PRIX32"\n", addr); //gba; so this will get annoying quickly i presume
+            }
+            else rdata = (sys->BiosAGBLast = MemoryRead(32, sys->AGBBios, addr, AGBBios_Size));
+            break;
+        }
+        else { [[fallthrough]]; }
+
+    default: // Unmapped Device;
+        LogPrint(LOG_ODD|LOG_ARM7, "AGB Bus7: %"PRIu32" bit read from unmapped memory at %08"PRIX32"? Something went wrong?\n", width, addr);
+        break;
+
+    case 0x02: // External WRAM
+    {
+        if (size == HSIZE_32)
+        {
+            now += DSClk16(5);
+            rdata = MemoryRead(32, sys->EWRAM, addr, EWRAM_Size);
+        }
+        else
+        {
+            now += DSClk16(2);
+            rdata = MemoryRead(16, sys->EWRAM, addr, EWRAM_Size);
+            rdata |= rdata << 16;
+        }
+        break;
     }
 
-    u32 rdata;
+    case 0x03: // Internal WRAM
+        // checkme: do byte accesses only update 8 lanes or 16?
+        // TODO: confirm if it actually updates the full 32 bit lanes on NTR hardware
+        MaskedWrite(rdata, MemoryRead(32, sys->IWRAM, addr, IWRAM_Size), MakeWriteMask(addr, size));
+        //rdata = MemoryRead(32, sys->IWRAM, addr, IWRAM_Size); NTR behavior?
+        break;
+
+    case 0x04: // Memory Mapped IO
+        return Sched_AddEvent(sys, now, Evt_IOAGB); // io is in a separate event for simplicity's sake
+
+    case 0x05: // Palette RAM
+        if (size == HSIZE_32)
+        {
+            now += DSClk16(1);
+            rdata = MemoryRead(32, sys->Palette, addr, PaletteAGB_Size);
+        }
+        else
+        {
+            rdata = MemoryRead(16, sys->Palette, addr, PaletteAGB_Size);
+            rdata |= rdata << 16;
+        }
+        break;
+
+    case 0x06: // VRAM
+        Bus_AGBVRAM(sys, &rdata, &now, addr, req); break;
+
+    case 0x07: // OAM
+        rdata = MemoryRead(32, sys->OAM, addr, OAMAGB_Size);
+        break;
+
+    case 0x08 ... 0x0D: // GBA Game Pak ROM
+        return GamePakBus_ROMHandler(sys, now, ((addr >> 25) - 4), true, false);
+
+    case 0x0E ... 0x0F: // GBA Game Pak SRAM
+        return GamePakBus_RAMHandler(sys, now, true, false);
+    }
+
+    Bus_TransferPostSetup(sys, rdata, true, now, false, false);
+}
+
+void Bus7_NTRDecodeRead(Console* sys, BusReq* req, const u32 addr, const u32 width, const u32 size, timestamp now)
+{
+    u32 rdata = 0;
     switch((addr>>20) & 0xFF8) // check most signficant 9 bits
     {
     case 0x000: // ARM7 BIOS
@@ -823,7 +968,7 @@ void Bus7_Read(Console* sys, BusReq* req, timestamp now)
         else { [[fallthrough]]; }
 
     default: // Unmapped Device;
-        LogPrint(LOG_ODD|LOG_ARM7, "NTR Bus7: %"PRIu32" bit read from unmapped memory at %08"PRIX32"? Something went wrong?\n", width, addr);
+        LogPrint(LOG_ODD|LOG_ARM7, "AGB Bus7: %"PRIu32" bit read from unmapped memory at %08"PRIX32"? Something went wrong?\n", width, addr);
         rdata = 0; // always reads 0
         break;
 
@@ -858,26 +1003,63 @@ void Bus7_Read(Console* sys, BusReq* req, timestamp now)
         Bus_VRAM(sys, &rdata, &now, addr, req, false); break;
 
     case 0x080 ... 0x098: // GBA Game Pak ROM
-        return GamePakBus_ROMHandler(sys, now, false);
+        return GamePakBus_ROMHandler(sys, now, 0, false, false);
 
     case 0x0A0 ... 0x0A8: // GBA Game Pak SRAM
-        return GamePakBus_RAMHandler(sys, now, false);
+        return GamePakBus_RAMHandler(sys, now, false, false);
     }
 
     Bus_TransferPostSetup(sys, rdata, true, now, false, false);
 }
 
-void Bus7_Write(Console* sys, BusReq* req, timestamp now)
+void Bus7_AGBDecodeWrite(Console* sys, BusReq* req, const u32 addr, const u32 mask, const AHB_HSIZE size, u32 width, timestamp now)
 {
-    const u32 addr = req->Addr;
-    const AHB_HSIZE size = req->Size;
-    const u32 width = 8<<size;
-    const u32 mask = MakeWriteMask(addr, size);
+    const u32 wrdata = req->WrData;
+    // checkme: are there any devices on the bus with weird handling of addr misalignment or weird access widths?
 
-    // disgusting hack
-    if (req->Man7 >= MAN7_SCAPDMA0 && req->Man7 <= MAN7_NDMA3)
-        req->WrData = sys->DMA7[req->Man7-MAN7_SCAPDMA0].RData;
+    switch((addr>>24) & 0xFF) // check most signficant byte
+    {
+    case 0x02: // EWRAM
+        if (size == HSIZE_32) now += DSClk16(5);
+        else now += DSClk16(2);
+        MemoryWrite(32, sys->EWRAM, addr, EWRAM_Size, wrdata, mask);
+        break;
 
+    case 0x03: // IWRAM
+        MemoryWrite(32, sys->IWRAM, addr, IWRAM_Size, wrdata, mask);
+        break;
+
+    case 0x04: // Memory Mapped IO
+        return Sched_AddEvent(sys, now, Evt_IOAGB); // io is in a separate event for simplicity's sake
+
+    case 0x05: // Palette RAM
+        if (size == HSIZE_32) now += DSClk16(1);
+        MemoryWrite(32, sys->Palette, addr, PaletteAGB_Size, wrdata, mask);
+        break;
+
+    case 0x06: // VRAM
+        Bus_AGBVRAM(sys, 0, &now, addr, req); break;
+
+    case 0x07: // OAM
+        MemoryWrite(32, sys->OAM, addr, OAMAGB_Size, wrdata, mask);
+        break;
+
+    case 0x08 ... 0x0D: // GBA Game Pak ROM
+        return GamePakBus_ROMHandler(sys, now, ((addr >> 25) - 4), true, false);
+
+    case 0x0E ... 0x0F: // GBA Game Pak SRAM
+        return GamePakBus_RAMHandler(sys, now, true, false);
+
+    default: // Unmapped Device;
+        LogPrint(LOG_ODD|LOG_ARM7,"NTR_AHB7: %"PRIu32" bit write to unmapped memory at 0x%08"PRIX32"? Something went wrong?\n", width, addr);
+        break;
+    }
+
+    Bus_TransferPostSetup(sys, 0, false, now, false, false);
+}
+
+void Bus7_NTRDecodeWrite(Console* sys, BusReq* req, const u32 addr, const u32 mask, const AHB_HSIZE size [[maybe_unused]], const u32 width, timestamp now)
+{
     const u32 wrdata = req->WrData;
     // checkme: are there any devices on the bus with weird handling of addr misalignment or weird access widths?
 
@@ -913,10 +1095,10 @@ void Bus7_Write(Console* sys, BusReq* req, timestamp now)
         Bus_VRAM(sys, nullptr, &now, addr, req, false); break;
 
     case 0x080 ... 0x098: // GBA Game Pak ROM
-        return GamePakBus_ROMHandler(sys, now, false);
+        return GamePakBus_ROMHandler(sys, now, 0, false, false);
 
     case 0x0A0 ... 0x0A8: // GBA Game Pak SRAM
-        return GamePakBus_RAMHandler(sys, now, false);
+        return GamePakBus_RAMHandler(sys, now, false, false);
 
     default: // Unmapped Device;
         LogPrint(LOG_ODD|LOG_ARM7,"NTR_AHB7: %"PRIu32" bit write to unmapped memory at 0x%08"PRIX32"? Something went wrong?\n", width, addr);
@@ -924,6 +1106,44 @@ void Bus7_Write(Console* sys, BusReq* req, timestamp now)
     }
 
     Bus_TransferPostSetup(sys, 0, false, now, false, false);
+}
+
+void Bus7_Read(Console* sys, BusReq* req, timestamp now)
+{
+    const u32 addr = req->Addr;
+    const AHB_HSIZE size = req->Size;
+    const u32 width = 8<<size;
+
+    if (size > HSIZE_32) CrashSpectacularly("ARM7 BUS READ TOO WIDE: %"PRIu32"\n", width);
+    // checkme: are there any devices on the bus with weird handling of addr misalignment or weird access widths?
+
+    if (!req->Prot.Data && (req->Man7 == MAN7_ARM7)) // code access by ARM7TDMI
+    {
+        // set bios protection level depending on if bios is selected by arbiter and word address sent to bios rom interface
+        if (addr >= 0x4000) sys->Bios7ProtCur = 0x4000; // bios fully protected
+        else if (addr >= sys->Bios7Prot) sys->Bios7ProtCur = sys->Bios7Prot;
+        else sys->Bios7ProtCur = 0;
+    }
+
+    if (sys->AGB) Bus7_AGBDecodeRead(sys, req, addr, width, size, now);
+    else          Bus7_NTRDecodeRead(sys, req, addr, width, size, now);
+}
+
+void Bus7_Write(Console* sys, BusReq* req, timestamp now)
+{
+    const u32 addr = req->Addr;
+    const AHB_HSIZE size = req->Size;
+    const u32 width = 8<<size;
+    const u32 mask = MakeWriteMask(addr, size);
+
+    // disgusting hack
+    if (req->Man7 >= MAN7_SCAPDMA0 && req->Man7 <= MAN7_NDMA3)
+        req->WrData = sys->DMA7[req->Man7-MAN7_SCAPDMA0].RData;
+
+    sys->Bus7.ReadBus = req->WrData; // update open bus value for gba mode
+
+    if (sys->AGB) Bus7_AGBDecodeWrite(sys, req, addr, mask, size, width, now);
+    else          Bus7_NTRDecodeWrite(sys, req, addr, mask, size, width, now);
 }
 
 void Bus9_KillBursts(Console* sys, const timestamp now)
@@ -999,7 +1219,7 @@ void Bus_Req(Console* sys, const BusReq* req, const timestamp now, const bool a9
         Sched_AddEventIfEarlier(sys, now, a9 ? Evt_Bus9 : Evt_Bus7Comp);
     }
 
-    if (a9) Sched_AddEventIfEarlier(sys, now+DSClk33(1), Evt_BusReq9_DMA0+req->Man9);
+    if (a9) Sched_AddEventIfEarlier(sys, now+DSClkSys(1, sys->AGB), Evt_BusReq9_DMA0+req->Man9);
 }
 
 void Bus_ReqSched(Console* sys, const Bus9_Managers man, const timestamp now, const bool a9)
@@ -1025,7 +1245,7 @@ void Bus_TransferPostSetup(Console* sys, const u32 rdata, const bool isread, con
     BusImpl* bus = (a9 ? &sys->Bus9 : &sys->Bus7);
     if (isread) bus->ReadBus = rdata;
     bus->NoPrev = noprev;
-    Sched_AddEvent(sys, end+DSClk33(1), a9 ? Evt_Bus9 : Evt_Bus7Comp);
+    Sched_AddEvent(sys, end+DSClkSys(1, sys->AGB), a9 ? Evt_Bus9 : Evt_Bus7Comp);
 }
 
 void Bus_RunCompCB(Console* sys, timestamp now, const bool a9)
@@ -1079,7 +1299,7 @@ void Bus_RunComp(Console* sys, timestamp now, const bool a9)
     bus->ComplMan = MAN_NONE;
     bus->ComplLoad = false;
 
-    timestamp len = DSClk33(1);
+    timestamp len = DSClkSys(1, sys->AGB);
 
     // process last completion
     if (!bus->NoPrev)
@@ -1101,10 +1321,10 @@ void Bus_RunComp(Console* sys, timestamp now, const bool a9)
         // hack for dma
         if (reqold->CB == CB9_DMARead) DMA_RDataHack(sys, bus->GrantMan-MAN9_DMA0, true, bus->ReadBus, len);
         if (reqold->CB == CB7_DMARead) DMA_RDataHack(sys, bus->GrantMan-MAN7_SCAPDMA0, false, bus->ReadBus, len);
-        if (len > DSClk33(1))
+        if (len > DSClkSys(1, sys->AGB))
         {
             for (size_t i = 0; i < countof(bus->PipeExitTs); i++)
-                bus->PipeExitTs[i] += (len-DSClk33(1));
+                bus->PipeExitTs[i] += (len-DSClkSys(1, sys->AGB));
         }
     }
 
@@ -1230,11 +1450,11 @@ void Bus_RunGrant(Console* sys, timestamp now, const bool a9)
     timestamp new;
     if ((bus->HLockGeneric != MAN_NONE) ? (bus->ReqList & (1<<bus->HLockGeneric)) : reqlista7deny) // check if something can be granted bus
     {
-        new = now+DSClk33(1);
+        new = now+DSClkSys(1, sys->AGB);
     }
     else if (!bus->FIFOEmpty) // if something is progressing through the pipeline just wait for it's time
     {
-        new = now+DSClk33(1);
+        new = now+DSClkSys(1, sys->AGB);
         //bus->LockSched = false;
         //new = bus->PipeExitTs[bus->FIFODrainPtr]
     }

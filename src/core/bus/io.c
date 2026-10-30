@@ -259,7 +259,7 @@ void IO9_Read(Console* sys, const u32 addr, const timestamp now)
     case 0x00'00'00: // dispcnt
     case 0x00'00'08 ... 0x00'00'54: // ppu/lcd a block
     case 0x00'00'6C: // bright a
-        rdata = PPU_IORead(&sys->PPU_A, addr);  break;
+        rdata = PPU_IORead(&sys->PPU_A, addr, false);  break;
     case 0x00'00'04: rdata = (sys->VCount << 16) | sys->DispStatRO9.Raw | sys->DispStatRW9.Raw; break;
     case 0x00'00'60: rdata = sys->GX3D.RasterCR.Raw; break;
 
@@ -334,7 +334,7 @@ void IO9_Read(Console* sys, const u32 addr, const timestamp now)
         else rdata = GX_IORead(sys, addr);
         break;
 
-    case 0x00'10'00 ... 0x00'10'6C: rdata = PPU_IORead(&sys->PPU_B, addr); break;
+    case 0x00'10'00 ... 0x00'10'6C: rdata = PPU_IORead(&sys->PPU_B, addr, false); break;
 
     case 0x00'03'00: rdata = sys->PostFlag | (sys->PostFlagA9Bit << 1); break;
 
@@ -359,7 +359,7 @@ void IO9_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
     case 0x00'00'08 ... 0x00'00'54:
     case 0x00'00'6C:
         PPU_Sync(sys, now);
-        PPU_IOWrite(&sys->PPU_A, addr, wrdata, mask, false, sys->PowerCR9.PPUAPower);
+        PPU_IOWrite(&sys->PPU_A, addr, wrdata, mask, false, sys->PowerCR9.PPUAPower, false);
         break;
 
     case 0x00'00'04:
@@ -534,7 +534,7 @@ void IO9_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
 
     case 0x00'10'00 ... 0x00'10'6C:
         PPU_Sync(sys, now);
-        PPU_IOWrite(&sys->PPU_B, addr, wrdata, mask, true, sys->PowerCR9.PPUBPower);
+        PPU_IOWrite(&sys->PPU_B, addr, wrdata, mask, true, sys->PowerCR9.PPUBPower, false);
         break;
 
     default:
@@ -742,8 +742,8 @@ void IO7_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
                     //       a7 powcr - sound en
                     //       "a9 extmemcnt - main ram gba mode bit"
                     // CHECKME: do you think the dma channel word latches can leak info from nds to gba mode?
-                    LogPrint(LOG_ARM7|LOG_UNIMP, "But nobody came...\n\n\n...GBA mode unsupported, sorry!\n");
-                    [[fallthrough]];
+                    //LogPrint(LOG_ARM7|LOG_UNIMP, "But nobody came...\n\n\n...GBA mode unsupported, sorry!\n");
+                    return Console_ResetAGB(sys, now);
                 case 2: // halt; stop clocking arm7tdmi until IE & IF
                     if (!Console_CheckARM7Wake(sys)) // checkme: might still halt for a little?
                         sys->A7ClkDisable = true;

@@ -15,6 +15,7 @@ constexpr unsigned ScreenSizeTiles = ScreenWidthTiles * ScreenHeightTiles;
 constexpr unsigned ScreenWidthPx = TileWidth * ScreenWidthTiles;
 constexpr unsigned ScreenHeightPx = TileHeight * ScreenHeightTiles;
 constexpr unsigned ScreenSizePx = ScreenWidthPx * ScreenHeightPx;
+#define PPU_GetWidth(AGB) (AGB ? 240 : 256)
 
 typedef union
 {
@@ -82,7 +83,7 @@ typedef union
     };
 } SprAttrs2;
 
-constexpr u32 DispCRWrMasks[2] = {0xFFFFFFFF /* PPU/LCDC A */, 0xC0B1FFF7 /* PPU/LCDC B */};
+constexpr u32 DispCRWrMasks[] = {0xFFFFFFFF /* PPU/LCDC A */, 0xC0B1FFF7 /* PPU/LCDC B */, 0x0001FFF7 /* PPU AGB MODE */};
 constexpr u16 BGOffsetWrMask = 0x1FF;
 
 typedef union
@@ -182,6 +183,15 @@ typedef struct
             bool BGExtPalEn : 1;
             bool SprExtPalEn : 1;
         };
+        struct
+        {
+            u16 : 3;
+            bool CGBMode : 1; // switches the ppu into a mode for displaying the cbg graphics output; dunno if this works on nds?
+            bool FrameSelect : 1;
+            bool OBJHBlankDisable : 1;
+            u16 : 10;
+            bool StereoscopyMode : 1; // supposedly still has partial functionality on NDS/3DS?
+        } AGB; // agb different bits
     } DisplayCR;
 
     union
@@ -249,8 +259,8 @@ typedef struct Console Console;
 void PPU_RenderScanline(Console* sys, const bool b, const s16 y);
 void PPU_GlobalStep(Console* sys, const timestamp now, const u16 vcount);
 
-u32 PPU_IORead(PPU* ppu, const u32 addr);
-void PPU_IOWrite(PPU* ppu, const u32 addr, const u32 val, u32 mask, const bool b, const bool ppuenable);
+u32 PPU_IORead(PPU* ppu, const u32 addr, const bool agb);
+void PPU_IOWrite(PPU* ppu, const u32 addr, const u32 val, u32 mask, const bool b, const bool ppuenable, const bool agb);
 
 int SDLCALL PPUA_MainLoop(void* ptr);
 int SDLCALL PPUB_MainLoop(void* ptr);

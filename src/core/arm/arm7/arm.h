@@ -55,6 +55,7 @@ typedef struct
     ARM ARM;
     A7TDMI_PostMem PostMem;
     bool BusGo;
+    bool Clk16;
 } ARM7TDMI;
 
 // ensure casting between the two types works as expected

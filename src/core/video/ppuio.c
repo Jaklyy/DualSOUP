@@ -4,7 +4,7 @@
 
 
 
-u32 PPU_IORead(PPU* ppu, const u32 addr)
+u32 PPU_IORead(PPU* ppu, const u32 addr, const bool agb)
 {
     switch(addr & 0x7C)
     {
@@ -31,7 +31,7 @@ u32 PPU_IORead(PPU* ppu, const u32 addr)
     }
 }
 
-void PPU_IOWrite(PPU* ppu, const u32 addr, const u32 val, u32 mask, const bool b, const bool ppuenable)
+void PPU_IOWrite(PPU* ppu, const u32 addr, const u32 val, u32 mask, const bool b, const bool ppuenable, const bool agb)
 {
     if (!ppuenable && ((addr & 0x7C) >= 0x8) && ((addr & 0x7C) < 0x60))
     {
@@ -41,13 +41,18 @@ void PPU_IOWrite(PPU* ppu, const u32 addr, const u32 val, u32 mask, const bool b
     switch(addr & 0x7C)
     {
     case 0x00: // ppu and lcdc control reg, so it isn't disabled with the ppu
-        MaskedWrite(ppu->DisplayCR.Raw, val, mask & DispCRWrMasks[b]);
+        if (agb) MaskedWrite(ppu->DisplayCR.Raw, val, mask & DispCRWrMasks[2]);
+        else     MaskedWrite(ppu->DisplayCR.Raw, val, mask & DispCRWrMasks[b]);
         break;
 
     case 0x08:
-        MaskedWrite(ppu->BGCR[0].Raw, val, mask);
-        MaskedWrite(ppu->BGCR[1].Raw, val>>16, mask>>16);
+    {
+        u32 crmask = 0xFFFF;
+        if (agb) crmask = 0xEFFF;
+        MaskedWrite(ppu->BGCR[0].Raw, val, mask & crmask); // apparently these bits are not used
+        MaskedWrite(ppu->BGCR[1].Raw, val>>16, (mask>>16) & crmask);
         break;
+    }
     case 0x0C:
         MaskedWrite(ppu->BGCR[2].Raw, val, mask);
         MaskedWrite(ppu->BGCR[3].Raw, val>>16, mask>>16);

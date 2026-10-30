@@ -405,7 +405,7 @@ void GamePak_SRAMWrite(GamePak* pak, const u16 addr, const u8 val)
         }
         else
         {
-            pak->SRAM[pak->SRAMSize] = val;
+            pak->SRAM[addr] = val;
 
             GamePakSRAM_SetDirty(pak);
         }
@@ -480,6 +480,13 @@ void GamePak_Step(BusGamePak* bus, GamePak* pak)
     if (stepaddr) pak->LatchedAddr_Lo = (pak->LatchedAddr_Lo + 1) & 0xFFFF;
 }
 
+
+void GamePakBus_Reset(Console* sys)
+{
+    memset(&sys->BusGP, 0, sizeof(sys->BusGP));
+    GamePak_Step(&sys->BusGP, &sys->GamePak);
+}
+
 void GamePakBus_KillBurst(Console* sys, timestamp now [[maybe_unused]], bool a9)
 {
     if (a9 == sys->ExtMemCR_Shared.GBAPakA7Access) return;
@@ -489,16 +496,39 @@ void GamePakBus_KillBurst(Console* sys, timestamp now [[maybe_unused]], bool a9)
     bus->ROM_CSel = false;
 }
 
-void GamePakBus_ROMHandler(Console* sys, timestamp now, bool a9)
+void GamePakBus_ROMHandler(Console* sys, timestamp now, u8 waitstate, bool agb, bool a9)
 {
-    const u8 ns  = GamePak_NTRWaitStates[0][a9 ? sys->ExtMemCR_9.GBAROMTimingsNS  : sys->ExtMemCR_7.GBAROMTimingsNS];
-    const u8 seq = GamePak_NTRWaitStates[1][a9 ? sys->ExtMemCR_9.GBAROMTimingsSeq : sys->ExtMemCR_7.GBAROMTimingsSeq];
+    u8 ns;
+    u8 seq;
+    if (agb)
+    {
+        switch(waitstate)
+        {
+        case 0:
+            ns  = GamePak_WaitStates[2][sys->ExtMemCR_AGB.PakROMTimingsNS0];
+            seq = GamePak_WaitStates[3][sys->ExtMemCR_AGB.PakROMTimingsS0];
+            break;
+        case 1:
+            ns  = GamePak_WaitStates[2][sys->ExtMemCR_AGB.PakROMTimingsNS1];
+            seq = GamePak_WaitStates[4][sys->ExtMemCR_AGB.PakROMTimingsS1];
+            break;
+        case 2:
+            ns  = GamePak_WaitStates[2][sys->ExtMemCR_AGB.PakROMTimingsNS2];
+            seq = GamePak_WaitStates[5][sys->ExtMemCR_AGB.PakROMTimingsS2];
+            break;
+        }
+    }
+    else
+    {
+        ns  = GamePak_WaitStates[0][a9 ? sys->ExtMemCR_9.GBAROMTimingsNS  : sys->ExtMemCR_7.GBAROMTimingsNS];
+        seq = GamePak_WaitStates[1][a9 ? sys->ExtMemCR_9.GBAROMTimingsSeq : sys->ExtMemCR_7.GBAROMTimingsSeq];
+    }
     BusReq* req = (a9 ? &sys->Bus9.PipeFIFO[sys->Bus9.ReqActivePtr] : &sys->Bus7.PipeFIFO[sys->Bus7.ReqActivePtr]);
     BusGamePak* bus = &sys->BusGP;
     GamePak* pak = &sys->GamePak;
 
     u32 rdata = 0;
-    if (a9 == sys->ExtMemCR_Shared.GBAPakA7Access) // unmapped
+    if (!agb && (a9 == sys->ExtMemCR_Shared.GBAPakA7Access)) // unmapped
     {
         failure:
         now += DSClk33(0);
@@ -514,7 +544,7 @@ void GamePakBus_ROMHandler(Console* sys, timestamp now, bool a9)
 
         if (req->Write)
         {
-            if (req->Size == HSIZE_8) // byte writes are not permitted (nds only?)
+            if ((req->Size == HSIZE_8) && !agb) // byte writes are not permitted (nds only?)
                 goto failure;
 
             for (int i = 0; i < req->Size; i++) // 32 bit is 2, 16 bit is 1; it just works:tm:
@@ -543,7 +573,7 @@ void GamePakBus_ROMHandler(Console* sys, timestamp now, bool a9)
                     bus->Write_Sel = false;
                     GamePak_Step(bus, pak);
 
-                    now += DSClk33(ns);
+                    now += DSClkSys(ns, agb);
                     bus->BurstActive = true;
                 }
                 else
@@ -556,7 +586,7 @@ void GamePakBus_ROMHandler(Console* sys, timestamp now, bool a9)
                     bus->Write_Sel = false;
                     GamePak_Step(bus, pak);
 
-                    now += DSClk33(seq);
+                    now += DSClkSys(seq, agb);
                 }
             }
         }
@@ -588,7 +618,8 @@ void GamePakBus_ROMHandler(Console* sys, timestamp now, bool a9)
                     rdata |= bus->ROM_Data;
                     rdata = ROR32(rdata, 16); // this results in data being in the right lanes for 32 bit loads
 
-                    now += DSClk33(ns);
+                    if (!agb || !sys->ExtMemCR_AGB.PakPrefetcher) // TODO: prefetcher
+                        now += DSClkSys(ns, agb);
 
                     bus->BurstActive = true;
                 }
@@ -604,19 +635,24 @@ void GamePakBus_ROMHandler(Console* sys, timestamp now, bool a9)
                     rdata |= bus->ROM_Data;
                     rdata = ROR32(rdata, 16); // this results in data being in the right lanes for 32 bit loads
 
-                    now += DSClk33(seq);
+                    if (!agb || !sys->ExtMemCR_AGB.PakPrefetcher) // TODO: prefetcher
+                        now += DSClkSys(seq, agb);
                 }
             }
             if (req->Size != HSIZE_32)
                 rdata |= rdata >> 16; // rdata is in the high portion after earlier rotate
+            //printf("%08X %08X\n", req->Addr, rdata);
         }
     }
     Bus_TransferPostSetup(sys, rdata, !req->Write, now, false, a9);
 }
 
-void GamePakBus_RAMHandler(Console* sys, timestamp now, bool a9)
+void GamePakBus_RAMHandler(Console* sys, timestamp now, bool agb, bool a9)
 {
-    const u8 ns = GamePak_NTRWaitStates[0][a9 ? sys->ExtMemCR_9.GBARAMTimings : sys->ExtMemCR_7.GBARAMTimings];
+    u8 ns;
+    if (agb) ns = GamePak_WaitStates[2][sys->ExtMemCR_AGB.PakRAMTimings];
+    else     ns = GamePak_WaitStates[0][a9 ? sys->ExtMemCR_9.GBARAMTimings : sys->ExtMemCR_7.GBARAMTimings];
+
     BusReq* req = (a9 ? &sys->Bus9.PipeFIFO[sys->Bus9.ReqActivePtr] : &sys->Bus7.PipeFIFO[sys->Bus7.ReqActivePtr]);
     BusGamePak* bus = &sys->BusGP;
     GamePak* pak = &sys->GamePak;
@@ -624,7 +660,7 @@ void GamePakBus_RAMHandler(Console* sys, timestamp now, bool a9)
     u32 rdata = 0;
 
     // note: 8 bit bus, only supports byte r/w, does not ignore low bits of address for larger accesses.
-    if (a9 == sys->ExtMemCR_Shared.GBAPakA7Access)
+    if (!agb && (a9 == sys->ExtMemCR_Shared.GBAPakA7Access))
     {
         failure:
         now += DSClk33(0);
@@ -635,7 +671,7 @@ void GamePakBus_RAMHandler(Console* sys, timestamp now, bool a9)
 
         if (req->Write)
         {
-            if (req->Size != HSIZE_8) // only byte writes are permitted (nds only)
+            if ((req->Size != HSIZE_8) && !agb) // only byte writes are permitted (nds only)
                 goto failure;
 
             u8 wrdata = ROR32(req->WrData, (addr&3)*8) & 0xFF;
@@ -674,7 +710,7 @@ void GamePakBus_RAMHandler(Console* sys, timestamp now, bool a9)
             rdata = bus->RAM_Data;
             rdata |= (rdata << 8) | (rdata << 16) | (rdata << 24); // mirror across all lanes
         }
-        now += DSClk33(ns);
+        now += DSClkSys(ns, agb);
     }
     Bus_TransferPostSetup(sys, rdata, !req->Write, now, false, a9);
 }

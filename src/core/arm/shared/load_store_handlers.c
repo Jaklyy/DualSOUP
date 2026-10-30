@@ -240,7 +240,7 @@ void A7TDMI_LDR_Post(ARM7TDMI* a7tdmi)
     A7TDMI_SetReg(a7tdmi, rd, rdata);
 
     a7tdmi->ARM.CodeSeq = false;
-    A7TDMI_InstrRead(a7tdmi, a7tdmi->ARM.Timestamp+DSClk33(1));
+    A7TDMI_InstrRead(a7tdmi, a7tdmi->ARM.Timestamp+DSClkSys(1, a7tdmi->Clk16));
 }
 
 void ARM_STM(ARM* cpu, u32 addr, u16 rlist, u32 wbaddr, u32 baserestore, u8 rn, bool writeback, bool special)
@@ -554,7 +554,7 @@ void A7TDMI_LDM_Post(ARM7TDMI* a7tdmi)
         ARM_SetMode(&a7tdmi->ARM, oldmode);
 
     a7tdmi->ARM.CodeSeq = false;
-    A7TDMI_InstrRead(a7tdmi, a7tdmi->ARM.Timestamp+DSClk33(1));
+    A7TDMI_InstrRead(a7tdmi, a7tdmi->ARM.Timestamp+DSClkSys(1, a7tdmi->Clk16));
 }
 
 void A9ES_SWPLoad_Post(ARM946ES* a9es)
@@ -633,5 +633,5 @@ void A7TDMI_SWPStore_Post(ARM7TDMI* a7tdmi)
     A7TDMI_SetReg(a7tdmi, rd, rdata);
 
     a7tdmi->ARM.CodeSeq = false;
-    A7TDMI_InstrRead(a7tdmi, a7tdmi->ARM.Timestamp+DSClk33(1));
+    A7TDMI_InstrRead(a7tdmi, a7tdmi->ARM.Timestamp+DSClkSys(1, a7tdmi->Clk16));
 }

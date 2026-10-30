@@ -354,6 +354,11 @@ static const ConfigEntry CoreCfgData[] =
         .Type=      SEARCH_STRING,
     },
     {
+        .Name=      "AGBBios7Path",
+        .Offset=    offsetof(CoreCfg, AGB.Bios7),
+        .Type=      SEARCH_STRING,
+    },
+    {
         .Name=      "FriendlyName",
         .Offset=    offsetof(CoreCfg, FriendlyName),
         .Type=      SEARCH_STRING,

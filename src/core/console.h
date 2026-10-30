@@ -65,6 +65,11 @@ constexpr u16 ActiveRender_Cycles = 48+(256*6); // How long the PPUs are activel
 constexpr u16 HBlank_Cycles       = 91*6; // length of the HBlank period.
 constexpr u16 Scanline_Cycles     = HBlank_Cycles + ActiveRender_Cycles; // total length of a scanline in 16 MHz cycles.
 constexpr u32 Frame_Cycles        = Scanline_Cycles * 263; // total frame length.
+
+constexpr u16 AGBActiveRender_Cycles = 48+(240*4); // How long the PPUs are actively rendering graphics in a given scanline.
+constexpr u16 AGBHBlank_Cycles       = 56*4; // length of the HBlank period.
+constexpr u16 AGBScanline_Cycles     = AGBHBlank_Cycles + AGBActiveRender_Cycles; // total length of a scanline in 16 MHz cycles.
+constexpr u32 AGBFrame_Cycles        = AGBScanline_Cycles * 228; // total frame length.
 constexpr double FPS       = 59.8260982881; // how do I represent this losslessly.
 constexpr double Framems   = 16.7151131131; // see above.
 constexpr double VCountus  = 63.5555631677; // length of a scanline in us; see above.
@@ -91,7 +96,9 @@ constexpr size_t VRAM_G_Size      = KiB(16);
 constexpr size_t VRAM_H_Size      = KiB(32);
 constexpr size_t VRAM_I_Size      = KiB(16);
 constexpr size_t Palette_Size     = KiB(2);
+constexpr size_t PaletteAGB_Size  = KiB(1);
 constexpr size_t OAM_Size         = KiB(2);
+constexpr size_t OAMAGB_Size      = KiB(1);
 constexpr size_t WiFiRAM_Size     = KiB(8);
 
 typedef enum : u8
@@ -312,19 +319,19 @@ typedef struct Console
 
     Sched Sched;
 
-    alignas(HOST_CACHEALIGN) timestamp IRQSched9[IRQ_Max];
-
     SysCfg SysCfg; // there was padding here, ok?
 
-    alignas(HOST_CACHEALIGN) timestamp IRQSched7[IRQ_Max];
+    u32 BiosAGBLast; // stale bios value for open bus emulation
 
     u16 VCount;
+    u8 VCountAGB;
 
     u8 IPCSyncDataTo9; // data sent to arm9
     u8 IPCSyncDataTo7; // data sent to arm7
     bool IPCSyncIRQEnableTo9; // enable for arm9
     bool IPCSyncIRQEnableTo7; // enable irqs for arm7
 
+    bool AGB;
     bool IME9;
     bool IME7;
     bool A7ClkDisable;
@@ -394,6 +401,23 @@ typedef struct Console
     Timer Timers9[4];
     Timer Timers7[4];
     Timer TimersSound[16];
+
+    union {
+        u16 Raw;
+        struct {
+            u8 PakRAMTimings : 2;
+            u8 PakROMTimingsNS0 : 2;
+            u8 PakROMTimingsS0 : 1;
+            u8 PakROMTimingsNS1 : 2;
+            u8 PakROMTimingsS1 : 1;
+            u8 PakROMTimingsNS2 : 2;
+            u8 PakROMTimingsS2 : 1;
+            u8 PakPHIClock : 2;
+            u8 : 1; // sb0
+            bool PakPrefetcher : 1;
+            bool PakIsNotAGB : 1; // read only, not used on nds (...probably?)
+        };
+    } ExtMemCR_AGB;
 
     union {
         u8 Raw;
@@ -622,6 +646,7 @@ typedef struct Console
     s32 MixerOut[2];
 
     u16 SoundBias;
+    u8 SoundRate; // agb
     timestamp MixerLastRun;
 
     timestamp LastPoll; // last cycle time we polled for input
@@ -729,7 +754,8 @@ Console* Console_Init(Console* sys, CoreCfg* cfg, void* aud);
 // cleans up console struct's internal variables; full frees the struct itself
 void Console_Cleanup(Console* sys, bool full);
 // emulate a hardware reset.
-void Console_Reset(Console* sys);
+void Console_Reset(Console* sys, timestamp now);
+void Console_ResetAGB(Console* sys, timestamp now);
 // actually run the emulation.
 Core_Ret Console_MainLoop(Console* sys);
 

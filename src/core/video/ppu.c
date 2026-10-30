@@ -76,7 +76,7 @@ void PPU_None(Console* sys, const bool b, const u8 bg)
 {
     PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
     CompositeBuffer* buffer = ppu->CompositeBuffer[bg];
-    for (int x = 0; x < 256; x++)
+    for (int x = 0; x < PPU_GetWidth(sys->AGB); x++)
         buffer[x] = (CompositeBuffer){0, 0, true, false, false, false, false};
 }
 
@@ -118,7 +118,7 @@ void PPU_RenderText(Console* sys, const bool b, u16 y, const u8 bg)
     // isolate out msb since it needs to be special cased for properly indexing screens
     u8 x = ppu->Xoff[bg] & 0xFF;
     bool xmsb = (ppu->Xoff[bg] >> 8) & ppu->BGCR[bg].Wide;
-    for (int xf = 0; xf < 256; xf++)
+    for (int xf = 0; xf < PPU_GetWidth(sys->AGB); xf++)
     {
         if (((x%8) == 0) || (xf == 0))
         {
@@ -157,17 +157,30 @@ void PPU_RenderBitmap(Console* sys, const bool b, u16 y, const u8 bg, const bool
     u16 (*bgvram)(Console*, const u32) = (b ? VRAM_BGB : VRAM_BGA);
     CompositeBuffer* buffer = ppu->CompositeBuffer[bg];
 
-    u32 screenbase = ppu->BGCR[bg].ScreenBase * KiB(16);
+    u32 screenbase;
     u32 width;
-    switch(ppu->BGCR[bg].ScreenSize)
+    if (sys->AGB)
     {
-        case 0: width = 128; break;
-        case 1: width = 256; break;
-        case 2: width = 512; break;
-        case 3: width = 512; break;
+        screenbase = (ppu->DisplayCR.AGB.FrameSelect ? 0 : 0xA000);
+        switch(ppu->DisplayCR.BGSetup)
+        {
+            case 3: width = 240; break;
+            case 4: width = 240; break;
+            case 5: width = 128; break;
+        }
     }
-
-    for (int x = 0; x < 256; x++)
+    else
+    {
+        screenbase = ppu->BGCR[bg].ScreenBase * KiB(16);
+        switch(ppu->BGCR[bg].ScreenSize)
+        {
+            case 0: width = 128; break;
+            case 1: width = 256; break;
+            case 2: width = 512; break;
+            case 3: width = 512; break;
+        }
+    }
+    for (int x = 0; x < PPU_GetWidth(sys->AGB); x++)
     {
         if (dircolor)
         {
@@ -187,6 +200,7 @@ void PPU_RenderBitmap(Console* sys, const bool b, u16 y, const u8 bg, const bool
 void PPU_Affine(Console* sys, const bool b, const u16 y [[maybe_unused]], const u8 bg)
 {
     PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
+    PPU_None(sys, b, bg);
     LogPrint(LOG_PPU|LOG_UNIMP, "UNIMPLEMENTED: AFFINE BG %i %08X\n", bg, ppu->BGCR[bg].Raw);
 }
 
@@ -310,16 +324,98 @@ void PPU_BG3_Lookup(Console* sys, const bool b, const u16 y)
     }
 }
 
+void PPU_BG0_AGBLookup(Console* sys, const u16 y)
+{
+    PPU* ppu = &sys->PPU_A;
+    if (!ppu->DisplayCR.BG0Enable) return PPU_None(sys, false, 0);
+    switch(ppu->DisplayCR.BGSetup)
+    {
+        case 0 ... 1:
+            return PPU_RenderText(sys, false, y, 0);
+
+        default:
+            return PPU_None(sys, false, 0);
+    }
+}
+
+void PPU_BG1_AGBLookup(Console* sys, const u16 y)
+{
+    PPU* ppu = &sys->PPU_A;
+    if (!ppu->DisplayCR.BG1Enable) return PPU_None(sys, false, 1);
+    switch(ppu->DisplayCR.BGSetup)
+    {
+        case 0 ... 1:
+            return PPU_RenderText(sys, false, y, 1);
+
+        default:
+            return PPU_None(sys, false, 1);
+
+    }
+}
+
+void PPU_BG2_AGBLookup(Console* sys, const u16 y)
+{
+    PPU* ppu = &sys->PPU_A;
+    if (!ppu->DisplayCR.BG2Enable) return PPU_None(sys, false, 2);
+    switch(ppu->DisplayCR.BGSetup)
+    {
+        case 0:
+            return PPU_RenderText(sys, false, y, 2);
+
+        case 1 ... 2:
+            return PPU_Affine(sys, false, y, 2);
+
+        case 3:
+            return PPU_RenderBitmap(sys, false, y, 2, true);
+        case 4:
+            return PPU_RenderBitmap(sys, false, y, 2, false);
+        case 5:
+            return PPU_RenderBitmap(sys, false, y, 2, true);
+
+        case 6 ... 7:
+            return PPU_None(sys, false, 2);
+
+    }
+}
+
+void PPU_BG3_AGBLookup(Console* sys, const u16 y)
+{
+    PPU* ppu = &sys->PPU_A;
+    if (!ppu->DisplayCR.BG3Enable) return PPU_None(sys, false, 3);
+    switch(ppu->DisplayCR.BGSetup)
+    {
+        case 0:
+            return PPU_RenderText(sys, false, y, 3);
+
+        case 2:
+            return PPU_Affine(sys, false, y, 3);
+
+        case 1:
+        case 3 ... 7:
+            return PPU_None(sys, false, 3);
+    }
+}
+
 
 void PPU_BuildBGs(Console* sys, const bool b, const u16 y)
 {
     // todo: windows
 
     // sprite mosaic???
-    PPU_BG0_Lookup(sys, b, y);
-    PPU_BG1_Lookup(sys, b, y);
-    PPU_BG2_Lookup(sys, b, y);
-    PPU_BG3_Lookup(sys, b, y);
+    if (sys->AGB)
+    {
+        PPU_BG0_AGBLookup(sys, y);
+        PPU_BG1_AGBLookup(sys, y);
+        PPU_BG2_AGBLookup(sys, y);
+        PPU_BG3_AGBLookup(sys, y);
+    }
+    else
+    {
+        PPU_BG0_Lookup(sys, b, y);
+        PPU_BG1_Lookup(sys, b, y);
+        PPU_BG2_Lookup(sys, b, y);
+        PPU_BG3_Lookup(sys, b, y);
+    }
 }
 
 u32 PPU_Blend(PPU* ppu, CompositeBuffer* indices, u32* colors, int* bgs, int num, const bool enabled)
@@ -403,7 +499,7 @@ void PPU_Composite(Console* sys, const bool b, const u16 y)
     volatile timestamp* time = (b ? (&sys->PPUBTimestamp) : (&sys->PPUATimestamp));
 
     bool winenable = (ppu->DisplayCR.Win0Enable || ppu->DisplayCR.Win1Enable || ppu->DisplayCR.OBJWinEnable);
-    for (int x = 0; x < 256; x++)
+    for (int x = 0; x < PPU_GetWidth(sys->AGB); x++)
     {
         // checkme: idk when this is actually checked
         // TODO: DSi with PPU rev enabled special cases the ((left == 0) && (right == 0)) case
@@ -506,13 +602,15 @@ void PPU_Composite(Console* sys, const bool b, const u16 y)
                 color[j] = RGB565to666(color[j]);
             }
 
-            *time += (i == 2) ? DSClk33(3) : DSClk33(6);
+            if (sys->AGB) *time += (i == 2) ? DSClk16(2) : DSClk16(4);
+            else          *time += (i == 2) ? DSClk33(3) : DSClk33(6);
             PPU_Wait(sys, *time);
         }
 
         scanline[x] = PPU_Blend(ppu, index, color, bg, i, enablemask.EnableBlend);
     }
-    *time += DSClk33(2+HBlank_Cycles);
+    if (sys->AGB) *time += DSClk16(2+AGBHBlank_Cycles);
+    else          *time += DSClk33(2+HBlank_Cycles);
 }
 
 void PPU_SpriteAffine(Console* sys, const bool b, const SprAttrs01 attr1, const SprAttrs2 attr2, const u8 width, const u8 height, u8 y)
@@ -571,7 +669,7 @@ void PPU_SpriteAffine(Console* sys, const bool b, const SprAttrs01 attr1, const 
         u32 ystep;
         if (ppu->DisplayCR.BitmapOBJ1D)
         {
-            if (ppu->DisplayCR.BitmapOBJ2DDims)
+            if (!sys->AGB && ppu->DisplayCR.BitmapOBJ2DDims)
             {
                 // apparently does nothing??
                 return; // checkme
@@ -584,7 +682,7 @@ void PPU_SpriteAffine(Console* sys, const bool b, const SprAttrs01 attr1, const 
         }
         else
         {
-            if (ppu->DisplayCR.BitmapOBJ2DDims)
+            if (!sys->AGB && ppu->DisplayCR.BitmapOBJ2DDims)
             {
                 baseaddr = ((attr2.TileNum % 32) * 16) + ((attr2.TileNum / 32) * 32 * 4);
                 ystep = 256;
@@ -596,14 +694,14 @@ void PPU_SpriteAffine(Console* sys, const bool b, const SprAttrs01 attr1, const 
             }
         }
 
-        for (; (sx < widthreal) && (x < 256); x++, sx++, rotx+=params[0], roty+=params[2])
+        for (; (sx < widthreal) && (x < PPU_GetWidth(sys->AGB)); x++, sx++, rotx+=params[0], roty+=params[2])
         {
             if ((rotx < (width*256)) && (roty < (height*256)))
             {
                 u32 addr = baseaddr + (((roty / 256) * ystep) + ((rotx / 256)) * 2);
                 u16 color = PPU_VRAMLookup(sys, addr, objvram);
 
-                if ((color & 0x8000) && (buffer[x].Empty || (buffer[x].SprPrio > attr2.Priority)))
+                if ((color & 0x8000) && (buffer[x].Empty || sys->AGB || (buffer[x].SprPrio > attr2.Priority)))
                     buffer[x] = (CompositeBuffer){RGB565to666(color & 0x7FFF) | (alpha<<18), attr2.Priority, false, true, false, true, true};
             }
         }
@@ -613,7 +711,7 @@ void PPU_SpriteAffine(Console* sys, const bool b, const SprAttrs01 attr1, const 
         u32 baseaddr = attr2.TileNum;
         u32 ystep;
 
-        if (ppu->DisplayCR.TileOBJ1D)
+        if (!sys->AGB && ppu->DisplayCR.TileOBJ1D)
         {
             baseaddr <<= ppu->DisplayCR.TileOBJ1DBound;
             ystep = (width/8) << attr1.Pal256;
@@ -626,7 +724,7 @@ void PPU_SpriteAffine(Console* sys, const bool b, const SprAttrs01 attr1, const 
         baseaddr *= 32;
         ystep *= 32;
 
-        for (; (sx < widthreal) && (x < 256); sx++, x++, rotx+=params[0], roty+=params[2])
+        for (; (sx < widthreal) && (x < PPU_GetWidth(sys->AGB)); sx++, x++, rotx+=params[0], roty+=params[2])
         {
             if (rotx < (width*256) && roty < (height*256))
             {
@@ -703,7 +801,7 @@ void PPU_SpriteNormal(Console* sys, const bool b, const SprAttrs01 attr1, const 
         u32 baseaddr = attr2.TileNum;
         if (ppu->DisplayCR.BitmapOBJ1D)
         {
-            if (ppu->DisplayCR.BitmapOBJ2DDims)
+            if (!sys->AGB && ppu->DisplayCR.BitmapOBJ2DDims)
             {
                 // apparently does nothing??
                 return; // checkme
@@ -716,7 +814,7 @@ void PPU_SpriteNormal(Console* sys, const bool b, const SprAttrs01 attr1, const 
         }
         else
         {
-            if (ppu->DisplayCR.BitmapOBJ2DDims)
+            if (!sys->AGB && ppu->DisplayCR.BitmapOBJ2DDims)
             {
                 baseaddr = ((attr2.TileNum % 32) * 16) + ((attr2.TileNum / 32) * 32 * 128);
                 baseaddr += y * (256*2);
@@ -730,7 +828,7 @@ void PPU_SpriteNormal(Console* sys, const bool b, const SprAttrs01 attr1, const 
 
         if (attr1.HFlip) sx = (width-1) - sx;
 
-        for (; ((attr1.HFlip) ? (sx >= 0) : (sx < width)) && (x < 256); ((attr1.HFlip) ? (sx-=1) : (sx+=1)), x++)
+        for (; ((attr1.HFlip) ? (sx >= 0) : (sx < width)) && (x < PPU_GetWidth(sys->AGB)); ((attr1.HFlip) ? (sx-=1) : (sx+=1)), x++)
         {
             u32 addr = baseaddr + (sx*2);
 
@@ -743,7 +841,7 @@ void PPU_SpriteNormal(Console* sys, const bool b, const SprAttrs01 attr1, const 
     else // not bitmap
     {
         u32 baseaddr = attr2.TileNum;
-        if (ppu->DisplayCR.TileOBJ1D)
+        if (!sys->AGB && ppu->DisplayCR.TileOBJ1D)
         {
             baseaddr <<= ppu->DisplayCR.TileOBJ1DBound;
             baseaddr += ((y/8) * (width/8)) << attr1.Pal256;
@@ -758,7 +856,7 @@ void PPU_SpriteNormal(Console* sys, const bool b, const SprAttrs01 attr1, const 
 
         if (attr1.HFlip) sx = (width-1) - sx;
 
-        for (; ((attr1.HFlip) ? (sx >= 0) : (sx < width)) && (x < 256); ((attr1.HFlip) ? (sx-=1) : (sx+=1)), x++)
+        for (; ((attr1.HFlip) ? (sx >= 0) : (sx < width)) && (x < PPU_GetWidth(sys->AGB)); ((attr1.HFlip) ? (sx-=1) : (sx+=1)), x++)
         {
             u32 addr = baseaddr + ((sx/8*8) << (2+attr1.Pal256)) + ((sx%8) >> !attr1.Pal256);
             u16 index = PPU_VRAMLookup(sys, addr, objvram) >> ((addr&0x1)*8);
@@ -896,15 +994,20 @@ void PPU_RenderScanline(Console* sys, const bool b, const s16 y)
     if (y >= 0)
     {
         u32* scanline = sys->Framebuffer[sys->BackBuf][sys->PowerCR9.AOnBottom ? b : !b][y];
+        if (b ? !sys->PowerCR9.PPUBPower : !sys->PowerCR9.PPUAPower) goto noblit;
+        if (sys->AGB) goto agb;
         switch(ppu->DisplayCR.DisplayMode)
         {
             case 0:
-                *time += DSClk33(1538 + HBlank_Cycles);
+                noblit:
+                if (sys->AGB) *time += DSClk16(AGBActiveRender_Cycles-46 + AGBHBlank_Cycles);
+                else          *time += DSClk33(ActiveRender_Cycles-46 + HBlank_Cycles);
                 for (int x = 0; x < 256; x++)
                     scanline[x] = 0x3FFFF;
                 ApplyBrightnessModifier(scanline, ppu->Brightness);
                 return;
             case 1:
+                agb: // TODO: should probably be vram display
                 break;
             case 2:
             {
@@ -928,20 +1031,24 @@ void PPU_RenderScanline(Console* sys, const bool b, const s16 y)
 
         if (ppu->DisplayCR.ForceBlank)
         {
-            *time += DSClk33(1538 + HBlank_Cycles);
-            for (int x = 0; x < 256; x++)
+            if (sys->AGB) *time += DSClk16(AGBActiveRender_Cycles-46 + AGBHBlank_Cycles);
+            else          *time += DSClk33(ActiveRender_Cycles-46 + HBlank_Cycles);
+            for (int x = 0; x < PPU_GetWidth(sys->AGB); x++)
                 scanline[x] = 0x3FFFF;
             return;
         }
-
         PPU_BuildBGs(sys, b, y);
         PPU_Composite(sys, b, y);
-        ApplyBrightnessModifier(scanline, ppu->Brightness);
+        if (!sys->AGB) // CHECKME
+            ApplyBrightnessModifier(scanline, ppu->Brightness);
     }
     if (y < 191)
     {
         if (y == -1)
-            *time += DSClk33(1538 + HBlank_Cycles);
+        {
+            if (sys->AGB) *time += DSClk16(AGBActiveRender_Cycles-46 + AGBHBlank_Cycles);
+            else          *time += DSClk33(ActiveRender_Cycles-46 + HBlank_Cycles);
+        }
         PPU_BuildSprites(sys, b, y+1);
     }
 }
@@ -970,17 +1077,29 @@ void PPU_GlobalStep(Console* sys, const timestamp now, const u16 vcount)
 int SDLCALL PPUA_MainLoop(void* ptr)
 {
     Console* sys = ptr;
-    while (!sys->PPUStart) SDL_CPUPauseInstruction();
-
     while (!sys->KillPPUs)
     {
-        for (int y = -1; y < 192; y++)
+        while (!sys->PPUStart) SDL_CPUPauseInstruction();
+        if (sys->AGB)
         {
-            sys->PPUATimestamp += DSClk33(46);
-            PPU_Wait(sys, sys->PPUATimestamp);
-            PPU_RenderScanline(sys, false, y);
+            for (int y = -1; y < 160; y++)
+            {
+                sys->PPUATimestamp += DSClk16(46);
+                PPU_Wait(sys, sys->PPUATimestamp);
+                PPU_RenderScanline(sys, false, y);
+            }
+            sys->PPUATimestamp += DSClk16(AGBScanline_Cycles*67);
         }
-        sys->PPUATimestamp += DSClk33(Scanline_Cycles*70);
+        else
+        {
+            for (int y = -1; y < 192; y++)
+            {
+                sys->PPUATimestamp += DSClk33(46);
+                PPU_Wait(sys, sys->PPUATimestamp);
+                PPU_RenderScanline(sys, false, y);
+            }
+            sys->PPUATimestamp += DSClk33(Scanline_Cycles*70);
+        }
     }
     return 0;
 }
@@ -988,10 +1107,9 @@ int SDLCALL PPUA_MainLoop(void* ptr)
 int SDLCALL PPUB_MainLoop(void* ptr)
 {
     Console* sys = ptr;
-    while (!sys->PPUStart) SDL_CPUPauseInstruction();
-
     while (!sys->KillPPUs)
     {
+        while (!sys->PPUStart) SDL_CPUPauseInstruction();
         for (int y = -1; y < 192; y++)
         {
             sys->PPUBTimestamp += DSClk33(46);

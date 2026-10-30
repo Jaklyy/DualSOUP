@@ -185,20 +185,19 @@ void Console_Cleanup(Console* sys, bool full)
     SDL_free(sys->WiFiNVRAMFolder);
 
     // these dont need to be re-init actually?
-    int dummy;
 #ifndef SINGLETHREADRASTER
     // todo: detach threads instead?
     // todo: obliterate threads without asking politely instead?
     sys->KillSWRen = true;
     sys->SWRenStart = true;
     sys->SWRenTarget = timestamp_max;
-    SDL_WaitThread(sys->SWRenThread, &dummy); 
+    SDL_WaitThread(sys->SWRenThread, NULL); 
     sys->RenderedLines = 255;
     sys->KillPPUs = true;
     sys->PPUStart = true;
     sys->PPUTarget = timestamp_max;
-    SDL_WaitThread(sys->PPUAThread, &dummy);
-    SDL_WaitThread(sys->PPUBThread, &dummy);
+    SDL_WaitThread(sys->PPUAThread, NULL);
+    SDL_WaitThread(sys->PPUBThread, NULL);
 #endif
     // i tried reusing these and it hung, so i gave up, because it probably doesn't matter
     SDL_UnlockMutex(sys->FrameBufferMutex[sys->BackBuf]); // freeing a locked mutex is apparently undefined behavior, neat
@@ -208,6 +207,7 @@ void Console_Cleanup(Console* sys, bool full)
     // flash and gamecards need to be recreated from scratch in case we're booting a new game/system
     Flash_Cleanup(&sys->Firmware);
     GameCard_Cleanup(&sys->GameCard);
+    GamePak_Cleanup(&sys->GamePak);
 
     if (full) SDL_aligned_free(sys);
 }
@@ -259,7 +259,7 @@ Console* Console_Init(Console* sys, CoreCfg* cfg, void* aud)
         goto fail;
     }
     cleanup++;
-    if ((sys->PPUAThread = SDL_CreateThread(PPUB_MainLoop, "SOUP_PPUB", sys)) == NULL)
+    if ((sys->PPUBThread = SDL_CreateThread(PPUB_MainLoop, "SOUP_PPUB", sys)) == NULL)
     {
         LogPrint(LOG_ALWAYS, "FATAL: PPUB Thread creation failed. %s\n", SDL_GetError());
         goto fail;
@@ -280,6 +280,7 @@ Console* Console_Init(Console* sys, CoreCfg* cfg, void* aud)
 
     if (!Console_ReadFile(sys->NTRBios9.b8, cfg->NTR.Bios9, NTRBios9_Size, "DS ARM9 Bios")) goto fail;
     if (!Console_ReadFile(sys->NTRBios7.b8, cfg->NTR.Bios7, NTRBios7_Size, "DS ARM7 Bios")) goto fail;
+    Console_ReadFile(sys->AGBBios.b8, cfg->AGB.Bios7, AGBBios_Size, "GBA Bios");
 
     size_t nvramsize;
     switch(sys->SysCfg.WiFiNVRAMSize)
@@ -320,19 +321,6 @@ Console* Console_Init(Console* sys, CoreCfg* cfg, void* aud)
     A946_Init(&sys->A946ES, sys);
     A7TDMI_Init(&sys->A7TDMI, sys);
 
-    for (s32 i = 0; i < Evt_Max; i++)
-    {
-        sys->Sched.Times[i] = timestamp_max;
-        sys->Sched.Next[i] = Evt_Invalid;
-        sys->Sched.Prev[i] = Evt_Invalid;
-    }
-
-    for (s32 i = 0; i < IRQ_Max; i++)
-        sys->IRQSched9[i] = timestamp_max;
-
-    for (s32 i = 0; i < IRQ_Max; i++)
-        sys->IRQSched7[i] = timestamp_max;
-
     DMA_Init(sys);
 
     IPC_FIFOInit(&sys->IPCFIFO7);
@@ -363,16 +351,12 @@ Console* Console_Init(Console* sys, CoreCfg* cfg, void* aud)
 
     WiFi_Init(sys);
 
-    // TODO: are these always running?
-    Sched_AddEvent(sys, 0, Evt_MixAudio);
-    Sched_AddEvent(sys, 0, Evt_Scanline);
-
 #ifdef DUMPAUDIO
     sys->log = fopen("audioout.bin", "wb");
 #endif
 
     // run power on/reset logic
-    Console_Reset(sys);
+    Console_Reset(sys, 0);
 
     return sys;
 
@@ -538,22 +522,83 @@ void Console_DirectBoot(Console* sys)
     A7TDMI_SetPC(&sys->A7TDMI, arm7_entryaddr);
     // hack
     memset(&sys->Bus7, 0, sizeof(sys->Bus7));
-    Bus7_Init(&sys->Bus7);
+    Bus_Reset(&sys->Bus7);
     A7TDMI_InstrRead(&sys->A7TDMI, 0);
     sys->DirectBoot = true;
 }
 
-void Console_Reset(Console* sys)
+void Console_Reset(Console* sys, timestamp now)
 {
+    Sched_Reset(&sys->Sched);
+
+    GamePakBus_Reset(sys);
+
+    Bus_Reset(&sys->Bus9);
+    Bus_Reset(&sys->Bus7);
     A946_Reset(&sys->A946ES, false /*unverified I guess?*/, true);
     A7TDMI_Reset(&sys->A7TDMI);
 
+    // TODO: are these always running?
+    Sched_AddEvent(sys, now, Evt_MixAudio);
+    Sched_AddEvent(sys, now, Evt_Scanline);
+
     // todo: move into actual reset handlers
     A9ES_InstrGo(&sys->A946ES, false);
-    Sched_AddEvent(sys, 0, Evt_ARM9);
+    Sched_AddEvent(sys, now, Evt_ARM9);
 
-    A7TDMI_InstrRead(&sys->A7TDMI, 0);
+    A7TDMI_InstrRead(&sys->A7TDMI, now+DSClkSys(3, false));
     // TODO: reset dma?
+}
+
+void Console_ResetAGB(Console* sys, timestamp now)
+{
+    Sched_Reset(&sys->Sched);
+
+    // TODO: are these always running?
+    Sched_AddEvent(sys, now, Evt_MixAudio);
+    //Sched_AddEvent(sys, now, Evt_Scanline); // TODO: NDS VCount should probably still be running?
+    Sched_AddEvent(sys, now, Evt_AGBScanline);
+
+    sys->PPUStart = false;
+    sys->PPUTarget = timestamp_max; // pretend this is a good solution.
+
+    sys->AGB = true;
+    sys->IME7 = false;
+    sys->A7ClkDisable = false;
+    sys->PostFlag = false;
+    sys->IE7 = 0;
+    sys->IF7 = 0;
+    sys->IF7Persist = 0;
+    sys->DispStatRW7.Raw = 0;
+    memset(sys->Timers7, 0, sizeof(sys->Timers7)); // TODO
+    sys->PowerCR9.LCDPower = true;
+    sys->PowerCR9.PPUAPower = true;
+    sys->PowerCR9.GPURasterizerPower = false;
+    sys->PowerCR9.GPUGeometryPower = false;
+    sys->PowerCR9.PPUBPower = false; // checkme: ppu a not b?
+    // LCD select from nds mode is used.
+    sys->PowerCR7.AudioPower = true;
+    sys->PowerCR7.WifiPower = false;
+
+    memset(&sys->PPU_A, 0, sizeof(sys->PPU_A)); // idk
+
+    sys->Bios7Prot = 0;
+
+    // note: PMIC state seems largely untouched
+
+    GamePakBus_Reset(sys);
+
+    memset(&sys->BusMR, 0, sizeof(sys->BusMR)); // probably prevents something from breaking
+
+    Bus_Reset(&sys->Bus7);
+
+    // hacky
+    memset(sys->DMA7, 0, sizeof(sys->DMA7));
+    DMA_Init(sys);
+
+    A7TDMI_Reset(&sys->A7TDMI);
+    sys->A7TDMI.Clk16 = true;
+    A7TDMI_InstrRead(&sys->A7TDMI, now+DSClkSys(3, true));
 }
 
 void IRQ9_Update(Console* sys, const timestamp now)
@@ -607,14 +652,14 @@ void IRQ7_Update(Console* sys, const timestamp now)
 void IF7_Clear(Console* sys, u32 wrdata, const timestamp now)
 {
     sys->IF7 &= ~wrdata | sys->IF7Persist;
-    Sched_AddEvent(sys, now+DSClk33(1), Evt_UpdateIRQ7);
+    Sched_AddEvent(sys, now+DSClkSys(1, sys->AGB), Evt_UpdateIRQ7);
 }
 
 void IF7_Set(Console* sys, const IRQIDs id, const timestamp now)
 {
     sys->IF7 |= (u64)1<<id;
     sys->IF7Persist |= ((u64)1<<id) & IRQ7_LevelSens;
-    Sched_AddEvent(sys, now+DSClk33(1), Evt_UpdateIRQ7);
+    Sched_AddEvent(sys, now+DSClkSys(1, sys->AGB), Evt_UpdateIRQ7);
 }
 
 bool Console_TestIfPollingNeeded(Console* sys, timestamp now)

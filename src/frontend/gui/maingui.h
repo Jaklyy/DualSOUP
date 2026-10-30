@@ -149,6 +149,7 @@ typedef struct
     bool NvramDirty;
     bool NTR7Dirty;
     bool NTR9Dirty;
+    bool AGBDirty;
 } SysImportGui;
 
 typedef struct

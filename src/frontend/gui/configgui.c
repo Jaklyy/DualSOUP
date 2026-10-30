@@ -361,7 +361,7 @@ void SysImportGui_Loop(MainGUI* mgui, MainCfg* mcfg)
     CoreCfg* cfg = &igui->Cfg;
     if (!igui->Show) return;
 
-    ImGui_SetNextWindowSize((ImVec2){340.0, (igui->EditFolder != nullptr) ? 404.0 : 382.0}, ImGuiCond_FirstUseEver);
+    ImGui_SetNextWindowSize((ImVec2){340.0, (igui->EditFolder != nullptr) ? 444.0 : 422.0}, ImGuiCond_FirstUseEver);
     if (!ImGui_Begin(((igui->EditFolder != nullptr) ? "Edit DS System" : "Import DS System"), &igui->Show, 0))
         return ImGui_End();
 
@@ -377,6 +377,7 @@ void SysImportGui_Loop(MainGUI* mgui, MainCfg* mcfg)
 
     SelectFile(cfg->NTR.Bios7, "NDS ARM7 Bios", "bin;rom", 1, igui->Mutex, igui->NTR7Dirty)
     SelectFile(cfg->NTR.Bios9, "NDS ARM9 Bios", "bin;rom", 1, igui->Mutex, igui->NTR9Dirty)
+    SelectFile(cfg->AGB.Bios7, "AGB Bios", "bin;rom", 1, igui->Mutex, igui->AGBDirty)
     SelectFile(igui->NvramPath, "NDS Firmware", "bin;rom;mem", 1, igui->Mutex, igui->NvramDirty)
 
     if (igui->NvramDirty)
@@ -998,7 +999,7 @@ void GBAImportGui_Loop(MainGUI* mgui, MainCfg* mcfg)
     GamePakCfg* cfg = &igui->Cfg;
     if (!igui->Show) return;
 
-    ImGui_SetNextWindowSize((ImVec2){340.0, (igui->EditFolder != nullptr) ? 553.0 : 530.0}, ImGuiCond_FirstUseEver);
+    ImGui_SetNextWindowSize((ImVec2){340.0, (igui->EditFolder != nullptr) ? 436.0 : 414.0}, ImGuiCond_FirstUseEver);
     if (!ImGui_Begin(((igui->EditFolder != nullptr) ? "Edit GBA Game Pak" : "Import GBA Game Pak"), &igui->Show, 0))
         return ImGui_End();
 

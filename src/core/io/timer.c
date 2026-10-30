@@ -67,7 +67,7 @@ void Timer_AddTicks(Console* sys, Timer arr[], u8 num, timestamp now, timestamp 
             }
 
             if (timer->CR.IRQ) // checkme: delay?
-                Sched_AddEvent(sys, now+DSClk33(1), ((type == TimerType_9) ? Evt_IRQ9_Time0 : Evt_IRQ7_Time0) + num);
+                Sched_AddEvent(sys, now+DSClkSys(1, sys->AGB), ((type == TimerType_9) ? Evt_IRQ9_Time0 : Evt_IRQ7_Time0) + num);
         }
     }
     else timer->Counter += ticks;
@@ -109,10 +109,11 @@ void Timer_UpdateCR(Console* sys, Timer arr[], u8 num, timestamp now, TimerType 
 
         static_assert(POPCNT_CONSTEXPR(Sched_Clock / NTR_SysClock) == 1, "this code no longer works, mate\n");
         constexpr u8 sched_timershift = CTZ_CONSTEXPR(Sched_Clock / NTR_SysClock);
+        constexpr u8 sched_agbtimershift = CTZ_CONSTEXPR(Sched_Clock / NTR_BaseClock);
 
         if (type == TimerType_Snd) timer->DividerShift = 1 + sched_timershift;
         else if (timer->CR.OverflowTick) timer->DividerShift = 0;
-        else timer->DividerShift = ((timer->CR.Divider == 0) ? 0 : ((timer->CR.Divider * 2) + 4)) + sched_timershift;
+        else timer->DividerShift = ((timer->CR.Divider == 0) ? 0 : ((timer->CR.Divider * 2) + 4)) + (sys->AGB ? sched_agbtimershift : sched_timershift);
 
         if (!oldenable && timer->CR.Enable)
         {
@@ -127,7 +128,7 @@ void Timer_UpdateCR(Console* sys, Timer arr[], u8 num, timestamp now, TimerType 
             case TimerType_9:   evt = Evt_Timer90CR; break;
             case TimerType_Snd: evt = Evt_TimerSnd0CR; break;
             }
-            Sched_AddEvent(sys, now+DSClk33(1), evt+num);
+            Sched_AddEvent(sys, now+DSClkSys(1, sys->AGB), evt+num);
         }
         else if (oldenable && !timer->CR.Enable) timer->On = false; // disable is not delayed by 1 cycle...?
         else
@@ -148,7 +149,7 @@ void Timer_IOWriteHandler(Console* sys, const timestamp now, const u32 addr, con
 
     timer->NeedsUpdate = true;
 
-    Sched_AddEvent(sys, now+DSClk33(1), (a9 ? Evt_Timer90CR : Evt_Timer70CR) + num);
+    Sched_AddEvent(sys, now+DSClkSys(1, sys->AGB), (a9 ? Evt_Timer90CR : Evt_Timer70CR) + num);
 }
 
 u32 Timer_IOReadHandler(Console* sys, const timestamp now, const u32 addr, const bool a9)

@@ -81,43 +81,57 @@ void StartSoundDMA(Console* sys, u8 id, timestamp start)
     Sched_AddEvent(sys, start, Evt_SndDMA70+id);
 }
 
-void DMA7_Enable(Console* sys, DMA_Channel* channel, timestamp now)
+void DMA7_Enable(Console* sys, DMA_Channel* channel, u8 id, timestamp now)
 {
     channel->Latched_SrcAddr = channel->SrcAddr;
     channel->Latched_DstAddr = channel->DstAddr;
     channel->Latched_NumWords = 0;
 
-    switch(channel->CR.StartMode7)
+    if (channel->CR.AGBPakIRQ)
     {
-    case 0: // Immediate
-    {
-        channel->CurrentMode = DMAStart_Immediate;
-        StartDMA(sys, now, DMAStart_Immediate, false);
-        break;
+        LogPrint(LOG_UNIMP | LOG_DMA, "UNIMPLEMENTED AGB PAK DMA\n");
     }
-    case 1: // VBlank
+    else
     {
-        channel->CurrentMode = DMAStart_VBlank;
-        break;
-    }
-    case 2: // NTR Game Card
-    {
-        channel->CurrentMode = DMAStart_NTRCard;
-        // checkme: this probably works.
-        if (sys->GCROMCR[false].DataReady)
-            StartDMA(sys, now, DMAStart_NTRCard, false); // checkme: delay?
-        break;
-    }
-    #if 0
-    case 3: // (DMA 0 & 2) WiFi IRQ / (DMA 1 & 3) AGB Game Pak IRQ
-    {
-        channel->CurrentMode = (channel_id & 0b01) ? DMAStart_AGBPakIRQ : DMAStart_WiFiIRQ;
-        // agb pak dma is probably based on the pak slot irq pin?
-        // wifi irq might not actually be real?
-        break;
-    }
-    #endif
-    default: LogPrint(LOG_UNIMP | LOG_DMA, "UNIMPLEMENTED DMA7 MODE %i\n", channel->CR.StartMode7); break;
+        switch(channel->CR.StartMode7)
+        {
+        case 0: // Immediate
+        {
+            channel->CurrentMode = DMAStart_Immediate;
+            StartDMA(sys, now, DMAStart_Immediate, false);
+            break;
+        }
+        case 1: // VBlank
+        {
+            channel->CurrentMode = DMAStart_VBlank;
+            break;
+        }
+        case 2: // NTR Game Card || AGB HBlank
+        {
+            if (sys->AGB)
+            {
+                channel->CurrentMode = DMAStart_HBlank;
+            }
+            else
+            {
+                channel->CurrentMode = DMAStart_NTRCard;
+                // checkme: this probably works.
+                if (sys->GCROMCR[false].DataReady)
+                    StartDMA(sys, now, DMAStart_NTRCard, false); // checkme: delay?
+            }
+            break;
+        }
+        #if 0
+        case 3: // (DMA 0 & 2) WiFi IRQ / (DMA 1 & 3) AGB Game Pak IRQ
+        {
+            channel->CurrentMode = (channel_id & 0b01) ? DMAStart_AGBPakIRQ : DMAStart_WiFiIRQ;
+            // agb pak dma is probably based on the pak slot irq pin?
+            // wifi irq might not actually be real?
+            break;
+        }
+        #endif
+        default: LogPrint(LOG_UNIMP | LOG_DMA, "UNIMPLEMENTED DMA7 MODE %i\n", channel->CR.StartMode7); break;
+        }
     }
 
     switch(channel->CR.DestCR)
@@ -274,7 +288,7 @@ void DMA_CompPost(Console* sys, timestamp now, const u8 id, const DMA_CBType cb,
         if (dmaqueued)
         {
             channel->NeedsInit = true;
-            Sched_AddEvent(sys, now+DSClk33(3 /*checkme*/), ((a9) ? Evt_DMA90 : Evt_SCapDMA70) + id);
+            Sched_AddEvent(sys, now+DSClkSys(3 /*checkme*/, sys->AGB), ((a9) ? Evt_DMA90 : Evt_SCapDMA70) + id);
         }
     }
 
@@ -298,7 +312,7 @@ void DMA_RDataHack(Console* sys, const u8 id, const bool a9, const u32 rdata, co
 {
     DMA_Channel* channel = (a9 ? &sys->DMA9[id] : &sys->DMA7[id]);
 
-    if (a9 && (len > DSClk33(1))) channel->AnyReadHadWaitstates = true;
+    if (a9 && (len > DSClkSys(1, sys->AGB))) channel->AnyReadHadWaitstates = true;
 
     channel->RData = rdata;
     if (!channel->Latched_Width32)
@@ -547,7 +561,7 @@ void DMA9_IOWriteHandler(Console* sys, timestamp now, DMA_Channel* channels, u32
             if (cur->CR.Enable == true)
             {
                 // starting dma channel
-                DMA9_Enable(sys, cur, now+DSClk33(3));
+                DMA9_Enable(sys, cur, now+DSClkSys(3, sys->AGB));
             }
             else
             {
@@ -590,7 +604,8 @@ void DMA7_IOWriteHandler(Console* sys, timestamp now, DMA_Channel* channels, u32
     }
     case 2: // control register
     {
-        val &= ((channel == 3) ? 0xF7E0FFFF : 0xF7E03FFF);
+        if (sys->AGB) val &= ((channel == 3) ? 0xFFE0FFFF : 0xFFE03FFF);
+        else          val &= ((channel == 3) ? 0xF7E0FFFF : 0xF7E03FFF);
 
         union DMA_CR oldcr = cur->CR;
         MaskedWrite(cur->CR.Raw, val, mask);
@@ -601,7 +616,7 @@ void DMA7_IOWriteHandler(Console* sys, timestamp now, DMA_Channel* channels, u32
             if (cur->CR.Enable == true)
             {
                 // starting dma channel
-                DMA7_Enable(sys, cur, now+DSClk33(3));
+                DMA7_Enable(sys, cur, channel, now+DSClkSys(3, sys->AGB));
             }
             else
             {

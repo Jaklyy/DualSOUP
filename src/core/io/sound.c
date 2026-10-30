@@ -96,6 +96,12 @@ void AudioMixer_Sample(Console* sys, timestamp now)
         }
     }
 
+    if (sys->AGB)
+    {
+        sampleout[0] = 0;
+        sampleout[1] = 0;
+    }
+
     if (!SDL_PutAudioStreamData(sys->Aud, sampleout, sizeof(sampleout))) printf("wat %s\n", SDL_GetError());
 
 #ifdef DUMPAUDIO

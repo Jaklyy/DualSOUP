@@ -14,6 +14,8 @@ void PPU_Wait(Console* sys, const timestamp now);
 
 void LCD_HBlank(Console* sys, timestamp now);
 void LCD_Scanline(Console* sys, timestamp now);
+void LCDAGB_HBlank(Console* sys, timestamp now);
+void LCDAGB_Scanline(Console* sys, timestamp now);
 
 void SWRen_Init(Console* sys, const timestamp now);
 void SWRen_Sync(Console* sys, timestamp now);

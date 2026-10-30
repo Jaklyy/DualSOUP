@@ -121,7 +121,7 @@ void A7TDMI_SetReg(ARM7TDMI* a7tdmi, const int reg, u32 val)
 
 void A7TDMI_ExecuteCycles(ARM7TDMI* a7tdmi, const u32 execute)
 {
-    cpu->Timestamp += DSClk33(execute);
+    cpu->Timestamp += DSClkSys(execute, a7tdmi->Clk16);
     // NOTE: internally arm7tdmi instruction bursts are weird due to mixed sequential + idle cycles?
     // they seem to just be handled as nonsequential though...
     cpu->CodeSeq = (execute == 0);

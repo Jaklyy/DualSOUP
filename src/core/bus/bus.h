@@ -365,6 +365,8 @@ void Bus9_Init(BusImpl* bus);
 void Bus7_Init(BusImpl* bus);
 void MainRAM_Init(Console* sys, enum NTRFCRAM fcramsize);
 
+void Bus_Reset(BusImpl* bus);
+
 // shared handlers
 void AddBusContention(Console* sys, const timestamp cur, const NTRAHB_Devices device);
 
@@ -383,6 +385,7 @@ void MainRAM_TestKillBurst(Console* sys, timestamp now, bool a9);
 void MainRAM_Run(Console* sys, const timestamp now);
 void IO9_Handler(Console* sys, timestamp now);
 void IO7_Handler(Console* sys, timestamp now);
+void IOAGB_Handler(Console* sys, timestamp now);
 
 void IO9_FinishDiv(Console* sys);
 void IO9_FinishSqrt(Console* sys);

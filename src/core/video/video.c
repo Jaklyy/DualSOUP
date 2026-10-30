@@ -155,3 +155,75 @@ void LCD_Scanline(Console* sys, timestamp now)
     // schedule hblank
     Sched_AddEvent(sys, now + DSClk33(ActiveRender_Cycles), Evt_HBlank);
 }
+
+void LCDAGB_HBlank(Console* sys, timestamp now)
+{
+    // set hblank flag
+    sys->DispStatRO7.HBlank = true;
+    if (sys->VCountAGB == 227) 
+        PPU_SetTarget(sys, now);
+    if (sys->VCountAGB < 160)
+    {
+        StartDMA(sys, now+DSClk16(2+1), DMAStart_HBlank, false); // checkme: delay?
+        PPU_SetTarget(sys, now);
+    }
+    if (sys->VCountAGB == 160)
+    {
+        PPU_Sync(sys, now);
+        sys->RenderedLines = 0;
+        // swap buffers
+        bool backbuf = sys->BackBuf;
+        SDL_LockMutex(sys->FrameBufferMutex[!backbuf]);
+        sys->BackBuf = !sys->BackBuf;
+        SDL_UnlockMutex(sys->FrameBufferMutex[backbuf]);
+        Sched_AddEvent(sys, now, Evt_EndFrame);
+    }
+    // schedule irq
+    if (sys->DispStatRW7.HBlankIRQ) Sched_AddEvent(sys, now, Evt_IRQ7_HBlank); // CHECKME: delay?
+
+    // schedule scanline start
+    Sched_AddEvent(sys, now + DSClk16(AGBHBlank_Cycles), Evt_AGBScanline);
+}
+
+void LCDAGB_Scanline(Console* sys, timestamp now)
+{
+    sys->VCountAGB++;
+    sys->VCountAGB &= 0xFF;
+    if (sys->VCountAGB == 228) sys->VCountAGB = 0;
+
+    // certain ppu state is stepped every scanline.
+    // TODO: should this actually be done on the ppu thread...?
+    PPU_GlobalStep(sys, now, sys->VCountAGB);
+
+    // check for vblank; clear hblank.
+    // this occurs before vcount writes
+    if (sys->VCountAGB == 160)
+    {
+        sys->DispStatRO7.Raw = 0b001;
+
+        // schedule irq
+        if (sys->DispStatRW7.VBlankIRQ) Sched_AddEvent(sys, now+DSClk16(2), Evt_IRQ7_VBlank); // CHECKME: delay correct for arm7 too?
+        StartDMA(sys, now+DSClk16(2+1), DMAStart_VBlank, false); // checkme: delay?
+
+#ifndef SINGLETHREADRASTER
+        SWRen_Sync(sys, now);
+#endif
+    }
+    else if (sys->VCountAGB == 227)
+    {
+        sys->DispStatRO7.Raw = 0b000;
+        PPU_Init(sys, now);
+    }
+    else
+    {
+        // just clear hblank
+        sys->DispStatRO7.HBlank = false;
+    }
+
+    // vcount match
+    sys->DispStatRO7.VCountMatch = (sys->TargetVCount7 == sys->VCountAGB);
+    if (sys->DispStatRW7.VCountMatchIRQ && (sys->TargetVCount7 == sys->VCountAGB)) Sched_AddEvent(sys, now+DSClk16(2), Evt_IRQ7_VCount); // checkme: delay?
+
+    // schedule hblank
+    Sched_AddEvent(sys, now + DSClk16(AGBActiveRender_Cycles), Evt_AGBHBlank);
+}

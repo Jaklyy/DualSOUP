@@ -25,6 +25,12 @@ inline timestamp DSClk33(timestamp ts)
     return ts * (Sched_Clock / NTR_SysClock);
 }
 
+inline timestamp DSClkSys(timestamp ts, bool agb)
+{
+    if (agb) return ts * (Sched_Clock / NTR_BaseClock);
+    else     return ts * (Sched_Clock / NTR_SysClock);
+}
+
 inline timestamp DSClk67(timestamp ts)
 {
     return ts * (Sched_Clock / NTR9_Clock);
@@ -59,6 +65,16 @@ void Sched_Log(Console* sys)
         printf("%02i: %016lX\n", evt, sched->Times[evt]);
     } while(sched->Next[evt] != Evt_Invalid);
 #endif
+}
+
+void Sched_Reset(Sched* sched)
+{
+    for (s32 i = 0; i < Evt_Max; i++)
+    {
+        sched->Times[i] = timestamp_max;
+        sched->Next[i] = Evt_Invalid;
+        sched->Prev[i] = Evt_Invalid;
+    }
 }
 
 void Sched_RemoveEvent(Sched* sched, Scheduler_Events id)
@@ -194,10 +210,13 @@ Core_Ret Sched_RunEvent(Console* sys)
 
     case Evt_IO9:           IO9_Handler(sys, now); break;
     case Evt_IO7:           IO7_Handler(sys, now); break;
+    case Evt_IOAGB:         IOAGB_Handler(sys, now); break;
     case Evt_MainRAM:       MainRAM_Run(sys, now); break;
 
     case Evt_Scanline:      LCD_Scanline(sys, now); break;
     case Evt_HBlank:        LCD_HBlank(sys, now); break;
+    case Evt_AGBScanline:   LCDAGB_Scanline(sys, now); break;
+    case Evt_AGBHBlank:     LCDAGB_HBlank(sys, now); break;
     case Evt_CardROM:       GameCard_HandleSchedulingROM(sys, now); break;
     case Evt_CardSPI9:      GameCard_SPIFinish(sys, true); break;
     case Evt_CardSPI7:      GameCard_SPIFinish(sys, false); break;

@@ -164,10 +164,13 @@ typedef enum : u8
 
     Evt_IO9,
     Evt_IO7,
+    Evt_IOAGB,
     Evt_MainRAM,
 
     Evt_Scanline,
     Evt_HBlank,
+    Evt_AGBScanline,
+    Evt_AGBHBlank,
     Evt_CardROM,
     Evt_CardSPI9,
     Evt_CardSPI7,
@@ -200,6 +203,8 @@ typedef enum : u8
 
 // clock conversion helpers
 
+// convert system clock to standardized scheduler clock
+timestamp DSClkSys(timestamp ts, bool agb);
  // convert 16 mhz clock to standardized scheduler clock
 timestamp DSClk16(timestamp ts);
  // convert 33 mhz clock to standardized scheduler clock
@@ -212,6 +217,7 @@ timestamp DSClkAlign33(timestamp ts);
 
 
 void Sched_Log(Console* sys);
+void Sched_Reset(Sched* sched);
 void Sched_RemoveEvent(Sched* sched, Scheduler_Events id);
 timestamp Sched_GetTime(Sched* sched, Scheduler_Events id);
 bool Sched_CheckEventScheduled(Console* sys, Scheduler_Events id);
