@@ -1044,7 +1044,11 @@ void Bus7_AGBDecodeWrite(Console* sys, BusReq* req, const u32 addr, const u32 ma
         Bus_AGBVRAM(sys, 0, &now, addr, req); break;
 
     case 0x07: // OAM
-        if (size == HSIZE_8) LogPrint(LOG_ODD|LOG_ARM7, "AGB Bus: 8 bit writes to OAM are ignored. Addr: %08"PRIX32" WData: %08"PRIX32"\n", addr, req->WrData);
+        if (size == HSIZE_8)
+        {
+            LogPrint(LOG_ODD|LOG_ARM7, "AGB Bus: 8 bit writes to OAM are ignored. Addr: %08"PRIX32" WData: %08"PRIX32"\n", addr, req->WrData);
+            break;
+        }
         MemoryWrite(32, sys->OAM, addr, OAMAGB_Size, wrdata, mask);
         break;
 
