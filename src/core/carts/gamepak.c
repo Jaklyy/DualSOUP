@@ -139,12 +139,12 @@ u16 GamePak_ROMRead(GamePak* pak, u32 addr)
     {
         if (pak->ROMSize == 0) // rom absent
         {
-            return 0xFFFF; // TODO: open bus
+            return addr & 0xFFFF; // TODO: improve open bus
         }
         else // rom present
         {
             LogPrint(LOG_PAK|LOG_UNIMP, "Reading past end of Game Pak ROM? Addr: %06"PRIX32" Size: %06zX\n", addr, pak->ROMSize);
-            return 0xFFFF; // seems to return garbage?
+            return addr & 0xFFFF; // seems to return garbage? TODO: improve
         }
     }
 

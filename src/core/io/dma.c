@@ -342,6 +342,11 @@ void DMA_Step(Console* sys, const u8 id, timestamp now, const bool a9)
                 // CHECKME: idk, where and when things are latched needs testing.
                 if (channel->CR.SourceCR == 3) channel->Latched_SrcAddr = channel->SrcAddr;
                 if (channel->CR.DestCR   == 3) channel->Latched_DstAddr = channel->DstAddr;
+                if (channel->CR.Width32)
+                {
+                    channel->Latched_SrcAddr &= ~3;
+                    channel->Latched_DstAddr &= ~3;
+                }
 
                 channel->Latched_NumWords = channel->NumWords;
                 channel->Latched_Width32 = channel->CR.Width32; // idk
@@ -442,8 +447,8 @@ void DMA_Step(Console* sys, const u8 id, timestamp now, const bool a9)
                 },
                 .Size = (channel->Latched_Width32 ? HSIZE_32 : HSIZE_16),
                 // NOTE: really stupid theory i have on dma burst logic: they always signal sequential after the first load. (which is being handled by the bus logic currently)
-                .Type = HTRANS_SEQ, //(((channel->ReadCur == 0) || channel->SrcInc <= 0) ? HTRANS_NONSEQ : HTRANS_SEQ),
-                .CB = (a9 ? CB9_DMARead : CB7_DMARead),
+                .Type = ((sys->AGB && (channel->Latched_SrcAddr < 0x02000000)) ? HTRANS_BUSY : HTRANS_SEQ),
+                .CB = ((sys->AGB && (channel->Latched_SrcAddr < 0x02000000)) ? CB7_DMABusy : (a9 ? CB9_DMARead : CB7_DMARead)),
             };
             channel->Latched_SrcAddr = (channel->Latched_SrcAddr + channel->SrcInc) & channel->SrcAddrMask;
         }

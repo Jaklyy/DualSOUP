@@ -272,6 +272,7 @@ typedef enum : u64
     LOG_PAK     = (1<<18), // Game Pak.
     LOG_FCRAM   = (1<<19), // FCRAM (aka Main RAM).
     LOG_IOALL   = (1<<20), // Always Log Memory mapped IO Accesses.
+    LOG_OOB     = (1<<21), // Out of bounds accesses
 
     LOG_MAX     = (1<<21),
 } LoggingLevels;
@@ -299,6 +300,7 @@ static constexpr char LoggingLevelsNames[][24] =
     "Game Pak",
     "Main RAM",
     "Log All IO",
+    "Out of Bounds Accesses",
 };
 
 #define LOG_CPUID (1 << cpu->CPUID)
@@ -339,7 +341,7 @@ struct Pattern
     switch(size)
     {
         case 0: return 0xFF   << (addr & 3) * 8;
-        case 1: return 0xFFFF << (addr & 3) * 8;
+        case 1: return 0xFFFF << (addr & 2) * 8;
         case 2: return 0xFFFFFFFF;
         default: unreachable();
     }

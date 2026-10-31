@@ -562,6 +562,8 @@ void Bus_AGBVRAM(Console* sys, u32* rdata, timestamp* now, u32 addr, const BusRe
     addr >>= 1;
     if (req->Write)
     {
+        if ((req->Size == HSIZE_8) && (addr >= 0x8000))
+            return LogPrint(LOG_ODD|LOG_ARM7|LOG_VRAM, "AGB Bus: 8 bit writes to OBJ VRAM are ignored. Addr: %08"PRIX32" WData: %08"PRIX32"\n", addr, req->WrData);
         u32 wrdata = req->WrData;
         if (req->Size == HSIZE_32)
         {
@@ -741,7 +743,7 @@ void Bus9_Read(Console* sys, BusReq* req, timestamp now)
         else { [[fallthrough]]; }
 
     default: // Unmapped Device;
-        LogPrint(LOG_ODD|LOG_ARM9,"NTR_AHB9: %"PRIu32" bit read from unmapped memory at 0x%08"PRIX32"? Something went wrong?\n", width, addr);
+        LogPrint(LOG_ODD|LOG_ARM9|LOG_OOB,"NTR AHB9: %"PRIu32" bit read from unmapped memory at 0x%08"PRIX32"? Something went wrong?\n", width, addr);
         rdata = 0; // always reads 0
         break;
     }
@@ -852,7 +854,7 @@ void Bus9_Write(Console* sys, BusReq* req, timestamp now)
         return GamePakBus_RAMHandler(sys, now, false, true);
 
     default: // Unmapped Device;
-        LogPrint(LOG_ODD|LOG_ARM9,"NTR_AHB9: %"PRIu32" bit write to unmapped memory at 0x%08"PRIX32"? Something went wrong?\n", width, addr);
+        LogPrint(LOG_ODD|LOG_ARM9|LOG_OOB,"NTR AHB9: %"PRIu32" bit write to unmapped memory at 0x%08"PRIX32"? Something went wrong?\n", width, addr);
         break;
     }
 
@@ -874,7 +876,7 @@ void Bus7_AGBDecodeRead(Console* sys, BusReq* req, const u32 addr, const u32 wid
             if ((req->Man7 != MAN7_ARM7) || addr < sys->Bios7ProtCur)
             {
                 rdata = sys->BiosAGBLast; // *special* open bus
-                LogPrint(LOG_ARM7|LOG_ODD, "Protected Bios7 Read? Addr: %08"PRIX32" PC: %08"PRIX32" Something went wrong?\n", addr, sys->A7TDMI.ARM.PC); //gba; so this will get annoying quickly i presume
+                LogPrint(LOG_ARM7|LOG_ODD|LOG_OOB, "AGB Bus: Protected Bios Read? Addr: %08"PRIX32" PC: %08"PRIX32" Something went wrong?\n", addr, sys->A7TDMI.ARM.PC); //gba; so this will get annoying quickly i presume
             }
             else rdata = (sys->BiosAGBLast = MemoryRead(32, sys->AGBBios, addr, AGBBios_Size));
             break;
@@ -882,7 +884,7 @@ void Bus7_AGBDecodeRead(Console* sys, BusReq* req, const u32 addr, const u32 wid
         else { [[fallthrough]]; }
 
     default: // Unmapped Device;
-        LogPrint(LOG_ODD|LOG_ARM7, "AGB Bus7: %"PRIu32" bit read from unmapped memory at %08"PRIX32"? PC: %08"PRIX32" Something went wrong?\n", width, addr, sys->A7TDMI.ARM.PC);
+        LogPrint(LOG_ODD|LOG_ARM7|LOG_OOB, "AGB Bus: %"PRIu32" bit read from unmapped memory at %08"PRIX32"? PC: %08"PRIX32" Something went wrong?\n", width, addr, sys->A7TDMI.ARM.PC);
         break;
 
     case 0x02: // External WRAM
@@ -960,7 +962,7 @@ void Bus7_NTRDecodeRead(Console* sys, BusReq* req, const u32 addr, const u32 wid
             if ((req->Man7 != MAN7_ARM7) || addr < sys->Bios7ProtCur)
             {
                 rdata = 0xFFFFFFFF; // returns all 1s for some reason?
-                LogPrint(LOG_ARM7|LOG_ODD, "Protected Bios7 Read? Addr: %08"PRIX32"\n", addr);
+                LogPrint(LOG_ARM7|LOG_ODD|LOG_OOB, "NTR Bus7: Protected Bios7 Read? Addr: %08"PRIX32"\n", addr);
             }
             else rdata = MemoryRead(32, sys->NTRBios7, addr, NTRBios7_Size);
             break;
@@ -968,7 +970,7 @@ void Bus7_NTRDecodeRead(Console* sys, BusReq* req, const u32 addr, const u32 wid
         else { [[fallthrough]]; }
 
     default: // Unmapped Device;
-        LogPrint(LOG_ODD|LOG_ARM7, "AGB Bus7: %"PRIu32" bit read from unmapped memory at %08"PRIX32"? Something went wrong?\n", width, addr);
+        LogPrint(LOG_ODD|LOG_ARM7|LOG_OOB, "AGB Bus: %"PRIu32" bit read from unmapped memory at %08"PRIX32"? Something went wrong?\n", width, addr);
         rdata = 0; // always reads 0
         break;
 
@@ -1034,13 +1036,15 @@ void Bus7_AGBDecodeWrite(Console* sys, BusReq* req, const u32 addr, const u32 ma
 
     case 0x05: // Palette RAM
         if (size == HSIZE_32) now += DSClk16(1);
-        MemoryWrite(32, sys->Palette, addr, PaletteAGB_Size, wrdata, mask);
+        if (mask & 0x0000FFFF) sys->Palette.b16[((addr & (PaletteAGB_Size-4))/2)+0] = (wrdata>> 0)&0xFFFF;
+        if (mask & 0xFFFF0000) sys->Palette.b16[((addr & (PaletteAGB_Size-4))/2)+1] = (wrdata>>16)&0xFFFF;
         break;
 
     case 0x06: // VRAM
         Bus_AGBVRAM(sys, 0, &now, addr, req); break;
 
     case 0x07: // OAM
+        if (size == HSIZE_8) LogPrint(LOG_ODD|LOG_ARM7, "AGB Bus: 8 bit writes to OAM are ignored. Addr: %08"PRIX32" WData: %08"PRIX32"\n", addr, req->WrData);
         MemoryWrite(32, sys->OAM, addr, OAMAGB_Size, wrdata, mask);
         break;
 
@@ -1051,7 +1055,7 @@ void Bus7_AGBDecodeWrite(Console* sys, BusReq* req, const u32 addr, const u32 ma
         return GamePakBus_RAMHandler(sys, now, true, false);
 
     default: // Unmapped Device;
-        LogPrint(LOG_ODD|LOG_ARM7,"NTR_AHB7: %"PRIu32" bit write to unmapped memory at 0x%08"PRIX32"? Something went wrong?\n", width, addr);
+        LogPrint(LOG_ODD|LOG_ARM7|LOG_OOB,"AGB Bus: %"PRIu32" bit write to unmapped memory at 0x%08"PRIX32"?\n", width, addr);
         break;
     }
 
@@ -1101,7 +1105,7 @@ void Bus7_NTRDecodeWrite(Console* sys, BusReq* req, const u32 addr, const u32 ma
         return GamePakBus_RAMHandler(sys, now, false, false);
 
     default: // Unmapped Device;
-        LogPrint(LOG_ODD|LOG_ARM7,"NTR_AHB7: %"PRIu32" bit write to unmapped memory at 0x%08"PRIX32"? Something went wrong?\n", width, addr);
+        LogPrint(LOG_ODD|LOG_ARM7|LOG_OOB,"NTR Bus7: %"PRIu32" bit write to unmapped memory at 0x%08"PRIX32"? Something went wrong?\n", width, addr);
         break;
     }
 
