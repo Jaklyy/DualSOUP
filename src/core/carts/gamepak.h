@@ -146,6 +146,21 @@ typedef struct
     //bool Ground; // pin 31
 
     bool BurstActive;
+
+    u16 PBuf_FIFO[4];
+    u32 PBuf_ADDRS[4];
+    u8 PBuf_FIFOFill;
+    u8 PBuf_FIFODrain;
+    u8 PBuf_NumCur;
+    u8 PBuf_NumReq;
+    u8 PBuf_WaitStateCur;
+    bool PBuf_Running;
+#ifdef SANITYCHECK
+    bool waiting;
+#endif
+    timestamp PBuf_BusyTime;
+    u32 PBuf_AddrExpect;
+    u32 PBuf_Addr;
 } BusGamePak;
 
 
@@ -160,5 +175,9 @@ void GamePak_Step(BusGamePak* bus, GamePak* pak);
 
 void GamePakBus_Reset(Console* sys);
 void GamePakBus_KillBurst(Console* sys, timestamp now, bool a9);
+
+void GamePakROMPrefetcher_Kill(Console* sys);
+void GamePakROMPrefetcher_Run(Console* sys, timestamp now);
+
 void GamePakBus_ROMHandler(Console* sys, timestamp now, u8 waitstate, bool agb, bool a9);
 void GamePakBus_RAMHandler(Console* sys, timestamp now, bool agb, bool a9);

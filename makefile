@@ -47,6 +47,9 @@ ifeq ($(USECROSSGCC), 1) # used to compile for windows on linux via gcc
 	CC := i686-w64-mingw32-gcc
 	CXX := i686-w64-mingw32-g++
 endif
+ifneq ($(NOSAFETY), 1)
+	CFLAGS += -DSANITYCHECK
+endif
 
 
 ifeq ($(DEB), 1) # debug build
@@ -86,7 +89,7 @@ $(BUILDDIR)$(OBJDIR)/%.c.o: %.c
 $(BUILDDIR)$(OBJDIR)/%.cpp.o: %.cpp
 	@mkdir -p $(dir $@)
 	@echo $<
-	@$(CXX) $(CPPFLAGS) -c $< -o $@
+	@$(CXX) $(CPPFLAGS) -Wno-unused-function -c $< -o $@
 
 $(BUILDDIR)/DualSOUP: $(OBJS)
 	@echo linking...

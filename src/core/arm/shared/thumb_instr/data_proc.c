@@ -277,7 +277,7 @@ void THUMB_DataProcReg(ARM* cpu, const ARM_Instr instr_data)
     {
         if (cpu->CPUID == ARM7ID)
         {
-            int iterations = A7TDMI_NumBoothIters(rm_val, true);
+            int iterations = A7TDMI_NumBoothIters(rd_val, true);
             A7TDMI_ExecuteCycles(ARM7Cast, iterations);
             flags_out.Carry = flags_out.Carry; // TODO: Soon...
         }

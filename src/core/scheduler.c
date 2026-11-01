@@ -211,6 +211,8 @@ Core_Ret Sched_RunEvent(Console* sys)
     case Evt_Timer70Run
      ... Evt_Timer73Run:    Timer_Run(sys, sys->Timers7, evt-Evt_Timer70Run, now, TimerType_7); break;
 
+    case Evt_PakPrefetch:   GamePakROMPrefetcher_Run(sys, now); break;
+
     case Evt_Bus7Comp:      Bus_RunComp(sys, now, false); break;
     case Evt_Bus7Grant:     Bus_RunGrant(sys, now, false); break;
 

@@ -241,6 +241,9 @@ union { \
 { if ((l) op (r)) \
     (l) = (r); }
 
+#define DS_MAX(l, r) (((l) > (r)) ? (l) : (r))
+#define DS_MIN(l, r) (((l) < (r)) ? (l) : (r))
+
 typedef enum : u8
 {
     ARM7ID,

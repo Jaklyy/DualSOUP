@@ -344,7 +344,7 @@ void ARM_Mul(ARM* cpu, const ARM_Instr instr_data)
 
         // takes 1 cycle + 1 cycle per booth iteration needed to calculate.
         // one booth iteration is needed per byte of Rs.
-        A7TDMI_ExecuteCycles(ARM7Cast, iterations + instr.Long);
+        A7TDMI_ExecuteCycles(ARM7Cast, iterations + instr.Long + instr.Accumulate);
     }
     else // ARM9ID
     {

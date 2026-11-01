@@ -485,15 +485,151 @@ void GamePakBus_Reset(Console* sys)
 {
     memset(&sys->BusGP, 0, sizeof(sys->BusGP));
     GamePak_Step(&sys->BusGP, &sys->GamePak);
+    sys->BusGP.PBuf_AddrExpect = u32_max;
 }
 
 void GamePakBus_KillBurst(Console* sys, timestamp now [[maybe_unused]], bool a9)
 {
-    if (a9 == sys->ExtMemCR_Shared.GBAPakA7Access) return;
+    if (!sys->AGB && (a9 == sys->ExtMemCR_Shared.GBAPakA7Access)) return;
+    if (sys->AGB && sys->ExtMemCR_AGB.PakPrefetcher) return; // dont kill prefetcher
 
     BusGamePak* bus = &sys->BusGP;
+    bus->PBuf_FIFOFill = 0;
+    bus->PBuf_FIFODrain = 0;
+    bus->PBuf_NumCur = 0;
     bus->BurstActive = false;
     bus->ROM_CSel = false;
+}
+
+void GamePakROMPrefetcher_Kill(Console* sys)
+{
+    BusGamePak* bus = &sys->BusGP;
+
+    bus->PBuf_FIFOFill = 0;
+    bus->PBuf_FIFODrain = 0;
+    bus->PBuf_NumCur = 0;
+    bus->PBuf_AddrExpect = u32_max;
+    bus->BurstActive = false;
+    bus->ROM_CSel = false;
+    Sched_RemoveEvent(&sys->Sched, Evt_PakPrefetch);
+}
+
+bool GamePakROMPrefetcher_Drain(Console* sys, timestamp now)
+{
+    BusGamePak* bus = &sys->BusGP;
+
+    if (bus->PBuf_NumCur >= bus->PBuf_NumReq)
+    {
+#ifdef SANITYCHECK
+        if (bus->PBuf_ADDRS[bus->PBuf_FIFODrain] != (((sys->Bus7.PipeFIFO[sys->Bus7.ReqActivePtr].Addr & ((sys->Bus7.PipeFIFO[sys->Bus7.ReqActivePtr].Size == HSIZE_32) ? ~3 : ~1))>>1) & 0xFFFFFF))
+            CrashSpectacularly("ADDR MISMATCH: %08X %08X\n", bus->PBuf_ADDRS[bus->PBuf_FIFODrain], ((sys->Bus7.PipeFIFO[sys->Bus7.ReqActivePtr].Addr & ((sys->Bus7.PipeFIFO[sys->Bus7.ReqActivePtr].Size == HSIZE_32) ? ~3 : ~1))>>1) & 0xFFFFFF);
+#endif
+        u32 rdata = bus->PBuf_FIFO[bus->PBuf_FIFODrain];
+        bus->PBuf_FIFODrain += 1;
+        bus->PBuf_FIFODrain %= countof(bus->PBuf_FIFO);
+
+
+        if (bus->PBuf_NumReq == 2)
+        {
+            bus->PBuf_NumCur -= 2;
+            bus->PBuf_AddrExpect += 2;
+            rdata |= bus->PBuf_FIFO[bus->PBuf_FIFODrain] << 16;
+            bus->PBuf_FIFODrain += 1;
+            bus->PBuf_FIFODrain %= countof(bus->PBuf_FIFO);
+        }
+        else
+        {
+            bus->PBuf_NumCur -= 1;
+            bus->PBuf_AddrExpect += 1;
+            rdata |= rdata << 16;
+        }
+#ifdef SANITYCHECK
+        if (!bus->waiting) CrashSpectacularly("FLOURP\n");
+        bus->waiting = false;
+#endif
+        bus->PBuf_NumReq = 0xFF;
+        Bus_TransferPostSetup(sys, rdata, true, now, false, false);
+        return true;
+    }
+    return false;
+}
+
+void GamePakROMPrefetcher_Run(Console* sys, timestamp now)
+{
+    BusGamePak* bus = &sys->BusGP;
+    GamePak* pak = &sys->GamePak;
+    u8 ns [[maybe_unused]];
+    u8 seq;
+    switch(bus->PBuf_WaitStateCur)
+    {
+    case 0:
+        ns  = GamePak_WaitStates[2][sys->ExtMemCR_AGB.PakROMTimingsNS0];
+        seq = GamePak_WaitStates[3][sys->ExtMemCR_AGB.PakROMTimingsS0];
+        break;
+    case 1:
+        ns  = GamePak_WaitStates[2][sys->ExtMemCR_AGB.PakROMTimingsNS1];
+        seq = GamePak_WaitStates[4][sys->ExtMemCR_AGB.PakROMTimingsS1];
+        break;
+    case 2:
+        ns  = GamePak_WaitStates[2][sys->ExtMemCR_AGB.PakROMTimingsNS2];
+        seq = GamePak_WaitStates[5][sys->ExtMemCR_AGB.PakROMTimingsS2];
+        break;
+    }
+
+    if (!bus->BurstActive) // nseq
+    {
+        // pull cs hi (in case it was low before?)
+        // note: im not sure if anything on the arm7 bus can realistically trigger two ns cycles back to back
+        // speculation: the lack of time to pull cs high could be why dma does weird shit to game pak?
+        // ie. fixed/decrementing bursts / rom -> rom transfers
+        // ...probably not that sounds like a really stupid problem to have and not fix
+        // unless they just didn't give a shit, which is possible...
+        bus->ROM_CSel = false;
+        GamePak_Step(bus, pak);
+        // pull cs lo (latch addr?)
+        bus->Addr_Full = bus->PBuf_Addr;
+        bus->ROM_CSel = true;
+        GamePak_Step(bus, pak);
+        // pull rd low (start read?)
+        bus->Read_Sel = true;
+        GamePak_Step(bus, pak);
+
+        bus->PBuf_ADDRS[bus->PBuf_FIFOFill] = pak->LatchedAddr_Full;
+        // pull rd high (incr addr?)
+        bus->Read_Sel = false;
+        GamePak_Step(bus, pak);
+        // read data off bus
+        bus->PBuf_FIFO[bus->PBuf_FIFOFill] = bus->ROM_Data;
+        bus->PBuf_Addr+=1;
+
+        bus->BurstActive = true;
+    }
+    else
+    {
+        // pull rd low (start read?)
+        bus->Read_Sel = true;
+        GamePak_Step(bus, pak);
+
+        bus->PBuf_ADDRS[bus->PBuf_FIFOFill] = pak->LatchedAddr_Full;
+        // pull rd high (incr addr?)
+        bus->Read_Sel = false;
+        GamePak_Step(bus, pak);
+        // read data off bus
+        bus->PBuf_FIFO[bus->PBuf_FIFOFill] = bus->ROM_Data;
+        bus->PBuf_Addr+=1;
+    }
+    //bus->PBuf_BusyTime = now + DSClk16(1);
+
+    bus->PBuf_FIFOFill += 1;
+    bus->PBuf_FIFOFill %= countof(bus->PBuf_FIFO);
+    bus->PBuf_NumCur++;
+
+    GamePakROMPrefetcher_Drain(sys, now);
+
+    if (bus->PBuf_NumCur != countof(bus->PBuf_FIFO))
+        Sched_AddEvent(sys, now+DSClk16(seq+1), Evt_PakPrefetch);
+    else
+        bus->PBuf_Running = false;
 }
 
 void GamePakBus_ROMHandler(Console* sys, timestamp now, u8 waitstate, bool agb, bool a9)
@@ -538,13 +674,21 @@ void GamePakBus_ROMHandler(Console* sys, timestamp now, u8 waitstate, bool agb, 
         // i would assume so because of the ram cart addons, but that's not a guarantee.
         u32 addr = (req->Addr & (~req->Size /* dumb way to align addr for words */)) >> 1; // 16 bit addressable
 
-        if (!(addr & 0xFFFF)) // 128 KiB boundaries are enforced by the gamepak interface
-            bus->BurstActive = false;
+        bool restart = !(addr & 0xFFFF); // 128 KiB boundaries are enforced by the gamepak interface
 
         if (req->Write)
         {
             if ((req->Size == HSIZE_8) && !agb) // byte writes are not permitted (nds only?)
                 goto failure;
+
+            if (sys->AGB && sys->ExtMemCR_AGB.PakPrefetcher)
+                GamePakROMPrefetcher_Kill(sys);
+
+            if (restart)
+            {
+                bus->BurstActive = false;
+                bus->ROM_CSel = false;
+            }
 
             for (int i = 0; i < req->Size; i++) // 32 bit is 2, 16 bit is 1; it just works:tm:
             {
@@ -585,12 +729,52 @@ void GamePakBus_ROMHandler(Console* sys, timestamp now, u8 waitstate, bool agb, 
                     bus->Write_Sel = false;
                     GamePak_Step(bus, pak);
 
-                    now += DSClkSys(seq, agb);
+                    now += DSClkSys(seq + (i==1), agb);
                 }
             }
         }
         else
         {
+            if (sys->AGB && sys->ExtMemCR_AGB.PakPrefetcher)
+            {
+                // prefetch buffer active; use alt path
+#ifdef SANITYCHECK
+                bus->waiting = true;
+#endif
+                bus->PBuf_NumReq = ((req->Size == HSIZE_32) ? 2 : 1);
+                if (addr == bus->PBuf_AddrExpect && !restart) // checkme: uses halfword addr?
+                {
+                    // addr matches expected
+                    if (GamePakROMPrefetcher_Drain(sys, now) && !bus->PBuf_Running)
+                    {
+                        // buffer was idle, give it a kick
+                        bus->PBuf_Running = true;
+                        Sched_AddEvent(sys, now+DSClk16(seq), Evt_PakPrefetch);
+                    }
+                    return;
+                }
+                // addr did not match, restart buffer
+                bus->PBuf_AddrExpect = addr;
+                bus->PBuf_Addr = bus->PBuf_AddrExpect & 0xFFFFFF;
+                bus->PBuf_Running = true;
+                bus->BurstActive = false;
+                bus->ROM_CSel = false;
+                bus->PBuf_WaitStateCur = waitstate;
+                bus->PBuf_FIFOFill = 0;
+                bus->PBuf_FIFODrain = 0;
+                bus->PBuf_NumCur = 0;
+                if (now == bus->PBuf_BusyTime) now += DSClk16(1);
+                Sched_AddEvent(sys, now+DSClk16(ns), Evt_PakPrefetch); // NOTE: needs rescheduling support
+
+                return;
+            }
+
+            if (restart)
+            {
+                bus->BurstActive = false;
+                bus->ROM_CSel = false;
+            }
+
             for (int i = 0; i < ((req->Size == HSIZE_32) ? 2 : 1); i++)
             {
                 if (!bus->BurstActive) // nseq
@@ -617,8 +801,7 @@ void GamePakBus_ROMHandler(Console* sys, timestamp now, u8 waitstate, bool agb, 
                     rdata |= bus->ROM_Data;
                     rdata = ROR32(rdata, 16); // this results in data being in the right lanes for 32 bit loads
 
-                    if (!agb || !sys->ExtMemCR_AGB.PakPrefetcher) // TODO: prefetcher
-                        now += DSClkSys(ns, agb);
+                    now += DSClkSys(ns, agb);
 
                     bus->BurstActive = true;
                 }
@@ -634,13 +817,11 @@ void GamePakBus_ROMHandler(Console* sys, timestamp now, u8 waitstate, bool agb, 
                     rdata |= bus->ROM_Data;
                     rdata = ROR32(rdata, 16); // this results in data being in the right lanes for 32 bit loads
 
-                    if (!agb || !sys->ExtMemCR_AGB.PakPrefetcher) // TODO: prefetcher
-                        now += DSClkSys(seq, agb);
+                    now += DSClkSys(seq + (i==1), agb);
                 }
             }
             if (req->Size != HSIZE_32)
                 rdata |= rdata >> 16; // rdata is in the high portion after earlier rotate
-            //printf("%08X %08X\n", req->Addr, rdata);
         }
     }
     Bus_TransferPostSetup(sys, rdata, !req->Write, now, false, a9);
@@ -665,6 +846,7 @@ void GamePakBus_RAMHandler(Console* sys, timestamp now, bool agb, bool a9)
     }
     else
     {
+        GamePakROMPrefetcher_Kill(sys);
         u32 addr = req->Addr & 0xFFFF; // byte addressable
 
         if (req->Write)

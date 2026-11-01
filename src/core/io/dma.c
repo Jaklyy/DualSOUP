@@ -81,7 +81,7 @@ void StartSoundDMA(Console* sys, u8 id, timestamp start)
     Sched_AddEvent(sys, start, Evt_SndDMA70+id);
 }
 
-void DMA7_Enable(Console* sys, DMA_Channel* channel, u8 id, timestamp now)
+void DMA7_Enable(Console* sys, DMA_Channel* channel, u8 id [[maybe_unused]], timestamp now)
 {
     channel->Latched_SrcAddr = channel->SrcAddr;
     channel->Latched_DstAddr = channel->DstAddr;

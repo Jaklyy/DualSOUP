@@ -144,11 +144,13 @@ void A7TDMI_Exec(ARM7TDMI* a7tdmi)
         cpu->CurExec = cpu->Instr[0].Addr;
         if (cpu->CPSR.Thumb)
         {
+#ifdef SANITYCHECK
             if (cpu->CurExec != (cpu->PC-4))
             {
                 printf("arm7: bad address? got:%08X exp:%08X\n", cpu->CurExec, cpu->PC-4);
                 Sched_AddEvent(cpu->Sys, cpu->Timestamp, Evt_DebugBreak);
             }
+#endif
             const ARM_Instr instr = cpu->Instr[0];
             const u16 decode = (instr.Thumb >> 10);
 
@@ -156,11 +158,13 @@ void A7TDMI_Exec(ARM7TDMI* a7tdmi)
         }
         else
         {
+#ifdef SANITYCHECK
             if (cpu->CurExec != (cpu->PC-8))
             {
                 printf("arm7: bad address? got:%08X exp:%08X\n", cpu->CurExec, cpu->PC-8);
                 Sched_AddEvent(cpu->Sys, cpu->Timestamp, Evt_DebugBreak);
             }
+#endif
             const ARM_Instr instr = cpu->Instr[0];
             const u8 condcode = instr.Arm >> 28;
             const u16 decode = ((instr.Arm >> 16) & 0xFF0) | ((instr.Arm >> 4) & 0xF);

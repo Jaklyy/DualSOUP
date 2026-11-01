@@ -157,6 +157,7 @@ typedef enum : u8
     Evt_Timer71Run,
     Evt_Timer72Run,
     Evt_Timer73Run,
+    Evt_PakPrefetch,
     Evt_Bus7Comp,
     Evt_Bus7Grant,
     Evt_SPI,

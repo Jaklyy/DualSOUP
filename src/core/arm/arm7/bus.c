@@ -167,6 +167,7 @@ void A7TDMI_InstrReadPost(ARM7TDMI* a7tdmi, const timestamp now, u32 rdata)
         cpu->FlushProg--;
         ARM_PipelineStep(cpu);
         ARM_StepPC(cpu, cpu->CPSR.Thumb);
+        a7tdmi->ARM.CodeSeq = true;
         A7TDMI_InstrRead(a7tdmi, now);
     }
     else

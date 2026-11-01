@@ -89,7 +89,12 @@ void IOAGB_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, 
         //Sched_AddEvent(sys, now+DSClk16(1), Evt_UpdateIRQ7); called by IF7_Clear
         break;
 
-    case 0x00'02'04: MaskedWrite(sys->ExtMemCR_AGB.Raw, wrdata, mask&0x6FFF); break;
+    case 0x00'02'04:
+        bool pftch = sys->ExtMemCR_AGB.PakPrefetcher;
+        MaskedWrite(sys->ExtMemCR_AGB.Raw, wrdata, mask&0x6FFF);
+        if (pftch && !sys->ExtMemCR_AGB.PakPrefetcher) // turn prefetcher off
+            GamePakROMPrefetcher_Kill(sys);
+        break;
 
     case 0x00'02'08:
         MaskedWrite(sys->IME7, wrdata, mask & 1);
