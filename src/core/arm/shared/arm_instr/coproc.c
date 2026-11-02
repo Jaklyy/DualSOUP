@@ -43,7 +43,7 @@ void ARM_MCR(ARM* cpu, const ARM_Instr instr_data)
         else // absent
         {
             /// UHHHHHHHHH
-            A7TDMI_RaiseUDF(cpu, instr_data, 1); // idk cycle counts.
+            //A7TDMI_RaiseUDF(cpu, instr_data, 1); // idk cycle counts.
             // TODO: ARM7 UNDEFINED EXCEPTION???
             // TODO: ARM7 TIMINGS????
         }
@@ -124,6 +124,7 @@ void ARM_MRC(ARM* cpu, const ARM_Instr instr_data)
                 // this is probably not always correct, but it's correct enough for now.
                 // can dma change the open bus value?
                 val = cpu->Instr[2].Raw;
+                A7TDMI_ExecuteCycles(ARM7Cast, 2);
                 // TODO: ARM7 TIMINGS
                 LogPrint(LOG_ARM7 | LOG_ODD, "ARM7: MRC COPROC 14!\n");
             }
