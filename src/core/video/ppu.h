@@ -222,7 +222,7 @@ typedef struct
     } BGCR[4];
 
     u16 Xoff[4];
-    u16 Yoff[4];
+    s16 Yoff[4];
     Brightness Brightness;
     BlendCR BlendCR;
     u8 BlendAlpha[2];
