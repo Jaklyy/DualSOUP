@@ -215,6 +215,7 @@ void GamePak_ROMWrite(GamePak* pak, u32 addr, u16 val)
 
 u8 GamePak_SRAMRead(GamePak* pak, const u16 addr)
 {
+    if (pak->SRAMType == GamePakSRAM_None) return 0xFF;
     if (pak->FlashChipIDMode)
     {
         if (addr > 1)
