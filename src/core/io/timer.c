@@ -68,8 +68,7 @@ void Timer_AddTicks(Console* sys, Timer arr[], u8 num, timestamp now, timestamp 
 
             if (timer->CR.IRQ) // checkme: delay?
             {
-                if (!Sched_CheckEventScheduled(sys, ((type == TimerType_9) ? Evt_IRQ9_Time0 : Evt_IRQ7_Time0) + num))
-                    Sched_AddEvent(sys, now+DSClkSys(4, sys->AGB), ((type == TimerType_9) ? Evt_IRQ9_Time0 : Evt_IRQ7_Time0) + num);
+                Sched_AddEventIfEarlier(sys, now+DSClkSys(4, sys->AGB), ((type == TimerType_9) ? Evt_IRQ9_Time0 : Evt_IRQ7_Time0) + num);
             }
         }
     }
