@@ -244,7 +244,7 @@ union { \
 #define DS_MAX(l, r) (((l) > (r)) ? (l) : (r))
 #define DS_MIN(l, r) (((l) < (r)) ? (l) : (r))
 
-#define DS_SIGNEXT(in, width) ((_BitInt(width))(in))
+#define DS_SIGNEXT(in, width) ((typeof(in))(_BitInt(width))(in))
 
 typedef enum : u8
 {
