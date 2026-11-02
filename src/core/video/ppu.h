@@ -260,7 +260,7 @@ typedef struct Console Console;
 void PPU_RenderScanline(Console* sys, const bool b, const s16 y);
 void PPU_GlobalStep(Console* sys, const timestamp now, const u16 vcount);
 
-void PPU_IORead(PPU* ppu, u32* rdata, const u32 addr, const bool agb);
+void PPU_IORead(PPU* ppu, u32* rdata, const u32 addr);
 void PPU_IOWrite(PPU* ppu, const u32 addr, const u32 val, u32 mask, const bool b, const bool ppuenable, const bool agb);
 
 int SDLCALL PPUA_MainLoop(void* ptr);

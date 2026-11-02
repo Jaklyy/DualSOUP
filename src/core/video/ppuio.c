@@ -4,7 +4,7 @@
 
 
 
-void PPU_IORead(PPU* ppu, u32* rdata, const u32 addr, const bool agb)
+void PPU_IORead(PPU* ppu, u32* rdata, const u32 addr)
 {
     switch(addr & 0x7C)
     {

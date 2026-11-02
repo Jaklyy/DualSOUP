@@ -10,7 +10,7 @@ void IOAGB_Read(Console* sys, const u32 addr, const timestamp now)
     // video A
     case 0x00'00'00: // dispcnt
     case 0x00'00'08 ... 0x00'00'54: // ppu/lcd block
-        PPU_IORead(&sys->PPU_A, &rdata, addr, true);  break;
+        PPU_IORead(&sys->PPU_A, &rdata, addr);  break;
 
     case 0x00'00'04: rdata = (sys->VCountAGB << 16) | sys->DispStatRO7.Raw | sys->DispStatRW7.Raw; break;
 

@@ -95,7 +95,7 @@ void PPU_RenderText(Console* sys, const bool b, u16 y, const u8 bg)
         screenbase += ppu->DisplayCR.ScreenBase * KiB(64);
     }
 
-    y += ppu->Yoff[bg];
+    y += DS_SIGNEXT(ppu->Yoff[bg], 9);
 
     // screens are laid out somewhat unintuitively in vram so we need to do some weird things to index them properly
     if (ppu->BGCR[bg].Tall)
