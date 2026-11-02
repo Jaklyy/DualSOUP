@@ -118,11 +118,11 @@ void A7TDMI_DataPost(ARM7TDMI* a7tdmi, const timestamp now, u32 rdata)
     if ((pass->DataCB == A7TDMIDataCB_LoadSingle) || (pass->DataCB == A7TDMIDataCB_LoadMultiple) || (pass->DataCB == A7TDMIDataCB_SwapLoad))
         pass->RData[pass->NumFetchCompleted] = rdata;
 
-    pass->Addr += 4;
     pass->NumFetchCompleted++;
 
     if (pass->NumFetchCompleted != pass->NumFetch)
     {
+        pass->Addr += 4;
         switch(pass->DataCB)
         {
         case A7TDMIDataCB_LoadSingle:
