@@ -161,12 +161,12 @@ void PPU_RenderBitmap(Console* sys, const bool b, u16 y, const u8 bg, const bool
     u32 width;
     if (sys->AGB)
     {
-        screenbase = (ppu->DisplayCR.AGB.FrameSelect ? 0 : 0xA000);
+        screenbase = ((ppu->DisplayCR.AGB.FrameSelect && (ppu->DisplayCR.BGSetup != 3)) ? 0xA000 : 0);
         switch(ppu->DisplayCR.BGSetup)
         {
             case 3: width = 240; break;
             case 4: width = 240; break;
-            case 5: width = 128; break;
+            case 5: width = 160; break;
         }
     }
     else
