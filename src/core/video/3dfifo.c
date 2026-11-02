@@ -114,7 +114,7 @@ bool GXPipe_Fill(Console* sys, timestamp now)
 
     if (gx->FIFOWait)
     {
-        gx->FIFOWait = true;
+        gx->FIFOWait = false;
         Sched_AddEvent(sys, now, Evt_IO9);
     }
 

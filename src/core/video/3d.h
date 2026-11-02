@@ -126,7 +126,7 @@ typedef struct
 typedef union
 {
     alignas(4)
-    u32 Arr[3];
+    u32 Arr[4];
     u32x4 RGB;
     struct
     {
