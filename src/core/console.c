@@ -552,6 +552,7 @@ void Console_Reset(Console* sys, timestamp now)
 
 void Console_ResetAGB(Console* sys, timestamp now)
 {
+    now = DSClkAlignSys(now, true);
     Sched_Reset(&sys->Sched);
 
     // TODO: are these always running?
@@ -598,7 +599,7 @@ void Console_ResetAGB(Console* sys, timestamp now)
 
     A7TDMI_Reset(&sys->A7TDMI);
     sys->A7TDMI.Clk16 = true;
-    A7TDMI_InstrRead(&sys->A7TDMI, DSClkAlignSys(now+DSClkSys(3, true), true));
+    A7TDMI_InstrRead(&sys->A7TDMI, now+DSClkSys(3, true));
 }
 
 void IRQ9_Update(Console* sys, const timestamp now)

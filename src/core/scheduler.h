@@ -13,6 +13,10 @@ typedef enum : u8
     Evt_DebugBreak,
     Evt_PollInput,
 
+    Evt_UpdateIRQ9,
+
+    Evt_UpdateIRQ7,
+
     Evt_IRQ9_VBlank,
     Evt_IRQ9_HBlank,
     Evt_IRQ9_VCount,
@@ -56,8 +60,6 @@ typedef enum : u8
     Evt_IRQ7_SPI,
     Evt_IRQ7_WiFi,
 
-    Evt_UpdateIRQ9,
-
     Evt_ARM9,
     Evt_ARM9WBFill,
     Evt_ARM9BIU,
@@ -88,8 +90,6 @@ typedef enum : u8
     Evt_Sqrt,
     //Evt_GXExec,
     Evt_GX,
-
-    Evt_UpdateIRQ7,
 
     Evt_ARM7,
     Evt_ARM7DataRead,
