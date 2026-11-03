@@ -23,7 +23,7 @@ void A946_WriteBufferRun(ARM946ES* a946, const timestamp now)
         wbuf->Seq = false;
 
         // no access: sreschedule biu
-        if (!wbuf->Empty) Sched_AddEvent(a946->ARM.Sys, now+DSClk67(1), Evt_ARM9BIU);
+        if (!wbuf->Empty) Sched_AddEventIfEarlier(a946->ARM.Sys, now+DSClk67(1), Evt_ARM9BIU);
         else a946->BIU.BIUBusy = false;
         break;
     default:

@@ -16,7 +16,7 @@ void GX_UpdateIRQ(Console* sys, const timestamp time)
     {
         if (sys->GX3D.Status.FIFOHalfEmpty)
         {
-            Sched_AddEvent(sys, time, Evt_IRQ9_GXFIFO);
+            Sched_AddEventIfEarlier(sys, time, Evt_IRQ9_GXFIFO);
         }
         else 
         {
@@ -28,7 +28,7 @@ void GX_UpdateIRQ(Console* sys, const timestamp time)
     {
         if (sys->GX3D.Status.FIFOEmpty)
         {
-            Sched_AddEvent(sys, time, Evt_IRQ9_GXFIFO);
+            Sched_AddEventIfEarlier(sys, time, Evt_IRQ9_GXFIFO);
         }
         else
         {

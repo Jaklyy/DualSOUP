@@ -618,14 +618,14 @@ void IRQ9_Update(Console* sys, const timestamp now)
 void IF9_Clear(Console* sys, u32 wrdata, const timestamp now)
 {
     sys->IF9 &= ~wrdata | sys->IF9Persist;
-    Sched_AddEvent(sys, now+DSClk33(1), Evt_UpdateIRQ9);
+    Sched_AddEventIfEarlier(sys, now+DSClk33(1), Evt_UpdateIRQ9);
 }
 
 void IF9_Set(Console* sys, const IRQIDs id, const timestamp now)
 {
     sys->IF9 |= (u32)1<<id;
     sys->IF9Persist |= ((u32)1<<id) & IRQ9_LevelSens;
-    Sched_AddEvent(sys, now+DSClk33(1), Evt_UpdateIRQ9);
+    Sched_AddEventIfEarlier(sys, now+DSClk33(1), Evt_UpdateIRQ9);
 }
 
 void LevelIRQ9_Stop(Console* sys, const IRQIDs id)
@@ -653,14 +653,14 @@ void IRQ7_Update(Console* sys, const timestamp now)
 void IF7_Clear(Console* sys, u32 wrdata, const timestamp now)
 {
     sys->IF7 &= ~wrdata | sys->IF7Persist;
-    Sched_AddEvent(sys, now+DSClkSys(1, sys->AGB), Evt_UpdateIRQ7);
+    Sched_AddEventIfEarlier(sys, now+DSClkSys(1, sys->AGB), Evt_UpdateIRQ7);
 }
 
 void IF7_Set(Console* sys, const IRQIDs id, const timestamp now)
 {
     sys->IF7 |= (u64)1<<id;
     sys->IF7Persist |= ((u64)1<<id) & IRQ7_LevelSens;
-    Sched_AddEvent(sys, now+DSClkSys(1, sys->AGB), Evt_UpdateIRQ7);
+    Sched_AddEventIfEarlier(sys, now+DSClkSys(1, sys->AGB), Evt_UpdateIRQ7);
 }
 
 bool Console_TestIfPollingNeeded(Console* sys, timestamp now)

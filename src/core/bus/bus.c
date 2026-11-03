@@ -383,6 +383,9 @@ void Bus_VRAM(Console* sys, u32* rdata, timestamp* now, u32 addr, const BusReq* 
         {sys->VRAM_I.b16, VRAM_I_Size}
     };
 
+    if (((addr & 0xFFFFFF00) == 0x06800000) && !req->Prot.Data)
+        printf("VRAM: %08X %lX\n", addr, *now);
+
     u16 list;
     if (a9)
     {

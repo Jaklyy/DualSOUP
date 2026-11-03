@@ -57,7 +57,7 @@ void StartDMA(Console* sys, timestamp start, u8 mode, bool a9)
             continue;
         }
         cur->NeedsInit = true;
-        Sched_AddEvent(sys, start, (a9 ? Evt_DMA90 : Evt_DMA70) + i);
+        Sched_AddEventIfEarlier(sys, start, (a9 ? Evt_DMA90 : Evt_DMA70) + i);
     }
 }
 
@@ -68,7 +68,7 @@ void StartSoundCapDMA(Console* sys, u8 id, timestamp start)
     if (cur->CompCur != cur->CompMax) // CHECKME
         return LogPrint(LOG_DMA|LOG_ODD, "DMA SNDCAP: channel already going??? errchan:%"PRIu8" chanmode:%"PRIu8"\n", id, cur->CurrentMode);
     cur->NeedsInit = true;
-    Sched_AddEvent(sys, start, Evt_SCapDMA70+id);
+    Sched_AddEventIfEarlier(sys, start, Evt_SCapDMA70+id);
 }
 
 void StartSoundDMA(Console* sys, u8 id, timestamp start)
@@ -78,7 +78,7 @@ void StartSoundDMA(Console* sys, u8 id, timestamp start)
     if (cur->CompCur != cur->CompMax) // CHECKME
         return LogPrint(LOG_DMA|LOG_ODD, "DMA SND: channel already going??? errchan:%"PRIu8" chanmode:%"PRIu8"\n", id, cur->CurrentMode);
     cur->NeedsInit = true;
-    Sched_AddEvent(sys, start, Evt_SndDMA70+id);
+    Sched_AddEventIfEarlier(sys, start, Evt_SndDMA70+id);
 }
 
 void DMA7_Enable(Console* sys, DMA_Channel* channel, u8 id [[maybe_unused]], timestamp now)
@@ -274,7 +274,7 @@ void DMA_CompPost(Console* sys, timestamp now, const u8 id, const DMA_CBType cb,
             else channel->CR.Enable = false;
 
             if (channel->CR.IRQ)
-                Sched_AddEvent(sys, now, (a9 ? (Evt_IRQ9_DMA0 + id) : (Evt_IRQ7_DMA0 + (id-DMA7_NormalBase)))); // checkme: delay
+                Sched_AddEventIfEarlier(sys, now, (a9 ? (Evt_IRQ9_DMA0 + id) : (Evt_IRQ7_DMA0 + (id-DMA7_NormalBase)))); // checkme: delay
         }
         else if (channel->CurrentMode == DMAStart_3DFIFO)
         {
@@ -288,7 +288,7 @@ void DMA_CompPost(Console* sys, timestamp now, const u8 id, const DMA_CBType cb,
         if (dmaqueued)
         {
             channel->NeedsInit = true;
-            Sched_AddEvent(sys, now+DSClkSys(3 /*checkme*/, sys->AGB), ((a9) ? Evt_DMA90 : Evt_SCapDMA70) + id);
+            Sched_AddEventIfEarlier(sys, now+DSClkSys(3 /*checkme*/, sys->AGB), ((a9) ? Evt_DMA90 : Evt_SCapDMA70) + id);
         }
     }
 

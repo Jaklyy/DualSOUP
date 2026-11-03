@@ -403,11 +403,11 @@ void IO9_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
 
     case 0x00'02'08:
         MaskedWrite(sys->IME9, wrdata, mask & 1); 
-        Sched_AddEvent(sys, now+DSClk33(1), Evt_UpdateIRQ9);
+        Sched_AddEventIfEarlier(sys, now+DSClk33(1), Evt_UpdateIRQ9);
         break;
     case 0x00'02'10:
         MaskedWrite(sys->IE9, wrdata, mask & 0x003F3F7F); 
-        Sched_AddEvent(sys, now+DSClk33(1), Evt_UpdateIRQ9);
+        Sched_AddEventIfEarlier(sys, now+DSClk33(1), Evt_UpdateIRQ9);
         break;
     case 0x00'02'14: IF9_Clear(sys, wrdata & mask, now); break;
 
@@ -710,11 +710,11 @@ void IO7_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
 
     case 0x00'02'08:
         MaskedWrite(sys->IME7, wrdata, mask & 1);
-        Sched_AddEvent(sys, now+DSClk33(1), Evt_UpdateIRQ7);
+        Sched_AddEventIfEarlier(sys, now+DSClk33(1), Evt_UpdateIRQ7);
         break;
     case 0x00'02'10:
         MaskedWrite(sys->IE7, wrdata, mask & 0x01DF3FFF);
-        Sched_AddEvent(sys, now+DSClk33(1), Evt_UpdateIRQ7);
+        Sched_AddEventIfEarlier(sys, now+DSClk33(1), Evt_UpdateIRQ7);
         break;
     case 0x00'02'14: IF7_Clear(sys, wrdata & mask, now); break;
 
