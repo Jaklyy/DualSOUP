@@ -196,14 +196,13 @@ void IO9_StartDiv(Console* sys, timestamp now)
 }
 
 // algorithm stolen from melonds which links this so im linking it too, sue me.
-// one could also do this with 80 bit floats, but that's less portable.
 // http://stackoverflow.com/questions/1100090/looking-for-an-efficient-integer-square-root-algorithm-for-arm-thumb2
 void IO9_FinishSqrt(Console* sys)
 {
     u64 val;
-    u32 res = 0;
+    u64 res = 0;
     u64 rem = 0;
-    u32 prod = 0;
+    u64 prod = 0;
     int nbits, topshift;
     if (sys->SqrtCR.Use64Bits)
     {
