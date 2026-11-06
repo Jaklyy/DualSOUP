@@ -7,6 +7,28 @@
 
 
 
+typedef u16 (*BGVRAMPTR)(Console*, const u32);
+
+BGVRAMPTR PPU_GetBGVRAM(const PPU_Type type)
+{
+    switch(type)
+    {
+        case PPUType_A: return VRAM_BGA;
+        case PPUType_B: return VRAM_BGB;
+        case PPUType_AGB: return VRAM_BGAGB;
+    }
+}
+typedef u16 (*OBJVRAMPTR)(Console*, const u32);
+
+OBJVRAMPTR PPU_GetOBJVRAM(const PPU_Type type)
+{
+    switch(type)
+    {
+        case PPUType_A: return VRAM_OBJA;
+        case PPUType_B: return VRAM_OBJB;
+        case PPUType_AGB: return VRAM_OBJAGB;
+    }
+}
 
 u32 RGB565to666(u16 color)
 {
@@ -71,388 +93,309 @@ u16 PPU_VRAMLookup(Console* sys, const u32 addr, u16 (*func)(Console*, const u32
     }
 }
 
-
-void PPU_None(Console* sys, const bool b, const u8 bg)
+void PPU_None(Console* sys, const u16 h, const u16 v, const u8 bg, const bool b) // todo?
 {
     PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
     CompositeBuffer* buffer = ppu->CompositeBuffer[bg];
-    for (int x = 0; x < PPU_GetWidth(sys->AGB); x++)
+    if (h > 0) return;
+
+    for (int x = 0; x < LCD_GetWidth(sys->AGB); x++)
         buffer[x] = (CompositeBuffer){0, 0, true, false, false, false, false};
 }
 
-void PPU_RenderText(Console* sys, const bool b, u16 y, const u8 bg)
+void PPU_StepTextBG(Console* sys, const u16 h, const u16 v, const u8 bg, const PPU_Type type)
 {
-    PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
-    u16 (*bgvram)(Console*, const u32) = (b ? VRAM_BGB : VRAM_BGA);
+    PPU* ppu = ((type == PPUType_B) ? &sys->PPU_B : &sys->PPU_A);
     CompositeBuffer* buffer = ppu->CompositeBuffer[bg];
 
-    u32 tilebase = ppu->BGCR[bg].CharBase * KiB(16);
-    u32 screenbase = ppu->BGCR[bg].ScreenBase * KiB(2);
+    s32 cycle = h - (((BGTileWidth-1) - (ppu->Xoff[bg] % BGTileWidth)) * PPU_IterLen);
 
-    if (!b)
+    if ((cycle % PPU_IterLen) != bg) return; // not this bg's turn
+    if (cycle < 0) return; // rendering has not started for this bg.
+
+    s32 tilereq = (LCD_Width / BGTileWidth) + ((ppu->Xoff[bg] % BGTileWidth) != 0);
+    s32 cyclepertile = (PPU_IterLen * BGTileWidth);
+    s32 cyclelimit = tilereq*cyclepertile + PPU_IterLen;
+    if (cycle > cyclelimit) return; // we have rendered enough tiles.
+
+    u16 y = v + ppu->Yoff[bg];
+
+    // determine which step this is
+    s32 step = ((cycle / PPU_IterLen)-1) % BGTileWidth;
+
+    if ((cycle / PPU_IterLen) == 0) ppu->BGDat[bg].BgX = (ppu->Xoff[bg] & ~(BGTileWidth-1));
+    if ((h / PPU_IterLen) == 8) ppu->BGDat[bg].ScrX = 0;
+
+    u16 xbg = ppu->BGDat[bg].BgX;
+    u8 xscr = ppu->BGDat[bg].ScrX;
+
+    xbg %= (BGScreenWidthPx << ppu->BGCR[bg].Wide);
+    if (((cycle / PPU_IterLen) == 0) || ((step == 0) && ((cycle / PPU_IterLen) != 1)))
     {
-        tilebase += ppu->DisplayCR.CharBase * KiB(64);
-        screenbase += ppu->DisplayCR.ScreenBase * KiB(64);
-    }
+        // look up next tile
+        u32 screenbase = ppu->BGCR[bg].ScreenBase * KiB(2);
+        if (type == PPUType_A) // ntr mode ppu a only
+            screenbase += ppu->DisplayCR.ScreenBase * KiB(64);
 
-    y += ppu->Yoff[bg];
-
-    // screens are laid out somewhat unintuitively in vram so we need to do some weird things to index them properly
-    if (ppu->BGCR[bg].Tall)
-    {
-        // 512 height
-        screenbase += ((y & (512-1)) / TileWidth) * (ScreenWidthTiles * BytesPerTile);
+        screenbase += ((y % (BGScreenWidthPx << ppu->BGCR[bg].Tall)) / BGTileWidth) * BGScreenWidthBytes;
         // if it is also wide then we have to offset the height some to get the proper screen offset if it's past the 256th pixel.
-        if (ppu->BGCR[bg].Wide) screenbase += ((y / ScreenWidthPx * ScreenWidthPx) / TileWidth) * (ScreenWidthTiles * BytesPerTile);
+        if (ppu->BGCR[bg].Tall && ppu->BGCR[bg].Wide)
+            screenbase += ((y & ~(BGScreenWidthPx-1)) / BGTileWidth) * BGScreenWidthBytes;
+
+        u32 tileaddr = screenbase + (((xbg % BGScreenWidthPx) / BGTileWidth) * BGBytesPerTile);
+        if (ppu->BGCR[bg].Wide) tileaddr += ((xbg & ~(BGScreenWidthPx-1)) * BGTileWidth);
+        ppu->BGDat[bg].Tile.Raw = PPU_VRAMLookup(sys, tileaddr, PPU_GetBGVRAM(type));
     }
-    else
+    if ((cycle / PPU_IterLen) != 0)
     {
-        // 256 height
-        screenbase += ((y & (256-1)) / TileWidth) * (ScreenWidthTiles * BytesPerTile);
-    }
+        TextTileData* tile = &ppu->BGDat[bg].Tile;
 
+        u32 tilebase = ppu->BGCR[bg].CharBase * KiB(16);
+        if (type == PPUType_A) // ntr mode ppu a only
+            tilebase += ppu->DisplayCR.CharBase * KiB(64);
 
-    u32 tileaddr;
-    TextTileData tile;
-    //u16* pal = nullptr;
-    // isolate out msb since it needs to be special cased for properly indexing screens
-    u8 x = ppu->Xoff[bg] & 0xFF;
-    bool xmsb = (ppu->Xoff[bg] >> 8) & ppu->BGCR[bg].Wide;
-    for (int xf = 0; xf < PPU_GetWidth(sys->AGB); xf++)
-    {
-        if (((x%8) == 0) || (xf == 0))
+        u8 xfrac = xbg % BGTileWidth;
+        if (tile->HFlip) xfrac = ((BGTileWidth-1) - xfrac);
+
+        if ((step % (ppu->BGCR[bg].Pal256 ? 2 : 4)) == 0)
         {
-            tileaddr = screenbase + ((x / 8) * 2) + (xmsb << (8+3));
-            tile.Raw = PPU_VRAMLookup(sys, tileaddr, bgvram);
+            // fetch new palette data
+            u8 yfrac = y % BGTileHeight;
+            if (tile->VFlip) yfrac = ((BGTileHeight-1) - yfrac);
+
+            u32 pixeladdr = (tile->TileNum * BGTileSize) + (yfrac * BGTileWidth) + xfrac;
+            if (!ppu->BGCR[bg].Pal256) // 4bpp; 1 byte contains two entries
+                pixeladdr /= 2;
+
+            ppu->BGDat[bg].ColorData = PPU_VRAMLookup(sys, tilebase+pixeladdr, PPU_GetBGVRAM(type));
         }
 
-        // get in tile coordinate component to index into the tiles
-        int xfrac = (!tile.HFlip ? (x%8) : (7-(x%8)));
-        int yfrac = (!tile.VFlip ? (y%8) : (7-(y%8)));
+        u8 bpp = (ppu->BGCR[bg].Pal256 ? 8 : 4);
+        u8 idx = ppu->BGDat[bg].ColorData >> ((xfrac * bpp) % 16) & ((1<<bpp)-1);
 
-        if (ppu->BGCR[bg].Pal256) // 8 bpp
-        {
-            u32 pixeladdr = tilebase + (((tile.TileNum * (TileWidth*TileHeight)) + (yfrac*TileWidth)) + xfrac);
-            u8 idx = PPU_VRAMLookup(sys, pixeladdr, bgvram) >> ((pixeladdr&0x1)*8);
+        ppu->BGDat[bg].BgX++;
 
-            buffer[xf] = (CompositeBuffer){idx+(tile.Palette*256), 0, !idx, false, ppu->DisplayCR.BGExtPalEn, false, false};
-        }
-        else // pal 16 4bpp
-        {
-            u32 pixeladdr = tilebase + ((((tile.TileNum * (TileWidth*TileHeight)) + (yfrac*TileWidth)) / 2) + (xfrac/2));
-            u8 idx = PPU_VRAMLookup(sys, pixeladdr, bgvram) >> ((pixeladdr&0x1)*8);
-            idx = ((idx >> ((xfrac&1)*4)) & 0xF);
+        if (xscr < 0 || xscr >= LCD_Width) return; // oops nothing needs to render here!
 
-            // ext pal doesn't apply for 4bpp tilesets for w/e reason
-            buffer[xf] = (CompositeBuffer){idx+(tile.Palette*16), 0, !idx, false, false, false, false};
-        }
-
-        xmsb ^= ckd_add(&x, x, 1) & ppu->BGCR[bg].Wide;
+        ppu->BGDat[bg].ScrX++;
+        buffer[xscr] = (CompositeBuffer){idx+(tile->Palette*(1<<bpp)), 0, !idx, false, ppu->BGCR[bg].Pal256&&ppu->DisplayCR.BGExtPalEn, false, false};
     }
 }
 
-void PPU_RenderBitmap(Console* sys, const bool b, u16 y, const u8 bg, const bool dircolor)
+void AGBPPU_BG0Mode(Console* sys, const u16 h, const u16 v)
 {
-    PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
-    u16 (*bgvram)(Console*, const u32) = (b ? VRAM_BGB : VRAM_BGA);
-    CompositeBuffer* buffer = ppu->CompositeBuffer[bg];
+    PPU* ppu = &sys->PPU_A;
+    if (!ppu->DisplayCR.BG0Enable) return PPU_None(sys, h, v, 0, false);
+    switch(ppu->DisplayCR.BGSetup)
+    {
+        case 0 ... 1:
+            return PPU_StepTextBG(sys, h, v, 0, PPUType_AGB);
 
-    u32 screenbase;
-    u32 width;
-    if (sys->AGB)
-    {
-        screenbase = ((ppu->DisplayCR.AGB.FrameSelect && (ppu->DisplayCR.BGSetup != 3)) ? 0xA000 : 0);
-        switch(ppu->DisplayCR.BGSetup)
-        {
-            case 3: width = 240; break;
-            case 4: width = 240; break;
-            case 5: width = 160; break;
-        }
-    }
-    else
-    {
-        screenbase = ppu->BGCR[bg].ScreenBase * KiB(16);
-        switch(ppu->BGCR[bg].ScreenSize)
-        {
-            case 0: width = 128; break;
-            case 1: width = 256; break;
-            case 2: width = 512; break;
-            case 3: width = 512; break;
-        }
-    }
-    for (int x = 0; x < PPU_GetWidth(sys->AGB); x++)
-    {
-        if (dircolor)
-        {
-            u32 addr = screenbase + (x*2) + (y*(width*2));
-            u16 color = PPU_VRAMLookup(sys, addr, bgvram);
-            buffer[x] = (CompositeBuffer){RGB565to666(color&0x7FFF), 0, !(color & 0x8000), true, false, false, false};
-        }
-        else // 8 bit index
-        {
-            u32 addr = screenbase + x + (y*width);
-            u8 idx = PPU_VRAMLookup(sys, addr, bgvram) >> ((addr&0x1)*8);
-            buffer[x] = (CompositeBuffer){idx, 0, !idx, false, false, false, false};
-        }
+        default:
+            return PPU_None(sys, h, v, 0, false);
     }
 }
 
-void PPU_Affine(Console* sys, const bool b, const u16 y [[maybe_unused]], const u8 bg)
+void AGBPPU_BG1Mode(Console* sys, const u16 h, const u16 v)
 {
-    PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
-    PPU_None(sys, b, bg);
-    LogPrint(LOG_PPU|LOG_UNIMP, "UNIMPLEMENTED: AFFINE BG %i %08X\n", bg, ppu->BGCR[bg].Raw);
-}
-
-void PPU_Extended(Console* sys, const bool b, const u16 y, const u8 bg)
-{
-    PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
-
-    if (ppu->BGCR[bg].Pal256)
+    PPU* ppu = &sys->PPU_A;
+    if (!ppu->DisplayCR.BG1Enable) return PPU_None(sys, h, v, 1, false);
+    switch(ppu->DisplayCR.BGSetup)
     {
-        PPU_RenderBitmap(sys, b, y, bg, ppu->BGCR[bg].CharBase & 1);
-    }
-    else
-    {
-        PPU_None(sys, b, bg);
-        LogPrint(LOG_PPU|LOG_UNIMP, "UNIMPLEMENTED: AFFINE/TEXT BG %i %08X\n", bg, ppu->BGCR[bg].Raw);
+        case 0 ... 1:
+            return PPU_StepTextBG(sys, h, v, 1, PPUType_AGB);
+
+        default:
+            return PPU_None(sys, h, v, 1, false);
+
     }
 }
 
-void PPU_Large(Console* sys, const bool b, const u16 y [[maybe_unused]], const u8 bg)
+void AGBPPU_BG2Mode(Console* sys, const u16 h, const u16 v)
 {
-    PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
-    //CompositeBuffer* buffer = (b ? sys->CompositeBufferB[bg] : sys->CompositeBufferA[bg]);
-    PPU_None(sys, b, bg);
-    LogPrint(LOG_PPU|LOG_UNIMP, "UNIMPLEMENTED: LARGE BG %i %08X\n", bg, ppu->BGCR[bg].Raw);
+    PPU* ppu = &sys->PPU_A;
+    if (!ppu->DisplayCR.BG2Enable) return PPU_None(sys, h, v, 2, false);
+    switch(ppu->DisplayCR.BGSetup)
+    {
+        case 0:
+            return PPU_StepTextBG(sys, h, v, 2, PPUType_AGB);
+
+        case 1 ... 2:
+            //return PPU_Affine(sys, false, y, 2);
+
+        case 3:
+            //return PPU_RenderBitmap(sys, false, y, 2, true);
+        case 4:
+            //return PPU_RenderBitmap(sys, false, y, 2, false);
+        case 5:
+            //return PPU_RenderBitmap(sys, false, y, 2, true);
+
+        case 6 ... 7:
+            return PPU_None(sys, h, v, 2, false);
+
+    }
 }
 
-void PPU_3D(Console* sys, const u16 y)
+void AGBPPU_BG3Mode(Console* sys, const u16 h, const u16 v)
 {
-    CompositeBuffer* buffer = sys->PPU_A.CompositeBuffer[0];
-    SWRen_SyncRenderedLines(sys, y+1);
-    for (int x = 0; x < 256; x++)
-        buffer[x] = (CompositeBuffer){sys->GX3D.CBuf[0][y][x] + (1<<18) /* increase alpha to allow for max alpha for blending */, 0, ((sys->GX3D.CBuf[0][y][x] >> 18) & 0x1F) == 0, true, false, true, true};
+    PPU* ppu = &sys->PPU_A;
+    if (!ppu->DisplayCR.BG3Enable) return PPU_None(sys, h, v, 3, false);
+    switch(ppu->DisplayCR.BGSetup)
+    {
+        case 0:
+            return PPU_StepTextBG(sys, h, v, 3, PPUType_AGB);
+
+        case 2:
+            //return PPU_Affine(sys, false, y, 3);
+
+        case 1:
+        case 3 ... 7:
+            return PPU_None(sys, h, v, 3, false);
+    }
 }
 
-void PPU_BG0_Lookup(Console* sys, const bool b, const u16 y)
+void NTRPPU_BG0Mode(Console* sys, const u16 h, const u16 v, const PPU_Type type)
 {
-    PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
-    if (!ppu->DisplayCR.BG0Enable) return PPU_None(sys, b, 0);
+    PPU* ppu = ((type == PPUType_B) ? &sys->PPU_B : &sys->PPU_A);
+    if (!ppu->DisplayCR.BG0Enable) return PPU_None(sys, h, v, 0, type == PPUType_B);
     switch(ppu->DisplayCR.BGSetup)
     {
         case 0 ... 5:
-            if (ppu->DisplayCR.BG03D && !b)
+            if (ppu->DisplayCR.BG03D && type == PPUType_A)
             {
-                PPU_3D(sys, y);
+                //PPU_3D(sys, y);
+                PPU_None(sys, h, v, 0, false);
                 break;
             }
             [[fallthrough]];
         case 7:
-            PPU_RenderText(sys, b, y, 0);
+            return PPU_StepTextBG(sys, h, v, 0, type);
             break;
 
         case 6:
-            if (!b)
+            if (type == PPUType_A)
             {
-                PPU_3D(sys, y);
+                PPU_None(sys, h, v, 0, false);
+                //PPU_3D(sys, y);
             }
-            else PPU_None(sys, b, 0); // wtf happens to engine b?
+            else PPU_None(sys, h, v, 0, true); // wtf happens to engine b?
             break;
     }
 }
 
-void PPU_BG1_Lookup(Console* sys, const bool b, const u16 y)
+void NTRPPU_BG1Mode(Console* sys, const u16 h, const u16 v, const PPU_Type type)
 {
-    PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
-    if (!ppu->DisplayCR.BG1Enable) return PPU_None(sys, b, 1);
+    PPU* ppu = ((type == PPUType_B) ? &sys->PPU_B : &sys->PPU_A);
+    if (!ppu->DisplayCR.BG1Enable) return PPU_None(sys, h, v, 1, type == PPUType_B);
     switch(ppu->DisplayCR.BGSetup)
     {
         case 0 ... 5:
         case 7:
-            return PPU_RenderText(sys, b, y, 1);
+            return PPU_StepTextBG(sys, h, v, 1, type);
 
         case 6:
-            return PPU_None(sys, b, 1);
+            return PPU_None(sys, h, v, 1, type == PPUType_B);
 
     }
 }
 
-void PPU_BG2_Lookup(Console* sys, const bool b, const u16 y)
+void NTRPPU_BG2Mode(Console* sys, const u16 h, const u16 v, const PPU_Type type)
 {
-    PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
-    if (!ppu->DisplayCR.BG2Enable) return PPU_None(sys, b, 2);
+    PPU* ppu = ((type == PPUType_B) ? &sys->PPU_B : &sys->PPU_A);
+    if (!ppu->DisplayCR.BG2Enable) return PPU_None(sys, h, v, 2, type == PPUType_B);
     switch(ppu->DisplayCR.BGSetup)
     {
         case 0 ... 1:
         case 3:
-            return PPU_RenderText(sys, b, y, 2);
+            return PPU_StepTextBG(sys, h, v, 2, type);
 
         case 2:
         case 4:
-            return PPU_Affine(sys, b, y, 2);
+            //return PPU_Affine(sys, b, y, 2);
 
         case 5:
-            return PPU_Extended(sys, b, y, 2);
+            //return PPU_Extended(sys, b, y, 2);
 
         case 6:
-            return PPU_Large(sys, b, y, 2);
+            //return PPU_Large(sys, b, y, 2);
 
         case 7:
-            return PPU_None(sys, b, 2);
+            return PPU_None(sys, h, v, 2, type == PPUType_B);
 
     }
 }
 
-void PPU_BG3_Lookup(Console* sys, const bool b, const u16 y)
+void NTRPPU_BG3Mode(Console* sys, const u16 h, const u16 v, const PPU_Type type)
 {
-    PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
-    if (!ppu->DisplayCR.BG3Enable) return PPU_None(sys, b, 3);
+    PPU* ppu = ((type == PPUType_B) ? &sys->PPU_B : &sys->PPU_A);
+    if (!ppu->DisplayCR.BG3Enable) PPU_None(sys, h, v, 3, type == PPUType_B);
     switch(ppu->DisplayCR.BGSetup)
     {
         case 0:
-            return PPU_RenderText(sys, b, y, 3);
+            return PPU_StepTextBG(sys, h, v, 3, type);
 
         case 1 ... 2:
-            return PPU_Affine(sys, b, y, 3);
+            //return PPU_Affine(sys, b, y, 3);
 
         case 3 ... 5:
-            return PPU_Extended(sys, b, y, 3);
+            //return PPU_Extended(sys, b, y, 3);
 
         case 6 ... 7:
-            return PPU_None(sys, b, 3);
+            return PPU_None(sys, h, v, 3, type == PPUType_B);
     }
 }
 
-void PPU_BG0_AGBLookup(Console* sys, const u16 y)
+void PPU_StepBGs(Console* sys, const u16 h, const u16 v, const PPU_Type type)
 {
-    PPU* ppu = &sys->PPU_A;
-    if (!ppu->DisplayCR.BG0Enable) return PPU_None(sys, false, 0);
-    switch(ppu->DisplayCR.BGSetup)
+    if (type == PPUType_AGB)
     {
-        case 0 ... 1:
-            return PPU_RenderText(sys, false, y, 0);
-
-        default:
-            return PPU_None(sys, false, 0);
-    }
-}
-
-void PPU_BG1_AGBLookup(Console* sys, const u16 y)
-{
-    PPU* ppu = &sys->PPU_A;
-    if (!ppu->DisplayCR.BG1Enable) return PPU_None(sys, false, 1);
-    switch(ppu->DisplayCR.BGSetup)
-    {
-        case 0 ... 1:
-            return PPU_RenderText(sys, false, y, 1);
-
-        default:
-            return PPU_None(sys, false, 1);
-
-    }
-}
-
-void PPU_BG2_AGBLookup(Console* sys, const u16 y)
-{
-    PPU* ppu = &sys->PPU_A;
-    if (!ppu->DisplayCR.BG2Enable) return PPU_None(sys, false, 2);
-    switch(ppu->DisplayCR.BGSetup)
-    {
-        case 0:
-            return PPU_RenderText(sys, false, y, 2);
-
-        case 1 ... 2:
-            return PPU_Affine(sys, false, y, 2);
-
-        case 3:
-            return PPU_RenderBitmap(sys, false, y, 2, true);
-        case 4:
-            return PPU_RenderBitmap(sys, false, y, 2, false);
-        case 5:
-            return PPU_RenderBitmap(sys, false, y, 2, true);
-
-        case 6 ... 7:
-            return PPU_None(sys, false, 2);
-
-    }
-}
-
-void PPU_BG3_AGBLookup(Console* sys, const u16 y)
-{
-    PPU* ppu = &sys->PPU_A;
-    if (!ppu->DisplayCR.BG3Enable) return PPU_None(sys, false, 3);
-    switch(ppu->DisplayCR.BGSetup)
-    {
-        case 0:
-            return PPU_RenderText(sys, false, y, 3);
-
-        case 2:
-            return PPU_Affine(sys, false, y, 3);
-
-        case 1:
-        case 3 ... 7:
-            return PPU_None(sys, false, 3);
-    }
-}
-
-
-void PPU_BuildBGs(Console* sys, const bool b, const u16 y)
-{
-    // todo: windows
-
-    // sprite mosaic???
-    if (sys->AGB)
-    {
-        PPU_BG0_AGBLookup(sys, y);
-        PPU_BG1_AGBLookup(sys, y);
-        PPU_BG2_AGBLookup(sys, y);
-        PPU_BG3_AGBLookup(sys, y);
+        AGBPPU_BG0Mode(sys, h, v);
+        AGBPPU_BG1Mode(sys, h, v);
+        AGBPPU_BG2Mode(sys, h, v);
+        AGBPPU_BG3Mode(sys, h, v);
     }
     else
     {
-        PPU_BG0_Lookup(sys, b, y);
-        PPU_BG1_Lookup(sys, b, y);
-        PPU_BG2_Lookup(sys, b, y);
-        PPU_BG3_Lookup(sys, b, y);
+        NTRPPU_BG0Mode(sys, h, v, type);
+        NTRPPU_BG1Mode(sys, h, v, type);
+        NTRPPU_BG2Mode(sys, h, v, type);
+        NTRPPU_BG3Mode(sys, h, v, type);
     }
 }
 
-u32 PPU_Blend(PPU* ppu, CompositeBuffer* indices, u32* colors, int* bgs, int num, const bool enabled)
+u32 PPU_Blend(PPU* ppu)
 {
     u8 alpA;
     u8 alpB;
 
-    u16 rgb[2][4] = {{colors[0] & 0x3F, (colors[0] >> 6) & 0x3F, (colors[0] >> 12) & 0x3F, 0},
-                     {colors[1] & 0x3F, (colors[1] >> 6) & 0x3F, (colors[1] >> 12) & 0x3F, 0}};
+    u16 rgb[2][4] = {{ppu->CompCol[0] & 0x3F, (ppu->CompCol[0] >> 6) & 0x3F, (ppu->CompCol[0] >> 12) & 0x3F, 0},
+                     {ppu->CompCol[1] & 0x3F, (ppu->CompCol[1] >> 6) & 0x3F, (ppu->CompCol[1] >> 12) & 0x3F, 0}};
 
-    if ((num == 2) && indices[0].ForceBlend && (ppu->BlendCR.BlendBot & (1<<bgs[1])))
+    // override normal logic to always alpha blend
+    if ((ppu->CompBGs[1] >= 0) && ppu->CompSel[0].ForceBlend && (ppu->BlendCR.BlendBot & (1<<ppu->CompBGs[1])))
     {
-        if (indices[0].HasAlpha)
+        if (ppu->CompSel[0].HasAlpha)
         {
-            alpA = (colors[0] >> 18);
+            alpA = (ppu->CompCol[0] >> 18);
 
             alpB = 32 - alpA;
             goto Alpha_Blend;
         }
-        else
-        {
-            goto Force_Blend;
-        }
+        else goto Force_Blend;
     }
 
-    if (!enabled || !(ppu->BlendCR.BlendTop & (1<<bgs[0])))
-        return colors[0];
+    if (!ppu->WinEnMask.EnableBlend || !(ppu->BlendCR.BlendTop & (1<<ppu->CompBGs[0])))
+        return ppu->CompCol[0];
 
     switch(ppu->BlendCR.Effect)
     {
     case BLDCR_Off:
-        return colors[0];
+        return ppu->CompCol[0];
 
     case BLDCR_Blend:
         // there must be a lower pixel and it must be blendable
-        if ((num == 1) || !(ppu->BlendCR.BlendBot & (1<<bgs[1])))
-            return colors[0];
+        if ((ppu->CompBGs[1] < 0) || !(ppu->BlendCR.BlendBot & (1<<ppu->CompBGs[1])))
+            return ppu->CompCol[0];
 
         Force_Blend:
         alpA = ((ppu->BlendAlpha[0] <= 16) ? ppu->BlendAlpha[0] : 16) << 1;
@@ -489,62 +432,130 @@ u32 PPU_Blend(PPU* ppu, CompositeBuffer* indices, u32* colors, int* bgs, int num
     return rgb[0][0] | (rgb[0][1] << 6) | (rgb[0][2] << 12);
 }
 
-void PPU_Composite(Console* sys, const bool b, const u16 y)
+void PPU_FetchPalette(Console* sys, const int num, const PPU_Type type)
 {
-    PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
-    volatile u16* palbase = (b ? &sys->Palette.b16[0x400/sizeof(u16)] : &sys->Palette.b16[0]);
-    u16 (*bgextpalvram)(Console*, const u32) = (b ? VRAM_BGBExtPal : VRAM_BGAExtPal);
-    u16 (*objextpalvram)(Console*, const u32) = (b ? VRAM_OBJBExtPal : VRAM_OBJAExtPal);
-    u32* scanline = sys->Framebuffer[sys->BackBuf][sys->PowerCR9.AOnBottom ? b : !b][y];
-    volatile timestamp* time = (b ? (&sys->PPUBTimestamp) : (&sys->PPUATimestamp));
-
-    bool winenable = (ppu->DisplayCR.Win0Enable || ppu->DisplayCR.Win1Enable || ppu->DisplayCR.OBJWinEnable);
-    for (int x = 0; x < PPU_GetWidth(sys->AGB); x++)
+    PPU* ppu = ((type == PPUType_B) ? &sys->PPU_B : &sys->PPU_A);
+    volatile u16* palbase;
+    u16 (*bgextpalvram)(Console*, const u32);
+    u16 (*objextpalvram)(Console*, const u32);
+    switch(type)
     {
-        // checkme: idk when this is actually checked
-        // TODO: DSi with PPU rev enabled special cases the ((left == 0) && (right == 0)) case
-        if (x == ppu->Window.W0Right) ppu->Window0XActive = false;
-        else if (x == ppu->Window.W0Left) ppu->Window0XActive = true;
+    case PPUType_A:
+        bgextpalvram = VRAM_BGAExtPal;
+        objextpalvram = VRAM_OBJAExtPal;
+        palbase = &sys->Palette.b16[0];
+        break;
+    case PPUType_B:
+        bgextpalvram = VRAM_BGBExtPal;
+        objextpalvram = VRAM_OBJBExtPal;
+        palbase = &sys->Palette.b16[0x400/2];
+        break;
+    case PPUType_AGB:
+        palbase = &sys->Palette.b16[0];
+        break;
+    }
 
-        if (x == ppu->Window.W1Right) ppu->Window1XActive = false;
-        else if (x == ppu->Window.W1Left) ppu->Window1XActive = true;
+    if (ppu->CompBGs[num] < 0) return; // -1 implies no bg, should only trigger for bottom pixel
+    if ((num == 1) // bottom pixel is only fetched if blending is enabled.
+        && !((ppu->CompSel[0].ForceBlend || ((ppu->BlendCR.BlendTop & (1<<ppu->CompBGs[0])) && (ppu->BlendCR.Effect == BLDCR_Blend) && ppu->WinEnMask.EnableBlend)) // test if alpha blending is active and top pixel allows it
+        && (ppu->BlendCR.BlendBot & (1<<ppu->CompBGs[1])))) // test if bottom pixel can be blended
+        return;
 
-        // calc window
-        WindowCR enablemask;
-        if (ppu->DisplayCR.Win0Enable && ppu->Window0YActive && ppu->Window0XActive)
+    if (ppu->CompSel[num].NotPal) ppu->CompCol[num] = ppu->CompSel[num].Index;
+    else
+    {
+        if (ppu->CompSel[num].ExtPal) // extended palette lookup
         {
-            enablemask = ppu->Window.W0Cr;
+            if (type == PPUType_AGB) unreachable();
+            if (ppu->CompBGs[num] == 4) // spr
+            {
+                ppu->CompCol[num] = PPU_VRAMLookup(sys, ppu->CompSel[num].Index*2, objextpalvram);
+            }
+            else // bg layers
+            {
+                u32 extpalbase = ppu->CompBGs[num] * KiB(8);
+                if ((ppu->CompBGs[num] <= 1) && ppu->BGCR[ppu->CompBGs[num]].ExtPalSlot) extpalbase += KiB(16);
+                ppu->CompCol[num] = PPU_VRAMLookup(sys, extpalbase + (ppu->CompSel[num].Index*2), bgextpalvram);
+            }
         }
-        else if (ppu->DisplayCR.Win1Enable && ppu->Window1YActive && ppu->Window1XActive)
+        else // palette ram
         {
-            enablemask = ppu->Window.W1Cr;
+            //AddBusContention(sys, *time, Dev_Palette);
+            ppu->CompCol[num] = palbase[(ppu->CompSel[num].Index & 0xFF) + ((ppu->CompBGs[num] == 4 /* index sprite pram instead */) ? 256 : 0)];
         }
-        else if (ppu->DisplayCR.OBJWinEnable && (ppu->SpriteWindow[x/64] & ((u64)1<<(x%64))))
-        {
-            enablemask = ppu->Window.WObjCr;
-        }
-        else if (winenable)
-        {
-            enablemask = ppu->Window.WNoneCr;
-        }
-        else
-        {
-            enablemask.Raw = 0x3F;
-        }
+        ppu->CompCol[num] = RGB565to666(ppu->CompCol[num]);
+    }
+}
 
-        int bg[2];
+void PPU_StepComposite(Console* sys, const u16 h, const u16 v, const PPU_Type type)
+{
+    PPU* ppu = ((type == PPUType_B) ? &sys->PPU_B : &sys->PPU_A);
+
+    s32 cycle = h - 1 - (11*PPU_IterLen);
+    u16 x = cycle / PPU_IterLen;
+    if (cycle < 0) return; // not ready
+    if (cycle % PPU_IterLen == 0)
+    {
+        // check windows
+        if (ppu->DisplayCR.Win0Enable || ppu->DisplayCR.Win1Enable || ppu->DisplayCR.OBJWinEnable)
+        {
+            // NOTE: windowing checks are even out of bounds
+            if (cycle == 0) // CHECKME: is this checking done while windows are disabled?
+            {
+                // Y WINDOW CHECK:
+
+                // BUG: the NDS only tests the bottom 8 bits of the y coordinate.
+                // TODO: disable this masking when DSi ppu revision bit is enabled.
+                u16 winy = v & 0xFF;
+
+                if      (ppu->Window.W0Bot == winy) ppu->Window0YActive = false;
+                else if (ppu->Window.W0Top == winy) ppu->Window0YActive = true;
+
+                if      (ppu->Window.W1Bot == winy) ppu->Window1YActive = false;
+                else if (ppu->Window.W1Top == winy) ppu->Window1YActive = true;
+            }
+
+            // X WINDOW CHECK:
+
+            // checkme: idk when this is actually checked
+            // TODO: DSi with PPU rev enabled special cases the ((left == 0) && (right == 0)) case
+            if      (x == ppu->Window.W0Right) ppu->Window0XActive = false;
+            else if (x == ppu->Window.W0Left ) ppu->Window0XActive = true;
+
+            if      (x == ppu->Window.W1Right) ppu->Window1XActive = false;
+            else if (x == ppu->Window.W1Left ) ppu->Window1XActive = true;
+
+            // calc window
+            if (ppu->DisplayCR.Win0Enable && ppu->Window0YActive && ppu->Window0XActive) // win 0 active
+                ppu->WinEnMask = ppu->Window.W0Cr;
+            else if (ppu->DisplayCR.Win1Enable && ppu->Window1YActive && ppu->Window1XActive) // win 1 active
+                ppu->WinEnMask = ppu->Window.W1Cr;
+            else if (ppu->DisplayCR.OBJWinEnable && (ppu->SpriteWindow[x/64] & ((u64)1<<(x%64)))) // win 2 active
+                ppu->WinEnMask = ppu->Window.WObjCr;
+            else // no window active
+                ppu->WinEnMask = ppu->Window.WNoneCr;
+        }
+        else // windowing disabled
+            ppu->WinEnMask.Raw = 0x3F;
+
+        // sel pixels for blending
         // initialize with bg color
-        CompositeBuffer index[2] = {(CompositeBuffer){0, 0, false, false, false /* checkme? */, false, false},
-                                    (CompositeBuffer){0, 0, false, false, false /* checkme? */, false, false}};
+
+        if (x > LCD_Width) return; // nothing to do here
+
+        ppu->CompBGs[0] = -1;
+        ppu->CompBGs[1] = -1;
+        ppu->CompSel[0] = (CompositeBuffer){0, 0, false, false, false /* checkme? */, false, false};
+        ppu->CompSel[1] = (CompositeBuffer){0, 0, false, false, false /* checkme? */, false, false};
         int i = 0;
         for (int prio = 0; prio < 4; prio++)
         {
             // check if sprites should be rendered
             CompositeBuffer tmp = ppu->CompositeBuffer[4][x];
-            if (!tmp.Empty && (tmp.SprPrio == prio) && enablemask.EnableObj)
+            if (!tmp.Empty && (tmp.SprPrio == prio) && ppu->WinEnMask.EnableObj)
             {
-                bg[i] = 4;
-                index[i] = tmp;
+                ppu->CompBGs[i] = 4;
+                ppu->CompSel[i] = tmp;
                 i++;
                 if (i == 2) goto exit;
             }
@@ -553,7 +564,7 @@ void PPU_Composite(Console* sys, const bool b, const u16 y)
             for (int g = 0; g < 4; g++)
             {
                 // check window
-                if (!(enablemask.Raw & (1<<g))) continue;
+                if (!(ppu->WinEnMask.Raw & (1<<g))) continue;
 
                 // check priority
                 if (ppu->BGCR[g].BGPriority != prio) continue;
@@ -562,404 +573,30 @@ void PPU_Composite(Console* sys, const bool b, const u16 y)
                 tmp = ppu->CompositeBuffer[g][x];
                 if (!tmp.Empty)
                 {
-                    bg[i] = g;
-                    index[i] = tmp;
+                    ppu->CompBGs[i] = g;
+                    ppu->CompSel[i] = tmp;
                     i++;
                     if (i == 2) goto exit;
                 }
             }
         }
-        // no bg selected
-        bg[i] = 5;
-        i++;
+        // no bg selected; use backdrop
+        ppu->CompBGs[i] = 5;
 
         exit:
 
-        u32 color[2];
-        for (int j = 0; j < i; j++)
-        {
-            if (index[j].NotPal) color[j] = index[j].Index;
-            else
-            {
-                if (index[j].ExtPal)
-                {
-                    if (bg[j] == 4)
-                    {
-                        color[j] = PPU_VRAMLookup(sys, index[j].Index*2, objextpalvram);
-                    }
-                    else
-                    {
-                        u32 extpalbase = bg[j] * KiB(8);
-                        if ((bg[j] <= 1) && ppu->BGCR[bg[j]].ExtPalSlot) extpalbase += KiB(16);
-                        color[j] = PPU_VRAMLookup(sys, extpalbase + (index[j].Index*2), bgextpalvram);
-                    }
-                }
-                else
-                {
-                    //AddBusContention(sys, *time, Dev_Palette);
-                    color[j] = palbase[(index[j].Index & 0xFF) + ((bg[j] == 4) ? 256 : 0)];
-                }
-                color[j] = RGB565to666(color[j]);
-            }
-
-            if (sys->AGB) *time += (i == 2) ? DSClk16(2) : DSClk16(4);
-            else          *time += (i == 2) ? DSClk33(3) : DSClk33(6);
-            PPU_Wait(sys, *time);
-        }
-
-        scanline[x] = PPU_Blend(ppu, index, color, bg, i, enablemask.EnableBlend);
+        // fetch top pixel
+        PPU_FetchPalette(sys, 0, type);
     }
-    if (sys->AGB) *time += DSClk16(2+AGBHBlank_Cycles);
-    else          *time += DSClk33(2+HBlank_Cycles);
-}
-
-void PPU_SpriteAffine(Console* sys, const bool b, const SprAttrs01 attr1, const SprAttrs2 attr2, const u8 width, const u8 height, u8 y)
-{
-    PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
-    CompositeBuffer* buffer = ppu->CompositeBuffer[4];
-    u16 (*objvram)(Console*, const u32) = (b ? VRAM_OBJB : VRAM_OBJA);
-
-    // fetch rotation and scaling parameters
-    volatile u32* oambase = (b ? &sys->OAM.b32[0x400/sizeof(u32)] : &sys->OAM.b32[0]);
-    volatile u32* rotscalbase = &oambase[attr1.AffineParam*(32/sizeof(typeof(*oambase)))];
-    // rot/scal params are stored in the gaps between each sprite's oam data.
-    s16 params[4] = {rotscalbase[1] >> 16, rotscalbase[3] >> 16, rotscalbase[5] >> 16, rotscalbase[7] >> 16};
-
-    // todo: mosaic
-
-    // double size sprites have their bounding boxes doubled
-    u8 widthreal = width;
-    u8 heightreal = height;
-    if (attr1.DoubleSize)
+    if (cycle % PPU_IterLen == 2)
     {
-        widthreal*=2;
-        heightreal*=2;
-    }
+        if (x > LCD_Width) return; // nothing to do here
 
-    s16 x; // x coordinate relative to screen
-    s16 sx; // x coordinate relative to left edge of sprite's bounding box
-    if (attr1.X < 0)
-    {
-        // if x is negative, start rendering from the left edge of the screen. (checkme: do oob pixels matter?)
-        x = 0;
-        sx = 0-attr1.X;
-    }
-    else
-    {
-        // otherwise start rendering from left edge of the sprite.
-        x = attr1.X;
-        sx = 0;
-    }
+        // fetch bottom pixel
+        PPU_FetchPalette(sys, 1, type);
 
-    // MATRIX MATH WOOOOOOOOOOOOOOOOOOOOO
-    // calculate rotscal thingies
-    // sprites are rotated around their center
-    u32 rotx = ((((s32)sx-(widthreal/2)) * params[0]) + (((s32)y-(heightreal/2)) * params[1]) + (width*256/2));
-    u32 roty = ((((s32)sx-(widthreal/2)) * params[2]) + (((s32)y-(heightreal/2)) * params[3]) + (height*256/2));
-
-    if (attr1.Mode == 3) // bitmap sprite
-    {
-        if (sys->AGB) return LogPrint(LOG_PPU|LOG_UNIMP, "BITMAP AFFINE OBJ ON GBA\n");
-        u8 alpha = attr2.BitmapAlpha;
-        if (!alpha) return; // checkme?
-        // increase by one to allow for max alpha value
-        // shift left by one to convert to 5 bit alpha (for blending)
-        alpha = (alpha + 1) << 1;
-
-        u32 baseaddr;
-        u32 ystep;
-        if (ppu->DisplayCR.BitmapOBJ1D)
-        {
-            if (ppu->DisplayCR.BitmapOBJ2DDims)
-            {
-                // apparently does nothing??
-                return; // checkme
-            }
-            else
-            {
-                baseaddr = attr2.TileNum << (7+ppu->DisplayCR.BitmapOBJ1DBound);
-                ystep = width;
-            }
-        }
-        else
-        {
-            if (ppu->DisplayCR.BitmapOBJ2DDims)
-            {
-                baseaddr = ((attr2.TileNum % 32) * 16) + ((attr2.TileNum / 32) * 32 * 4);
-                ystep = 256;
-            }
-            else
-            {
-                baseaddr = ((attr2.TileNum % 16) * 16) + ((attr2.TileNum / 16) * 16 * 8);
-                ystep = 128;
-            }
-        }
-
-        for (; (sx < widthreal) && (x < PPU_GetWidth(false)); x++, sx++, rotx+=params[0], roty+=params[2])
-        {
-            if ((rotx < (width*256)) && (roty < (height*256)))
-            {
-                u32 addr = baseaddr + (((roty / 256) * ystep) + ((rotx / 256)) * 2);
-                u16 color = PPU_VRAMLookup(sys, addr, objvram);
-
-                if ((color & 0x8000) && (buffer[x].Empty || (buffer[x].SprPrio > attr2.Priority)))
-                    buffer[x] = (CompositeBuffer){RGB565to666(color & 0x7FFF) | (alpha<<18), attr2.Priority, false, true, false, true, true};
-            }
-        }
-    }
-    else // not bitmap
-    {
-        u32 baseaddr = attr2.TileNum;
-        u32 ystep;
-        if (sys->AGB ? ppu->DisplayCR.AGB.OBJ1D : ppu->DisplayCR.TileOBJ1D)
-        {
-            baseaddr <<= ppu->DisplayCR.TileOBJ1DBound;
-            ystep = (width/8) << attr1.Pal256;
-        }
-        else
-        {
-            ystep = 0x20;
-        }
-
-        baseaddr *= 32;
-        ystep *= 32;
-
-        for (; (sx < widthreal) && (x < PPU_GetWidth(sys->AGB)); sx++, x++, rotx+=params[0], roty+=params[2])
-        {
-            if (rotx < (width*256) && roty < (height*256))
-            {
-                u32 xtile = (rotx>>11) * 64;
-                u32 ytile = (roty>>11) * ystep;
-                u32 xpixel = (rotx>>8) % 8;
-                u32 ypixel = ((roty>>8) % 8) * 8;
-                u32 xpixfrac = xpixel & 1;
-
-                if (!attr1.Pal256)
-                {
-                    xtile/=2;
-                    xpixel/=2;
-                    ypixel/=2;
-                }
-
-                u32 addr = baseaddr + ytile + ypixel + xtile + xpixel;
-                u16 index = PPU_VRAMLookup(sys, addr, objvram) >> ((addr&0x1)*8);
-
-                if (attr1.Pal256)
-                {
-                    index &= 0xFF;
-                    if (!index) continue;
-                    index |= attr2.PaletteOffset * 256;
-                }
-                else
-                {
-                    index = (index >> (xpixfrac * 4)) & 0xF;
-                    if (!index) continue;
-                    index |= attr2.PaletteOffset * 16;
-                }
-
-                if (attr1.Mode == 2) // window
-                    ppu->SpriteWindow[x/64] |= (u64)1<<(x%64);
-                else if (buffer[x].Empty || (!sys->AGB && (buffer[x].SprPrio > attr2.Priority)))
-                    buffer[x] = (CompositeBuffer){index, attr2.Priority, false, false, attr1.Pal256 && ppu->DisplayCR.SprExtPalEn, attr1.Mode == 1, false};
-            }
-        }
-    }
-}
-
-void PPU_SpriteNormal(Console* sys, const bool b, const SprAttrs01 attr1, const SprAttrs2 attr2, const u8 width, const u8 height, u8 y)
-{
-    PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
-    CompositeBuffer* buffer = ppu->CompositeBuffer[4];
-    u16 (*objvram)(Console*, const u32) = (b ? VRAM_OBJB : VRAM_OBJA);
-
-    // vertical flip flag means we start from the bottom of the sprite
-    if (attr1.VFlip) y = ((height-1) - y);
-
-    s16 x; // x coordinate relative to screen
-    s16 sx; // x coordinate relative to left edge of sprite's bounding box
-    if (attr1.X < 0)
-    {
-        // if x is negative, start rendering from the left edge of the screen. (checkme: do oob pixels matter?)
-        x = 0;
-        sx = 0-attr1.X;
-    }
-    else
-    {
-        // otherwise start rendering from left edge of the sprite.
-        x = attr1.X;
-        sx = 0;
-    }
-
-    if (attr1.Mode == 3) // bitmap
-    {
-        if (sys->AGB) return LogPrint(LOG_PPU|LOG_UNIMP, "BITMAP OBJ ON GBA\n");
-        u8 alpha = attr2.BitmapAlpha;
-        if (!alpha) return; // checkme?
-        // increase by one to allow for max alpha value
-        // shift left by one to convert to 5 bit alpha (for blending)
-        alpha = (alpha + 1) << 1;
-
-        u32 baseaddr = attr2.TileNum;
-        if (ppu->DisplayCR.BitmapOBJ1D)
-        {
-            if (ppu->DisplayCR.BitmapOBJ2DDims)
-            {
-                // apparently does nothing??
-                return; // checkme
-            }
-            else
-            {
-                baseaddr = attr2.TileNum << (7+ppu->DisplayCR.BitmapOBJ1DBound);
-                baseaddr += y * (width * 2);
-            }
-        }
-        else
-        {
-            if (ppu->DisplayCR.BitmapOBJ2DDims)
-            {
-                baseaddr = ((attr2.TileNum % 32) * 16) + ((attr2.TileNum / 32) * 32 * 128);
-                baseaddr += y * (256*2);
-            }
-            else
-            {
-                baseaddr = ((attr2.TileNum % 16) * 16) + ((attr2.TileNum / 16) * 16 * 128);
-                baseaddr += y* (128*2);
-            }
-        }
-
-        if (attr1.HFlip) sx = (width-1) - sx;
-
-        for (; ((attr1.HFlip) ? (sx >= 0) : (sx < width)) && (x < PPU_GetWidth(false)); ((attr1.HFlip) ? (sx-=1) : (sx+=1)), x++)
-        {
-            u32 addr = baseaddr + (sx*2);
-
-            u16 color = PPU_VRAMLookup(sys, addr, objvram);
-
-            if ((color & 0x8000) && (buffer[x].Empty || (buffer[x].SprPrio > attr2.Priority)))
-                buffer[x] = (CompositeBuffer){RGB565to666(color & 0x7FFF) | (alpha<<18), attr2.Priority, false, true, false, true, true};
-        }
-    }
-    else // not bitmap
-    {
-        u32 baseaddr = attr2.TileNum;
-        if (sys->AGB ? ppu->DisplayCR.AGB.OBJ1D : ppu->DisplayCR.TileOBJ1D)
-        {
-            baseaddr <<= ppu->DisplayCR.TileOBJ1DBound;
-            baseaddr += ((y/8) * (width/8)) << attr1.Pal256;
-        }
-        else
-        {
-            baseaddr += (y/8)*32;
-        }
-
-        // add y pixel offset
-        baseaddr = (baseaddr*32) + ((y%8) << (2+attr1.Pal256));
-
-        if (attr1.HFlip) sx = (width-1) - sx;
-
-        for (; ((attr1.HFlip) ? (sx >= 0) : (sx < width)) && (x < PPU_GetWidth(sys->AGB)); ((attr1.HFlip) ? (sx-=1) : (sx+=1)), x++)
-        {
-            u32 addr = baseaddr + ((sx/8*8) << (2+attr1.Pal256)) + ((sx%8) >> !attr1.Pal256);
-            u16 index = PPU_VRAMLookup(sys, addr, objvram) >> ((addr&0x1)*8);
-
-            if (attr1.Pal256)
-            {
-                index &= 0xFF;
-                if (!index) continue;
-                index |= attr2.PaletteOffset * 256; // for extpal
-            }
-            else
-            {
-                index = (index >> ((sx&1) * 4)) & 0xF;
-                if (!index) continue;
-                index |= attr2.PaletteOffset * 16;
-            }
-
-            if (attr1.Mode == 2) // window
-                ppu->SpriteWindow[x/64] |= (u64)1<<(x%64);
-            else if (buffer[x].Empty || (!sys->AGB && (buffer[x].SprPrio > attr2.Priority)))
-                buffer[x] = (CompositeBuffer){index, attr2.Priority, false, false, attr1.Pal256 && ppu->DisplayCR.SprExtPalEn, attr1.Mode == 1, false};
-        }
-    }
-}
-
-void PPU_BuildSprites(Console* sys, const bool b, const u8 y)
-{
-    PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
-    // checkme: does this need to be volatile to handle thread sync properly?
-    volatile u32* oambase = (b ? &sys->OAM.b32[0x400/sizeof(u32)] : &sys->OAM.b32[0]);
-
-    PPU_None(sys, b, 4); // clear sprite buffer
-    memset(ppu->SpriteWindow, 0, sizeof(ppu->SpriteWindow)); // clear sprite window bitfield
-
-    // sprites can be disabled entirely in the ppu's control reg
-    if (!ppu->DisplayCR.SprEnable) return;
-
-    // note: sprites are rendered from lowest slot to highest slot
-    // this does mean that their oam slot priority resolves as a result of each sprite overwriting the other
-    // but it does mean we end up calculating a lot of pixels that dont end up getting used
-    // but doing it the way hardware does it will allow for implementing sprite timings
-    for (int spr = 0; spr < 128; spr++)
-    {
-        SprAttrs01 attr = {.Raw = oambase[spr*2]};
-
-        // check if sprite is disabled
-        if (!attr.Affine && attr.Disable) continue;
-
-        // calc sprite bounds
-        u8 width = 8 << attr.Size;
-        u8 height = 8 << attr.Size;
-
-        if (attr.Shape == 1)
-        {
-            // horizontal: height is cut in half
-            height /= 2;
-            if (height <= 8)
-            {
-                // if the height ends up <= 8 px it's clamped to 8 and the width is doubled
-                height = 8;
-                width *= 2;
-            }
-        }
-        else if (attr.Shape == 2)
-        {
-            // vertical: width is cut in half
-            width /= 2;
-            if (width <= 8)
-            {
-                // if the width ends up <= 8 px it's clamped to 8 and the height is doubled
-                width = 8;
-                height *= 2;
-            }
-        }
-        else if (attr.Shape == 3)
-        {
-            // invalid shape: supposedly just results in it being 8x8 everytime?
-            // checkme?
-            width = 8;
-            height = 8;
-        }
-
-        // get the y progress through the sprite
-        // note: sprites can wrap the screen if they overflow the 8 bit range (checkme?)
-        u8 sy = (y - attr.Y) & 0xFF;
-        // check if we're actually within the sprite's bounding box
-        // note: affine sprites support doubling the size of their bounding boxes
-        if (sy >= (height << (attr.Affine && attr.DoubleSize))) continue;
-
-        // checkme: does it skip sprites based on x coordinate?
-
-        // fetch attribute 2 now that we know this sprite will render
-        SprAttrs2 attr2 = {.Raw = (oambase[(spr*2)+1] & 0xFFFF)};
-
-        if (attr.Affine)
-        {
-            PPU_SpriteAffine(sys, b, attr, attr2, width, height, sy);
-        }
-        else
-        {
-            PPU_SpriteNormal(sys, b, attr, attr2, width, height, sy);
-        }
+        // finally output a pixel!!!
+        ppu->OutLine[x] = PPU_Blend(ppu);
     }
 }
 
@@ -987,91 +624,83 @@ void ApplyBrightnessModifier(u32* scanline, Brightness bright)
     }
 }
 
-void PPU_RenderScanline(Console* sys, const bool b, const s16 y)
+void LCDC_Step(Console* sys, const bool b)
 {
     PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
-    volatile timestamp* time = (b ? (&sys->PPUBTimestamp) : (&sys->PPUATimestamp));
+    // TODO: timings
 
-    if (y >= 0)
+    if (sys->LCDY[b] >= LCD_GetHeight(false)) return;
+    u32* scanline = sys->Framebuffer[sys->BackBuf][sys->PowerCR9.AOnBottom ? b : !b][sys->LCDY[b]];
+    if (sys->AGB && !b) goto agb; // TODO: should be vram display
+    switch(ppu->DisplayCR.DisplayMode)
     {
-        u32* scanline = sys->Framebuffer[sys->BackBuf][sys->PowerCR9.AOnBottom ? b : !b][y];
-        if (b ? !sys->PowerCR9.PPUBPower : !sys->PowerCR9.PPUAPower) goto noblit;
-        if (sys->AGB) goto agb;
-        switch(ppu->DisplayCR.DisplayMode)
-        {
-            case 0:
-                noblit:
-                if (sys->AGB) *time += DSClk16(AGBActiveRender_Cycles-46 + AGBHBlank_Cycles);
-                else          *time += DSClk33(ActiveRender_Cycles-46 + HBlank_Cycles);
-                for (int x = 0; x < 256; x++)
-                    scanline[x] = 0x3FFFF;
-                ApplyBrightnessModifier(scanline, ppu->Brightness);
-                return;
-            case 1:
-                agb: // TODO: should probably be vram display
-                break;
-            case 2:
+        case 0: // nothing
+            noblit:
+            for (int x = 0; x < 256; x++)
+                scanline[x] = 0x3FFFF;
+            break;
+
+        case 1: // ppu output
+            agb:
+            if (b ? !sys->PowerCR9.PPUBPower : !sys->PowerCR9.PPUAPower) goto noblit;
+            //if (sys->VCount >= 192) goto noblit; // checkme: is this the proper way to implement this?
+
+            if (sys->AGB) // hacky bullshit
             {
-                u32 addr = (ppu->DisplayCR.VRAMSel * KiB(128)) + (256*2*y);
-                *time += DSClk33(1538 + HBlank_Cycles);
-                PPU_Wait(sys, *time);
+                if (sys->VCountAGB >= 160) goto noblit;
                 for (int x = 0; x < 256; x++)
                 {
-                    scanline[x] = RGB555to666(PPU_VRAMLookup(sys, addr, VRAM_LCD));
-                    addr += 2;
+                    if (x < 240) scanline[x] = ppu->OutLine[x];
+                    else scanline[x] = 0x3FFFF;
                 }
-                ApplyBrightnessModifier(scanline, ppu->Brightness);
-                return;
             }
-            case 3:
-                LogPrint(LOG_PPU|LOG_UNIMP, "INVALID LCDC MODE 3\n");
-                *time += DSClk33(1538 + HBlank_Cycles);
-                ApplyBrightnessModifier(scanline, ppu->Brightness);
-                return;
-        }
+            else
+            {
+                for (int x = 0; x < 256; x++)
+                    scanline[x] = ppu->OutLine[x];
+            }
+            break;
 
-        if (ppu->DisplayCR.ForceBlank)
+        case 2: // vram display
         {
-            if (sys->AGB) *time += DSClk16(AGBActiveRender_Cycles-46 + AGBHBlank_Cycles);
-            else          *time += DSClk33(ActiveRender_Cycles-46 + HBlank_Cycles);
-            for (int x = 0; x < PPU_GetWidth(sys->AGB); x++)
-                scanline[x] = 0x3FFFF;
-            return;
+            if (b) unreachable();
+            u32 addr = (ppu->DisplayCR.VRAMSel * KiB(128)) + (256*2*sys->LCDY[0]);
+            for (int x = 0; x < 256; x++)
+            {
+                scanline[x] = RGB555to666(PPU_VRAMLookup(sys, addr, VRAM_LCD));
+                addr += 2;
+            }
+            break;
         }
-        PPU_BuildBGs(sys, b, y);
-        PPU_Composite(sys, b, y);
-        if (!sys->AGB) // CHECKME
-            ApplyBrightnessModifier(scanline, ppu->Brightness);
+        case 3: // unused
+            if (b) unreachable();
+            LogPrint(LOG_PPU|LOG_UNIMP, "INVALID LCDC MODE 3\n");
+            break;
     }
-    if (y < 191)
-    {
-        if (y == -1)
-        {
-            if (sys->AGB) *time += DSClk16(AGBActiveRender_Cycles-46 + AGBHBlank_Cycles);
-            else          *time += DSClk33(ActiveRender_Cycles-46 + HBlank_Cycles);
-        }
-        PPU_BuildSprites(sys, b, y+1);
-    }
+    ApplyBrightnessModifier(scanline, ppu->Brightness);
+    sys->LCDY[b]++;
 }
 
-void PPU_GlobalStep(Console* sys, const timestamp now, const u16 vcount)
+void PPU_Step(Console* sys, u16 h, u16 v, const PPU_Type type)
 {
-    PPU* ppus[2] = {&sys->PPU_A, &sys->PPU_B};
+    if ((type == PPUType_B) ? !sys->PowerCR9.PPUBPower : !sys->PowerCR9.PPUAPower) return; // ppu off
+    const u16 bgmaxv = LCD_GetHeight(type == PPUType_AGB);
+    const u16 sprmaxv = LCD_GetHeight(type == PPUType_AGB) - 1;
 
-    PPU_Sync(sys, now);
-
-    // windowing y coord is checked every scanline, even ones that aren't rendered on
-    for (int i = 0; i < 2; i++)
+    if (v < bgmaxv) // render bgs; composite layers
     {
-        // BUG: the NDS only tests the bottom 8 bits of the y coordinate.
-        // TODO: disable this masking when DSi ppu revision bit is enabled.
-        u16 wy = vcount & 0xFF;
+        PPU_StepBGs(sys, h, v, type);
+        PPU_StepComposite(sys, h, v, type);
+    }
 
-        if (ppus[i]->Window.W0Bot == wy) ppus[i]->Window0YActive = false;
-        else if (ppus[i]->Window.W0Top == wy) ppus[i]->Window0YActive = true;
+    if ((v == LCD_VMax) || (v < sprmaxv)) // render next sprite scanline
+    {
+        PPU_None(sys, h, v, 4, type==PPUType_B);
+    }
 
-        if (ppus[i]->Window.W1Bot == wy) ppus[i]->Window1YActive = false;
-        else if (ppus[i]->Window.W1Top == wy) ppus[i]->Window1YActive = true;
+    if (h == (2+((11+LCD_Width)*PPU_IterLen))) // end of render period
+    {
+        LCDC_Step(sys, type == PPUType_B);
     }
 }
 
@@ -1081,25 +710,26 @@ int SDLCALL PPUA_MainLoop(void* ptr)
     while (!sys->KillPPUs)
     {
         while (!sys->PPUStart) SDL_CPUPauseInstruction();
+
         if (sys->AGB)
         {
-            for (int y = -1; y < 160; y++)
-            {
-                sys->PPUATimestamp += DSClk16(46);
-                PPU_Wait(sys, sys->PPUATimestamp);
-                PPU_RenderScanline(sys, false, y);
-            }
-            sys->PPUATimestamp += DSClk16(AGBScanline_Cycles*67);
+            if (sys->PPUATimestamp >= (sys->PPU_A.ScanlineStart + DSClk16(AGBScanline_Cycles)))
+                sys->PPU_A.ScanlineStart = sys->PPUATimestamp;
+
+            PPU_Wait(sys, sys->PPUATimestamp);
+
+            PPU_Step(sys, (sys->PPUATimestamp-sys->PPU_A.ScanlineStart) / DSClk16(1), sys->VCountAGB, PPUType_AGB);
+            sys->PPUATimestamp += DSClk16(1);
         }
         else
         {
-            for (int y = -1; y < 192; y++)
-            {
-                sys->PPUATimestamp += DSClk33(46);
-                PPU_Wait(sys, sys->PPUATimestamp);
-                PPU_RenderScanline(sys, false, y);
-            }
-            sys->PPUATimestamp += DSClk33(Scanline_Cycles*70);
+            if (sys->PPUATimestamp >= (sys->PPU_A.ScanlineStart + DSClk33(Scanline_Cycles)))
+                sys->PPU_A.ScanlineStart = sys->PPUATimestamp;
+
+            PPU_Wait(sys, sys->PPUATimestamp);
+
+            PPU_Step(sys, (sys->PPUATimestamp-sys->PPU_A.ScanlineStart) / DSClk33(1), sys->VCount, PPUType_A);
+            sys->PPUATimestamp += DSClk33(1);
         }
     }
     return 0;
@@ -1111,13 +741,14 @@ int SDLCALL PPUB_MainLoop(void* ptr)
     while (!sys->KillPPUs)
     {
         while (!sys->PPUStart) SDL_CPUPauseInstruction();
-        for (int y = -1; y < 192; y++)
-        {
-            sys->PPUBTimestamp += DSClk33(46);
-            PPU_Wait(sys, sys->PPUBTimestamp);
-            PPU_RenderScanline(sys, true, y);
-        }
-        sys->PPUBTimestamp += DSClk33(Scanline_Cycles*70);
+
+        if (sys->PPUBTimestamp >= (sys->PPU_B.ScanlineStart + DSClk33(Scanline_Cycles)))
+            sys->PPU_B.ScanlineStart = sys->PPUBTimestamp;
+
+        PPU_Wait(sys, sys->PPUBTimestamp);
+
+        PPU_Step(sys, (sys->PPUBTimestamp-sys->PPU_B.ScanlineStart) / DSClk33(1), sys->VCount, PPUType_B);
+        sys->PPUBTimestamp += DSClk33(1);
     }
     return 0;
 }

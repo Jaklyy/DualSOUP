@@ -5,17 +5,38 @@
 
 
 
-constexpr unsigned TileWidth = 8;
-constexpr unsigned TileHeight = 8;
-constexpr unsigned TileSize = TileWidth*TileHeight;
-constexpr unsigned BytesPerTile = 2;
-constexpr unsigned ScreenWidthTiles = 32;
-constexpr unsigned ScreenHeightTiles = 32;
-constexpr unsigned ScreenSizeTiles = ScreenWidthTiles * ScreenHeightTiles;
-constexpr unsigned ScreenWidthPx = TileWidth * ScreenWidthTiles;
-constexpr unsigned ScreenHeightPx = TileHeight * ScreenHeightTiles;
-constexpr unsigned ScreenSizePx = ScreenWidthPx * ScreenHeightPx;
-#define PPU_GetWidth(AGB) (AGB ? 240 : 256)
+constexpr u32 BGTileWidth = 8;
+constexpr u32 BGTileHeight = 8;
+constexpr u32 BGTileSize = BGTileWidth*BGTileHeight;
+constexpr u32 BGBytesPerTile = 2;
+constexpr u32 BGScreenWidthTiles = 32;
+constexpr u32 BGScreenHeightTiles = 32;
+constexpr u32 BGScreenSizeTiles = BGScreenWidthTiles * BGScreenHeightTiles;
+constexpr u32 BGScreenWidthPx = BGTileWidth * BGScreenWidthTiles;
+constexpr u32 BGScreenHeightPx = BGTileHeight * BGScreenHeightTiles;
+constexpr u32 BGScreenSizePx = BGScreenWidthPx * BGScreenHeightPx;
+constexpr u32 BGScreenWidthBytes = BGScreenWidthTiles * BGBytesPerTile;
+constexpr u32 BGScreenSizeBytes = BGScreenSizeTiles * BGBytesPerTile;
+constexpr u32 AGB_LCDWidth = 240;
+constexpr u32 NTR_LCDWidth = 256;
+
+
+#define LCD_GetWidth(AGB) ((AGB) ? 240 : 256)
+#define LCD_GetHeight(AGB) ((AGB) ? 160 : 192)
+#define LCD_GetVCountMax(AGB) ((AGB) ? 228 : 263)
+#define PPU_GetIterCycles(AGB) ((AGB) ? 4 : 6)
+
+#define LCD_Width LCD_GetWidth(type==PPUType_AGB)
+#define LCD_Height LCD_GetHeight(type==PPUType_AGB)
+#define LCD_VMax LCD_GetVCountMax(type==PPUType_AGB)
+#define PPU_IterLen PPU_GetIterCycles(type==PPUType_AGB)
+
+typedef enum : u8
+{
+    PPUType_A,
+    PPUType_B,
+    PPUType_AGB,
+} PPU_Type;
 
 typedef union
 {
@@ -152,7 +173,16 @@ constexpr u16 LCDCBrightnessWrMask = 0xC01F;
 
 typedef struct
 {
+    TextTileData Tile;
+    u16 ColorData;
+    u16 BgX;
+    u16 ScrX;
+} BGData;
+
+typedef struct
+{
     alignas(HOST_CACHEALIGN) CompositeBuffer CompositeBuffer[5][256];
+    alignas(HOST_CACHEALIGN) u32 OutLine[256];
     alignas(alignof(u64)*4) u64 SpriteWindow[4];
     union
     {
@@ -254,6 +284,12 @@ typedef struct
             WindowCR WObjCr;
         };
     } Window;
+    BGData BGDat[4];
+    timestamp ScanlineStart;
+    WindowCR WinEnMask;
+    s8 CompBGs[2];
+    CompositeBuffer CompSel[2];
+    u32 CompCol[2];
 } PPU;
 
 typedef struct Console Console;

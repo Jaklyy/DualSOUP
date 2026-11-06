@@ -50,6 +50,8 @@ void PPU_Init(Console* sys, const timestamp now)
     sys->PPUTarget = now;
     sys->PPUATimestamp = now;
     sys->PPUBTimestamp = now;
+    sys->PPU_A.ScanlineStart = now;
+    sys->PPU_B.ScanlineStart = now;
     sys->PPUStart = true;
 #endif
 }
@@ -87,13 +89,18 @@ void LCD_HBlank(Console* sys, timestamp now)
 
 void LCD_Scanline(Console* sys, timestamp now)
 {
+    PPU_Sync(sys, now);
     sys->VCount++;
     sys->VCount &= 0x1FF;
-    if (sys->VCount == 263) sys->VCount = 0;
-
+    if (sys->VCount == 263)
+    {
+        sys->LCDY[0] = 0;
+        sys->LCDY[1] = 0;
+        sys->VCount = 0;
+    }
     // certain ppu state is stepped every scanline.
     // TODO: should this actually be done on the ppu thread...?
-    PPU_GlobalStep(sys, now, sys->VCount);
+    //PPU_GlobalStep(sys, now, sys->VCount);
 
     // check for vblank; clear hblank.
     // this occurs before vcount writes
@@ -191,13 +198,19 @@ void LCDAGB_HBlank(Console* sys, timestamp now)
 
 void LCDAGB_Scanline(Console* sys, timestamp now)
 {
+    PPU_Sync(sys, now);
     sys->VCountAGB++;
     sys->VCountAGB &= 0xFF;
-    if (sys->VCountAGB == 228) sys->VCountAGB = 0;
+    if (sys->VCountAGB == 228)
+    {
+        sys->LCDY[0] = 0;
+        sys->LCDY[1] = 0;
+        sys->VCountAGB = 0;
+    }
 
     // certain ppu state is stepped every scanline.
     // TODO: should this actually be done on the ppu thread...?
-    PPU_GlobalStep(sys, now, sys->VCountAGB);
+    //PPU_GlobalStep(sys, now, sys->VCountAGB);
 
     // check for vblank; clear hblank.
     // this occurs before vcount writes

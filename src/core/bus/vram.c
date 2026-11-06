@@ -38,6 +38,16 @@ u16 VRAM_AGB(Console* sys, u32 addr)
     return 0; // fuck if i know??
 }
 
+u16 VRAM_BGAGB(Console* sys, const u32 addr)
+{
+    return VRAM_AGB(sys, addr);
+}
+
+u16 VRAM_OBJAGB(Console* sys, const u32 addr)
+{
+    return VRAM_AGB(sys, addr+KiB(64));
+}
+
 #define VRAMCHECK(id, mode, addrmask, offsmul) \
     if (((sys->VRAMCR[id].Raw & 0x87) == (0x80 | mode)) && ((addr & addrmask) == (sys->VRAMCR[id].Offset * offsmul))) list |= 1<<id;
 
@@ -49,7 +59,6 @@ u16 VRAM_AGB(Console* sys, u32 addr)
 
 u16 VRAM_BGA(Console* sys, const u32 addr)
 {
-    if (sys->AGB) return VRAM_AGB(sys, addr);
     u16 list = 0;
     VRAMCHECK(VRAMID_A, 1, 0x60000, 0x20000)
     VRAMCHECK(VRAMID_B, 1, 0x60000, 0x20000)
@@ -63,7 +72,6 @@ u16 VRAM_BGA(Console* sys, const u32 addr)
 
 u16 VRAM_OBJA(Console* sys, const u32 addr)
 {
-    if (sys->AGB) return VRAM_AGB(sys, addr+KiB(64));
     u16 list = 0;
     VRAMCHECK(VRAMID_A, 2, 0x20000, 0x20000)
     VRAMCHECK(VRAMID_B, 2, 0x20000, 0x20000)

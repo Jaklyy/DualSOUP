@@ -527,6 +527,8 @@ typedef struct Console
     PPU PPU_A;
     PPU PPU_B;
 
+    u16 LCDY[2];
+
     GX3D GX3D;
 
     Flash Firmware;
