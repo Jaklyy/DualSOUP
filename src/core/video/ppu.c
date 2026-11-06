@@ -130,6 +130,7 @@ void PPU_StepTextBG(Console* sys, const u16 h, const u16 v, const u8 bg, const P
     u8 xscr = ppu->BGDat[bg].ScrX;
 
     xbg %= (BGScreenWidthPx << ppu->BGCR[bg].Wide);
+    y %= (BGScreenHeightPx << ppu->BGCR[bg].Tall);
     if (((cycle / PPU_IterLen) == 0) || ((step == 0) && ((cycle / PPU_IterLen) != 1)))
     {
         // look up next tile
@@ -182,6 +183,118 @@ void PPU_StepTextBG(Console* sys, const u16 h, const u16 v, const u8 bg, const P
     }
 }
 
+void PPU_StepAffineX(PPU* ppu, const u8 bg)
+{
+    ppu->AffineCur[bg-2][0] += ppu->AffineRotParams[bg-2][0];
+    ppu->AffineCur[bg-2][1] += ppu->AffineRotParams[bg-2][2];
+}
+
+void PPU_StepAffineY(PPU* ppu, const u8 bg)
+{
+    ppu->AffineStart[bg-2][0] += ppu->AffineRotParams[bg-2][1];
+    ppu->AffineStart[bg-2][1] += ppu->AffineRotParams[bg-2][3];
+}
+
+void PPU_ReloadAffineCoords(PPU* ppu, const u16 h, const u16 v, const u8 bg, const PPU_Type type)
+{
+    if (h == PPU_IterLen)
+    {
+        PPU_StepAffineY(ppu, bg);
+        if ((v == 0) || ppu->AffineDirty[bg-2])
+        {
+            ppu->AffineStart[bg-2][0] = ppu->AffineCoord[bg-2][0];
+            ppu->AffineStart[bg-2][1] = ppu->AffineCoord[bg-2][1];
+            ppu->AffineDirty[bg-2] = false;
+        }
+        ppu->AffineCur[bg-2][0] = ppu->AffineStart[bg-2][0];
+        ppu->AffineCur[bg-2][1] = ppu->AffineStart[bg-2][1];
+    }
+}
+
+void PPU_StepBitmapBG(Console* sys, const u16 h, const u16 v, const bool dircolor, const u8 bg, const PPU_Type type)
+{
+    PPU* ppu = ((type == PPUType_B) ? &sys->PPU_B : &sys->PPU_A);
+    CompositeBuffer* buffer = ppu->CompositeBuffer[bg];
+
+    s32 cycle = h;
+    u32 screenbase;
+    u32 width;
+    u32 height;
+
+    // checkme: when is this done?
+    PPU_ReloadAffineCoords(ppu, h, v, bg, type);
+    u16 xscr;
+
+    if (type == PPUType_AGB)
+    {
+        if (cycle < (8*PPU_GetIterCycles(true))) return; // not time yet
+        cycle -= (8*PPU_GetIterCycles(true));
+        if ((cycle % PPU_GetIterCycles(true)) != 3) return; // wait for the proper cycle
+        xscr = cycle /= PPU_GetIterCycles(true);
+
+        screenbase = ((ppu->DisplayCR.AGB.FrameSelect && (ppu->DisplayCR.BGSetup != 3)) ? 0xA000 : 0);
+        switch(ppu->DisplayCR.BGSetup)
+        {
+            case 3: width = 240; height = 160; break;
+            case 4: width = 240; height = 160; break;
+            case 5: width = 160; height = 128; break;
+        }
+    }
+    else // nds
+    {
+        if (cycle < (8*PPU_GetIterCycles(false))) return; // not time yet
+        cycle -= (8*PPU_GetIterCycles(false));
+        if ((cycle % PPU_GetIterCycles(false)) != ((bg == 2) ? 2 : 4)) return; // wait for the proper cycle. CHECKME: what are the proper cycles for nds mode?
+        xscr = cycle /= PPU_GetIterCycles(true);
+
+        screenbase = ppu->BGCR[bg].ScreenBase * KiB(16);
+        switch(ppu->BGCR[bg].ScreenSize)
+        {
+            case 0: width = 128; height = 128; break;
+            case 1: width = 256; height = 256; break;
+            case 2: width = 512; height = 256; break;
+            case 3: width = 512; height = 512; break;
+        }
+    }
+    u32 x = (u32)(ppu->AffineCur[bg-2][0] >> 8);
+    u32 y = (u32)(ppu->AffineCur[bg-2][1] >> 8);
+
+    if (xscr >= LCD_Width) return; // checkme: when is this done??
+
+    if (dircolor)
+    {
+        u32 addr = screenbase + (x*2) + (y*(width*2));
+        u16 color = PPU_VRAMLookup(sys, addr, PPU_GetBGVRAM(type));
+
+        bool empty = ((x >= width) || (y >= height)) || ((type == PPUType_AGB) ? false : !(color & 0x8000));
+        buffer[xscr] = (CompositeBuffer){RGB565to666(color&0x7FFF), 0, empty, true, false, false, false};
+    }
+    else // 8 bit index
+    {
+        u32 addr = screenbase + x + (y*width);
+        u8 idx = PPU_VRAMLookup(sys, addr, PPU_GetBGVRAM(type)) >> ((addr&0x1)*8);
+
+        bool empty = ((x >= width) || (y >= height)) || (idx == 0);
+        buffer[xscr] = (CompositeBuffer){idx, 0, empty, false, false, false, false};
+    }
+    PPU_StepAffineX(ppu, bg);
+}
+
+void PPU_StepExtBG(Console* sys, const u16 h, const u16 v, const u8 bg, const PPU_Type type)
+{
+    PPU* ppu = ((type == PPUType_B) ? &sys->PPU_B : &sys->PPU_A);
+
+    if (ppu->BGCR[bg].Pal256)
+    {
+        PPU_StepBitmapBG(sys, h, v, ppu->BGCR[bg].CharBase & 1, bg, type);
+    }
+    else
+    {
+        PPU_None(sys, h, v, bg, type == PPUType_B);
+        LogPrint(LOG_PPU|LOG_UNIMP, "UNIMPLEMENTED: AFFINE/TEXT BG %i %08X\n", bg, ppu->BGCR[bg].Raw);
+    }
+}
+
 void AGBPPU_BG0Mode(Console* sys, const u16 h, const u16 v)
 {
     PPU* ppu = &sys->PPU_A;
@@ -224,11 +337,11 @@ void AGBPPU_BG2Mode(Console* sys, const u16 h, const u16 v)
             //return PPU_Affine(sys, false, y, 2);
 
         case 3:
-            //return PPU_RenderBitmap(sys, false, y, 2, true);
+            return PPU_StepBitmapBG(sys, h, v, true, 2, PPUType_AGB);
         case 4:
-            //return PPU_RenderBitmap(sys, false, y, 2, false);
+            return PPU_StepBitmapBG(sys, h, v, false, 2, PPUType_AGB);
         case 5:
-            //return PPU_RenderBitmap(sys, false, y, 2, true);
+            return PPU_StepBitmapBG(sys, h, v, true, 2, PPUType_AGB);
 
         case 6 ... 7:
             return PPU_None(sys, h, v, 2, false);
@@ -314,7 +427,7 @@ void NTRPPU_BG2Mode(Console* sys, const u16 h, const u16 v, const PPU_Type type)
             //return PPU_Affine(sys, b, y, 2);
 
         case 5:
-            //return PPU_Extended(sys, b, y, 2);
+            return PPU_StepExtBG(sys, h, v, 2, type);
 
         case 6:
             //return PPU_Large(sys, b, y, 2);
@@ -338,7 +451,7 @@ void NTRPPU_BG3Mode(Console* sys, const u16 h, const u16 v, const PPU_Type type)
             //return PPU_Affine(sys, b, y, 3);
 
         case 3 ... 5:
-            //return PPU_Extended(sys, b, y, 3);
+            return PPU_StepExtBG(sys, h, v, 3, type);
 
         case 6 ... 7:
             return PPU_None(sys, h, v, 3, type == PPUType_B);

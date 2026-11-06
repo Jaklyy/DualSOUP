@@ -252,7 +252,12 @@ typedef struct
     } BGCR[4];
 
     u16 Xoff[4];
-    s16 Yoff[4];
+    u16 Yoff[4];
+    bool AffineDirty[2];
+    s32 AffineCur[2][2];
+    s32 AffineStart[2][2];
+    s32 AffineCoord[2][2];
+    s16 AffineRotParams[2][4];
     Brightness Brightness;
     BlendCR BlendCR;
     u8 BlendAlpha[2];

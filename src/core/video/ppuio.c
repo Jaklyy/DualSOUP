@@ -61,22 +61,56 @@ void PPU_IOWrite(PPU* ppu, const u32 addr, const u32 val, u32 mask, const bool b
     case 0x10:
         MaskedWrite(ppu->Xoff[0], val, mask & BGOffsetWrMask);
         MaskedWrite(ppu->Yoff[0], val>>16, (mask>>16) & BGOffsetWrMask);
-        ppu->Yoff[0] = DS_SIGNEXT(ppu->Yoff[0], 9);
         break;
     case 0x14:
         MaskedWrite(ppu->Xoff[1], val, mask & BGOffsetWrMask);
         MaskedWrite(ppu->Yoff[1], val>>16, (mask>>16) & BGOffsetWrMask);
-        ppu->Yoff[1] = DS_SIGNEXT(ppu->Yoff[1], 9);
         break;
     case 0x18:
         MaskedWrite(ppu->Xoff[2], val, mask & BGOffsetWrMask);
         MaskedWrite(ppu->Yoff[2], val>>16, (mask>>16) & BGOffsetWrMask);
-        ppu->Yoff[2] = DS_SIGNEXT(ppu->Yoff[2], 9);
         break;
     case 0x1C:
         MaskedWrite(ppu->Xoff[3], val, mask & BGOffsetWrMask);
         MaskedWrite(ppu->Yoff[3], val>>16, (mask>>16) & BGOffsetWrMask);
-        ppu->Yoff[3] = DS_SIGNEXT(ppu->Yoff[3], 9);
+        break;
+
+    case 0x20:
+        MaskedWrite(ppu->AffineRotParams[0][0], val, mask & 0xFFFF);
+        MaskedWrite(ppu->AffineRotParams[0][1], val>>16, mask>>16);
+        break;
+    case 0x24:
+        MaskedWrite(ppu->AffineRotParams[0][2], val, mask & 0xFFFF);
+        MaskedWrite(ppu->AffineRotParams[0][3], val>>16, mask>>16);
+        break;
+    case 0x28:
+        MaskedWrite(ppu->AffineCoord[0][0], val, mask);
+        ppu->AffineCoord[0][0] = DS_SIGNEXT(ppu->AffineCoord[0][0], 27);
+        ppu->AffineDirty[0] = true;
+        break;
+    case 0x2C:
+        MaskedWrite(ppu->AffineCoord[0][1], val, mask);
+        ppu->AffineCoord[0][1] = DS_SIGNEXT(ppu->AffineCoord[0][1], 27);
+        ppu->AffineDirty[0] = true;
+        break;
+
+    case 0x30:
+        MaskedWrite(ppu->AffineRotParams[1][0], val, mask & 0xFFFF);
+        MaskedWrite(ppu->AffineRotParams[1][1], val>>16, mask>>16);
+        break;
+    case 0x34:
+        MaskedWrite(ppu->AffineRotParams[1][2], val, mask & 0xFFFF);
+        MaskedWrite(ppu->AffineRotParams[1][3], val>>16, mask>>16);
+        break;
+    case 0x38:
+        MaskedWrite(ppu->AffineCoord[1][0], val, mask);
+        ppu->AffineCoord[1][0] = DS_SIGNEXT(ppu->AffineCoord[1][0], 27);
+        ppu->AffineDirty[1] = true;
+        break;
+    case 0x3C:
+        MaskedWrite(ppu->AffineCoord[1][1], val, mask);
+        ppu->AffineCoord[1][1] = DS_SIGNEXT(ppu->AffineCoord[1][1], 27);
+        ppu->AffineDirty[1] = true;
         break;
 
     case 0x40 ... 0x48:
