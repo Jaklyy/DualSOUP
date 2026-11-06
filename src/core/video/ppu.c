@@ -232,8 +232,8 @@ void PPU_StepBitmapBG(Console* sys, const u16 h, const u16 v, const bool dircolo
         if ((cycle % PPU_GetIterCycles(true)) != 3) return; // wait for the proper cycle
         xscr = cycle /= PPU_GetIterCycles(true);
 
-        screenbase = ((ppu->DisplayCR.AGB.FrameSelect && (ppu->DisplayCR.BGSetup != 3)) ? 0xA000 : 0);
-        switch(ppu->DisplayCR.BGSetup)
+        screenbase = ((ppu->DisplayCR.AGB.FrameSelect && (ppu->DisplayCR.BGMode != 3)) ? 0xA000 : 0);
+        switch(ppu->DisplayCR.BGMode)
         {
             case 3: width = 240; height = 160; break;
             case 4: width = 240; height = 160; break;
@@ -299,7 +299,7 @@ void AGBPPU_BG0Mode(Console* sys, const u16 h, const u16 v)
 {
     PPU* ppu = &sys->PPU_A;
     if (!ppu->DisplayCR.BG0Enable) return PPU_None(sys, h, v, 0, false);
-    switch(ppu->DisplayCR.BGSetup)
+    switch(ppu->DisplayCR.BGMode)
     {
         case 0 ... 1:
             return PPU_StepTextBG(sys, h, v, 0, PPUType_AGB);
@@ -313,7 +313,7 @@ void AGBPPU_BG1Mode(Console* sys, const u16 h, const u16 v)
 {
     PPU* ppu = &sys->PPU_A;
     if (!ppu->DisplayCR.BG1Enable) return PPU_None(sys, h, v, 1, false);
-    switch(ppu->DisplayCR.BGSetup)
+    switch(ppu->DisplayCR.BGMode)
     {
         case 0 ... 1:
             return PPU_StepTextBG(sys, h, v, 1, PPUType_AGB);
@@ -328,12 +328,13 @@ void AGBPPU_BG2Mode(Console* sys, const u16 h, const u16 v)
 {
     PPU* ppu = &sys->PPU_A;
     if (!ppu->DisplayCR.BG2Enable) return PPU_None(sys, h, v, 2, false);
-    switch(ppu->DisplayCR.BGSetup)
+    switch(ppu->DisplayCR.BGMode)
     {
         case 0:
             return PPU_StepTextBG(sys, h, v, 2, PPUType_AGB);
 
         case 1 ... 2:
+            return PPU_None(sys, h, v, 2, false);
             //return PPU_Affine(sys, false, y, 2);
 
         case 3:
@@ -353,7 +354,7 @@ void AGBPPU_BG3Mode(Console* sys, const u16 h, const u16 v)
 {
     PPU* ppu = &sys->PPU_A;
     if (!ppu->DisplayCR.BG3Enable) return PPU_None(sys, h, v, 3, false);
-    switch(ppu->DisplayCR.BGSetup)
+    switch(ppu->DisplayCR.BGMode)
     {
         case 0:
             return PPU_StepTextBG(sys, h, v, 3, PPUType_AGB);
@@ -371,7 +372,7 @@ void NTRPPU_BG0Mode(Console* sys, const u16 h, const u16 v, const PPU_Type type)
 {
     PPU* ppu = ((type == PPUType_B) ? &sys->PPU_B : &sys->PPU_A);
     if (!ppu->DisplayCR.BG0Enable) return PPU_None(sys, h, v, 0, type == PPUType_B);
-    switch(ppu->DisplayCR.BGSetup)
+    switch(ppu->DisplayCR.BGMode)
     {
         case 0 ... 5:
             if (ppu->DisplayCR.BG03D && type == PPUType_A)
@@ -400,7 +401,7 @@ void NTRPPU_BG1Mode(Console* sys, const u16 h, const u16 v, const PPU_Type type)
 {
     PPU* ppu = ((type == PPUType_B) ? &sys->PPU_B : &sys->PPU_A);
     if (!ppu->DisplayCR.BG1Enable) return PPU_None(sys, h, v, 1, type == PPUType_B);
-    switch(ppu->DisplayCR.BGSetup)
+    switch(ppu->DisplayCR.BGMode)
     {
         case 0 ... 5:
         case 7:
@@ -416,7 +417,7 @@ void NTRPPU_BG2Mode(Console* sys, const u16 h, const u16 v, const PPU_Type type)
 {
     PPU* ppu = ((type == PPUType_B) ? &sys->PPU_B : &sys->PPU_A);
     if (!ppu->DisplayCR.BG2Enable) return PPU_None(sys, h, v, 2, type == PPUType_B);
-    switch(ppu->DisplayCR.BGSetup)
+    switch(ppu->DisplayCR.BGMode)
     {
         case 0 ... 1:
         case 3:
@@ -424,6 +425,7 @@ void NTRPPU_BG2Mode(Console* sys, const u16 h, const u16 v, const PPU_Type type)
 
         case 2:
         case 4:
+            return PPU_None(sys, h, v, 2, false);
             //return PPU_Affine(sys, b, y, 2);
 
         case 5:
@@ -442,12 +444,13 @@ void NTRPPU_BG3Mode(Console* sys, const u16 h, const u16 v, const PPU_Type type)
 {
     PPU* ppu = ((type == PPUType_B) ? &sys->PPU_B : &sys->PPU_A);
     if (!ppu->DisplayCR.BG3Enable) PPU_None(sys, h, v, 3, type == PPUType_B);
-    switch(ppu->DisplayCR.BGSetup)
+    switch(ppu->DisplayCR.BGMode)
     {
         case 0:
             return PPU_StepTextBG(sys, h, v, 3, type);
 
         case 1 ... 2:
+            return PPU_None(sys, h, v, 2, false);
             //return PPU_Affine(sys, b, y, 3);
 
         case 3 ... 5:

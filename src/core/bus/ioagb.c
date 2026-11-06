@@ -59,7 +59,6 @@ void IOAGB_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, 
     {
     case 0x00'00'00:
     case 0x00'00'08 ... 0x00'00'54:
-    case 0x00'00'6C:
         PPU_Sync(sys, now);
         PPU_IOWrite(&sys->PPU_A, addr, wrdata, mask, false, true, true);
         break;

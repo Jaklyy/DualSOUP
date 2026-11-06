@@ -162,8 +162,8 @@ void PPU_RenderBitmap(Console* sys, const bool b, u16 y, const u8 bg, const bool
     u32 width;
     if (sys->AGB)
     {
-        screenbase = ((ppu->DisplayCR.AGB.FrameSelect && (ppu->DisplayCR.BGSetup != 3)) ? 0xA000 : 0);
-        switch(ppu->DisplayCR.BGSetup)
+        screenbase = ((ppu->DisplayCR.AGB.FrameSelect && (ppu->DisplayCR.BGMode != 3)) ? 0xA000 : 0);
+        switch(ppu->DisplayCR.BGMode)
         {
             case 3: width = 240; break;
             case 4: width = 240; break;
@@ -240,7 +240,7 @@ void PPU_BG0_Lookup(Console* sys, const bool b, const u16 y)
 {
     PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
     if (!ppu->DisplayCR.BG0Enable) return PPU_None(sys, b, 0);
-    switch(ppu->DisplayCR.BGSetup)
+    switch(ppu->DisplayCR.BGMode)
     {
         case 0 ... 5:
             if (ppu->DisplayCR.BG03D && !b)
@@ -267,7 +267,7 @@ void PPU_BG1_Lookup(Console* sys, const bool b, const u16 y)
 {
     PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
     if (!ppu->DisplayCR.BG1Enable) return PPU_None(sys, b, 1);
-    switch(ppu->DisplayCR.BGSetup)
+    switch(ppu->DisplayCR.BGMode)
     {
         case 0 ... 5:
         case 7:
@@ -283,7 +283,7 @@ void PPU_BG2_Lookup(Console* sys, const bool b, const u16 y)
 {
     PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
     if (!ppu->DisplayCR.BG2Enable) return PPU_None(sys, b, 2);
-    switch(ppu->DisplayCR.BGSetup)
+    switch(ppu->DisplayCR.BGMode)
     {
         case 0 ... 1:
         case 3:
@@ -309,7 +309,7 @@ void PPU_BG3_Lookup(Console* sys, const bool b, const u16 y)
 {
     PPU* ppu = (b ? &sys->PPU_B : &sys->PPU_A);
     if (!ppu->DisplayCR.BG3Enable) return PPU_None(sys, b, 3);
-    switch(ppu->DisplayCR.BGSetup)
+    switch(ppu->DisplayCR.BGMode)
     {
         case 0:
             return PPU_RenderText(sys, b, y, 3);
@@ -329,7 +329,7 @@ void PPU_BG0_AGBLookup(Console* sys, const u16 y)
 {
     PPU* ppu = &sys->PPU_A;
     if (!ppu->DisplayCR.BG0Enable) return PPU_None(sys, false, 0);
-    switch(ppu->DisplayCR.BGSetup)
+    switch(ppu->DisplayCR.BGMode)
     {
         case 0 ... 1:
             return PPU_RenderText(sys, false, y, 0);
@@ -343,7 +343,7 @@ void PPU_BG1_AGBLookup(Console* sys, const u16 y)
 {
     PPU* ppu = &sys->PPU_A;
     if (!ppu->DisplayCR.BG1Enable) return PPU_None(sys, false, 1);
-    switch(ppu->DisplayCR.BGSetup)
+    switch(ppu->DisplayCR.BGMode)
     {
         case 0 ... 1:
             return PPU_RenderText(sys, false, y, 1);
@@ -358,7 +358,7 @@ void PPU_BG2_AGBLookup(Console* sys, const u16 y)
 {
     PPU* ppu = &sys->PPU_A;
     if (!ppu->DisplayCR.BG2Enable) return PPU_None(sys, false, 2);
-    switch(ppu->DisplayCR.BGSetup)
+    switch(ppu->DisplayCR.BGMode)
     {
         case 0:
             return PPU_RenderText(sys, false, y, 2);
@@ -383,7 +383,7 @@ void PPU_BG3_AGBLookup(Console* sys, const u16 y)
 {
     PPU* ppu = &sys->PPU_A;
     if (!ppu->DisplayCR.BG3Enable) return PPU_None(sys, false, 3);
-    switch(ppu->DisplayCR.BGSetup)
+    switch(ppu->DisplayCR.BGMode)
     {
         case 0:
             return PPU_RenderText(sys, false, y, 3);

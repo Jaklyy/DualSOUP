@@ -189,7 +189,7 @@ typedef struct
         u32 Raw;
         struct
         {
-            u32 BGSetup : 3;
+            u32 BGMode : 3;
             bool BG03D : 1;
             bool TileOBJ1D : 1;
             bool BitmapOBJ2DDims : 1; // clear == 128x512; set == 256x256
