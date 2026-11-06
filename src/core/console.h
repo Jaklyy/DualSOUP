@@ -61,14 +61,14 @@ constexpr u32 SoundMixerOutput = NTR_BaseClock/512; // 32'768; // not entirely s
 
 // yoinked from melonDS; should be validated personally.
 // they're written this way in melonDS; I'm not sure why? Probably makes sense with 2d gpu knowledge.
-constexpr u16 ActiveRender_Cycles = 48+(256*6); // How long the PPUs are actively rendering graphics in a given scanline.
-constexpr u16 HBlank_Cycles       = 91*6; // length of the HBlank period.
-constexpr u16 Scanline_Cycles     = HBlank_Cycles + ActiveRender_Cycles; // total length of a scanline in 16 MHz cycles.
-constexpr u32 Frame_Cycles        = Scanline_Cycles * 263; // total frame length.
+constexpr u16 NTRScanline_Cycles     = (355*6); // total length of a scanline in 16 MHz cycles.
+constexpr u16 NTRActiveRender_Cycles = ((12+256)*6); // How long the PPUs are actively rendering graphics in a given scanline.
+constexpr u16 NTRHBlank_Cycles       = NTRScanline_Cycles-NTRActiveRender_Cycles; // length of the HBlank period.
+constexpr u32 NTRFrame_Cycles        = NTRScanline_Cycles * 263; // total frame length.
 
-constexpr u16 AGBActiveRender_Cycles = 48+(240*4); // How long the PPUs are actively rendering graphics in a given scanline.
-constexpr u16 AGBHBlank_Cycles       = 56*4; // length of the HBlank period.
-constexpr u16 AGBScanline_Cycles     = AGBHBlank_Cycles + AGBActiveRender_Cycles; // total length of a scanline in 16 MHz cycles.
+constexpr u16 AGBScanline_Cycles     = (308*4); // total length of a scanline in 16 MHz cycles.
+constexpr u16 AGBActiveRender_Cycles = ((12+240)*4); // How long the PPUs are actively rendering graphics in a given scanline.
+constexpr u16 AGBHBlank_Cycles       = AGBScanline_Cycles-AGBActiveRender_Cycles; // length of the HBlank period.
 constexpr u32 AGBFrame_Cycles        = AGBScanline_Cycles * 228; // total frame length.
 constexpr double FPS       = 59.8260982881; // how do I represent this losslessly.
 constexpr double Framems   = 16.7151131131; // see above.

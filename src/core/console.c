@@ -665,7 +665,7 @@ void IF7_Set(Console* sys, const IRQIDs id, const timestamp now)
 
 bool Console_TestIfPollingNeeded(Console* sys, timestamp now)
 {
-    return (now - sys->LastPoll) > (Frame_Cycles * (Sched_Clock / NTR_SysClock) / 4);
+    return (now - sys->LastPoll) > (NTRFrame_Cycles * (Sched_Clock / NTR_SysClock) / 4);
 }
 
 Core_Ret Console_MainLoop(Console* sys)

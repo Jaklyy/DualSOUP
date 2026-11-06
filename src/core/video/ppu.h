@@ -25,11 +25,13 @@ constexpr u32 NTR_LCDWidth = 256;
 #define LCD_GetHeight(AGB) ((AGB) ? 160 : 192)
 #define LCD_GetVCountMax(AGB) ((AGB) ? 228 : 263)
 #define PPU_GetIterCycles(AGB) ((AGB) ? 4 : 6)
+#define LCD_GetHBlankStart(AGB) ((AGB) ? AGBActiveRender_Cycles : NTRActiveRender_Cycles)
 
 #define LCD_Width LCD_GetWidth(type==PPUType_AGB)
 #define LCD_Height LCD_GetHeight(type==PPUType_AGB)
 #define LCD_VMax LCD_GetVCountMax(type==PPUType_AGB)
 #define PPU_IterLen PPU_GetIterCycles(type==PPUType_AGB)
+#define LCD_HBlankStart LCD_GetHBlankStart(type==PPUType_AGB)
 
 typedef enum : u8
 {
@@ -176,7 +178,6 @@ typedef struct
     TextTileData Tile;
     u16 ColorData;
     u16 BgX;
-    u16 ScrX;
 } BGData;
 
 typedef struct

@@ -84,7 +84,7 @@ void LCD_HBlank(Console* sys, timestamp now)
     if (sys->DispStatRW7.HBlankIRQ) Sched_AddEvent(sys, now, Evt_IRQ7_HBlank); // CHECKME: delay?
 
     // schedule scanline start
-    Sched_AddEvent(sys, now + DSClk33(HBlank_Cycles), Evt_Scanline);
+    Sched_AddEvent(sys, now + DSClk33(NTRHBlank_Cycles), Evt_Scanline);
 }
 
 void LCD_Scanline(Console* sys, timestamp now)
@@ -139,7 +139,7 @@ void LCD_Scanline(Console* sys, timestamp now)
         SWRen_RasterizerFrame(sys);
 #else
         SWRen_Init(sys, now);
-        SWRen_SetTarget(sys, now+DSClk33(Scanline_Cycles*263));
+        SWRen_SetTarget(sys, now+DSClk33(NTRScanline_Cycles*263));
 #endif
     }
 
@@ -164,7 +164,7 @@ void LCD_Scanline(Console* sys, timestamp now)
     if (sys->DispStatRW9.VCountMatchIRQ && (sys->TargetVCount9 == sys->VCount)) Sched_AddEvent(sys, now+DSClk33(2), Evt_IRQ9_VCount); // checkme: delay?
 
     // schedule hblank
-    Sched_AddEvent(sys, now + DSClk33(ActiveRender_Cycles), Evt_HBlank);
+    Sched_AddEvent(sys, now + DSClk33(NTRActiveRender_Cycles), Evt_HBlank);
 }
 
 void LCDAGB_HBlank(Console* sys, timestamp now)
