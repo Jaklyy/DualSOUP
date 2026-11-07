@@ -544,7 +544,6 @@ void NTRPPU_BG2Mode(Console* sys, const u16 h, const u16 v, const PPU_Type type)
 
         case 6:
             printf("LORGE\n"); break;
-            //return PPU_Large(sys, b, y, 2);
 
         case 7:
             return PPU_StepNone(sys, h, 2, type);
@@ -610,7 +609,7 @@ void PPU_SpriteAffine(Console* sys, u8 sx, const PPU_Type type)
     u32 roty = dat->AffineCur[1];
     if (attr1.Mode == 3) // bitmap sprite
     {
-        if (sys->AGB) return LogPrint(LOG_PPU|LOG_UNIMP, "BITMAP AFFINE OBJ ON GBA\n");
+        if (type == PPUType_AGB) return LogPrint(LOG_PPU|LOG_UNIMP, "BITMAP AFFINE OBJ ON GBA\n");
         u8 alpha = attr2.BitmapAlpha;
         if (!alpha) return; // checkme?
         // increase by one to allow for max alpha value
@@ -659,7 +658,7 @@ void PPU_SpriteAffine(Console* sys, u8 sx, const PPU_Type type)
     {
         u32 baseaddr = attr2.TileNum;
         u32 ystep;
-        if (sys->AGB ? ppu->DisplayCR.AGB.OBJ1D : ppu->DisplayCR.TileOBJ1D)
+        if ((type == PPUType_AGB) ? ppu->DisplayCR.AGB.OBJ1D : ppu->DisplayCR.TileOBJ1D)
         {
             baseaddr <<= ppu->DisplayCR.TileOBJ1DBound;
             ystep = (width/8) << attr1.Pal256;
@@ -689,27 +688,34 @@ void PPU_SpriteAffine(Console* sys, u8 sx, const PPU_Type type)
 
             u32 addr = baseaddr + ytile + ypixel + xtile + xpixel;
             u16 index = PPU_VRAMLookup(sys, addr, PPU_GetOBJVRAM(type)) >> ((addr&0x1)*8);
+            u16 paloffs;
 
             if (attr1.Pal256)
             {
                 index &= 0xFF;
-                if (!index) goto inc;
-                index |= attr2.PaletteOffset * 256;
+                paloffs = attr2.PaletteOffset * 256;
             }
             else
             {
                 index = (index >> (xpixfrac * 4)) & 0xF;
-                if (!index) goto inc;
-                index |= attr2.PaletteOffset * 16;
+                paloffs = attr2.PaletteOffset * 16;
             }
 
-            if (attr1.Mode == 2) // window
+            if ((attr1.Mode == 2) && index) // window
                 ppu->SpriteWindow[ppu->SprBufBack][scrx/64] |= (u64)1<<(scrx%64);
-            else if (buffer[scrx].Empty || (!sys->AGB && (buffer[scrx].SprPrio > attr2.Priority)))
-                buffer[scrx] = (CompositeBuffer){index, attr2.Priority, false, false, attr1.Pal256 && ppu->DisplayCR.SprExtPalEn, attr1.Mode == 1, false};
+            else if (buffer[scrx].Empty || (buffer[scrx].SprPrio > attr2.Priority))
+            {
+                if (index)
+                {
+                    buffer[scrx] = (CompositeBuffer){index|paloffs, attr2.Priority, false, false, attr1.Pal256 && ppu->DisplayCR.SprExtPalEn, attr1.Mode == 1, false};
+                }
+                else if (!buffer[scrx].Empty)
+                {
+                    if (type == PPUType_AGB) buffer[scrx].SprPrio = attr2.Priority;
+                }
+            }
         }
     }
-    inc:
     dat->AffineCur[0] += params[0];
     dat->AffineCur[1] += params[2];
 }
@@ -732,7 +738,7 @@ void PPU_SpriteNormal(Console* sys, u8 sx, u8 sy, const PPU_Type type)
 
     if (attr1.Mode == 3) // bitmap
     {
-        if (sys->AGB) return LogPrint(LOG_PPU|LOG_UNIMP, "BITMAP OBJ ON GBA\n");
+        if (type == PPUType_AGB) return LogPrint(LOG_PPU|LOG_UNIMP, "BITMAP OBJ ON GBA\n");
         u8 alpha = attr2.BitmapAlpha;
         if (!alpha) return; // checkme?
         // increase by one to allow for max alpha value
@@ -783,7 +789,7 @@ void PPU_SpriteNormal(Console* sys, u8 sx, u8 sy, const PPU_Type type)
     else // not bitmap
     {
         u32 baseaddr = attr2.TileNum;
-        if (sys->AGB ? ppu->DisplayCR.AGB.OBJ1D : ppu->DisplayCR.TileOBJ1D)
+        if ((type == PPUType_AGB) ? ppu->DisplayCR.AGB.OBJ1D : ppu->DisplayCR.TileOBJ1D)
         {
             baseaddr <<= ppu->DisplayCR.TileOBJ1DBound;
             baseaddr += ((sy/8) * (width/8)) << attr1.Pal256;
@@ -802,26 +808,34 @@ void PPU_SpriteNormal(Console* sys, u8 sx, u8 sy, const PPU_Type type)
 
         if ((sx % 2) == attr1.HFlip) dat->ColorData = PPU_VRAMLookup(sys, addr, PPU_GetOBJVRAM(type));
         u16 index = dat->ColorData;
+        u16 paloffs;
 
         if (attr1.Pal256)
         {
             index = (index >> ((sx&1) * 8)) & 0xFF;
-            if (!index) return;
-            index |= attr2.PaletteOffset * 256; // for extpal
+            paloffs = attr2.PaletteOffset * 256; // for extpal
         }
         else
         {
             index = (index >> ((sx&3) * 4)) & 0xF;
-            if (!index) return;
-            index |= attr2.PaletteOffset * 16;
+            paloffs = attr2.PaletteOffset * 16;
         }
 
         if (scrx < LCD_Width)
         {
-            if (attr1.Mode == 2) // window
+            if ((attr1.Mode == 2) && index) // window
                 ppu->SpriteWindow[ppu->SprBufBack][scrx/64] |= (u64)1<<(scrx%64);
-            else if (buffer[scrx].Empty || (!sys->AGB && (buffer[scrx].SprPrio > attr2.Priority)))
-                buffer[scrx] = (CompositeBuffer){index, attr2.Priority, false, false, attr1.Pal256 && ppu->DisplayCR.SprExtPalEn, attr1.Mode == 1, false};
+            else if (buffer[scrx].Empty || (buffer[scrx].SprPrio > attr2.Priority))
+            {
+                if (index)
+                {
+                    buffer[scrx] = (CompositeBuffer){index|paloffs, attr2.Priority, false, false, attr1.Pal256 && ppu->DisplayCR.SprExtPalEn, attr1.Mode == 1, false};
+                }
+                else if (!buffer[scrx].Empty)
+                {
+                    if (type == PPUType_AGB) buffer[scrx].SprPrio = attr2.Priority;
+                }
+            }
         }
     }
 }
@@ -932,8 +946,6 @@ void PPU_StepSprites(Console* sys, const u16 h, const u16 v, const PPU_Type type
     // but it does mean we end up calculating a lot of pixels that dont end up getting used
     // but doing it the way hardware does it will allow for implementing sprite timings
     SprData* dat = &ppu->SprDat[ppu->SprDatCur];
-
-    //if (dat->SprID < 128) printf("%i %i\n", dat->SprID, dat->Cycle);
 
     if (dat->Cycle <= 2) PPU_SpriteFetchOAM(dat, oambase, y);
     else if (dat->Cycle == 3)
