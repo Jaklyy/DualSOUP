@@ -1382,7 +1382,10 @@ int SDLCALL PPUA_MainLoop(void* ptr)
             PPU_Wait(sys, sys->PPUATimestamp);
 
             PPU_Step(sys, (sys->PPUATimestamp-sys->PPU_A.ScanlineStart) / DSClk16(1), sys->VCountAGB, PPUType_AGB);
-            sys->PPUATimestamp += DSClk16(1);
+            if (sys->VCountAGB == LCD_GetVCountMax(true) || sys->VCountAGB < LCD_GetHeight(true))
+                sys->PPUATimestamp += DSClk16(1);
+            else
+                sys->PPUATimestamp = sys->PPU_A.ScanlineStart + DSClk16(AGBScanline_Cycles);
         }
         else
         {
@@ -1392,7 +1395,11 @@ int SDLCALL PPUA_MainLoop(void* ptr)
             PPU_Wait(sys, sys->PPUATimestamp);
 
             PPU_Step(sys, (sys->PPUATimestamp-sys->PPU_A.ScanlineStart) / DSClk33(1), sys->VCount, PPUType_A);
-            sys->PPUATimestamp += DSClk33(1);
+
+            if (sys->VCount == LCD_GetVCountMax(false) || sys->VCount < LCD_GetHeight(false))
+                sys->PPUATimestamp += DSClk33(1);
+            else
+                sys->PPUATimestamp = sys->PPU_A.ScanlineStart + DSClk33(NTRScanline_Cycles);
         }
     }
     return 0;
@@ -1411,7 +1418,11 @@ int SDLCALL PPUB_MainLoop(void* ptr)
         PPU_Wait(sys, sys->PPUBTimestamp);
 
         PPU_Step(sys, (sys->PPUBTimestamp-sys->PPU_B.ScanlineStart) / DSClk33(1), sys->VCount, PPUType_B);
-        sys->PPUBTimestamp += DSClk33(1);
+
+        if (sys->VCount == LCD_GetVCountMax(false) || sys->VCount < LCD_GetHeight(false))
+            sys->PPUBTimestamp += DSClk33(1);
+        else
+            sys->PPUBTimestamp = sys->PPU_B.ScanlineStart + DSClk33(NTRScanline_Cycles);
     }
     return 0;
 }
