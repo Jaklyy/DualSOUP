@@ -93,7 +93,7 @@ u16 PPU_VRAMLookup(Console* sys, const u32 addr, u16 (*func)(Console*, const u32
     }
 }
 
-void PPU_StepNone(Console* sys, const u16 h, const u16 v, const u8 bg, const PPU_Type type)
+void PPU_StepNone(Console* sys, const u16 h, const u8 bg, const PPU_Type type)
 {
     // checkme: do the bgs get ignored during compositing instead of returning null?
     PPU* ppu = ((type == PPUType_B) ? &sys->PPU_B : &sys->PPU_A);
@@ -416,28 +416,28 @@ void PPU_3D(Console* sys, const u16 h, const u16 v)
 void AGBPPU_BG0Mode(Console* sys, const u16 h, const u16 v)
 {
     PPU* ppu = &sys->PPU_A;
-    if (!ppu->DisplayCR.BG0Enable) return PPU_StepNone(sys, h, v, 0, PPUType_AGB);
+    if (!ppu->DisplayCR.BG0Enable) return PPU_StepNone(sys, h, 0, PPUType_AGB);
     switch(ppu->DisplayCR.BGMode)
     {
         case 0 ... 1:
             return PPU_StepTextBG(sys, h, v, 0, PPUType_AGB);
 
         default:
-            return PPU_StepNone(sys, h, v, 0, PPUType_AGB);
+            return PPU_StepNone(sys, h, 0, PPUType_AGB);
     }
 }
 
 void AGBPPU_BG1Mode(Console* sys, const u16 h, const u16 v)
 {
     PPU* ppu = &sys->PPU_A;
-    if (!ppu->DisplayCR.BG1Enable) return PPU_StepNone(sys, h, v, 1, PPUType_AGB);
+    if (!ppu->DisplayCR.BG1Enable) return PPU_StepNone(sys, h, 1, PPUType_AGB);
     switch(ppu->DisplayCR.BGMode)
     {
         case 0 ... 1:
             return PPU_StepTextBG(sys, h, v, 1, PPUType_AGB);
 
         default:
-            return PPU_StepNone(sys, h, v, 1, PPUType_AGB);
+            return PPU_StepNone(sys, h, 1, PPUType_AGB);
 
     }
 }
@@ -445,7 +445,7 @@ void AGBPPU_BG1Mode(Console* sys, const u16 h, const u16 v)
 void AGBPPU_BG2Mode(Console* sys, const u16 h, const u16 v)
 {
     PPU* ppu = &sys->PPU_A;
-    if (!ppu->DisplayCR.BG2Enable) return PPU_StepNone(sys, h, v, 2, PPUType_AGB);
+    if (!ppu->DisplayCR.BG2Enable) return PPU_StepNone(sys, h, 2, PPUType_AGB);
     switch(ppu->DisplayCR.BGMode)
     {
         case 0:
@@ -462,7 +462,7 @@ void AGBPPU_BG2Mode(Console* sys, const u16 h, const u16 v)
             return PPU_StepAffineBitmapBG(sys, h, v, true, 2, PPUType_AGB);
 
         case 6 ... 7:
-            return PPU_StepNone(sys, h, v, 2, PPUType_AGB);
+            return PPU_StepNone(sys, h, 2, PPUType_AGB);
 
     }
 }
@@ -470,7 +470,7 @@ void AGBPPU_BG2Mode(Console* sys, const u16 h, const u16 v)
 void AGBPPU_BG3Mode(Console* sys, const u16 h, const u16 v)
 {
     PPU* ppu = &sys->PPU_A;
-    if (!ppu->DisplayCR.BG3Enable) return PPU_StepNone(sys, h, v, 3, PPUType_AGB);
+    if (!ppu->DisplayCR.BG3Enable) return PPU_StepNone(sys, h, 3, PPUType_AGB);
     switch(ppu->DisplayCR.BGMode)
     {
         case 0:
@@ -481,14 +481,14 @@ void AGBPPU_BG3Mode(Console* sys, const u16 h, const u16 v)
 
         case 1:
         case 3 ... 7:
-            return PPU_StepNone(sys, h, v, 3, PPUType_AGB);
+            return PPU_StepNone(sys, h, 3, PPUType_AGB);
     }
 }
 
 void NTRPPU_BG0Mode(Console* sys, const u16 h, const u16 v, const PPU_Type type)
 {
     PPU* ppu = ((type == PPUType_B) ? &sys->PPU_B : &sys->PPU_A);
-    if (!ppu->DisplayCR.BG0Enable) return PPU_StepNone(sys, h, v, 0, type);
+    if (!ppu->DisplayCR.BG0Enable) return PPU_StepNone(sys, h, 0, type);
     switch(ppu->DisplayCR.BGMode)
     {
         case 0 ... 5:
@@ -504,7 +504,7 @@ void NTRPPU_BG0Mode(Console* sys, const u16 h, const u16 v, const PPU_Type type)
 
         case 6:
             if (type == PPUType_A) PPU_3D(sys, h, v);
-            else PPU_StepNone(sys, h, v, 0, type); // wtf happens to engine b?
+            else PPU_StepNone(sys, h, 0, type); // wtf happens to engine b?
             break;
     }
 }
@@ -512,7 +512,7 @@ void NTRPPU_BG0Mode(Console* sys, const u16 h, const u16 v, const PPU_Type type)
 void NTRPPU_BG1Mode(Console* sys, const u16 h, const u16 v, const PPU_Type type)
 {
     PPU* ppu = ((type == PPUType_B) ? &sys->PPU_B : &sys->PPU_A);
-    if (!ppu->DisplayCR.BG1Enable) return PPU_StepNone(sys, h, v, 1, type);
+    if (!ppu->DisplayCR.BG1Enable) return PPU_StepNone(sys, h, 1, type);
     switch(ppu->DisplayCR.BGMode)
     {
         case 0 ... 5:
@@ -520,7 +520,7 @@ void NTRPPU_BG1Mode(Console* sys, const u16 h, const u16 v, const PPU_Type type)
             return PPU_StepTextBG(sys, h, v, 1, type);
 
         case 6:
-            return PPU_StepNone(sys, h, v, 1, type);
+            return PPU_StepNone(sys, h, 1, type);
 
     }
 }
@@ -528,7 +528,7 @@ void NTRPPU_BG1Mode(Console* sys, const u16 h, const u16 v, const PPU_Type type)
 void NTRPPU_BG2Mode(Console* sys, const u16 h, const u16 v, const PPU_Type type)
 {
     PPU* ppu = ((type == PPUType_B) ? &sys->PPU_B : &sys->PPU_A);
-    if (!ppu->DisplayCR.BG2Enable) return PPU_StepNone(sys, h, v, 2, type);
+    if (!ppu->DisplayCR.BG2Enable) return PPU_StepNone(sys, h, 2, type);
     switch(ppu->DisplayCR.BGMode)
     {
         case 0 ... 1:
@@ -547,7 +547,7 @@ void NTRPPU_BG2Mode(Console* sys, const u16 h, const u16 v, const PPU_Type type)
             //return PPU_Large(sys, b, y, 2);
 
         case 7:
-            return PPU_StepNone(sys, h, v, 2, type);
+            return PPU_StepNone(sys, h, 2, type);
 
     }
 }
@@ -555,7 +555,7 @@ void NTRPPU_BG2Mode(Console* sys, const u16 h, const u16 v, const PPU_Type type)
 void NTRPPU_BG3Mode(Console* sys, const u16 h, const u16 v, const PPU_Type type)
 {
     PPU* ppu = ((type == PPUType_B) ? &sys->PPU_B : &sys->PPU_A);
-    if (!ppu->DisplayCR.BG3Enable) return PPU_StepNone(sys, h, v, 3, type);
+    if (!ppu->DisplayCR.BG3Enable) return PPU_StepNone(sys, h, 3, type);
     switch(ppu->DisplayCR.BGMode)
     {
         case 0:
@@ -568,7 +568,7 @@ void NTRPPU_BG3Mode(Console* sys, const u16 h, const u16 v, const PPU_Type type)
             return PPU_StepExtAffineBG(sys, h, v, 3, type);
 
         case 6 ... 7:
-            return PPU_StepNone(sys, h, v, 3, type);
+            return PPU_StepNone(sys, h, 3, type);
     }
 }
 
@@ -587,6 +587,432 @@ void PPU_StepBGs(Console* sys, const u16 h, const u16 v, const PPU_Type type)
         NTRPPU_BG1Mode(sys, h, v, type);
         NTRPPU_BG2Mode(sys, h, v, type);
         NTRPPU_BG3Mode(sys, h, v, type);
+    }
+}
+
+void PPU_SpriteAffine(Console* sys, u8 sx, const PPU_Type type)
+{
+    PPU* ppu = ((type == PPUType_B) ? &sys->PPU_B : &sys->PPU_A);
+    CompositeBuffer* buffer = ppu->CompositeBuffer[4+ppu->SprBufBack];
+
+    SprData* dat = &ppu->SprDat[ppu->SprDatCur];
+    const SprAttrs01 attr1 = dat->OAM01;
+    const SprAttrs2 attr2 = dat->OAM2;
+    const u8 width = dat->Width;
+    const u8 height = dat->Height;
+    s16* params = dat->AffineParams;
+
+    // todo: mosaic
+
+    u32 scrx = attr1.X + sx;
+
+    u32 rotx = dat->AffineCur[0];
+    u32 roty = dat->AffineCur[1];
+    if (attr1.Mode == 3) // bitmap sprite
+    {
+        if (sys->AGB) return LogPrint(LOG_PPU|LOG_UNIMP, "BITMAP AFFINE OBJ ON GBA\n");
+        u8 alpha = attr2.BitmapAlpha;
+        if (!alpha) return; // checkme?
+        // increase by one to allow for max alpha value
+        // shift left by one to convert to 5 bit alpha (for blending)
+        alpha = (alpha + 1) << 1;
+
+        u32 baseaddr;
+        u32 ystep;
+        if (ppu->DisplayCR.BitmapOBJ1D)
+        {
+            if (ppu->DisplayCR.BitmapOBJ2DDims)
+            {
+                // apparently does nothing??
+                return; // checkme
+            }
+            else
+            {
+                baseaddr = attr2.TileNum << (7+ppu->DisplayCR.BitmapOBJ1DBound);
+                ystep = width;
+            }
+        }
+        else
+        {
+            if (ppu->DisplayCR.BitmapOBJ2DDims)
+            {
+                baseaddr = ((attr2.TileNum % 32) * 16) + ((attr2.TileNum / 32) * 32 * 4);
+                ystep = 256;
+            }
+            else
+            {
+                baseaddr = ((attr2.TileNum % 16) * 16) + ((attr2.TileNum / 16) * 16 * 8);
+                ystep = 128;
+            }
+        }
+
+        if (((u32)rotx < (width*256)) && ((u32)roty < (height*256)) && (scrx < LCD_Width))
+        {
+            u32 addr = baseaddr + (((roty / 256) * ystep) + ((rotx / 256)) * 2);
+            u16 color = PPU_VRAMLookup(sys, addr, PPU_GetOBJVRAM(type));
+
+            if ((color & 0x8000) && (buffer[scrx].Empty || (buffer[scrx].SprPrio > attr2.Priority)))
+                buffer[scrx] = (CompositeBuffer){RGB565to666(color & 0x7FFF) | (alpha<<18), attr2.Priority, false, true, false, true, true};
+        }
+    }
+    else // not bitmap
+    {
+        u32 baseaddr = attr2.TileNum;
+        u32 ystep;
+        if (sys->AGB ? ppu->DisplayCR.AGB.OBJ1D : ppu->DisplayCR.TileOBJ1D)
+        {
+            baseaddr <<= ppu->DisplayCR.TileOBJ1DBound;
+            ystep = (width/8) << attr1.Pal256;
+        }
+        else
+        {
+            ystep = 0x20;
+        }
+
+        baseaddr *= 32;
+        ystep *= 32;
+
+        if ((rotx < (width*256)) && (roty < (height*256)) && (scrx < LCD_Width))
+        {
+            u32 xtile = (rotx>>11) * 64;
+            u32 ytile = (roty>>11) * ystep;
+            u32 xpixel = (rotx>>8) % 8;
+            u32 ypixel = ((roty>>8) % 8) * 8;
+            u32 xpixfrac = xpixel & 1;
+
+            if (!attr1.Pal256)
+            {
+                xtile/=2;
+                xpixel/=2;
+                ypixel/=2;
+            }
+
+            u32 addr = baseaddr + ytile + ypixel + xtile + xpixel;
+            u16 index = PPU_VRAMLookup(sys, addr, PPU_GetOBJVRAM(type)) >> ((addr&0x1)*8);
+
+            if (attr1.Pal256)
+            {
+                index &= 0xFF;
+                if (!index) goto inc;
+                index |= attr2.PaletteOffset * 256;
+            }
+            else
+            {
+                index = (index >> (xpixfrac * 4)) & 0xF;
+                if (!index) goto inc;
+                index |= attr2.PaletteOffset * 16;
+            }
+
+            if (attr1.Mode == 2) // window
+                ppu->SpriteWindow[ppu->SprBufBack][scrx/64] |= (u64)1<<(scrx%64);
+            else if (buffer[scrx].Empty || (!sys->AGB && (buffer[scrx].SprPrio > attr2.Priority)))
+                buffer[scrx] = (CompositeBuffer){index, attr2.Priority, false, false, attr1.Pal256 && ppu->DisplayCR.SprExtPalEn, attr1.Mode == 1, false};
+        }
+    }
+    inc:
+    dat->AffineCur[0] += params[0];
+    dat->AffineCur[1] += params[2];
+}
+
+void PPU_SpriteNormal(Console* sys, u8 sx, u8 sy, const PPU_Type type)
+{
+    PPU* ppu = ((type == PPUType_B) ? &sys->PPU_B : &sys->PPU_A);
+    CompositeBuffer* buffer = ppu->CompositeBuffer[4+ppu->SprBufBack];
+
+    SprData* dat = &ppu->SprDat[ppu->SprDatCur];
+    const SprAttrs01 attr1 = dat->OAM01;
+    const SprAttrs2 attr2 = dat->OAM2;
+    const u8 width = dat->Width;
+    const u8 height = dat->Height;
+
+    // vertical flip flag means we start from the bottom of the sprite
+    if (attr1.VFlip) sy = ((height-1) - sy);
+
+    u32 scrx = attr1.X + sx;
+
+    if (attr1.Mode == 3) // bitmap
+    {
+        if (sys->AGB) return LogPrint(LOG_PPU|LOG_UNIMP, "BITMAP OBJ ON GBA\n");
+        u8 alpha = attr2.BitmapAlpha;
+        if (!alpha) return; // checkme?
+        // increase by one to allow for max alpha value
+        // shift left by one to convert to 5 bit alpha (for blending)
+        alpha = (alpha + 1) << 1;
+
+        u32 baseaddr = attr2.TileNum;
+        if (ppu->DisplayCR.BitmapOBJ1D)
+        {
+            if (ppu->DisplayCR.BitmapOBJ2DDims)
+            {
+                // apparently does nothing??
+                return; // checkme
+            }
+            else
+            {
+                baseaddr = attr2.TileNum << (7+ppu->DisplayCR.BitmapOBJ1DBound);
+                baseaddr += sy * (width * 2);
+            }
+        }
+        else
+        {
+            if (ppu->DisplayCR.BitmapOBJ2DDims)
+            {
+                baseaddr = ((attr2.TileNum % 32) * 16) + ((attr2.TileNum / 32) * 32 * 128);
+                baseaddr += sy * (256*2);
+            }
+            else
+            {
+                baseaddr = ((attr2.TileNum % 16) * 16) + ((attr2.TileNum / 16) * 16 * 128);
+                baseaddr += sy * (128*2);
+            }
+        }
+
+        if (attr1.HFlip) sx = (width-1) - sx;
+
+        u32 addr = baseaddr + (sx*2);
+
+        u16 color = PPU_VRAMLookup(sys, addr, PPU_GetOBJVRAM(type));
+
+
+        if (scrx < LCD_Width)
+        {
+            if ((color & 0x8000) && (buffer[scrx].Empty || (buffer[scrx].SprPrio > attr2.Priority)))
+                buffer[scrx] = (CompositeBuffer){RGB565to666(color & 0x7FFF) | (alpha<<18), attr2.Priority, false, true, false, true, true};
+        }
+    }
+    else // not bitmap
+    {
+        u32 baseaddr = attr2.TileNum;
+        if (sys->AGB ? ppu->DisplayCR.AGB.OBJ1D : ppu->DisplayCR.TileOBJ1D)
+        {
+            baseaddr <<= ppu->DisplayCR.TileOBJ1DBound;
+            baseaddr += ((sy/8) * (width/8)) << attr1.Pal256;
+        }
+        else
+        {
+            baseaddr += (sy/8)*32;
+        }
+
+        // add y pixel offset
+        baseaddr = (baseaddr*32) + ((sy%8) << (2+attr1.Pal256));
+
+        if (attr1.HFlip) sx = (width-1) - sx;
+
+        u32 addr = baseaddr + ((sx/8*8) << (2+attr1.Pal256)) + ((sx%8) >> !attr1.Pal256);
+
+        if ((sx % 2) == attr1.HFlip) dat->ColorData = PPU_VRAMLookup(sys, addr, PPU_GetOBJVRAM(type));
+        u16 index = dat->ColorData;
+
+        if (attr1.Pal256)
+        {
+            index = (index >> ((sx&1) * 8)) & 0xFF;
+            if (!index) return;
+            index |= attr2.PaletteOffset * 256; // for extpal
+        }
+        else
+        {
+            index = (index >> ((sx&3) * 4)) & 0xF;
+            if (!index) return;
+            index |= attr2.PaletteOffset * 16;
+        }
+
+        if (scrx < LCD_Width)
+        {
+            if (attr1.Mode == 2) // window
+                ppu->SpriteWindow[ppu->SprBufBack][scrx/64] |= (u64)1<<(scrx%64);
+            else if (buffer[scrx].Empty || (!sys->AGB && (buffer[scrx].SprPrio > attr2.Priority)))
+                buffer[scrx] = (CompositeBuffer){index, attr2.Priority, false, false, attr1.Pal256 && ppu->DisplayCR.SprExtPalEn, attr1.Mode == 1, false};
+        }
+    }
+}
+
+void PPU_SpriteFetchOAM(SprData* dat, volatile u32* oambase, const u16 y)
+{
+    if (dat->SprID > 127) return; // we all outta sprites
+    if (dat->Cycle == 0)
+    {
+        // fetch oam 0 & 1
+        SprAttrs01 attr = {.Raw = oambase[dat->SprID*2]};
+
+        // check if sprite is disabled
+        if (!attr.Affine && attr.Disable)
+        {
+            dat->SprID++;
+            return;
+        }
+
+        // calc sprite bounds
+        u8 width = 8 << attr.Size;
+        u8 height = 8 << attr.Size;
+
+        if (attr.Shape == 1)
+        {
+            // horizontal: height is cut in half
+            height /= 2;
+            if (height <= 8)
+            {
+                // if the height ends up <= 8 px it's clamped to 8 and the width is doubled
+                height = 8;
+                width *= 2;
+            }
+        }
+        else if (attr.Shape == 2)
+        {
+            // vertical: width is cut in half
+            width /= 2;
+            if (width <= 8)
+            {
+                // if the width ends up <= 8 px it's clamped to 8 and the height is doubled
+                width = 8;
+                height *= 2;
+            }
+        }
+        else if (attr.Shape == 3)
+        {
+            // invalid shape: supposedly just results in it being 8x8 everytime?
+            // checkme?
+            width = 8;
+            height = 8;
+        }
+
+        // get the y progress through the sprite
+        // note: sprites can wrap the screen if they overflow the 8 bit range (checkme?)
+        u8 sy = (y - attr.Y) & 0xFF;
+        // check if we're actually within the sprite's bounding box
+        // note: affine sprites support doubling the size of their bounding boxes
+        if (sy >= (height << (attr.Affine && attr.DoubleSize)))
+        {
+            dat->SprID++;
+            return;
+        }
+
+        dat->Cycle++;
+        dat->OAM01.Raw = oambase[dat->SprID*2];
+        dat->Height = height;
+        dat->Width = width;
+    }
+    else if (dat->Cycle == 2)
+    {
+        // fetch oam 2
+        dat->OAM2.Raw = oambase[(dat->SprID*2)+1];
+        dat->Cycle++;
+    }
+    else dat->Cycle++;
+}
+
+void PPU_StepSprites(Console* sys, const u16 h, const u16 v, const PPU_Type type)
+{
+    PPU* ppu = ((type == PPUType_B) ? &sys->PPU_B : &sys->PPU_A);
+    // checkme: does this need to be volatile to handle thread sync properly?
+    volatile u32* oambase = ((type == PPUType_B) ? &sys->OAM.b32[0x400/sizeof(u32)] : &sys->OAM.b32[0]);
+
+    if (h == (10*PPU_IterLen)) // swap sprite buffer
+    {
+        ppu->SprBufBack = !ppu->SprBufBack;
+        ppu->SprDat[0] = (SprData){};
+        ppu->SprDatCur = 0;
+
+        for (int x = 0; x < 256; x++) // clear back sprite buffer
+            ppu->CompositeBuffer[4+ppu->SprBufBack][x] = (CompositeBuffer){0, 0, true, false, false, false, false};
+
+        memset(ppu->SpriteWindow[ppu->SprBufBack], 0, sizeof(ppu->SpriteWindow[ppu->SprBufBack])); // clear back sprite window bitfield
+    }
+
+    // sprites can be disabled entirely in the ppu's control reg
+    if (!ppu->DisplayCR.SprEnable) return;
+
+    if (((type == PPUType_AGB) ? ppu->DisplayCR.AGB.OBJHBlankDisable : ppu->DisplayCR.OBJHBlankDisable) // do not render sprites during hblank
+     && ((h < (10*PPU_IterLen)) || (h >= LCD_HBlankStart))) // sprite hblank range
+        return;
+
+    u32 y = ((v == LCD_VMax) ? 0 : (v+1));
+
+    // note: sprites are rendered from lowest slot to highest slot
+    // this does mean that their oam slot priority resolves as a result of each sprite overwriting the other
+    // but it does mean we end up calculating a lot of pixels that dont end up getting used
+    // but doing it the way hardware does it will allow for implementing sprite timings
+    SprData* dat = &ppu->SprDat[ppu->SprDatCur];
+
+    //if (dat->SprID < 128) printf("%i %i\n", dat->SprID, dat->Cycle);
+
+    if (dat->Cycle <= 2) PPU_SpriteFetchOAM(dat, oambase, y);
+    else if (dat->Cycle == 3)
+    {
+        ppu->SprDat[!ppu->SprDatCur] = (SprData){.SprID = dat->SprID+1};
+        dat->Cycle++;
+    }
+    else if (dat->OAM01.Affine && (dat->Cycle <= 15)) // fetch rotscale
+    {
+        // rot/scal params are stored in the gaps between each sprite's oam data.
+        volatile u32* rotscalbase = &oambase[dat->OAM01.AffineParam*(32/4)];
+        switch(dat->Cycle)
+        {
+            case 0 ... 2: unreachable();
+            case 4: dat->AffineParams[0] = rotscalbase[1] >> 16; dat->Cycle++; break;
+            case 8: dat->AffineParams[1] = rotscalbase[3] >> 16; dat->Cycle++; break;
+            case 10: dat->AffineParams[2] = rotscalbase[5] >> 16; dat->Cycle++; break;
+            case 12: dat->AffineParams[3] = rotscalbase[7] >> 16; dat->Cycle++; break;
+            case 14:
+            {
+                // get the y progress through the sprite
+                // note: sprites can wrap the screen if they overflow the 8 bit range (checkme?)
+                u8 sy = (y - dat->OAM01.Y) & 0xFF;
+                // double size sprites have their bounding boxes doubled
+                u8 widthreal = dat->Width;
+                u8 heightreal = dat->Height;
+                if (dat->OAM01.DoubleSize)
+                {
+                    widthreal*=2;
+                    heightreal*=2;
+                }
+                s16* params = dat->AffineParams;
+
+                // MATRIX MATH WOOOOOOOOOOOOOOOOOOOOO
+                // calculate rotscal thingies
+                // sprites are rotated around their center
+                dat->AffineCur[0] = ((((s32)0-(widthreal/2)) * params[0]) + (((s32)sy-(heightreal/2)) * params[1]) + (dat->Width*256/2));
+                dat->AffineCur[1] = ((((s32)0-(widthreal/2)) * params[2]) + (((s32)sy-(heightreal/2)) * params[3]) + (dat->Height*256/2));
+                [[fallthrough]];
+            }
+            case 15: PPU_SpriteFetchOAM(&ppu->SprDat[!ppu->SprDatCur], oambase, y); dat->Cycle++; break; // run next sprites's first two cycles
+            default: dat->Cycle++; break;
+        }
+    }
+    else // fetch obj vram
+    {
+        u32 cydelay = (dat->OAM01.Affine ? 16 : 4);
+        s32 max = dat->Width - 1;
+        s32 xoffs = (dat->Cycle - cydelay);
+
+        if (dat->Cycle <= 5)
+        {
+            PPU_SpriteFetchOAM(&ppu->SprDat[!ppu->SprDatCur], oambase, y); // run next sprites's first two cycles
+        }
+
+        if (dat->OAM01.Affine)
+        {
+            max *= 2;
+            if (dat->OAM01.DoubleSize) max *= 2;
+            if ((dat->Cycle % 2) == 1) // speculation: affine bgs need two cycles due to calc'ing affine params
+            {
+                dat->Cycle++;
+                return;
+            }
+        }
+
+        // get the y progress through the sprite
+        // note: sprites can wrap the screen if they overflow the 8 bit range (checkme?)
+        u8 sy = (y - dat->OAM01.Y) & 0xFF;
+        if (dat->OAM01.Affine) PPU_SpriteAffine(sys, xoffs/2, type);
+        else                   PPU_SpriteNormal(sys, xoffs, sy, type);
+
+        dat->Cycle++;
+
+        if (xoffs == (max))//-1))
+        {
+            PPU_SpriteFetchOAM(&ppu->SprDat[!ppu->SprDatCur], oambase, y); // run next sprites's third cycle
+            ppu->SprDatCur = !ppu->SprDatCur;
+        }
     }
 }
 
@@ -714,7 +1140,7 @@ void PPU_FetchPalette(Console* sys, const int num, const PPU_Type type)
     }
 }
 
-void PPU_StepComposite(Console* sys, const u16 h, const u16 v, const PPU_Type type)
+void PPU_StepComposite(Console* sys, const u16 h, const PPU_Type type)
 {
     PPU* ppu = ((type == PPUType_B) ? &sys->PPU_B : &sys->PPU_A);
 
@@ -736,7 +1162,7 @@ void PPU_StepComposite(Console* sys, const u16 h, const u16 v, const PPU_Type ty
         for (int prio = 0; prio < 4; prio++)
         {
             // check if sprites should be rendered
-            CompositeBuffer tmp = ppu->CompositeBuffer[4][x];
+            CompositeBuffer tmp = ppu->CompositeBuffer[4+!ppu->SprBufBack][x];
             if (!tmp.Empty && (tmp.SprPrio == prio) && ppu->WinEnMask.EnableObj)
             {
                 ppu->CompBGs[i] = 4;
@@ -827,7 +1253,7 @@ void PPU_StepWindows(Console* sys, const u16 h, const u16 v, const PPU_Type type
             ppu->WinEnMask = ppu->Window.W0Cr;
         else if (ppu->DisplayCR.Win1Enable && ppu->Window1YActive && ppu->Window1XActive) // win 1 active
             ppu->WinEnMask = ppu->Window.W1Cr;
-        else if (ppu->DisplayCR.OBJWinEnable && (ppu->SpriteWindow[x/64] & ((u64)1<<(x%64)))) // win 2 active
+        else if (ppu->DisplayCR.OBJWinEnable && (ppu->SpriteWindow[!ppu->SprBufBack][x/64] & ((u64)1<<(x%64)))) // win 2 active
             ppu->WinEnMask = ppu->Window.WObjCr;
         else // no window active
             ppu->WinEnMask = ppu->Window.WNoneCr;
@@ -927,12 +1353,12 @@ void PPU_Step(Console* sys, u16 h, u16 v, const PPU_Type type)
     if (v < bgmaxv && h < LCD_HBlankStart) // render bgs; composite layers
     {
         PPU_StepBGs(sys, h, v, type);
-        PPU_StepComposite(sys, h, v, type);
+        PPU_StepComposite(sys, h, type);
     }
 
     if ((v == LCD_VMax) || (v < sprmaxv)) // render next sprite scanline
     {
-        PPU_StepNone(sys, h, v, 4, type);
+        PPU_StepSprites(sys, h, v, type);
     }
 
     if (h == (2+((11+LCD_Width)*PPU_IterLen))) // end of render period

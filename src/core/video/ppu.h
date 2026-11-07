@@ -23,7 +23,7 @@ constexpr u32 NTR_LCDWidth = 256;
 
 #define LCD_GetWidth(AGB) ((AGB) ? 240 : 256)
 #define LCD_GetHeight(AGB) ((AGB) ? 160 : 192)
-#define LCD_GetVCountMax(AGB) ((AGB) ? 228 : 263)
+#define LCD_GetVCountMax(AGB) ((AGB) ? 227 : 262)
 #define PPU_GetIterCycles(AGB) ((AGB) ? 4 : 6)
 #define LCD_GetHBlankStart(AGB) ((AGB) ? AGBActiveRender_Cycles : NTRActiveRender_Cycles)
 
@@ -182,9 +182,22 @@ typedef struct
 
 typedef struct
 {
-    alignas(HOST_CACHEALIGN) CompositeBuffer CompositeBuffer[5][256];
+    s32 AffineCur[2];
+    SprAttrs01 OAM01;
+    SprAttrs2 OAM2;
+    s16 AffineParams[4];
+    u16 ColorData;
+    u8 Width;
+    u8 Height;
+    u8 SprID;
+    u16 Cycle;
+} SprData;
+
+typedef struct
+{
+    alignas(HOST_CACHEALIGN) CompositeBuffer CompositeBuffer[6][256];
     alignas(HOST_CACHEALIGN) u32 OutLine[256];
-    alignas(alignof(u64)*4) u64 SpriteWindow[4];
+    alignas(alignof(u64)*4) u64 SpriteWindow[2][4];
     union
     {
         u32 Raw;
@@ -296,6 +309,9 @@ typedef struct
     s8 CompBGs[2];
     CompositeBuffer CompSel[2];
     u32 CompCol[2];
+    bool SprBufBack;
+    SprData SprDat[2];
+    bool SprDatCur;
 } PPU;
 
 typedef struct Console Console;
