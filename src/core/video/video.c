@@ -43,10 +43,6 @@ void PPU_Init(Console* sys, const timestamp now)
 {
 #ifndef SINGLETHREADRASTER
     if (sys->PPUStart) return;
-    // TEMP HACK UNTIL I IMPLEMENT THIS PROPERLY FOR GBA MODE
-    memset(sys->PPU_A.CompositeBuffer, 0, sizeof(sys->PPU_A.CompositeBuffer));
-    memset(sys->PPU_B.CompositeBuffer, 0, sizeof(sys->PPU_B.CompositeBuffer));
-    memset(sys->Framebuffer, 0, sizeof(sys->Framebuffer));
     sys->PPUTarget = now;
     sys->PPUATimestamp = now;
     sys->PPUBTimestamp = now;

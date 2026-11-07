@@ -61,6 +61,7 @@ typedef struct
     bool ExtPal : 1;
     bool ForceBlend : 1;
     bool HasAlpha : 1;
+    bool Mosaic : 1;
 } CompositeBuffer;
 
 typedef union
@@ -173,6 +174,18 @@ typedef union
 } Brightness;
 constexpr u16 LCDCBrightnessWrMask = 0xC01F;
 
+typedef union
+{
+    u16 Raw;
+    struct
+    {
+        u16 BgX : 4;
+        u16 BgY : 4;
+        u16 SprX : 4;
+        u16 SprY : 4;
+    };
+} Mosaic;
+
 typedef struct
 {
     TextTileData Tile;
@@ -188,7 +201,9 @@ typedef struct
     s16 AffineParams[4];
     u16 ColorData;
     u8 Width;
+    u8 WidthReal;
     u8 Height;
+    u8 HeightReal;
     u8 SprID;
     u16 Cycle;
 } SprData;
@@ -241,6 +256,20 @@ typedef struct
 
     union
     {
+        u8 Raw;
+        struct
+        {
+            bool ForceBlank : 1;
+            bool BG0 : 1;
+            bool BG1 : 1;
+            bool BG2 : 1;
+            bool BG3 : 1;
+            bool Spr : 1;
+        };
+    } DispEnPipe[3];
+
+    union
+    {
         u16 Raw;
         struct
         {
@@ -273,9 +302,11 @@ typedef struct
     s32 AffineCoord[2][2];
     s16 AffineRotParams[2][4];
     Brightness Brightness;
+
     BlendCR BlendCR;
     u8 BlendAlpha[2];
     u8 BlendBright;
+
     bool Window0YActive;
     bool Window0XActive;
     bool Window1YActive;
@@ -303,9 +334,17 @@ typedef struct
             WindowCR WObjCr;
         };
     } Window;
+    WindowCR WinEnMask;
+
+    Mosaic MosaicCR;
+    u8 SprMosaicYCur;
+    u8 SprMosaicYFrac;
+
+    u8 SprMosaicXCur;
+    u8 SprMosaicXFrac;
+
     BGData BGDat[4];
     timestamp ScanlineStart;
-    WindowCR WinEnMask;
     s8 CompBGs[2];
     CompositeBuffer CompSel[2];
     u32 CompCol[2];

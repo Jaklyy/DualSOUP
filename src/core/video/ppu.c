@@ -107,7 +107,7 @@ void PPU_StepNone(Console* sys, const u16 h, const u8 bg, const PPU_Type type)
 
     if (x >= LCD_Width) return;
 
-    buffer[x] = (CompositeBuffer){0, 0, true, false, false, false, false};
+    buffer[x] = (CompositeBuffer){0, 0, true, false, false, false, false, false};
 }
 
 void PPU_StepTextBG(Console* sys, const u16 h, const u16 v, const u8 bg, const PPU_Type type)
@@ -184,7 +184,7 @@ void PPU_StepTextBG(Console* sys, const u16 h, const u16 v, const u8 bg, const P
 
         if (xscr < 0 || xscr >= LCD_Width) return; // oops nothing needs to render here!
 
-        buffer[xscr] = (CompositeBuffer){idx+(tile->Palette*(1<<bpp)), 0, !idx, false, ppu->BGCR[bg].Pal256&&ppu->DisplayCR.BGExtPalEn, false, false};
+        buffer[xscr] = (CompositeBuffer){idx+(tile->Palette*(1<<bpp)), 0, !idx, false, ppu->BGCR[bg].Pal256&&ppu->DisplayCR.BGExtPalEn, false, false, false};
     }
 }
 
@@ -299,7 +299,7 @@ void PPU_StepAffineTextBG(Console* sys, const u16 h, const u16 v, const bool ext
         if (xscr < LCD_Width) // oops nothing needs to render here!
         {
             bool empty = ((x >= screensize) || (y >= screensize)) || (idx == 0);
-            buffer[xscr] = (CompositeBuffer){idx+(tile->Palette*(1<<bpp)), 0, empty, false, ext&&ppu->DisplayCR.BGExtPalEn, false, false};
+            buffer[xscr] = (CompositeBuffer){idx+(tile->Palette*(1<<bpp)), 0, empty, false, ext&&ppu->DisplayCR.BGExtPalEn, false, false, false};
         }
 
         PPU_StepAffineX(ppu, bg); // checkme: does it still keep stepping affine coords?
@@ -369,7 +369,7 @@ void PPU_StepAffineBitmapBG(Console* sys, const u16 h, const u16 v, const bool d
         if (xscr < LCD_Width)
         {
             bool empty = ((x >= width) || (y >= height)) || ((type == PPUType_AGB) ? false : !(color & 0x8000));
-            buffer[xscr] = (CompositeBuffer){RGB565to666(color&0x7FFF), 0, empty, true, false, false, false};
+            buffer[xscr] = (CompositeBuffer){RGB565to666(color&0x7FFF), 0, empty, true, false, false, false, false};
         }
     }
     else // 8 bit index
@@ -380,7 +380,7 @@ void PPU_StepAffineBitmapBG(Console* sys, const u16 h, const u16 v, const bool d
         if (xscr < LCD_Width)
         {
             bool empty = ((x >= width) || (y >= height)) || (idx == 0);
-            buffer[xscr] = (CompositeBuffer){idx, 0, empty, false, false, false, false};
+            buffer[xscr] = (CompositeBuffer){idx, 0, empty, false, false, false, false, false};
         }
     }
     PPU_StepAffineX(ppu, bg);
@@ -410,13 +410,25 @@ void PPU_3D(Console* sys, const u16 h, const u16 v)
     if (x >= LCD_GetWidth(false)) return;
 
     SWRen_SyncRenderedLines(sys, v+1);
-    buffer[x] = (CompositeBuffer){sys->GX3D.CBuf[0][v][x] + (1<<18) /* increase alpha to allow for max alpha for blending */, 0, ((sys->GX3D.CBuf[0][v][x] >> 18) & 0x1F) == 0, true, false, true, true};
+    buffer[x] = (CompositeBuffer){sys->GX3D.CBuf[0][v][x] + (1<<18) /* increase alpha to allow for max alpha for blending */, 0, ((sys->GX3D.CBuf[0][v][x] >> 18) & 0x1F) == 0, true, false, true, true, false};
+}
+
+
+bool PPU_CheckBGEnable(PPU* ppu, u8 bg)
+{
+    return (!(ppu->DisplayCR.ForceBlank || ppu->DispEnPipe[2].ForceBlank) // not forced blanking
+     && (((ppu->DisplayCR.Raw >> (bg+8)) & 1) && ((ppu->DispEnPipe[2].Raw >> (bg+1)) & 1))); // layer enabled
+}
+
+bool PPU_CheckForceBlank(PPU* ppu)
+{
+    return (ppu->DisplayCR.ForceBlank || ppu->DispEnPipe[2].ForceBlank);
 }
 
 void AGBPPU_BG0Mode(Console* sys, const u16 h, const u16 v)
 {
     PPU* ppu = &sys->PPU_A;
-    if (!ppu->DisplayCR.BG0Enable) return PPU_StepNone(sys, h, 0, PPUType_AGB);
+    if (!PPU_CheckBGEnable(ppu, 0)) return PPU_StepNone(sys, h, 0, PPUType_AGB);
     switch(ppu->DisplayCR.BGMode)
     {
         case 0 ... 1:
@@ -430,7 +442,7 @@ void AGBPPU_BG0Mode(Console* sys, const u16 h, const u16 v)
 void AGBPPU_BG1Mode(Console* sys, const u16 h, const u16 v)
 {
     PPU* ppu = &sys->PPU_A;
-    if (!ppu->DisplayCR.BG1Enable) return PPU_StepNone(sys, h, 1, PPUType_AGB);
+    if (!PPU_CheckBGEnable(ppu, 1)) return PPU_StepNone(sys, h, 1, PPUType_AGB);
     switch(ppu->DisplayCR.BGMode)
     {
         case 0 ... 1:
@@ -445,7 +457,7 @@ void AGBPPU_BG1Mode(Console* sys, const u16 h, const u16 v)
 void AGBPPU_BG2Mode(Console* sys, const u16 h, const u16 v)
 {
     PPU* ppu = &sys->PPU_A;
-    if (!ppu->DisplayCR.BG2Enable) return PPU_StepNone(sys, h, 2, PPUType_AGB);
+    if (!PPU_CheckBGEnable(ppu, 2)) return PPU_StepNone(sys, h, 2, PPUType_AGB);
     switch(ppu->DisplayCR.BGMode)
     {
         case 0:
@@ -470,7 +482,7 @@ void AGBPPU_BG2Mode(Console* sys, const u16 h, const u16 v)
 void AGBPPU_BG3Mode(Console* sys, const u16 h, const u16 v)
 {
     PPU* ppu = &sys->PPU_A;
-    if (!ppu->DisplayCR.BG3Enable) return PPU_StepNone(sys, h, 3, PPUType_AGB);
+    if (!PPU_CheckBGEnable(ppu, 3)) return PPU_StepNone(sys, h, 3, PPUType_AGB);
     switch(ppu->DisplayCR.BGMode)
     {
         case 0:
@@ -488,7 +500,7 @@ void AGBPPU_BG3Mode(Console* sys, const u16 h, const u16 v)
 void NTRPPU_BG0Mode(Console* sys, const u16 h, const u16 v, const PPU_Type type)
 {
     PPU* ppu = ((type == PPUType_B) ? &sys->PPU_B : &sys->PPU_A);
-    if (!ppu->DisplayCR.BG0Enable) return PPU_StepNone(sys, h, 0, type);
+    if (!PPU_CheckBGEnable(ppu, 0)) return PPU_StepNone(sys, h, 0, type);
     switch(ppu->DisplayCR.BGMode)
     {
         case 0 ... 5:
@@ -512,7 +524,7 @@ void NTRPPU_BG0Mode(Console* sys, const u16 h, const u16 v, const PPU_Type type)
 void NTRPPU_BG1Mode(Console* sys, const u16 h, const u16 v, const PPU_Type type)
 {
     PPU* ppu = ((type == PPUType_B) ? &sys->PPU_B : &sys->PPU_A);
-    if (!ppu->DisplayCR.BG1Enable) return PPU_StepNone(sys, h, 1, type);
+    if (!PPU_CheckBGEnable(ppu, 1)) return PPU_StepNone(sys, h, 1, type);
     switch(ppu->DisplayCR.BGMode)
     {
         case 0 ... 5:
@@ -528,7 +540,7 @@ void NTRPPU_BG1Mode(Console* sys, const u16 h, const u16 v, const PPU_Type type)
 void NTRPPU_BG2Mode(Console* sys, const u16 h, const u16 v, const PPU_Type type)
 {
     PPU* ppu = ((type == PPUType_B) ? &sys->PPU_B : &sys->PPU_A);
-    if (!ppu->DisplayCR.BG2Enable) return PPU_StepNone(sys, h, 2, type);
+    if (!PPU_CheckBGEnable(ppu, 2)) return PPU_StepNone(sys, h, 2, type);
     switch(ppu->DisplayCR.BGMode)
     {
         case 0 ... 1:
@@ -554,7 +566,7 @@ void NTRPPU_BG2Mode(Console* sys, const u16 h, const u16 v, const PPU_Type type)
 void NTRPPU_BG3Mode(Console* sys, const u16 h, const u16 v, const PPU_Type type)
 {
     PPU* ppu = ((type == PPUType_B) ? &sys->PPU_B : &sys->PPU_A);
-    if (!ppu->DisplayCR.BG3Enable) return PPU_StepNone(sys, h, 3, type);
+    if (!PPU_CheckBGEnable(ppu, 3)) return PPU_StepNone(sys, h, 3, type);
     switch(ppu->DisplayCR.BGMode)
     {
         case 0:
@@ -651,7 +663,12 @@ void PPU_SpriteAffine(Console* sys, u8 sx, const PPU_Type type)
             u16 color = PPU_VRAMLookup(sys, addr, PPU_GetOBJVRAM(type));
 
             if ((color & 0x8000) && (buffer[scrx].Empty || (buffer[scrx].SprPrio > attr2.Priority)))
-                buffer[scrx] = (CompositeBuffer){RGB565to666(color & 0x7FFF) | (alpha<<18), attr2.Priority, false, true, false, true, true};
+                buffer[scrx] = (CompositeBuffer){RGB565to666(color & 0x7FFF) | (alpha<<18), attr2.Priority, false, true, false, true, true, attr1.Mosaic};
+            else if (buffer[scrx].Empty && !(color & 0x8000))
+            {
+                buffer[scrx].SprPrio = attr2.Priority;
+                buffer[scrx].Mosaic = attr1.Mosaic;
+            }
         }
     }
     else // not bitmap
@@ -707,11 +724,17 @@ void PPU_SpriteAffine(Console* sys, u8 sx, const PPU_Type type)
             {
                 if (index)
                 {
-                    buffer[scrx] = (CompositeBuffer){index|paloffs, attr2.Priority, false, false, attr1.Pal256 && ppu->DisplayCR.SprExtPalEn, attr1.Mode == 1, false};
+                    buffer[scrx] = (CompositeBuffer){index|paloffs, attr2.Priority, false, false, attr1.Pal256 && ppu->DisplayCR.SprExtPalEn, attr1.Mode == 1, false, attr1.Mosaic};
                 }
-                else if (!buffer[scrx].Empty)
+                else if (buffer[scrx].Empty)
                 {
-                    if (type == PPUType_AGB) buffer[scrx].SprPrio = attr2.Priority;
+                    buffer[scrx].SprPrio = attr2.Priority;
+                    buffer[scrx].Mosaic = attr1.Mosaic;
+                }
+                else if (!buffer[scrx].Empty && (type == PPUType_AGB))
+                {
+                    buffer[scrx].SprPrio = attr2.Priority;
+                    buffer[scrx].Mosaic = attr1.Mosaic; // checkme?
                 }
             }
         }
@@ -783,7 +806,12 @@ void PPU_SpriteNormal(Console* sys, u8 sx, u8 sy, const PPU_Type type)
         if (scrx < LCD_Width)
         {
             if ((color & 0x8000) && (buffer[scrx].Empty || (buffer[scrx].SprPrio > attr2.Priority)))
-                buffer[scrx] = (CompositeBuffer){RGB565to666(color & 0x7FFF) | (alpha<<18), attr2.Priority, false, true, false, true, true};
+                buffer[scrx] = (CompositeBuffer){RGB565to666(color & 0x7FFF) | (alpha<<18), attr2.Priority, false, true, false, true, true, attr1.Mosaic};
+            else if (buffer[scrx].Empty && !(color & 0x8000))
+            {
+                buffer[scrx].SprPrio = attr2.Priority;
+                buffer[scrx].Mosaic = attr1.Mosaic;
+            }
         }
     }
     else // not bitmap
@@ -829,11 +857,17 @@ void PPU_SpriteNormal(Console* sys, u8 sx, u8 sy, const PPU_Type type)
             {
                 if (index)
                 {
-                    buffer[scrx] = (CompositeBuffer){index|paloffs, attr2.Priority, false, false, attr1.Pal256 && ppu->DisplayCR.SprExtPalEn, attr1.Mode == 1, false};
+                    buffer[scrx] = (CompositeBuffer){index|paloffs, attr2.Priority, false, false, attr1.Pal256 && ppu->DisplayCR.SprExtPalEn, attr1.Mode == 1, false, attr1.Mosaic};
                 }
-                else if (!buffer[scrx].Empty)
+                else if (buffer[scrx].Empty)
                 {
-                    if (type == PPUType_AGB) buffer[scrx].SprPrio = attr2.Priority;
+                    buffer[scrx].SprPrio = attr2.Priority;
+                    buffer[scrx].Mosaic = attr1.Mosaic;
+                }
+                else if (!buffer[scrx].Empty && (type == PPUType_AGB))
+                {
+                    buffer[scrx].SprPrio = attr2.Priority;
+                    buffer[scrx].Mosaic = attr1.Mosaic; // checkme?
                 }
             }
         }
@@ -889,6 +923,7 @@ void PPU_SpriteFetchOAM(SprData* dat, volatile u32* oambase, const u16 y)
             height = 8;
         }
 
+        // note: mosaic is not used for this check
         // get the y progress through the sprite
         // note: sprites can wrap the screen if they overflow the 8 bit range (checkme?)
         u8 sy = (y - attr.Y) & 0xFF;
@@ -914,6 +949,19 @@ void PPU_SpriteFetchOAM(SprData* dat, volatile u32* oambase, const u16 y)
     else dat->Cycle++;
 }
 
+u8 PPU_GetSprRelY(PPU* ppu, SprData* dat, u8 y)
+{
+    if (dat->OAM01.Mosaic && (dat->OAM01.Mode != 2)) // handle mosaic coords
+    {
+        y = (ppu->SprMosaicYCur - dat->OAM01.Y) & 0xFF;
+
+        // latched before top, y underflow, clamp to 0
+        if (y >= dat->Height << (dat->OAM01.Affine && dat->OAM01.DoubleSize)) y = 0;
+        return y;
+    }
+    return (y - dat->OAM01.Y) & 0xFF;
+}
+
 void PPU_StepSprites(Console* sys, const u16 h, const u16 v, const PPU_Type type)
 {
     PPU* ppu = ((type == PPUType_B) ? &sys->PPU_B : &sys->PPU_A);
@@ -927,13 +975,13 @@ void PPU_StepSprites(Console* sys, const u16 h, const u16 v, const PPU_Type type
         ppu->SprDatCur = 0;
 
         for (int x = 0; x < 256; x++) // clear back sprite buffer
-            ppu->CompositeBuffer[4+ppu->SprBufBack][x] = (CompositeBuffer){0, 0, true, false, false, false, false};
+            ppu->CompositeBuffer[4+ppu->SprBufBack][x] = (CompositeBuffer){0, 0, true, false, false, false, false, false};
 
         memset(ppu->SpriteWindow[ppu->SprBufBack], 0, sizeof(ppu->SpriteWindow[ppu->SprBufBack])); // clear back sprite window bitfield
     }
 
     // sprites can be disabled entirely in the ppu's control reg
-    if (!ppu->DisplayCR.SprEnable) return;
+    if (!PPU_CheckBGEnable(ppu, 4)) return;
 
     if (((type == PPUType_AGB) ? ppu->DisplayCR.AGB.OBJHBlankDisable : ppu->DisplayCR.OBJHBlankDisable) // do not render sprites during hblank
      && ((h < (10*PPU_IterLen)) || (h >= LCD_HBlankStart))) // sprite hblank range
@@ -966,9 +1014,6 @@ void PPU_StepSprites(Console* sys, const u16 h, const u16 v, const PPU_Type type
             case 12: dat->AffineParams[3] = rotscalbase[7] >> 16; dat->Cycle++; break;
             case 14:
             {
-                // get the y progress through the sprite
-                // note: sprites can wrap the screen if they overflow the 8 bit range (checkme?)
-                u8 sy = (y - dat->OAM01.Y) & 0xFF;
                 // double size sprites have their bounding boxes doubled
                 u8 widthreal = dat->Width;
                 u8 heightreal = dat->Height;
@@ -977,6 +1022,11 @@ void PPU_StepSprites(Console* sys, const u16 h, const u16 v, const PPU_Type type
                     widthreal*=2;
                     heightreal*=2;
                 }
+
+                // get the y progress through the sprite
+                // note: sprites can wrap the screen if they overflow the 8 bit range (checkme?)
+                u8 sy = PPU_GetSprRelY(ppu, dat, y);
+
                 s16* params = dat->AffineParams;
 
                 // MATRIX MATH WOOOOOOOOOOOOOOOOOOOOO
@@ -1014,7 +1064,7 @@ void PPU_StepSprites(Console* sys, const u16 h, const u16 v, const PPU_Type type
 
         // get the y progress through the sprite
         // note: sprites can wrap the screen if they overflow the 8 bit range (checkme?)
-        u8 sy = (y - dat->OAM01.Y) & 0xFF;
+        u8 sy = PPU_GetSprRelY(ppu, dat, y);
         if (dat->OAM01.Affine) PPU_SpriteAffine(sys, xoffs/2, type);
         else                   PPU_SpriteNormal(sys, xoffs, sy, type);
 
@@ -1132,7 +1182,11 @@ void PPU_FetchPalette(Console* sys, const int num, const PPU_Type type)
         if (ppu->CompSel[num].ExtPal) // extended palette lookup
         {
             if (type == PPUType_AGB) unreachable();
-            if (ppu->CompBGs[num] == 4) // spr
+            if (PPU_CheckForceBlank(ppu))
+            {
+                ppu->CompCol[num] = 0x7FFF;
+            }
+            else if (ppu->CompBGs[num] == 4) // spr
             {
                 ppu->CompCol[num] = PPU_VRAMLookup(sys, ppu->CompSel[num].Index*2, objextpalvram);
             }
@@ -1146,7 +1200,15 @@ void PPU_FetchPalette(Console* sys, const int num, const PPU_Type type)
         else // palette ram
         {
             //AddBusContention(sys, *time, Dev_Palette);
-            ppu->CompCol[num] = palbase[(ppu->CompSel[num].Index & 0xFF) + ((ppu->CompBGs[num] == 4 /* index sprite pram instead */) ? 256 : 0)];
+
+            if (PPU_CheckForceBlank(ppu))
+            {
+                ppu->CompCol[num] = 0x7FFF;
+            }
+            else
+            {
+                ppu->CompCol[num] = palbase[(ppu->CompSel[num].Index & 0xFF) + ((ppu->CompBGs[num] == 4 /* index sprite pram instead */) ? 256 : 0)];
+            }
         }
         ppu->CompCol[num] = RGB565to666(ppu->CompCol[num]);
     }
@@ -1164,17 +1226,42 @@ void PPU_StepComposite(Console* sys, const u16 h, const PPU_Type type)
         // sel pixels for blending
         // initialize with bg color
 
+        if (cycle == 0)
+        {
+            // reset mosaic
+            ppu->SprMosaicXCur = 0;
+            ppu->SprMosaicXFrac = 0;
+        }
+
         if (x > LCD_Width) return; // nothing to do here
 
         ppu->CompBGs[0] = -1;
         ppu->CompBGs[1] = -1;
-        ppu->CompSel[0] = (CompositeBuffer){0, 0, false, false, false /* checkme? */, false, false};
-        ppu->CompSel[1] = (CompositeBuffer){0, 0, false, false, false /* checkme? */, false, false};
+        ppu->CompSel[0] = (CompositeBuffer){0, 0, false, false, false /* checkme? */, false, false, false};
+        ppu->CompSel[1] = (CompositeBuffer){0, 0, false, false, false /* checkme? */, false, false, false};
         int i = 0;
         for (int prio = 0; prio < 4; prio++)
         {
             // check if sprites should be rendered
-            CompositeBuffer tmp = ppu->CompositeBuffer[4+!ppu->SprBufBack][x];
+            CompositeBuffer new = ppu->CompositeBuffer[4+!ppu->SprBufBack][x];
+            CompositeBuffer tmp = ppu->CompositeBuffer[4+!ppu->SprBufBack][ppu->SprMosaicXCur];
+
+            if (prio == 0) // checkme: what if its obscured by two layers?
+            {
+                // apply sprite mosaic
+                if ((ppu->SprMosaicXFrac == 0) || !new.Mosaic || !tmp.Mosaic || (new.SprPrio < tmp.SprPrio))
+                {
+                    ppu->SprMosaicXCur = x;
+                    tmp = new;
+                }
+
+                if (ppu->SprMosaicXFrac == ppu->MosaicCR.SprX)
+                {
+                    ppu->SprMosaicXFrac = 0; // reset
+                }
+                else ppu->SprMosaicXFrac = (ppu->SprMosaicXFrac + 1) & 0xF; // checkme: wrapping is a guess
+            }
+
             if (!tmp.Empty && (tmp.SprPrio == prio) && ppu->WinEnMask.EnableObj)
             {
                 ppu->CompBGs[i] = 4;
@@ -1274,10 +1361,32 @@ void PPU_StepWindows(Console* sys, const u16 h, const u16 v, const PPU_Type type
         ppu->WinEnMask.Raw = 0x3F;
 }
 
+void PPU_StepSprMosaic(Console* sys, const u16 h, const u16 v, const PPU_Type type)
+{
+    PPU* ppu = ((type == PPUType_B) ? &sys->PPU_B : &sys->PPU_A);
+
+    if (h != (10*PPU_IterLen)) return; // beginning of sprite scanline
+
+    if (v == LCD_VMax) // new frame
+    {
+        ppu->SprMosaicYFrac = 0;
+        ppu->SprMosaicYCur = 0;
+    }
+    else if (ppu->SprMosaicYFrac == ppu->MosaicCR.SprY)
+    {
+        ppu->SprMosaicYFrac = 0;
+        ppu->SprMosaicYCur = v+1;
+    }
+    else // step internal counter
+    {
+        ppu->SprMosaicYFrac = (ppu->SprMosaicYFrac + 1) & 0xF;
+    }
+}
+
 void ApplyBrightnessModifier(u32* scanline, Brightness bright)
 {
     if (bright.Mode != 1 && bright.Mode != 2) return; // checkme: mode 3?
-    for (int x = 0; x < 256; x++)
+    for (int x = 0; x < LCD_GetWidth(false); x++)
     {
         u32 out = 0;
         u8 factor = ((bright.Factor > 16) ? 16 : bright.Factor);
@@ -1310,27 +1419,32 @@ void LCDC_Step(Console* sys, const bool b)
     {
         case 0: // nothing
             noblit:
-            for (int x = 0; x < 256; x++)
+            for (int x = 0; x < LCD_GetWidth(false); x++)
                 scanline[x] = 0x3FFFF;
             break;
 
         case 1: // ppu output
             agb:
-            if (b ? !sys->PowerCR9.PPUBPower : !sys->PowerCR9.PPUAPower) goto noblit;
-            //if (sys->VCount >= 192) goto noblit; // checkme: is this the proper way to implement this?
+            if (b ? !sys->PowerCR9.PPUBPower : !sys->PowerCR9.PPUAPower)
+            {
+                for (int x = 0; x < LCD_GetWidth(false); x++)
+                    scanline[x] = 0;
+                break;
+            }
 
             if (sys->AGB) // hacky bullshit
             {
-                if (sys->VCountAGB >= 160) goto noblit;
-                for (int x = 0; x < 256; x++)
+                for (int x = 0; x < LCD_GetWidth(false); x++)
                 {
-                    if (x < 240) scanline[x] = ppu->OutLine[x];
-                    else scanline[x] = 0x3FFFF;
+                    if (x < LCD_GetWidth(true) && sys->VCountAGB < LCD_GetHeight(true)) scanline[x] = ppu->OutLine[x];
+                    else scanline[x] = 0;
                 }
             }
             else
             {
-                for (int x = 0; x < 256; x++)
+                if (sys->VCount >= LCD_GetHeight(false)) goto noblit; // checkme: is this the proper way to implement this?
+
+                for (int x = 0; x < LCD_GetWidth(false); x++)
                     scanline[x] = ppu->OutLine[x];
             }
             break;
@@ -1338,8 +1452,8 @@ void LCDC_Step(Console* sys, const bool b)
         case 2: // vram display
         {
             if (b) unreachable();
-            u32 addr = (ppu->DisplayCR.VRAMSel * KiB(128)) + (256*2*sys->LCDY[0]);
-            for (int x = 0; x < 256; x++)
+            u32 addr = (ppu->DisplayCR.VRAMSel * KiB(128)) + (LCD_GetWidth(false)*2*sys->LCDY[0]);
+            for (int x = 0; x < LCD_GetWidth(false); x++)
             {
                 scanline[x] = RGB555to666(PPU_VRAMLookup(sys, addr, VRAM_LCD));
                 addr += 2;
@@ -1355,12 +1469,25 @@ void LCDC_Step(Console* sys, const bool b)
     sys->LCDY[b]++;
 }
 
+void PPU_StepEnableFlags(PPU* ppu, u16 h)
+{
+    if (h != 0) return;
+
+    ppu->DispEnPipe[2] = ppu->DispEnPipe[1];
+    ppu->DispEnPipe[1] = ppu->DispEnPipe[0];
+    ppu->DispEnPipe[0].Raw = (ppu->DisplayCR.Raw >> 7) & 0x3F;
+}
+
 void PPU_Step(Console* sys, u16 h, u16 v, const PPU_Type type)
 {
-    if ((type == PPUType_B) ? !sys->PowerCR9.PPUBPower : !sys->PowerCR9.PPUAPower) return; // ppu off
+    PPU* ppu = ((type == PPUType_B) ? &sys->PPU_B : &sys->PPU_A);
+    if ((type == PPUType_B) ? !sys->PowerCR9.PPUBPower : !sys->PowerCR9.PPUAPower) goto skipppu;
+
     const u16 bgmaxv = LCD_GetHeight(type == PPUType_AGB);
     const u16 sprmaxv = LCD_GetHeight(type == PPUType_AGB) - 1;
 
+    PPU_StepEnableFlags(ppu, h);
+    PPU_StepSprMosaic(sys, h, v, type);
     PPU_StepWindows(sys, h, v, type);
     if (v < bgmaxv && h < LCD_HBlankStart) // render bgs; composite layers
     {
@@ -1373,7 +1500,9 @@ void PPU_Step(Console* sys, u16 h, u16 v, const PPU_Type type)
         PPU_StepSprites(sys, h, v, type);
     }
 
-    if (h == (2+((11+LCD_Width)*PPU_IterLen))) // end of render period
+    skipppu:
+
+    if ((h == (2+((11+LCD_Width)*PPU_IterLen))) || (v >= LCD_Height)) // end of render period
     {
         LCDC_Step(sys, type == PPUType_B);
     }

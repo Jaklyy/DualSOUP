@@ -120,6 +120,8 @@ void PPU_IOWrite(PPU* ppu, const u32 addr, const u32 val, u32 mask, const bool b
         break;
     }
 
+    case 0x4C: MaskedWrite(ppu->MosaicCR.Raw, val, mask & 0xFFFF); break;
+
     case 0x50:
         MaskedWrite(ppu->BlendCR.Raw, val, mask & BlendCRWrMask);
         MaskedWrite(ppu->BlendAlpha[0], val>>16, (mask>>16) & BlendParamWrMask);
