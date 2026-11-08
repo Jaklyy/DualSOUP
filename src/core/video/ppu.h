@@ -337,11 +337,16 @@ typedef struct
     WindowCR WinEnMask;
 
     Mosaic MosaicCR;
-    u8 SprMosaicYCur;
-    u8 SprMosaicYFrac;
+
+    u8 BgMosaicXCur;
+    u8 BgMosaicXFrac;
+    u8 BgMosaicYCur;
+    u8 BgMosaicYFrac;
 
     u8 SprMosaicXCur;
     u8 SprMosaicXFrac;
+    u8 SprMosaicYCur;
+    u8 SprMosaicYFrac;
 
     BGData BGDat[4];
     timestamp ScanlineStart;

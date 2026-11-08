@@ -125,7 +125,7 @@ void PPU_StepTextBG(Console* sys, const u16 h, const u16 v, const u8 bg, const P
     s32 cyclelimit = tilereq*cyclepertile + PPU_IterLen;
     if (cycle > cyclelimit) return; // we have rendered enough tiles.
 
-    u16 y = v + ppu->Yoff[bg];
+    u16 y = (ppu->BGCR[bg].Mosaic ? ppu->BgMosaicYCur : v) + ppu->Yoff[bg];
 
     // determine which step this is
     s32 step = ((cycle / PPU_IterLen)-1) % BGTileWidth;
@@ -211,8 +211,11 @@ void PPU_ReloadAffineCoords(PPU* ppu, const u16 h, const u16 v, const u8 bg, con
             ppu->AffineStart[bg-2][1] = ppu->AffineCoord[bg-2][1];
             ppu->AffineDirty[bg-2] = false;
         }
-        ppu->AffineCur[bg-2][0] = ppu->AffineStart[bg-2][0];
-        ppu->AffineCur[bg-2][1] = ppu->AffineStart[bg-2][1];
+        if (!ppu->BGCR[bg].Mosaic || (ppu->BgMosaicYFrac == 0))
+        {
+            ppu->AffineCur[bg-2][0] = ppu->AffineStart[bg-2][0];
+            ppu->AffineCur[bg-2][1] = ppu->AffineStart[bg-2][1];
+        }
     }
 }
 
@@ -1231,6 +1234,8 @@ void PPU_StepComposite(Console* sys, const u16 h, const PPU_Type type)
             // reset mosaic
             ppu->SprMosaicXCur = 0;
             ppu->SprMosaicXFrac = 0;
+            ppu->BgMosaicXCur = 0;
+            ppu->BgMosaicXFrac = 0;
         }
 
         if (x > LCD_Width) return; // nothing to do here
@@ -1255,11 +1260,18 @@ void PPU_StepComposite(Console* sys, const u16 h, const PPU_Type type)
                     tmp = new;
                 }
 
-                if (ppu->SprMosaicXFrac == ppu->MosaicCR.SprX)
-                {
-                    ppu->SprMosaicXFrac = 0; // reset
-                }
+                if (ppu->SprMosaicXFrac == ppu->MosaicCR.SprX) ppu->SprMosaicXFrac = 0; // reset
                 else ppu->SprMosaicXFrac = (ppu->SprMosaicXFrac + 1) & 0xF; // checkme: wrapping is a guess
+            }
+
+            if (prio == 0)
+            {
+                // apply bg mosaic
+                if (ppu->BgMosaicXFrac == 0)
+                    ppu->BgMosaicXCur = x;
+
+                if (ppu->BgMosaicXFrac == ppu->MosaicCR.BgX) ppu->BgMosaicXFrac = 0; // reset
+                else ppu->BgMosaicXFrac = (ppu->BgMosaicXFrac + 1) & 0xF; // checkme: wrapping is a guess
             }
 
             if (!tmp.Empty && (tmp.SprPrio == prio) && ppu->WinEnMask.EnableObj)
@@ -1280,7 +1292,7 @@ void PPU_StepComposite(Console* sys, const u16 h, const PPU_Type type)
                 if (ppu->BGCR[g].BGPriority != prio) continue;
 
                 // check if bg exists
-                tmp = ppu->CompositeBuffer[g][x];
+                tmp = ppu->CompositeBuffer[g][ppu->BGCR[g].Mosaic ? ppu->BgMosaicXCur : x];
                 if (!tmp.Empty)
                 {
                     ppu->CompBGs[i] = g;
@@ -1380,6 +1392,28 @@ void PPU_StepSprMosaic(Console* sys, const u16 h, const u16 v, const PPU_Type ty
     else // step internal counter
     {
         ppu->SprMosaicYFrac = (ppu->SprMosaicYFrac + 1) & 0xF;
+    }
+}
+
+void PPU_StepBGMosaic(Console* sys, const u16 h, const u16 v, const PPU_Type type)
+{
+    PPU* ppu = ((type == PPUType_B) ? &sys->PPU_B : &sys->PPU_A);
+
+    if (h != 0) return; // beginning of bg scanline
+
+    if (v == 0) // new frame
+    {
+        ppu->BgMosaicYFrac = 0;
+        ppu->BgMosaicYCur = 0;
+    }
+    else if (ppu->BgMosaicYFrac == ppu->MosaicCR.BgY)
+    {
+        ppu->BgMosaicYFrac = 0;
+        ppu->BgMosaicYCur = v;
+    }
+    else // step internal counter
+    {
+        ppu->BgMosaicYFrac = (ppu->BgMosaicYFrac + 1) & 0xF;
     }
 }
 
@@ -1488,6 +1522,7 @@ void PPU_Step(Console* sys, u16 h, u16 v, const PPU_Type type)
 
     PPU_StepEnableFlags(ppu, h);
     PPU_StepSprMosaic(sys, h, v, type);
+    PPU_StepBGMosaic(sys, h, v, type);
     PPU_StepWindows(sys, h, v, type);
     if (v < bgmaxv && h < LCD_HBlankStart) // render bgs; composite layers
     {
