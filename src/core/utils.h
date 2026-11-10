@@ -42,6 +42,8 @@ typedef int64_t s64;
 typedef uint64_t u64;
 #define u64_max (UINT64_MAX)
 
+typedef unsigned _BitInt(128) u128;
+
 
 typedef u32 u32x4 __attribute__ ((vector_size(sizeof(u32)*4)));
 typedef s32 s32x4 __attribute__ ((vector_size(sizeof(u32)*4)));
@@ -333,6 +335,12 @@ struct Pattern
 {
     rol &= 0x1F;
     return (val << rol) | (val >> ((32-rol) & 0x1F));
+}
+
+[[nodiscard]] static inline u8 ROR8(const u8 val, u8 ror)
+{
+    ror &= 0x7;
+    return (val >> ror) | (val << ((8-ror) & 0x7));
 }
 
 [[nodiscard]] static inline u32 MakeWriteMask(u32 addr, u8 size)

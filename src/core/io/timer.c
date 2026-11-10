@@ -4,6 +4,7 @@
 #include "core/scheduler.h"
 #include "core/utils.h"
 #include "sound.h"
+#include "agbsound.h"
 
 
 
@@ -12,7 +13,7 @@ void Timer_CalcNextEvent(Console* sys, Timer arr[], u8 num, timestamp now, Timer
 {
     Timer* timer = &arr[num];
 
-    if (!timer->On || !(timer->CR.IRQ || (type == TimerType_Snd))) return;
+    if (!timer->On || !(timer->CR.IRQ || (type == TimerType_Snd) || (sys->AGB && num <= 1))) return;
 
     timestamp next = 0;
     goto first;
@@ -64,6 +65,11 @@ void Timer_AddTicks(Console* sys, Timer arr[], u8 num, timestamp now, timestamp 
                 && (arr[num+1].On)) // next timer is running
             {
                 Timer_AddTicks(sys, arr, num+1, now, numoverflows, type); // tick the next timer
+            }
+
+            if ((type == TimerType_7) && (num <= 1) && sys->AGB)
+            {
+                AGBSoundDMATimer_Overflow(sys, num, now);
             }
 
             if (timer->CR.IRQ) // checkme: delay?

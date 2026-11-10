@@ -1,0 +1,407 @@
+#include "core/console.h"
+#include "agbsound.h"
+#include "dma.h"
+
+
+
+
+void AGBMixer_Run(Console* sys)
+{
+    sys->MixerOut[0] = 0;
+    sys->MixerOut[1] = 0;
+    if (sys->AGBSndEn.MEnable)
+    {
+        const u8 CGBVol[2] = {sys->AGBSndCR.LeftVolume, sys->AGBSndCR.RightVolume};
+        const bool En1[2] = {sys->AGBSndCR.Chan1LEn, sys->AGBSndCR.Chan1REn};
+        const bool En2[2] = {sys->AGBSndCR.Chan2LEn, sys->AGBSndCR.Chan2REn};
+        const bool En3[2] = {sys->AGBSndCR.Chan3LEn, sys->AGBSndCR.Chan3REn};
+        const bool En4[2] = {sys->AGBSndCR.Chan4LEn, sys->AGBSndCR.Chan4REn};
+        const bool EnA[2] = {sys->AGBSndCR.ALEn, sys->AGBSndCR.AREn};
+        const bool EnB[2] = {sys->AGBSndCR.BLEn, sys->AGBSndCR.BREn};
+        for (int i = 0; i < 2; i++)
+        {
+            if (sys->AGBSndCR.CGBVol != 3)
+            {
+                if (En1[i]) sys->MixerOut[i] += sys->AGBSamples[0];
+                if (En2[i]) sys->MixerOut[i] += sys->AGBSamples[1];
+                if (En3[i]) sys->MixerOut[i] += sys->AGBSamples[2];
+                if (En4[i]) sys->MixerOut[i] += sys->AGBSamples[3];
+
+                sys->MixerOut[i] <<= sys->AGBSndCR.CGBVol + 5;
+                sys->MixerOut[i] *= (CGBVol[i] + (CGBVol[i] == 0));
+            }
+            sys->MixerOut[i] = 0;
+            if (EnA[i]) sys->MixerOut[i] += sys->AGBSamples[4] << (sys->AGBSndCR.AVol+7);
+            if (EnB[i]) sys->MixerOut[i] += sys->AGBSamples[5] << (sys->AGBSndCR.BVol+7);
+        }
+    }
+}
+
+constexpr timestamp CGBSnd_ClockDiv[4] = {
+    (Sched_Clock/(NTR_BaseClock/16)), Sched_Clock/(NTR_BaseClock/16), Sched_Clock/NTR_BaseClock, Sched_Clock/NTR_BaseClock
+};
+
+void CGBSnd_StartChannel(Console* sys, const timestamp now, const u16 counter, const u8 id)
+{
+    Sched_AddEvent(sys, (now & ~(CGBSnd_ClockDiv[id]-1)) + (((1<<11)-counter)*CGBSnd_ClockDiv[id]), Evt_CGBSnd1+id);
+}
+
+void CGBSnd_KillChannel(Console* sys, const u8 id)
+{
+    //sys->AGBSamples[id] = 0;
+    Sched_RemoveEvent(&sys->Sched, Evt_CGBSnd1+id);
+}
+
+void AGBSquare_Run(Console* sys, const timestamp now, const u8 id)
+{
+    sys->CGBSquareLatch[id].Tick++;
+    sys->CGBSquareLatch[id].Tick &= 0x7;
+
+    const u8 Duty[4] = {1, 2, 4, 6};
+    if (sys->CGBSquareLatch[id].Tick < (Duty[sys->CGBSquare[id].WaveDuty]))
+    {
+        sys->AGBSamples[id] = sys->CGBSquareLatch[id].Env.Vol - 8;
+    }
+    else
+    {
+        sys->AGBSamples[id] = -8;
+    }
+
+    Sched_AddEvent(sys, now + (((1<<11)-sys->CGBSndCR[id].Freq)*CGBSnd_ClockDiv[id]), Evt_CGBSnd1+id);
+}
+
+void AGBSquare_Tick(Console* sys, const timestamp now, const bool id)
+{
+    CGBSndSquare* sqr = &sys->CGBSquare[id];
+    CGBSndCR* cr = &sys->CGBSndCR[id];
+    CGBSquareLatch* lat = &sys->CGBSquareLatch[id];
+
+    if (((now & (GB_DIVAPUTICK(2)-1)) == 0) && cr->UseLen) // len tick
+    {
+        sqr->Len++;
+        if ((sqr->Len & 0x3F) == 0)
+        {
+            if (!id) sys->AGBSndEn.Snd1Running = false;
+            else     sys->AGBSndEn.Snd2Running = false;
+            CGBSnd_KillChannel(sys, id);
+        }
+    }
+
+    if (!id && (now & (GB_DIVAPUTICK(4)-1)) == 0) // sweep tick
+    {
+        lat->Swp.Cur++;
+        if (lat->Swp.Cur >= lat->Swp.Pace)
+        {
+            u8 step = lat->Swp.Freq >> sqr->SweepShift;
+            if (sqr->SweepDir && (lat->Swp.Pace > 0))
+            {
+                s16 nfreq = lat->Swp.Freq - step;
+                if (nfreq < 0) lat->Swp.Freq = cr->Freq = 0; // checkme?
+                else           lat->Swp.Freq = cr->Freq = nfreq;
+            }
+            else
+            {
+                s16 nfreq = lat->Swp.Freq + step;
+                if (nfreq > 0x7FF)
+                {
+                    CGBSnd_KillChannel(sys, 0);
+                    sys->AGBSndEn.Snd1Running = false; // kill channel?
+                }
+                else if (lat->Swp.Pace > 0)
+                {
+                    lat->Swp.Freq = cr->Freq = nfreq;
+                }
+            }
+            lat->Swp.Cur = 0;
+            lat->Swp.Pace = sqr->SweepPace;
+        }
+    }
+
+    if ((now & (GB_DIVAPUTICK(8)-1)) == 0) // envelope tick
+    {
+        lat->Env.Cur++;
+        if (lat->Env.Cur >= lat->Env.Pace)
+        {
+            s8 vol = lat->Env.Vol;
+            if (lat->Env.Dir) vol++;
+            else              vol--;
+
+            if (vol > 0xF || vol < 0)
+            {
+                if (!id) sys->AGBSndEn.Snd1Running = false;
+                else     sys->AGBSndEn.Snd2Running = false;
+                CGBSnd_KillChannel(sys, id);
+            }
+            else lat->Env.Vol = vol;
+
+            lat->Env.Cur = 0;
+        }
+    }
+}
+
+void AGBSnd_APUDivTick(Console* sys, const timestamp now)
+{
+    AGBSquare_Tick(sys, now, 0);
+    AGBSquare_Tick(sys, now, 1);
+
+    Sched_AddEvent(sys, now+GB_DIVAPUTICK(1), Evt_CGBSndAPUDIV);
+}
+
+void AGBSndDMA_Sample(Console* sys, const u8 id, const timestamp now, const bool b)
+{
+    if (id == (b ? sys->AGBSndCR.BTimerSel : sys->AGBSndCR.ATimerSel))
+    {
+        if (((sys->AGBSndFIFOFillPtr[b] - sys->AGBSndFIFODrainPtr[b]) % countof(sys->AGBSndFIFO[b].b8)) > 0) // yes, that is correct
+        {
+            sys->AGBSamples[4+b] = sys->AGBSndFIFO[b].b8[sys->AGBSndFIFODrainPtr[b]];
+            sys->AGBSndFIFODrainPtr[b] += 1;
+            sys->AGBSndFIFODrainPtr[b] %= countof(sys->AGBSndFIFO[b].b8);
+        }
+
+        if (((sys->AGBSndFIFOFillPtr[b] - sys->AGBSndFIFODrainPtr[b]) % countof(sys->AGBSndFIFO[b].b8)) <= (4*3))
+            StartDMA(sys, now, DMAStart_AGBAudio, false);
+    }
+}
+
+void AGBSoundDMATimer_Overflow(Console* sys, const u8 id, const timestamp now)
+{
+    if (!sys->AGBSndEn.MEnable) return;
+
+    AGBSndDMA_Sample(sys, id, now, false);
+    AGBSndDMA_Sample(sys, id, now, true);
+}
+
+void AGBSound_IORead(Console* sys, const u32 addr, u32* rdata)
+{
+    switch (addr & 0xFC)
+    {
+    case 0x60: *rdata = sys->CGBSquare[0].Raw & 0xFFC0FFFF; break;
+    case 0x64: *rdata = sys->CGBSndCR[0].Raw & 0x4000; break;
+
+    case 0x68: *rdata = (sys->CGBSquare[1].Raw >> 16) & 0xFFC0; break;
+    case 0x6C: *rdata = sys->CGBSndCR[1].Raw & 0x4000; break;
+
+    case 0x70: *rdata = sys->CGBWave.Raw & 0xFF00FFFF; break;
+    case 0x74: *rdata = sys->CGBSndCR[2].Raw & 0x4000; break;
+
+    case 0x78: *rdata = sys->CGBNoiseLen.Raw & 0xFFC0; break;
+    case 0x7C: *rdata = sys->CGBNoiseCR.Raw & 0x7FFF; break;
+
+    case 0x80: *rdata = sys->AGBSndCR.Raw; break;
+    case 0x84: *rdata = sys->AGBSndEn.Raw; break;
+    case 0x88: *rdata = (sys->SoundBias & 0x3FE) | sys->SoundRate<<14; break;
+
+    case 0x90 ... 0x9C: { // chan 3: wave ram
+        u8 idx = (addr & 0xC)/ 4;
+        // nibbles are swapped within a byte??
+        *rdata = 0;
+        u32 nibblefuckery = sys->CGBWaveRAM[!sys->CGBWave.WaveBank].Word[idx];
+        for (int i = 0; i < 4; i++)
+        {
+            *rdata |= (u32)ROR8((nibblefuckery >> (8*i)) & 0xFF, 4) << ((u32)8*i);
+        }
+        break;
+    }
+    }
+}
+
+void AGBSound_IOWrite(Console* sys, const u32 addr, u32 wrdata, const u32 mask, const timestamp now)
+{
+    switch (addr & 0xFC)
+    {
+    // chan 1: square wave w/ sweep
+    case 0x60: {
+        if (sys->AGBSndEn.MEnable) {
+            u8 oldpace = sys->CGBSquare[0].SweepPace;
+            MaskedWrite(sys->CGBSquare[0].Raw, wrdata, mask & 0xFF'FF'00'7F);
+
+            if ((mask & 0x00'00'00'FF) && ((oldpace == 0) || (sys->CGBSquare[0].SweepPace == 0))) // Sweep off or on
+            {
+                sys->CGBSquareLatch[0].Swp.Pace = sys->CGBSquare[0].SweepPace;
+                sys->CGBSquareLatch[0].Swp.Cur = 0; // checkme?
+                sys->CGBSquareLatch[0].Swp.Freq = sys->CGBSndCR[0].Freq; // checkme?
+            }
+
+            if ((mask & 0xFF'00'00'00) && (((sys->CGBSquare[0].Raw >> 27) & 0x1F) == 0)) // DAC off
+            {
+                sys->AGBSndEn.Snd1Running = false; // turn channel off
+                CGBSnd_KillChannel(sys, 0);
+            }
+        }
+        break;
+    }
+    case 0x64: {
+        if (sys->AGBSndEn.MEnable) {
+            MaskedWrite(sys->CGBSndCR[0].Raw, wrdata, mask & 0x47FF);
+
+            if ((wrdata & mask & 0x8000) // enable channel
+            && (((sys->CGBSquare[0].Raw >> 27) & 0x1F) != 0)) // DAC is on
+            {
+                sys->CGBSquareLatch[0].Len = sys->CGBSquare[0].Len;
+                sys->CGBSquareLatch[0].Counter = sys->CGBSndCR[0].Freq;
+                sys->CGBSquareLatch[0].Env.Cur = 0;
+                sys->CGBSquareLatch[0].Env.Vol = sys->CGBSquare[0].EnvelopeVol;
+
+                sys->CGBSquareLatch[0].Swp.On = (sys->CGBSquare[0].SweepShift || sys->CGBSquare[0].SweepPace);
+                sys->CGBSquareLatch[0].Swp.Pace = sys->CGBSquare[0].SweepPace;
+                sys->CGBSquareLatch[0].Swp.Cur = 0;
+                sys->CGBSquareLatch[0].Swp.Freq = sys->CGBSndCR[0].Freq;
+                if ((sys->CGBSquare[0].SweepShift == 0)
+                    || sys->CGBSquare[0].SweepDir // decrementing
+                    || ((sys->CGBSquareLatch[0].Swp.Freq + (sys->CGBSquareLatch[0].Swp.Freq >> sys->CGBSquare[0].SweepShift)) <= 0x7FF))
+                {
+                    sys->AGBSndEn.Snd1Running = true;
+                    CGBSnd_StartChannel(sys, now, sys->CGBSndCR[0].Freq, 0);
+                }
+                else
+                {
+                    sys->AGBSndEn.Snd1Running = false;
+                    CGBSnd_KillChannel(sys, 0);
+                }
+            }
+        }
+        break;
+    }
+
+    // chan 2: square wave
+    case 0x68: {
+        if (sys->AGBSndEn.MEnable) {
+            MaskedWrite(sys->CGBSquare[1].Raw, wrdata << 16, (mask & 0xFFFF) << 16);
+
+            if ((mask & 0xFF'00'00'00) && (((sys->CGBSquare[1].Raw >> 27) & 0x1F) == 0)) // DAC off
+            {
+                sys->AGBSndEn.Snd1Running = false; // turn channel off
+                CGBSnd_KillChannel(sys, 1);
+            }
+        }
+        break;
+    }
+    case 0x6C: {
+        if (sys->AGBSndEn.MEnable) {
+            MaskedWrite(sys->CGBSndCR[1].Raw, wrdata, mask & 0x47FF);
+
+            if ((wrdata & mask & 0x8000) // enable channel
+            && (((sys->CGBSquare[1].Raw >> 27) & 0x1F) != 0)) // DAC is on
+            {
+                sys->CGBSquareLatch[1].Len = sys->CGBSquare[1].Len;
+                sys->CGBSquareLatch[1].Counter = sys->CGBSndCR[1].Freq;
+                sys->CGBSquareLatch[1].Env.Cur = 0;
+                sys->CGBSquareLatch[1].Env.Vol = sys->CGBSquare[1].EnvelopeVol;
+
+                sys->AGBSndEn.Snd2Running = true;
+                CGBSnd_StartChannel(sys, now, sys->CGBSndCR[1].Freq, 1);
+            }
+        }
+        break;
+    }
+
+    // chan 3: wave
+    case 0x70: {
+        if (sys->AGBSndEn.MEnable) {
+            MaskedWrite(sys->CGBWave.Raw, wrdata, mask & 0xE0FF00E0);
+        }
+        break;
+    }
+    case 0x74: {
+        if (sys->AGBSndEn.MEnable) {
+            MaskedWrite(sys->CGBSndCR[2].Raw, wrdata, mask & 0x47FF);
+            if (wrdata & mask & 0x8000);
+        }
+        break;
+    }
+
+    // chan 4: noise
+    case 0x78: {
+        if (sys->AGBSndEn.MEnable) {
+            MaskedWrite(sys->CGBNoiseLen.Raw, wrdata, mask & 0xFF3F);
+        }
+        break;
+    }
+    case 0x7C: {
+        if (sys->AGBSndEn.MEnable) {
+            MaskedWrite(sys->CGBNoiseCR.Raw, wrdata, mask & 0x40FF);
+            if (wrdata & mask & 0x8000);
+        }
+        break;
+    }
+
+    // snd control:
+    case 0x80: {
+        if (sys->AGBSndEn.MEnable) {
+            MaskedWrite(sys->AGBSndCR.Raw, wrdata, mask & 0x770FFF77);
+            if (wrdata & mask & 0x08000000) // reset fifo A
+            {
+                memset(sys->AGBSndFIFO[0].b8, 0, sizeof(sys->AGBSndFIFO[0].b8));
+                sys->AGBSndFIFODrainPtr[0] = 0;
+                sys->AGBSndFIFOFillPtr[0] = 0;
+            }
+            if (wrdata & mask & 0x80000000) // reset fifo B
+            {
+                memset(sys->AGBSndFIFO[1].b8, 0, sizeof(sys->AGBSndFIFO[1].b8));
+                sys->AGBSndFIFODrainPtr[1] = 0;
+                sys->AGBSndFIFOFillPtr[1] = 0;
+            }
+        }
+        break;
+    }
+    case 0x84: {
+        bool olden = sys->AGBSndEn.MEnable;
+        sys->AGBSndEn.Raw = wrdata & mask & 0x80;
+        if (!sys->AGBSndEn.MEnable && olden) { // disable
+            // reset all psg channel regs
+            sys->CGBSquare[0].Raw = 0;
+            sys->CGBSquare[1].Raw = 0;
+            sys->CGBWave.Raw = 0;
+            sys->CGBNoiseLen.Raw = 0;
+
+            sys->CGBSndCR[0].Raw = 0;
+            sys->CGBSndCR[1].Raw = 0;
+            sys->CGBSndCR[2].Raw = 0;
+            sys->CGBNoiseCR.Raw = 0;
+
+            sys->AGBSndCR.Raw &= 0xFFFF0000; // reset low halfword // checkme: should it be 0xFFFC0000?
+
+            CGBSnd_KillChannel(sys, 0);
+            CGBSnd_KillChannel(sys, 1);
+        }
+        break;
+    }
+
+    case 0x88: {
+        MaskedWrite(sys->SoundBias, wrdata, mask & 0x3FE);
+        MaskedWrite(sys->SoundRate, wrdata>>14, (mask >> 14) & 0x3);
+        break;
+    }
+
+    case 0x90 ... 0x9C: { // chan 3: wave ram
+        if (sys->AGBSndEn.MEnable) {
+            u8 idx = (addr & 0xC)/ 4;
+            // nibbles are swapped within a byte??
+            u32 nibblefuckery = 0;
+            for (int i = 0; i < 4; i++)
+            {
+                nibblefuckery |= (u32)ROR8((wrdata >> (8*i)) & 0xFF, 4) << ((u32)8*i);
+            }
+            MaskedWrite(sys->CGBWaveRAM[!sys->CGBWave.WaveBank].Word[idx], nibblefuckery, mask);
+        }
+        break;
+    }
+
+    case 0xA0: { // chan A: FIFO
+        if (sys->AGBSndEn.MEnable) {
+            MaskedWrite(sys->AGBSndFIFO[0].b32[sys->AGBSndFIFOFillPtr[0]/4], wrdata, mask);
+            sys->AGBSndFIFOFillPtr[0] += 4;
+            sys->AGBSndFIFOFillPtr[0] %= (countof(sys->AGBSndFIFO[0].b8));
+        }
+        break;
+    }
+    case 0xA4: { // chan B: FIFO
+        if (sys->AGBSndEn.MEnable) {
+            MaskedWrite(sys->AGBSndFIFO[1].b32[sys->AGBSndFIFOFillPtr[1]/4], wrdata, mask);
+            sys->AGBSndFIFOFillPtr[1] += 4;
+            sys->AGBSndFIFOFillPtr[1] %= (countof(sys->AGBSndFIFO[1].b8));
+        }
+        break;
+    }
+    }
+}

@@ -44,8 +44,7 @@ typedef struct
     union
     {
         u32 Raw;
-        struct
-        {
+        struct {
             u32 VolumeMultiplier : 7;
             u32 : 1;
             u32 VolumeDivider : 2;
@@ -87,11 +86,9 @@ typedef struct
 
 typedef struct
 {
-    union
-    {
+    union {
         u8 Raw;
-        struct
-        {
+        struct {
             bool Addition : 1;
             bool Source : 1;
             bool NoLoop : 1;
@@ -105,8 +102,7 @@ typedef struct
     u32 LatchedLength;
     u32 Prog;
     u8 FIFOPtr;
-    union
-    {
+    union {
         u8 PCM8[4];
         u16 PCM16[2];
         u32 Raw;

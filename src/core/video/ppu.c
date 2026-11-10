@@ -1238,7 +1238,7 @@ void PPU_StepComposite(Console* sys, const u16 h, const PPU_Type type)
             ppu->BgMosaicXFrac = 0;
         }
 
-        if (x > LCD_Width) return; // nothing to do here
+        if (x >= LCD_Width) return; // nothing to do here
 
         ppu->CompBGs[0] = -1;
         ppu->CompBGs[1] = -1;
@@ -1312,7 +1312,7 @@ void PPU_StepComposite(Console* sys, const u16 h, const PPU_Type type)
     }
     if (cycle % PPU_IterLen == 2)
     {
-        if (x > LCD_Width) return; // nothing to do here
+        if (x >= LCD_Width) return; // nothing to do here
 
         // fetch bottom pixel
         PPU_FetchPalette(sys, 1, type);

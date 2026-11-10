@@ -6,6 +6,7 @@
 #include "core/irq.h"
 #include "core/video/3d.h"
 #include "core/video/video.h"
+#include "core/io/agbsound.h"
 #include "utils.h"
 #include <stdckdint.h>
 
@@ -200,6 +201,12 @@ Core_Ret Sched_RunEvent(Console* sys)
 
     case Evt_SCapDMA70
      ... Evt_DMA73:         DMA_Step(sys, evt-Evt_SCapDMA70, now, false); break;
+
+    case Evt_CGBSndAPUDIV:  AGBSnd_APUDivTick(sys, now); break;
+    case Evt_CGBSnd1:       AGBSquare_Run(sys, now, 0); break;
+    case Evt_CGBSnd2:       AGBSquare_Run(sys, now, 1); break;
+    //case Evt_CGBSnd3:
+    //case Evt_CGBSnd4:
 
     case Evt_TimerSnd0CR
      ... Evt_TimerSndFCR:   Timer_UpdateCR(sys, sys->TimersSound, evt-Evt_TimerSnd0CR, now, TimerType_Snd); break;

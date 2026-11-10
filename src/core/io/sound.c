@@ -3,6 +3,7 @@
 #include <stdckdint.h>
 #include "core/console.h"
 #include "sound.h"
+#include "agbsound.h"
 #include "core/scheduler.h"
 #include "dma.h"
 #include "timer.h"
@@ -16,7 +17,7 @@ s32 AudioMixer_Pan(s32 sample, u8 pan, const bool left)
     return ((s64)sample * pan) >> 10;
 }
 
-void AudioMixer_Run(Console* sys, timestamp now [[maybe_unused]])
+void AudioMixer_Run(Console* sys)
 {
     //if ((now/MixerDivide) <= sys->MixerLastRun) return;
     //sys->MixerLastRun = now/MixerDivide;
@@ -46,13 +47,20 @@ void AudioMixer_Run(Console* sys, timestamp now [[maybe_unused]])
 
 void AudioMixer_Sample(Console* sys, timestamp now)
 {
-    AudioMixer_Run(sys, now);
-
     s16 sampleout[2] = {0, 0};
-    if (sys->PowerCR7.AudioPower)
+
+    if (sys->AGB) AGBMixer_Run(sys);
+    else          AudioMixer_Run(sys);
+
+    if (sys->PowerCR7.AudioPower || sys->AGB)
     {
         s32 out[2] = {0, 0};
-        if (sys->SoundCR.MasterEn)
+        if (sys->AGB)
+        {
+            out[0] = sys->MixerOut[0];
+            out[1] = sys->MixerOut[1];
+        }
+        else if (sys->SoundCR.MasterEn)
         {
             if (sys->SoundCR.LeftSrc == 0) out[0] = sys->MixerOut[0];
             else
@@ -71,7 +79,8 @@ void AudioMixer_Sample(Console* sys, timestamp now)
 
         for (int i = 0; i < 2; i++)
         {
-            out[i] = ((s64)out[i] * (sys->SoundCR.MasterVol + (sys->SoundCR.MasterVol == 127))) >> 15;
+            if (!sys->AGB)
+                out[i] = ((s64)out[i] * (sys->SoundCR.MasterVol + (sys->SoundCR.MasterVol == 127))) >> 15;
 
             if (sys->SysCfg.NTRAudioOut == NTRAudioOut_10)
             {
@@ -94,12 +103,6 @@ void AudioMixer_Sample(Console* sys, timestamp now)
                 sampleout[i] = out[i];
             }
         }
-    }
-
-    if (sys->AGB)
-    {
-        sampleout[0] = 0;
-        sampleout[1] = 0;
     }
 
     if (!SDL_PutAudioStreamData(sys->Aud, sampleout, sizeof(sampleout))) printf("wat %s\n", SDL_GetError());
@@ -195,7 +198,7 @@ void SoundFIFO_Sample(Console* sys, const u8 num, const timestamp now)
     {
         if (!sys->SoundCR.MasterEn) channel->LastSubmit = now / MixerDivide; // checkme?
         if ((Sched_GetTime(&sys->Sched, Evt_MixAudio)/MixerDivide) == (now/MixerDivide))
-            AudioMixer_Run(sys, now);
+            AudioMixer_Run(sys);
 
         switch(channel->CR.Format)
         {
@@ -330,7 +333,7 @@ void SoundFIFO_Sample(Console* sys, const u8 num, const timestamp now)
 
         if (!cap->CR.Enable) return;
 
-        AudioMixer_Run(sys, now);
+        AudioMixer_Run(sys);
 
         s16 out;
         if (cap->CR.Source) // channel 0/2

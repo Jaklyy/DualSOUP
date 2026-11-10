@@ -1,5 +1,6 @@
 #include "core/console.h"
 #include "core/video/video.h"
+#include "core/io/agbsound.h"
 
 
 void IOAGB_Read(Console* sys, const u32 addr, const timestamp now)
@@ -9,12 +10,16 @@ void IOAGB_Read(Console* sys, const u32 addr, const timestamp now)
     {
     // video A
     case 0x00'00'00: // dispcnt
-    case 0x00'00'08 ... 0x00'00'54: // ppu/lcd block
+    case 0x00'00'08
+     ... 0x00'00'5C: // ppu/lcd block
         PPU_IORead(&sys->PPU_A, &rdata, addr);  break;
 
     case 0x00'00'04: rdata = (sys->VCountAGB << 16) | sys->DispStatRO7.Raw | sys->DispStatRW7.Raw; break;
 
-    case 0x00'00'88: rdata = (sys->SoundBias & 0x3FE) | sys->SoundRate<<14; break;
+    case 0x00'00'60
+     ... 0x00'00'AC: // sound block
+        AGBSound_IORead(sys, addr, &rdata); break;
+
 
     case 0x00'00'B8: rdata = (sys->DMA7[DMA7_NormalBase+0].CR.Raw & 0xFFFF0000); break;
     case 0x00'00'C4: rdata = (sys->DMA7[DMA7_NormalBase+1].CR.Raw & 0xFFFF0000); break;
@@ -58,7 +63,7 @@ void IOAGB_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, 
     switch(addr & 0xFF'FF'FC)
     {
     case 0x00'00'00:
-    case 0x00'00'08 ... 0x00'00'54:
+    case 0x00'00'08 ... 0x00'00'5C: // ppu/lcd block
         PPU_Sync(sys, now);
         PPU_IOWrite(&sys->PPU_A, addr, wrdata, mask, false, true, true);
         break;
@@ -68,12 +73,9 @@ void IOAGB_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, 
         sys->TargetVCount7 = sys->DispStatRW7.VCountLSB;
         break;
 
-    case 0x00'00'88:
-    {
-        MaskedWrite(sys->SoundBias, wrdata, mask & 0x3FE);
-        MaskedWrite(sys->SoundRate, wrdata>>14, (mask >> 14) & 0x3);
-        break;
-    }
+    case 0x00'00'60
+     ... 0x00'00'AC: // sound block
+        AGBSound_IOWrite(sys, addr, wrdata, mask, now); break;
 
     case 0x00'00'B0 ... 0x00'00'DC: DMA7_IOWriteHandler(sys, now, &sys->DMA7[DMA7_NormalBase], addr, wrdata, mask); break;
 

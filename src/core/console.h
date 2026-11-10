@@ -14,6 +14,7 @@
 #include "arm/arm7/arm.h"
 #include "bus/bus.h"
 #include "io/sound.h"
+#include "io/agbsound.h"
 #include "io/timer.h"
 #include "io/dma.h"
 #include "io/rtc.h"
@@ -643,12 +644,38 @@ typedef struct Console
 
     SoundChannel SoundChannels[16];
     SoundCapture SoundCaptures[2];
+
+    CGBSndSquare CGBSquare[2];
+    union
+    {
+        alignas(16)
+        u128 Shift;
+        u32 Word[128/32];
+    } CGBWaveRAM[2];
+    AGBSndCR AGBSndCR;
+    CGBSndWave CGBWave;
+    CGBSndCR CGBSndCR[3];
+    CGBSndNoiseLen CGBNoiseLen;
+    CGBSndNoiseCR CGBNoiseCR;
+    AGBSndEn AGBSndEn;
+    u8 SoundRate; // agb
+    s8 AGBSamples[6];
+    CGBSquareLatch CGBSquareLatch[2];
+
+    union
+    {
+        u8 b8[32];
+        u32 b32[8];
+    } AGBSndFIFO[2];
+    u8 AGBSndFIFOFillPtr[2];
+    u8 AGBSndFIFODrainPtr[2];
+
+    u16 SoundBias;
+
     timestamp AudioFrac;
     timestamp MixerFrac;
     s32 MixerOut[2];
 
-    u16 SoundBias;
-    u8 SoundRate; // agb
     timestamp MixerLastRun;
 
     timestamp LastPoll; // last cycle time we polled for input

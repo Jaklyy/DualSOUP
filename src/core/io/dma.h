@@ -4,7 +4,7 @@
 
 
 
-enum DMA_StartModes : u8
+typedef enum : u8
 {
     DMAStart_Null,
     DMAStart_Immediate,
@@ -18,7 +18,8 @@ enum DMA_StartModes : u8
     DMAStart_WiFiIRQ,
     DMAStart_Audio,
     DMAStart_AudioCap,
-};
+    DMAStart_AGBAudio,
+} DMA_StartModes;
 
 union DMA_CR
 {
@@ -115,7 +116,7 @@ typedef struct
     s32 CompMax;
     s8 SrcInc;
     s8 DstInc;
-    u8 CurrentMode;
+    DMA_StartModes CurrentMode;
     bool Latched_Width32;
     bool AnyReadHadWaitstates;
     bool ReadBusyDone;

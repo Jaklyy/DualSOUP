@@ -41,7 +41,7 @@ void DMA_Init(Console* sys)
     }
 }
 
-void StartDMA(Console* sys, timestamp start, u8 mode, bool a9)
+void StartDMA(Console* sys, timestamp start, DMA_StartModes mode, bool a9)
 {
     DMA_Channel* base = (a9 ? &sys->DMA9[DMA9_NormalBase] : &sys->DMA7[DMA7_NormalBase]);
     for (u64 i = 0; i < (a9 ? DMA9_NumNormal : DMA7_NumNormal); i++)
@@ -106,7 +106,9 @@ void DMA7_Enable(Console* sys, DMA_Channel* channel, u8 id [[maybe_unused]], tim
             channel->CurrentMode = DMAStart_VBlank;
             break;
         }
-        case 2: // NTR Game Card || AGB HBlank
+        // NTR: Game Card
+        // AGB: HBlank
+        case 2:
         {
             if (sys->AGB)
             {
@@ -121,16 +123,45 @@ void DMA7_Enable(Console* sys, DMA_Channel* channel, u8 id [[maybe_unused]], tim
             }
             break;
         }
-        #if 0
-        case 3: // (DMA 0 & 2) WiFi IRQ / (DMA 1 & 3) AGB Game Pak IRQ
+        // NTR: (DMA 0 & 2) WiFi IRQ / (DMA 1 & 3) AGB Game Pak IRQ
+        // AGB: (DMA0) prohibited / (DMA 1 & 2) Sound DMA / (DMA 3) Video
+        case 3:
         {
-            channel->CurrentMode = (channel_id & 0b01) ? DMAStart_AGBPakIRQ : DMAStart_WiFiIRQ;
-            // agb pak dma is probably based on the pak slot irq pin?
-            // wifi irq might not actually be real?
-            break;
+            if (sys->AGB)
+            {
+                switch (id)
+                {
+                case 0: break;
+                case 1 ... 2:
+                {
+                    channel->CurrentMode = DMAStart_AGBAudio;
+
+                    // dest/src inc is overriden by mode
+                    switch(channel->CR.SourceCR)
+                    {
+                    case 0: channel->SrcInc = 4; break;
+                    case 1: channel->SrcInc = -4; break;
+                    case 2: channel->SrcInc = 0; break;
+                    case 3: channel->SrcInc = 4; break;
+                    }
+                    channel->DstInc = 0;
+                    return;
+                }
+                case 3: channel->CurrentMode = DMAStart_Video; break;
+                }
+            }
+            else
+            {
+#if 0
+                channel->CurrentMode = (id & 0b01) ? DMAStart_AGBPakIRQ : DMAStart_WiFiIRQ;
+                // agb pak dma is probably based on the pak slot irq pin?
+                // wifi irq might not actually be real?
+                break;
+#endif
+            }
+            [[fallthrough]];
         }
-        #endif
-        default: LogPrint(LOG_UNIMP | LOG_DMA, "UNIMPLEMENTED DMA7 MODE %i\n", channel->CR.StartMode7); break;
+        default: LogPrint(LOG_UNIMP | LOG_DMA, "UNIMPLEMENTED DMA7 MODE: %i ChanID: %i\n", channel->CR.StartMode7, id); break;
         }
     }
 
@@ -341,15 +372,28 @@ void DMA_Step(Console* sys, const u8 id, timestamp now, const bool a9)
             {
                 // CHECKME: idk, where and when things are latched needs testing.
                 if (channel->CR.SourceCR == 3) channel->Latched_SrcAddr = channel->SrcAddr;
-                if (channel->CR.DestCR   == 3) channel->Latched_DstAddr = channel->DstAddr;
-                if (channel->CR.Width32)
+
+                if (channel->CurrentMode == DMAStart_AGBAudio)
                 {
+                    // mode overrides settings
                     channel->Latched_SrcAddr &= ~3;
                     channel->Latched_DstAddr &= ~3;
-                }
 
-                channel->Latched_NumWords = channel->NumWords;
-                channel->Latched_Width32 = channel->CR.Width32; // idk
+                    channel->Latched_NumWords = 4;
+                    channel->Latched_Width32 = true;
+                }
+                else
+                {
+                    if (channel->CR.DestCR == 3) channel->Latched_DstAddr = channel->DstAddr;
+                    if (channel->CR.Width32)
+                    {
+                        channel->Latched_SrcAddr &= ~3;
+                        channel->Latched_DstAddr &= ~3;
+                    }
+
+                    channel->Latched_NumWords = channel->NumWords;
+                    channel->Latched_Width32 = channel->CR.Width32; // idk
+                }
             }
 
             if (channel->WriteCur == channel->BurstMax) // burst complete

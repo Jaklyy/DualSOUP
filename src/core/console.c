@@ -560,6 +560,8 @@ void Console_ResetAGB(Console* sys, timestamp now)
     //Sched_AddEvent(sys, now, Evt_Scanline); // TODO: NDS VCount should probably still be running?
     Sched_AddEvent(sys, now, Evt_AGBScanline);
 
+    Sched_AddEvent(sys, (now + GB_DIVAPUTICK(1)) & ~(GB_DIVAPUTICK(1)-1), Evt_CGBSndAPUDIV);
+
     sys->PPUStart = false;
     sys->PPUTarget = timestamp_max; // pretend this is a good solution.
 
