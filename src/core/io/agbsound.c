@@ -28,9 +28,8 @@ void AGBMixer_Run(Console* sys)
                 if (En4[i]) sys->MixerOut[i] += sys->AGBSamples[3];
 
                 sys->MixerOut[i] <<= sys->AGBSndCR.CGBVol + 5;
-                sys->MixerOut[i] *= (CGBVol[i] + (CGBVol[i] == 0));
+                sys->MixerOut[i] *= (CGBVol[i] + 1);
             }
-            sys->MixerOut[i] = 0;
             if (EnA[i]) sys->MixerOut[i] += sys->AGBSamples[4] << (sys->AGBSndCR.AVol+7);
             if (EnB[i]) sys->MixerOut[i] += sys->AGBSamples[5] << (sys->AGBSndCR.BVol+7);
         }
@@ -48,24 +47,23 @@ void CGBSnd_StartChannel(Console* sys, const timestamp now, const u16 counter, c
 
 void CGBSnd_KillChannel(Console* sys, const u8 id)
 {
-    //sys->AGBSamples[id] = 0;
+    sys->AGBSamples[id] = -8;
     Sched_RemoveEvent(&sys->Sched, Evt_CGBSnd1+id);
 }
 
 void AGBSquare_Run(Console* sys, const timestamp now, const u8 id)
 {
-    sys->CGBSquareLatch[id].Tick++;
-    sys->CGBSquareLatch[id].Tick &= 0x7;
-
     const u8 Duty[4] = {1, 2, 4, 6};
     if (sys->CGBSquareLatch[id].Tick < (Duty[sys->CGBSquare[id].WaveDuty]))
     {
-        sys->AGBSamples[id] = sys->CGBSquareLatch[id].Env.Vol - 8;
+        sys->AGBSamples[id] = sys->CGBSquareLatch[id].Env.Vol-8;
     }
     else
     {
         sys->AGBSamples[id] = -8;
     }
+    sys->CGBSquareLatch[id].Tick++;
+    sys->CGBSquareLatch[id].Tick &= 0x7;
 
     Sched_AddEvent(sys, now + (((1<<11)-sys->CGBSndCR[id].Freq)*CGBSnd_ClockDiv[id]), Evt_CGBSnd1+id);
 }
@@ -78,8 +76,9 @@ void AGBSquare_Tick(Console* sys, const timestamp now, const bool id)
 
     if (((now & (GB_DIVAPUTICK(2)-1)) == 0) && cr->UseLen) // len tick
     {
-        sqr->Len++;
-        if ((sqr->Len & 0x3F) == 0)
+        lat->Len--;
+        lat->Len &= 0x3F;
+        if (sqr->Len == 0)
         {
             if (!id) sys->AGBSndEn.Snd1Running = false;
             else     sys->AGBSndEn.Snd2Running = false;
@@ -87,54 +86,57 @@ void AGBSquare_Tick(Console* sys, const timestamp now, const bool id)
         }
     }
 
-    if (!id && (now & (GB_DIVAPUTICK(4)-1)) == 0) // sweep tick
+    if ((id == 0) && ((now & (GB_DIVAPUTICK(4)-1)) == 0)) // sweep tick
     {
-        lat->Swp.Cur++;
-        if (lat->Swp.Cur >= lat->Swp.Pace)
+        lat->Swp.Cur--;
+        lat->Swp.Cur &= 0x7;
+        if (lat->Swp.Cur == 0)
         {
-            u8 step = lat->Swp.Freq >> sqr->SweepShift;
-            if (sqr->SweepDir && (lat->Swp.Pace > 0))
+            if (lat->Swp.On)
             {
-                s16 nfreq = lat->Swp.Freq - step;
-                if (nfreq < 0) lat->Swp.Freq = cr->Freq = 0; // checkme?
-                else           lat->Swp.Freq = cr->Freq = nfreq;
-            }
-            else
-            {
-                s16 nfreq = lat->Swp.Freq + step;
+                u8 step = lat->Swp.Freq >> sqr->SweepShift;
+                u16 nfreq;
+                if (sqr->SweepDir) nfreq = lat->Swp.Freq - step;
+                else               nfreq = lat->Swp.Freq + step;
+
                 if (nfreq > 0x7FF)
                 {
                     CGBSnd_KillChannel(sys, 0);
                     sys->AGBSndEn.Snd1Running = false; // kill channel?
                 }
-                else if (lat->Swp.Pace > 0)
+                else if (sqr->SweepShift > 0) // checkme??
                 {
-                    lat->Swp.Freq = cr->Freq = nfreq;
+                    cr->Freq = lat->Swp.Freq = nfreq;
+
+                    u8 step = lat->Swp.Freq >> sqr->SweepShift;
+                    if (sqr->SweepDir) nfreq = lat->Swp.Freq - step;
+                    else               nfreq = lat->Swp.Freq + step;
+
+                    if (nfreq > 0x7FF)
+                    {
+                        CGBSnd_KillChannel(sys, 0);
+                        sys->AGBSndEn.Snd1Running = false; // kill channel?
+                    }
                 }
             }
-            lat->Swp.Cur = 0;
+            lat->Swp.Cur = lat->Swp.Pace;
             lat->Swp.Pace = sqr->SweepPace;
         }
     }
 
-    if ((now & (GB_DIVAPUTICK(8)-1)) == 0) // envelope tick
+    if ((lat->Env.Pace != 0) && ((now & (GB_DIVAPUTICK(8)-1)) == 0)) // envelope tick
     {
-        lat->Env.Cur++;
-        if (lat->Env.Cur >= lat->Env.Pace)
+        lat->Env.Cur--;
+        if (lat->Env.Cur == 0)
         {
-            s8 vol = lat->Env.Vol;
-            if (lat->Env.Dir) vol++;
-            else              vol--;
+            s8 newVol = lat->Env.Vol;
+            if (lat->Env.Dir) newVol++;
+            else              newVol--;
 
-            if (vol > 0xF || vol < 0)
-            {
-                if (!id) sys->AGBSndEn.Snd1Running = false;
-                else     sys->AGBSndEn.Snd2Running = false;
-                CGBSnd_KillChannel(sys, id);
-            }
-            else lat->Env.Vol = vol;
+            if (newVol <= 0xF && newVol >= 0)
+                lat->Env.Vol = newVol;
 
-            lat->Env.Cur = 0;
+            lat->Env.Cur = lat->Env.Pace;
         }
     }
 }
@@ -218,7 +220,7 @@ void AGBSound_IOWrite(Console* sys, const u32 addr, u32 wrdata, const u32 mask, 
             if ((mask & 0x00'00'00'FF) && ((oldpace == 0) || (sys->CGBSquare[0].SweepPace == 0))) // Sweep off or on
             {
                 sys->CGBSquareLatch[0].Swp.Pace = sys->CGBSquare[0].SweepPace;
-                sys->CGBSquareLatch[0].Swp.Cur = 0; // checkme?
+                sys->CGBSquareLatch[0].Swp.Cur = sys->CGBSquare[0].SweepPace;
                 sys->CGBSquareLatch[0].Swp.Freq = sys->CGBSndCR[0].Freq; // checkme?
             }
 
@@ -237,14 +239,15 @@ void AGBSound_IOWrite(Console* sys, const u32 addr, u32 wrdata, const u32 mask, 
             if ((wrdata & mask & 0x8000) // enable channel
             && (((sys->CGBSquare[0].Raw >> 27) & 0x1F) != 0)) // DAC is on
             {
-                sys->CGBSquareLatch[0].Len = sys->CGBSquare[0].Len;
+                sys->CGBSquareLatch[0].Len = (64-sys->CGBSquare[0].Len);
                 sys->CGBSquareLatch[0].Counter = sys->CGBSndCR[0].Freq;
-                sys->CGBSquareLatch[0].Env.Cur = 0;
+                sys->CGBSquareLatch[0].Env.Pace = sys->CGBSquare[0].EnvelopePace;
+                sys->CGBSquareLatch[0].Env.Cur = sys->CGBSquare[0].EnvelopePace;
                 sys->CGBSquareLatch[0].Env.Vol = sys->CGBSquare[0].EnvelopeVol;
 
                 sys->CGBSquareLatch[0].Swp.On = (sys->CGBSquare[0].SweepShift || sys->CGBSquare[0].SweepPace);
                 sys->CGBSquareLatch[0].Swp.Pace = sys->CGBSquare[0].SweepPace;
-                sys->CGBSquareLatch[0].Swp.Cur = 0;
+                sys->CGBSquareLatch[0].Swp.Cur = sys->CGBSquare[0].SweepPace;
                 sys->CGBSquareLatch[0].Swp.Freq = sys->CGBSndCR[0].Freq;
                 if ((sys->CGBSquare[0].SweepShift == 0)
                     || sys->CGBSquare[0].SweepDir // decrementing
@@ -283,9 +286,10 @@ void AGBSound_IOWrite(Console* sys, const u32 addr, u32 wrdata, const u32 mask, 
             if ((wrdata & mask & 0x8000) // enable channel
             && (((sys->CGBSquare[1].Raw >> 27) & 0x1F) != 0)) // DAC is on
             {
-                sys->CGBSquareLatch[1].Len = sys->CGBSquare[1].Len;
+                sys->CGBSquareLatch[1].Len = (64-sys->CGBSquare[1].Len);
                 sys->CGBSquareLatch[1].Counter = sys->CGBSndCR[1].Freq;
-                sys->CGBSquareLatch[1].Env.Cur = 0;
+                sys->CGBSquareLatch[1].Env.Pace = sys->CGBSquare[1].EnvelopePace;
+                sys->CGBSquareLatch[1].Env.Cur = sys->CGBSquare[1].EnvelopePace;
                 sys->CGBSquareLatch[1].Env.Vol = sys->CGBSquare[1].EnvelopeVol;
 
                 sys->AGBSndEn.Snd2Running = true;
