@@ -203,8 +203,8 @@ Core_Ret Sched_RunEvent(Console* sys)
      ... Evt_DMA73:         DMA_Step(sys, evt-Evt_SCapDMA70, now, false); break;
 
     case Evt_CGBSndAPUDIV:  AGBSnd_APUDivTick(sys, now); break;
-    case Evt_CGBSnd1:       AGBSquare_Run(sys, now, 0); break;
-    case Evt_CGBSnd2:       AGBSquare_Run(sys, now, 1); break;
+    case Evt_CGBSnd1:       AGBPulse_Run(sys, now, 0); break;
+    case Evt_CGBSnd2:       AGBPulse_Run(sys, now, 1); break;
     case Evt_CGBSnd3:       AGBWave_Run(sys, now); break;
     case Evt_CGBSnd4:       AGBNoise_Run(sys, now); break;
 

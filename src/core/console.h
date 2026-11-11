@@ -645,35 +645,27 @@ typedef struct Console
     SoundChannel SoundChannels[16];
     SoundCapture SoundCaptures[2];
 
-    CGBSndSquare CGBSquare[2];
-    union
-    {
+    CGBSndPulse CGBPulseChannel[2];
+    CGBSndWave CGBWaveChannel;
+    CGBSndNoise CGBNoiseChannel;
+
+    AGBSndCR AGBSndCR;
+    AGBSndEn AGBSndEn;
+
+    union {
         alignas(16)
         u128 Shift;
         u32 Word[128/32];
     } CGBWaveRAM[2];
-    AGBSndCR AGBSndCR;
-    CGBSndWave CGBWave;
-    CGBSndCR CGBSndCR[3];
-    CGBSndNoise CGBNoise;
-    CGBSndNoiseCR CGBNoiseCR;
-    AGBSndEn AGBSndEn;
-    bool CGBWaveBankCur;
-    u8 CGBWaveBankProg;
-    u8 CGBWaveLen;
-    CGBEnvelope CGBNoiseEnvelope;
-    u16 NoiseLFSR;
-    bool NoiseLFSROut;
-    u8 CGBNoiseLen;
+
     u8 SoundRate; // agb
     s8 AGBSamples[6];
-    CGBSquareLatch CGBSquareLatch[2];
 
-    union
-    {
+    union {
         u8 b8[32];
         u32 b32[8];
     } AGBSndFIFO[2];
+
     u8 AGBSndFIFOFillPtr[2];
     u8 AGBSndFIFODrainPtr[2];
 
