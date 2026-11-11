@@ -205,8 +205,8 @@ Core_Ret Sched_RunEvent(Console* sys)
     case Evt_CGBSndAPUDIV:  AGBSnd_APUDivTick(sys, now); break;
     case Evt_CGBSnd1:       AGBSquare_Run(sys, now, 0); break;
     case Evt_CGBSnd2:       AGBSquare_Run(sys, now, 1); break;
-    //case Evt_CGBSnd3:
-    //case Evt_CGBSnd4:
+    case Evt_CGBSnd3:       AGBWave_Run(sys, now); break;
+    case Evt_CGBSnd4:       AGBNoise_Run(sys, now); break;
 
     case Evt_TimerSnd0CR
      ... Evt_TimerSndFCR:   Timer_UpdateCR(sys, sys->TimersSound, evt-Evt_TimerSnd0CR, now, TimerType_Snd); break;

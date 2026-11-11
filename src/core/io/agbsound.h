@@ -15,12 +15,12 @@ typedef struct
     bool Dir;
     u8 Cur;
     s8 Vol;
-} CGBSquareEnvelope;
+} CGBEnvelope;
 
 typedef struct
 {
     CGBSquareSweep Swp;
-    CGBSquareEnvelope Env;
+    CGBEnvelope Env;
     u8 Len;
     u16 Counter;
     u8 Tick;
@@ -49,8 +49,8 @@ typedef union
         u32 : 5;
         bool WaveDimension : 1;
         bool WaveBank : 1;
-        bool Enable : 1;
-        u32 SoundLen : 8;
+        bool DACEnable : 1;
+        u32 Len : 8;
         u32 : 5;
         u32 Vol : 3;
     };
@@ -73,21 +73,21 @@ typedef union
     struct {
         u16 Len : 6;
         u16 : 2;
-        u16 Step : 3;
-        bool Dir : 1;
-        u16 Vol : 4;
+        u16 EnvelopePace : 3;
+        bool EnvelopeDir : 1;
+        u16 InitialVol : 4;
     };
-} CGBSndNoiseLen;
+} CGBSndNoise;
 
 typedef union
 {
     u16 Raw;
     struct {
-        u16 Len : 3;
-        bool Step : 1;
-        u16 Freq : 4;
+        u16 ClkDivider : 3;
+        bool ShortLSFR : 1;
+        u16 ClkShift : 4;
         u16 : 6;
-        bool NoRepeat : 1;
+        bool UseLen : 1;
         bool Start : 1;
     };
 } CGBSndNoiseCR;
@@ -140,9 +140,17 @@ typedef union
 #define GB_DIVAPUTICK(x) (DSClk16(32768)*x)
 
 typedef struct Console Console;
+
+
 void AGBMixer_Run(Console* sys);
+
 void AGBSquare_Run(Console* sys, const timestamp now, const u8 id);
+void AGBWave_Run(Console* sys, const timestamp now);
+void AGBNoise_Run(Console* sys, const timestamp now);
+
 void AGBSnd_APUDivTick(Console* sys, const timestamp now);
+
 void AGBSoundDMATimer_Overflow(Console* sys, const u8 id, const timestamp now);
+
 void AGBSound_IORead(Console* sys, const u32 addr, u32* rdata);
 void AGBSound_IOWrite(Console* sys, const u32 addr, const u32 wrdata, const u32 mask, const timestamp now);

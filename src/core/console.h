@@ -655,9 +655,15 @@ typedef struct Console
     AGBSndCR AGBSndCR;
     CGBSndWave CGBWave;
     CGBSndCR CGBSndCR[3];
-    CGBSndNoiseLen CGBNoiseLen;
+    CGBSndNoise CGBNoise;
     CGBSndNoiseCR CGBNoiseCR;
     AGBSndEn AGBSndEn;
+    bool CGBWaveBankCur;
+    u8 CGBWaveBankProg;
+    u8 CGBWaveLen;
+    CGBEnvelope CGBNoiseEnvelope;
+    u16 NoiseLFSR;
+    u8 CGBNoiseLen;
     u8 SoundRate; // agb
     s8 AGBSamples[6];
     CGBSquareLatch CGBSquareLatch[2];

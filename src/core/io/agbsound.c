@@ -22,10 +22,10 @@ void AGBMixer_Run(Console* sys)
         {
             if (sys->AGBSndCR.CGBVol != 3)
             {
-                if (En1[i]) sys->MixerOut[i] += sys->AGBSamples[0];
-                if (En2[i]) sys->MixerOut[i] += sys->AGBSamples[1];
-                if (En3[i]) sys->MixerOut[i] += sys->AGBSamples[2];
-                if (En4[i]) sys->MixerOut[i] += sys->AGBSamples[3];
+                if (En1[i] && sys->AGBSndEn.Snd1Running) sys->MixerOut[i] += sys->AGBSamples[0];
+                if (En2[i] && sys->AGBSndEn.Snd2Running) sys->MixerOut[i] += sys->AGBSamples[1];
+                if (En3[i] && sys->AGBSndEn.Snd3Running) sys->MixerOut[i] += sys->AGBSamples[2];
+                if (En4[i] && sys->AGBSndEn.Snd4Running) sys->MixerOut[i] += sys->AGBSamples[3];
 
                 sys->MixerOut[i] <<= sys->AGBSndCR.CGBVol + 5;
                 sys->MixerOut[i] *= (CGBVol[i] + 1);
@@ -37,16 +37,21 @@ void AGBMixer_Run(Console* sys)
 }
 
 constexpr timestamp CGBSnd_ClockDiv[4] = {
-    (Sched_Clock/(NTR_BaseClock/16)), Sched_Clock/(NTR_BaseClock/16), Sched_Clock/NTR_BaseClock, Sched_Clock/NTR_BaseClock
+    (Sched_Clock/NTR_BaseClock)*16, // 1.048.576 MHz
+    (Sched_Clock/NTR_BaseClock)*16, // 1.048.576 MHz
+    (Sched_Clock/NTR_BaseClock)*8,  // 2.097.152 MHz
+    (Sched_Clock/NTR_BaseClock)*64  // 262,144 KHz
 };
 
-void CGBSnd_StartChannel(Console* sys, const timestamp now, const u16 counter, const u8 id)
+void CGBSnd_StartChannel(Console* sys, const timestamp now, const timestamp counter, const u8 id)
 {
-    Sched_AddEvent(sys, (now & ~(CGBSnd_ClockDiv[id]-1)) + (((1<<11)-counter)*CGBSnd_ClockDiv[id]), Evt_CGBSnd1+id);
+    sys->AGBSndEn.Raw |= 1<<id;
+    Sched_AddEvent(sys, (now & ~(CGBSnd_ClockDiv[id]-1)) + (counter*CGBSnd_ClockDiv[id]), Evt_CGBSnd1+id);
 }
 
 void CGBSnd_KillChannel(Console* sys, const u8 id)
 {
+    sys->AGBSndEn.Raw &= ~(1<<id);
     sys->AGBSamples[id] = -8;
     Sched_RemoveEvent(&sys->Sched, Evt_CGBSnd1+id);
 }
@@ -78,10 +83,8 @@ void AGBSquare_Tick(Console* sys, const timestamp now, const bool id)
     {
         lat->Len--;
         lat->Len &= 0x3F;
-        if (sqr->Len == 0)
+        if (lat->Len == 0)
         {
-            if (!id) sys->AGBSndEn.Snd1Running = false;
-            else     sys->AGBSndEn.Snd2Running = false;
             CGBSnd_KillChannel(sys, id);
         }
     }
@@ -102,7 +105,6 @@ void AGBSquare_Tick(Console* sys, const timestamp now, const bool id)
                 if (nfreq > 0x7FF)
                 {
                     CGBSnd_KillChannel(sys, 0);
-                    sys->AGBSndEn.Snd1Running = false; // kill channel?
                 }
                 else if (sqr->SweepShift > 0) // checkme??
                 {
@@ -115,7 +117,6 @@ void AGBSquare_Tick(Console* sys, const timestamp now, const bool id)
                     if (nfreq > 0x7FF)
                     {
                         CGBSnd_KillChannel(sys, 0);
-                        sys->AGBSndEn.Snd1Running = false; // kill channel?
                     }
                 }
             }
@@ -141,10 +142,100 @@ void AGBSquare_Tick(Console* sys, const timestamp now, const bool id)
     }
 }
 
+void AGBWave_Run(Console* sys, const timestamp now)
+{
+    const bool bank = sys->CGBWaveBankCur;
+    sys->AGBSamples[2] = ((sys->CGBWaveRAM[bank].Shift & 0xF) - 8) >> ((sys->CGBWave.Vol-1) & 0xF);
+    sys->CGBWaveRAM[bank].Shift = (sys->CGBWaveRAM[bank].Shift >> 4) | (sys->CGBWaveRAM[bank].Shift << 124);
+
+    if (sys->CGBWave.WaveDimension)
+    {
+        sys->CGBWaveBankProg++;
+        if (sys->CGBWaveBankProg == 32)
+        {
+            sys->CGBWaveBankProg = 0;
+            sys->CGBWaveBankCur = !sys->CGBWaveBankCur;
+        }
+    }
+
+    Sched_AddEvent(sys, now + (((1<<11)-sys->CGBSndCR[2].Freq)*CGBSnd_ClockDiv[2]), Evt_CGBSnd3);
+}
+
+void AGBWave_Tick(Console* sys, const timestamp now)
+{
+    CGBSndCR* cr = &sys->CGBSndCR[2];
+
+    if (((now & (GB_DIVAPUTICK(2)-1)) == 0) && cr->UseLen) // len tick
+    {
+        sys->CGBWaveLen--;
+        sys->CGBWaveLen &= 0xFF;
+        if (sys->CGBWaveLen == 0)
+        {
+            CGBSnd_KillChannel(sys, 2);
+        }
+    }
+}
+
+timestamp AGBNoise_CalcTimer(u8 divider, u8 shift)
+{
+    if (divider == 0) return 1<<(shift-1);
+    else return divider<<shift;
+}
+
+void AGBNoise_Run(Console* sys, const timestamp now)
+{
+    bool shiftIn = !((sys->NoiseLFSR & 1) ^ ((sys->NoiseLFSR >> 1) & 1));
+    sys->NoiseLFSR |= shiftIn<<15;
+    if (sys->CGBNoiseCR.ShortLSFR)
+        sys->NoiseLFSR |= shiftIn<<7;
+
+    sys->NoiseLFSR >>= 1;
+
+    if (sys->NoiseLFSR & 1)
+        sys->AGBSamples[3] = sys->CGBNoiseEnvelope.Vol-8;
+    else
+        sys->AGBSamples[3] = -8;
+
+    Sched_AddEvent(sys, now + (AGBNoise_CalcTimer(sys->CGBNoiseCR.ClkDivider,sys->CGBNoiseCR.ClkShift)*CGBSnd_ClockDiv[3]), Evt_CGBSnd4);
+}
+
+void AGBNoise_Tick(Console* sys, const timestamp now, const bool id)
+{
+    CGBSndNoiseCR* cr = &sys->CGBNoiseCR;
+    CGBEnvelope* env = &sys->CGBNoiseEnvelope;
+
+    if (((now & (GB_DIVAPUTICK(2)-1)) == 0) && cr->UseLen) // len tick
+    {
+        sys->CGBNoiseLen--;
+        sys->CGBNoiseLen &= 0x3F;
+        if (sys->CGBNoiseLen == 0)
+        {
+            CGBSnd_KillChannel(sys, id);
+        }
+    }
+
+    if ((env->Pace != 0) && ((now & (GB_DIVAPUTICK(8)-1)) == 0)) // envelope tick
+    {
+        env->Cur--;
+        if (env->Cur == 0)
+        {
+            s8 newVol = env->Vol;
+            if (env->Dir) newVol++;
+            else          newVol--;
+
+            if (newVol <= 0xF && newVol >= 0)
+                env->Vol = newVol;
+
+            env->Cur = env->Pace;
+        }
+    }
+}
+
 void AGBSnd_APUDivTick(Console* sys, const timestamp now)
 {
     AGBSquare_Tick(sys, now, 0);
     AGBSquare_Tick(sys, now, 1);
+    AGBWave_Tick(sys, now);
 
     Sched_AddEvent(sys, now+GB_DIVAPUTICK(1), Evt_CGBSndAPUDIV);
 }
@@ -186,7 +277,7 @@ void AGBSound_IORead(Console* sys, const u32 addr, u32* rdata)
     case 0x70: *rdata = sys->CGBWave.Raw & 0xFF00FFFF; break;
     case 0x74: *rdata = sys->CGBSndCR[2].Raw & 0x4000; break;
 
-    case 0x78: *rdata = sys->CGBNoiseLen.Raw & 0xFFC0; break;
+    case 0x78: *rdata = sys->CGBNoise.Raw & 0xFFC0; break;
     case 0x7C: *rdata = sys->CGBNoiseCR.Raw & 0x7FFF; break;
 
     case 0x80: *rdata = sys->AGBSndCR.Raw; break;
@@ -226,7 +317,6 @@ void AGBSound_IOWrite(Console* sys, const u32 addr, u32 wrdata, const u32 mask, 
 
             if ((mask & 0xFF'00'00'00) && (((sys->CGBSquare[0].Raw >> 27) & 0x1F) == 0)) // DAC off
             {
-                sys->AGBSndEn.Snd1Running = false; // turn channel off
                 CGBSnd_KillChannel(sys, 0);
             }
         }
@@ -253,12 +343,10 @@ void AGBSound_IOWrite(Console* sys, const u32 addr, u32 wrdata, const u32 mask, 
                     || sys->CGBSquare[0].SweepDir // decrementing
                     || ((sys->CGBSquareLatch[0].Swp.Freq + (sys->CGBSquareLatch[0].Swp.Freq >> sys->CGBSquare[0].SweepShift)) <= 0x7FF))
                 {
-                    sys->AGBSndEn.Snd1Running = true;
-                    CGBSnd_StartChannel(sys, now, sys->CGBSndCR[0].Freq, 0);
+                    CGBSnd_StartChannel(sys, now, (1<<11)-sys->CGBSndCR[0].Freq, 0);
                 }
                 else
                 {
-                    sys->AGBSndEn.Snd1Running = false;
                     CGBSnd_KillChannel(sys, 0);
                 }
             }
@@ -273,7 +361,6 @@ void AGBSound_IOWrite(Console* sys, const u32 addr, u32 wrdata, const u32 mask, 
 
             if ((mask & 0xFF'00'00'00) && (((sys->CGBSquare[1].Raw >> 27) & 0x1F) == 0)) // DAC off
             {
-                sys->AGBSndEn.Snd1Running = false; // turn channel off
                 CGBSnd_KillChannel(sys, 1);
             }
         }
@@ -292,8 +379,7 @@ void AGBSound_IOWrite(Console* sys, const u32 addr, u32 wrdata, const u32 mask, 
                 sys->CGBSquareLatch[1].Env.Cur = sys->CGBSquare[1].EnvelopePace;
                 sys->CGBSquareLatch[1].Env.Vol = sys->CGBSquare[1].EnvelopeVol;
 
-                sys->AGBSndEn.Snd2Running = true;
-                CGBSnd_StartChannel(sys, now, sys->CGBSndCR[1].Freq, 1);
+                CGBSnd_StartChannel(sys, now, (1<<11)-sys->CGBSndCR[1].Freq, 1);
             }
         }
         break;
@@ -303,13 +389,21 @@ void AGBSound_IOWrite(Console* sys, const u32 addr, u32 wrdata, const u32 mask, 
     case 0x70: {
         if (sys->AGBSndEn.MEnable) {
             MaskedWrite(sys->CGBWave.Raw, wrdata, mask & 0xE0FF00E0);
+            if ((mask & 0x00'00'00'FF) && !sys->CGBWave.DACEnable)
+                CGBSnd_KillChannel(sys, 2);
         }
         break;
     }
     case 0x74: {
         if (sys->AGBSndEn.MEnable) {
             MaskedWrite(sys->CGBSndCR[2].Raw, wrdata, mask & 0x47FF);
-            if (wrdata & mask & 0x8000);
+            if (wrdata & mask & 0x8000)
+            {
+                sys->CGBWaveBankCur = sys->CGBWave.WaveBank;
+                sys->CGBWaveBankProg = 0;
+                sys->CGBWaveLen = 256-sys->CGBWave.Len;
+                CGBSnd_StartChannel(sys, now, (1<<11)-sys->CGBSndCR[2].Freq, 2);
+            }
         }
         break;
     }
@@ -317,14 +411,32 @@ void AGBSound_IOWrite(Console* sys, const u32 addr, u32 wrdata, const u32 mask, 
     // chan 4: noise
     case 0x78: {
         if (sys->AGBSndEn.MEnable) {
-            MaskedWrite(sys->CGBNoiseLen.Raw, wrdata, mask & 0xFF3F);
+            MaskedWrite(sys->CGBNoise.Raw, wrdata, mask & 0xFF3F);
+
+            if ((mask & 0x00'00'00'FF) && (((sys->CGBNoise.Raw >> 11) & 0x1F) == 0)) // DAC off
+            {
+                CGBSnd_KillChannel(sys, 3);
+            }
         }
         break;
     }
     case 0x7C: {
         if (sys->AGBSndEn.MEnable) {
             MaskedWrite(sys->CGBNoiseCR.Raw, wrdata, mask & 0x40FF);
-            if (wrdata & mask & 0x8000);
+
+
+            if ((wrdata & mask & 0x8000) // enable channel
+            && (((sys->CGBNoise.Raw >> 11) & 0x1F) != 0)) // DAC is on
+            {
+                sys->CGBNoiseLen = (64-sys->CGBNoise.Len);
+                //sys->CGBSquareLatch[1].Counter = sys->CGBNoiseCR.Freq;
+                sys->CGBNoiseEnvelope.Pace = sys->CGBNoise.EnvelopePace;
+                sys->CGBNoiseEnvelope.Cur = sys->CGBNoise.EnvelopePace;
+                sys->CGBNoiseEnvelope.Vol = sys->CGBNoise.InitialVol;
+                sys->NoiseLFSR = 0;
+
+                CGBSnd_StartChannel(sys, now, AGBNoise_CalcTimer(sys->CGBNoiseCR.ClkDivider,sys->CGBNoiseCR.ClkShift), 3);
+            }
         }
         break;
     }
@@ -356,7 +468,7 @@ void AGBSound_IOWrite(Console* sys, const u32 addr, u32 wrdata, const u32 mask, 
             sys->CGBSquare[0].Raw = 0;
             sys->CGBSquare[1].Raw = 0;
             sys->CGBWave.Raw = 0;
-            sys->CGBNoiseLen.Raw = 0;
+            sys->CGBNoise.Raw = 0;
 
             sys->CGBSndCR[0].Raw = 0;
             sys->CGBSndCR[1].Raw = 0;
