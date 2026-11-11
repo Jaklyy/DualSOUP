@@ -663,6 +663,7 @@ typedef struct Console
     u8 CGBWaveLen;
     CGBEnvelope CGBNoiseEnvelope;
     u16 NoiseLFSR;
+    bool NoiseLFSROut;
     u8 CGBNoiseLen;
     u8 SoundRate; // agb
     s8 AGBSamples[6];

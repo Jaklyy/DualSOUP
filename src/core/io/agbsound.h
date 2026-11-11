@@ -11,7 +11,6 @@ typedef struct
 
 typedef struct
 {
-    u8 Pace;
     bool Dir;
     u8 Cur;
     s8 Vol;
@@ -50,6 +49,7 @@ typedef union
         bool WaveDimension : 1;
         bool WaveBank : 1;
         bool DACEnable : 1;
+        u32 : 8;
         u32 Len : 8;
         u32 : 5;
         u32 Vol : 3;
