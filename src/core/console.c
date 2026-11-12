@@ -566,9 +566,6 @@ void Console_ResetAGB(Console* sys, timestamp now)
 
     Sched_AddEvent(sys, (now + GB_DIVAPUTICK(1)) & ~(GB_DIVAPUTICK(1)-1), Evt_CGBSndAPUDIV);
 
-    for (size_t i = 0; i < countof(sys->AGBSamples); i++)
-        sys->AGBSamples[i] = -8;
-
     sys->PPUStart = false;
     sys->PPUTarget = timestamp_max; // pretend this is a good solution.
 
