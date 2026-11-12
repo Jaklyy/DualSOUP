@@ -15,6 +15,18 @@
 
 
 
+static const SDL_DialogFileFilter NDSA7BiosFilters[2] = { { "NDS ARM7 bios", "bin;rom" },                  { "All files", "*" } };
+static const SDL_DialogFileFilter NDSA9BiosFilters[2] = { { "NDS ARM9 bios", "bin;rom" },                  { "All files", "*" } };
+static const SDL_DialogFileFilter NVRAMFilters[2] = { { "NDS firmware image", "bin;rom;mem" },          { "All files", "*" } };
+
+static const SDL_DialogFileFilter GBABiosFilters[2] = { { "GBA bios", "bin;rom" },                      { "All files", "*" } };
+
+static const SDL_DialogFileFilter CardROMFilters[2] = { { "NDS ROM", "nds;nds.enc;srl" },               { "All files", "*" } };
+static const SDL_DialogFileFilter CardSavFilters[2] = { { "NDS SRAM", "sav" },                          { "All files", "*" } };
+static const SDL_DialogFileFilter GM9InfoFilters[2] = { { "GM9 dump info", "txt" },                     { "All files", "*" } };
+
+static const SDL_DialogFileFilter PakROMFilters[2] = { { "GBA ROM", "gba" },                            { "All files", "*" } };
+static const SDL_DialogFileFilter PakSavFilters[2] = { { "GBA SRAM", "sav;save;ram;eep;eeprom;flash" }, { "All files", "*" } };
 
 typedef struct
 {
@@ -55,23 +67,24 @@ static int FilePathTextCallback(ImGuiInputTextCallbackData* data)
     return 0;
 }
 
-#define SelectFile(cfgstr, filtername, filterpattern, nfilters, mutex, dirty) \
-    ImGui_Text(filtername); \
-    if (ImGui_Button("Browse...##"filtername)) \
+#define SelectFile(cfgstr, filters, mutex, dirty) \
+    ImGui_TextUnformatted(filters[0].name); \
+    ImGui_PushIDInt(__LINE__); \
+    if (ImGui_Button("Browse...")) \
     { \
-        static const SDL_DialogFileFilter filters = {filtername, filterpattern}; \
         CfgCallback* cbdat = malloc(sizeof(CfgCallback)); /* must be allocated on the heap */ \
         *cbdat = (CfgCallback){mutex, &cfgstr, &dirty}; \
-        SDL_ShowOpenFileDialog(ConfigGUI_RecieveFileName, cbdat, mgui->Win, &filters, nfilters, NULL, false); \
+        SDL_ShowOpenFileDialog(ConfigGUI_RecieveFileName, cbdat, mgui->Win, filters, countof(filters), NULL, false); \
     } \
     ImGui_SameLine(); \
     ImGui_PushItemFlag(ImGuiItemFlags_LiveEditOnInput, false); \
-    ImGui_InputTextEx("##"filtername, cfgstr, strlen(cfgstr)+1, ImGuiInputTextFlags_ElideLeft|ImGuiInputTextFlags_AutoSelectAll|ImGuiInputTextFlags_CallbackResize, FilePathTextCallback, &cfgstr); \
+    ImGui_InputTextEx("", cfgstr, strlen(cfgstr)+1, ImGuiInputTextFlags_ElideLeft|ImGuiInputTextFlags_AutoSelectAll|ImGuiInputTextFlags_CallbackResize, FilePathTextCallback, &cfgstr); \
     ImGui_PopItemFlag(); \
     if (ImGui_IsItemDeactivatedAfterEdit()) \
     { \
         dirty = true; \
-    }
+    } \
+    ImGui_PopID();
 
 void ConfigGUI_Loop(MainGUI* mgui, MainCfg* mcfg)
 {
@@ -151,6 +164,10 @@ void ImportGui_ParseNDSROM(NDSImportGui* igui)
         if ((sz = SDL_GetIOSize(rom)) <= 0) goto kill;
 
         igui->ROMDat.Size = ceil(log2(sz));
+
+        if (SDL_SeekIO(rom, 0xC, SDL_IO_SEEK_SET) != 0xC) goto kill;
+
+        if ((SDL_ReadIO(rom, &igui->ROMDat.GameCode, 4) != 4)) goto kill;
 
         if (SDL_SeekIO(rom, 0x68, SDL_IO_SEEK_SET) != 0x68) goto kill;
         u32 iconoffs = 0;
@@ -375,10 +392,10 @@ void SysImportGui_Loop(MainGUI* mgui, MainCfg* mcfg)
 
     ImGui_SeparatorText("Files");
 
-    SelectFile(cfg->NTR.Bios7, "NDS ARM7 Bios", "bin;rom", 1, igui->Mutex, igui->NTR7Dirty)
-    SelectFile(cfg->NTR.Bios9, "NDS ARM9 Bios", "bin;rom", 1, igui->Mutex, igui->NTR9Dirty)
-    SelectFile(cfg->AGB.Bios7, "AGB Bios", "bin;rom", 1, igui->Mutex, igui->AGBDirty)
-    SelectFile(igui->NvramPath, "NDS Firmware", "bin;rom;mem", 1, igui->Mutex, igui->NvramDirty)
+    SelectFile(cfg->NTR.Bios7, NDSA7BiosFilters, igui->Mutex, igui->NTR7Dirty)
+    SelectFile(cfg->NTR.Bios9, NDSA9BiosFilters, igui->Mutex, igui->NTR9Dirty)
+    SelectFile(cfg->AGB.Bios7, GBABiosFilters, igui->Mutex, igui->AGBDirty)
+    SelectFile(igui->NvramPath, NVRAMFilters, igui->Mutex, igui->NvramDirty)
 
     if (igui->NvramDirty)
     {
@@ -523,7 +540,10 @@ void NDSImportGui_Infer(NDSImportGui* igui, GameCardCfg* cfg)
 
     printf("%u\n", cfg->ROMChipSize);
 
-    cfg->SPIBusType = GameCard_SPIBus_DirectSRAM;
+    if (igui->ROMDat.GameCode[0] == 'I')
+        cfg->SPIBusType = GameCard_SPIBus_InfraredHLE;
+    else
+        cfg->SPIBusType = GameCard_SPIBus_DirectSRAM;
 
     if (igui->SRAMDat.Size != 0)
     {
@@ -586,6 +606,8 @@ void NDSImportGui_Toggle(MainGUI* mgui, const char* editfolder)
     memset(&igui->ROMDat, 0, sizeof(NDSImportGui) - offsetof(NDSImportGui, ROMDat));
     if (souppath != nullptr) SDL_stack_free(souppath);
     igui->TxtDat.SRAMID = 0xFFFFFF;
+    if (igui->Cfg.ROMPath[0] != '\0')
+        igui->ROMDirtyB = true;
 }
 
 void NDSImportGui_Update(MainGUI* mgui, MainCfg* mcfg)
@@ -701,11 +723,11 @@ void NDSImportGui_Loop(MainGUI* mgui, MainCfg* mcfg)
     if (!ImGui_Begin(((igui->EditFolder != nullptr) ? "Edit NDS Game Card" : "Import NDS Game Card"), &igui->Show, 0))
         return ImGui_End();
 
-    SelectFile(cfg->ROMPath, "NDS ROM", "nds", 1, igui->Mutex, igui->ROMDirtyB);
+    SelectFile(cfg->ROMPath, CardROMFilters, igui->Mutex, igui->ROMDirtyB);
     igui->ROMDirty |= igui->ROMDirtyB;
-    SelectFile(igui->SRAMPath, "NDS SRAM", "sav", 1, igui->Mutex, igui->SRAMDirtyB);
+    SelectFile(igui->SRAMPath, CardSavFilters, igui->Mutex, igui->SRAMDirtyB);
     igui->SRAMDirty |= igui->SRAMDirtyB;
-    SelectFile(igui->TxtPath, "GM9 Dump Info", "txt", 1, igui->Mutex, igui->TxtDirtyB);
+    SelectFile(igui->TxtPath, GM9InfoFilters, igui->Mutex, igui->TxtDirtyB);
     igui->TxtDirty |= igui->TxtDirtyB;
     if (igui->ROMDirtyB || igui->SRAMDirtyB || igui->TxtDirtyB)
     {
@@ -745,8 +767,6 @@ void NDSImportGui_Loop(MainGUI* mgui, MainCfg* mcfg)
         }
     }
 
-    // TODO: infer from game code?
-    ImGui_Text("Note: Infer doesn't auto-select\nnon-standard card hw (ie. IR)");
     if (ImGui_Button("Infer from provided files\n"))
         NDSImportGui_Infer(igui, cfg);
 
@@ -866,6 +886,118 @@ void NDSImportGui_Loop(MainGUI* mgui, MainCfg* mcfg)
 }
 
 
+void GBAImportGui_Infer(MainGUI* mgui)
+{
+    GBAImportGui* igui = &mgui->GBAImportGui;
+    GamePakCfg* cfg = &igui->Cfg;
+
+    bool is128K = false;
+    bool not128K = false;
+    if (cfg->ROMPath[0] != '\0')
+    {
+        size_t size;
+        u8* data = SDL_LoadFile(cfg->ROMPath, &size);
+
+        if (!data || size == 0) goto romFail;
+
+        cfg->SRAMType = GamePakSRAM_None;
+        for (size_t i = 0; i < (size-12); i+=4)
+        {
+            if (memcmp(data+i, "EEPROM_V", sizeof("EEPROM_V")-1) == 0)
+            {
+                printf("TODO: EEPROM UNSUPPORTED\n");
+                break;
+            }
+            if (memcmp(data+i, "SRAM_V", sizeof("SRAM_V")-1) == 0)
+            {
+                cfg->SRAMType = GamePakSRAM_SRAM;
+                cfg->SRAMChipSize = CTZ_CONSTEXPR(KiB(64));
+                not128K = true;
+                break;
+            }
+            if (memcmp(data+i, "SRAM_F_V", sizeof("SRAM_F_V")-1) == 0)
+            {
+                cfg->SRAMType = GamePakSRAM_SRAM;
+                cfg->SRAMChipSize = CTZ_CONSTEXPR(KiB(64));
+                not128K = true;
+                break;
+            }
+            if (memcmp(data+i, "FLASH_V", sizeof("FLASH_V")-1) == 0)
+            {
+                cfg->SRAMType = GamePakSRAM_Flash;
+                cfg->SRAMChipSize = CTZ_CONSTEXPR(KiB(64));
+                not128K = true;
+                break;
+            }
+            if (memcmp(data+i, "FLASH512_V", sizeof("FLASH512_V")-1) == 0)
+            {
+                cfg->SRAMType = GamePakSRAM_Flash;
+                cfg->SRAMChipSize = CTZ_CONSTEXPR(KiB(64));
+                not128K = true;
+                break;
+            }
+            if (memcmp(data+i, "FLASH1M_V", sizeof("FLASH1M_V")-1) == 0)
+            {
+                cfg->SRAMType = GamePakSRAM_Flash;
+                cfg->SRAMChipSize = CTZ_CONSTEXPR(KiB(128));
+                is128K = true;
+                break;
+            }
+        }
+
+        if (size >= 0xB0)
+        {
+            free(cfg->FriendlyName);
+            cfg->FriendlyName = strndup((const char*)&data[0xA0], 0xC);
+        }
+
+        size = ceil(log2(size));
+
+        if (size < CTZ_CONSTEXPR(MiB(1))) size = CTZ_CONSTEXPR(MiB(1));
+        if (size > CTZ_CONSTEXPR(MiB(32))) size = CTZ_CONSTEXPR(MiB(32));
+
+        cfg->ROMChipSize = size;
+
+        romFail:
+        SDL_free(data);
+    }
+
+    if (igui->SRAMPath[0] != '\0')
+    {
+        SDL_PathInfo info;
+        if (!SDL_GetPathInfo(igui->SRAMPath, &info) || (info.type != SDL_PATHTYPE_FILE) || (info.size == 0))
+        {
+            goto sramFail;
+        }
+
+        igui->SavFromFile = true;
+
+        printf("%lu\n", info.size);
+        u64 size = ceil(log2(info.size));
+
+        if (size < CTZ_CONSTEXPR((int)512)) size = CTZ_CONSTEXPR((int)512);
+        if (size > CTZ_CONSTEXPR(KiB(128))) size = CTZ_CONSTEXPR(KiB(128));
+
+        if ((size == CTZ_CONSTEXPR(KiB(128))) ? not128K : is128K) // result doesn't match reported data; ignore.
+            goto sramFail;
+
+        cfg->SRAMChipSize = size;
+
+        sramFail:
+
+        if ((cfg->SRAMChipSize == CTZ_CONSTEXPR(KiB(128))) && (cfg->SRAMType == GamePakSRAM_Flash))
+        {
+            cfg->FlashChipID = 0x09C2;
+        }
+        else
+        {
+            cfg->FlashChipID = 0x1CC2;
+        }
+        cfg->GamePakFlashType = GamePakFlash_Macronix; // this is good enough, right?
+
+    }
+}
+
 void GBAImportGui_Toggle(MainGUI* mgui, const char* editfolder)
 {
     GBAImportGui* igui = &mgui->GBAImportGui;
@@ -894,6 +1026,8 @@ void GBAImportGui_Toggle(MainGUI* mgui, const char* editfolder)
     igui->SRAMPath[0] = '\0';
     memset(&igui->ROMDirty, 0, sizeof(GBAImportGui) - offsetof(GBAImportGui, ROMDirty));
     if (souppath != nullptr) SDL_stack_free(souppath);
+    if (igui->Cfg.ROMPath[0] != '\0')
+        igui->ROMDirtyB = true;
 }
 
 void GBAImportGui_Update(MainGUI* mgui, MainCfg* mcfg)
@@ -1003,9 +1137,9 @@ void GBAImportGui_Loop(MainGUI* mgui, MainCfg* mcfg)
     if (!ImGui_Begin(((igui->EditFolder != nullptr) ? "Edit GBA Game Pak" : "Import GBA Game Pak"), &igui->Show, 0))
         return ImGui_End();
 
-    SelectFile(cfg->ROMPath, "GBA ROM", "gba", 1, igui->Mutex, igui->ROMDirtyB);
+    SelectFile(cfg->ROMPath, PakROMFilters, igui->Mutex, igui->ROMDirtyB);
     igui->ROMDirty |= igui->ROMDirtyB;
-    SelectFile(igui->SRAMPath, "GBA SRAM", "sav", 1, igui->Mutex, igui->SRAMDirtyB);
+    SelectFile(igui->SRAMPath, PakSavFilters, igui->Mutex, igui->SRAMDirtyB);
     igui->SRAMDirty |= igui->SRAMDirtyB;
 
     if (igui->ROMDirtyB || igui->SRAMDirtyB)
@@ -1035,8 +1169,8 @@ void GBAImportGui_Loop(MainGUI* mgui, MainCfg* mcfg)
         }
     }
 
-    //if (ImGui_Button("Infer from provided files\n"))
-    //    GBAImportGui_Infer(igui, cfg);
+    if (ImGui_Button("Infer from provided files\n"))
+        GBAImportGui_Infer(mgui);
 
     if (igui->EditFolder != nullptr) ImGui_Checkbox("Overwrite save\n", &igui->InitSav);
     ImGui_BeginDisabled(igui->SRAMPath[0] == '\0');

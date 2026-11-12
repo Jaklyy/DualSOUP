@@ -112,6 +112,7 @@ typedef struct
         char* FriendlyName;
         u32 Bitmap[32*32];
         u8 Size;
+        char GameCode[4];
     } ROMDat;
     struct
     {
