@@ -127,6 +127,7 @@ void AudioMixer_Sample(Console* sys, timestamp now)
             (SoundMixerBaseOutput << sys->SoundRate),
         };
         SDL_SetAudioStreamFormat(sys->Aud, &spec, NULL);
+        sys->AudioFreqDirty = false;
     }
 
     if (!SDL_PutAudioStreamData(sys->Aud, sampleout, sizeof(sampleout))) printf("wat %s\n", SDL_GetError());
