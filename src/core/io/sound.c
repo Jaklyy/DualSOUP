@@ -105,6 +105,30 @@ void AudioMixer_Sample(Console* sys, timestamp now)
         }
     }
 
+    // audio output notes and speculation:
+    // since the NDS & NDS Lite both use PWM for audio output
+    // presumably they both can still use the same method as the gba for controlling the sample rate / sample bit ratio
+    // NDS audio:   1024 bits per sample @ 33MHz == 10 bit @  32,728 KHz
+    // GBA audio 0:  512 bits per sample @ 16MHz ==  9 bit @  32,728 KHz
+    // GBA audio 1:  256 bits per sample @ 16MHz ==  8 bit @  65,456 KHz
+    // GBA audio 2:  128 bits per sample @ 16MHz ==  7 bit @ 130,912 KHz
+    // GBA audio 3:   64 bits per sample @ 16MHz ==  6 bit @ 261,824 KHz
+
+    if (sys->AGB)
+    {
+        sampleout[0] &= ~((1 << (sys->SoundRate + 7))-1);
+        sampleout[1] &= ~((1 << (sys->SoundRate + 7))-1);
+    }
+    if (sys->AudioFreqDirty)
+    {
+        SDL_AudioSpec spec = {
+            SDL_AUDIO_S16,
+            2,
+            (SoundMixerBaseOutput << sys->SoundRate),
+        };
+        SDL_SetAudioStreamFormat(sys->Aud, &spec, NULL);
+    }
+
     if (!SDL_PutAudioStreamData(sys->Aud, sampleout, sizeof(sampleout))) printf("wat %s\n", SDL_GetError());
 
 #ifdef DUMPAUDIO
@@ -112,7 +136,7 @@ void AudioMixer_Sample(Console* sys, timestamp now)
     fflush(sys->log);
 #endif
 
-    Sched_AddEvent(sys, now + DSClk33(((timestamp)NTR_SysClock /*+ sys->AudioFrac*/) / SoundMixerOutput), Evt_MixAudio);
+    Sched_AddEvent(sys, now + DSClk33(((timestamp)NTR_SysClock /*+ sys->AudioFrac*/) / (SoundMixerBaseOutput << sys->SoundRate)), Evt_MixAudio);
     //sys->AudioFrac = ((timestamp)NTR_SysClock + sys->AudioFrac) % SoundMixerOutput;
 }
 

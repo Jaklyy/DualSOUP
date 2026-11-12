@@ -40,7 +40,7 @@ constexpr timestamp CGBSnd_ClockDiv[4] = {
     (Sched_Clock/NTR_BaseClock)*16, // 1.048.576 MHz
     (Sched_Clock/NTR_BaseClock)*16, // 1.048.576 MHz
     (Sched_Clock/NTR_BaseClock)*8,  // 2.097.152 MHz
-    (Sched_Clock/NTR_BaseClock)*32  // 262,144 KHz
+    (Sched_Clock/NTR_BaseClock)*32  // 524,288 KHz
 };
 
 void CGBSnd_StartChannel(Console* sys, const timestamp now, const timestamp counter, const u8 id)
@@ -516,7 +516,11 @@ void AGBSound_IOWrite(Console* sys, const u32 addr, u32 wrdata, const u32 mask, 
 
     case 0x88: {
         MaskedWrite(sys->SoundBias, wrdata, mask & 0x3FE);
+
+        u8 oldRate = sys->SoundRate;
         MaskedWrite(sys->SoundRate, wrdata>>14, (mask >> 14) & 0x3);
+
+        if (oldRate != sys->SoundRate) sys->AudioFreqDirty = true;
         break;
     }
 

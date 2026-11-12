@@ -542,6 +542,8 @@ void Console_Reset(Console* sys, timestamp now)
     Sched_AddEvent(sys, now, Evt_MixAudio);
     Sched_AddEvent(sys, now, Evt_Scanline);
 
+    sys->AudioFreqDirty = true;
+
     // todo: move into actual reset handlers
     A9ES_InstrGo(&sys->A946ES, false);
     Sched_AddEvent(sys, now, Evt_ARM9);
@@ -559,6 +561,8 @@ void Console_ResetAGB(Console* sys, timestamp now)
     Sched_AddEvent(sys, now, Evt_MixAudio);
     //Sched_AddEvent(sys, now, Evt_Scanline); // TODO: NDS VCount should probably still be running?
     Sched_AddEvent(sys, now, Evt_AGBScanline);
+
+    sys->AudioFreqDirty = true;
 
     Sched_AddEvent(sys, (now + GB_DIVAPUTICK(1)) & ~(GB_DIVAPUTICK(1)-1), Evt_CGBSndAPUDIV);
 

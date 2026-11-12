@@ -56,7 +56,7 @@ constexpr u32 Sched_Clock       = NTR9_Clock;       // 67.028 MHz; Clock everyth
 // these numbers seem odd? not sure if these should actually be
 constexpr u32 SoundMixerFreq = NTR_BaseClock/16; // 1'048'760; // >(1/16); (is this info relevant?)
                                                                // note: still haven't for sure verified that this is exact.
-constexpr u32 SoundMixerOutput = NTR_BaseClock/512; // 32'768; // not entirely sure if it uses an output frequency of 32.768 Hz or 32.728 Hz
+constexpr u32 SoundMixerBaseOutput = NTR_BaseClock/512; // 32'768; // not entirely sure if it uses an output frequency of 32.768 Hz or 32.728 Hz
                                                                // it's a difference of roughly 0.1% so idk if it matters, but it bothers me
                                                                // fun note: you can set this to Base_Clock/16 to get very high quality audio output.
 
@@ -659,6 +659,7 @@ typedef struct Console
     } CGBWaveRAM[2];
 
     u8 SoundRate; // agb
+    bool AudioFreqDirty;
     s8 AGBSamples[6];
 
     union {

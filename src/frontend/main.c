@@ -248,7 +248,7 @@ int main()
 
     MainGUI mgui = MainGUI_Init(&mcfg);
 
-    SDL_AudioSpec audiospec = {SDL_AUDIO_S16LE, 2, SoundMixerOutput};
+    SDL_AudioSpec audiospec = {SDL_AUDIO_S16LE, 2, SoundMixerBaseOutput};
     SDL_AudioStream* aud = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &audiospec, NULL, NULL);
     if (aud == NULL)
     {
