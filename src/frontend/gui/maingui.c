@@ -134,10 +134,10 @@ void MainGUI_Loop(Console* sys, MailBox* mailbox, MainGUI* mgui, MainCfg* mcfg, 
 
     if (ImGui_BeginMainMenuBar())
     {
-        if (ImGui_MenuItemBoolPtr("Game List", NULL, &mgui->ShowList, active)) {}
-        if (ImGui_MenuItemBoolPtr("Config", NULL, &mgui->CfgDisplay, true)) {}
-        if (ImGui_MenuItemBoolPtr("Uncap FPS", NULL, (bool*)&mailbox->UncapFPS, true)) {}
-        if (ImGui_MenuItemBoolPtr("Pause", NULL, (bool*)&mailbox->Pause, true)) {}
+        ImGui_MenuItemBoolPtr("Game List", NULL, &mgui->ShowList, active);
+        ImGui_MenuItemBoolPtr("Config", NULL, &mgui->CfgDisplay, true);
+        ImGui_MenuItemBoolPtr("Uncap FPS", NULL, (bool*)&mailbox->UncapFPS, true);
+        ImGui_MenuItemBoolPtr("Pause", NULL, (bool*)&mailbox->Pause, true);
         if (ImGui_BeginMenu("Debugger"))
         {
             if (ImGui_MenuItemBoolPtr("ARM9", NULL, &mgui->dbg.A9DbgDisplay, true)) {}
@@ -156,7 +156,7 @@ void MainGUI_Loop(Console* sys, MailBox* mailbox, MainGUI* mgui, MainCfg* mcfg, 
             ImGui_EndDisabled();
             ImGui_EndMenu();
         }
-        if (ImGui_MenuItemBoolPtr("GUI Demo", NULL, &mgui->DemoDisplay, true)) {}
+        ImGui_MenuItemBoolPtr("GUI Demo", NULL, &mgui->DemoDisplay, true);
         ImGui_EndMainMenuBar();
     }
 

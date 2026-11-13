@@ -12,6 +12,7 @@
 #include "frontend/soupparser/soupparser.h"
 #include "configgui.h"
 #include "maingui.h"
+#include "frontend/main.h"
 
 
 
@@ -88,7 +89,11 @@ static int FilePathTextCallback(ImGuiInputTextCallbackData* data)
 
 void ConfigGUI_Loop(MainGUI* mgui, MainCfg* mcfg)
 {
-    if (!mgui->CfgDisplay) return;
+    if (!mgui->CfgDisplay)
+    {
+        mgui->CurRebind = -1;
+        return;
+    }
     ImGui_SetNextWindowSize((ImVec2){408, 372}, ImGuiCond_FirstUseEver);
     if (!ImGui_Begin("Config", &mgui->CfgDisplay, ImGuiWindowFlags_None))
     {
@@ -108,6 +113,14 @@ void ConfigGUI_Loop(MainGUI* mgui, MainCfg* mcfg)
             }
             ImGui_EndTabItem();
         }
+
+        if (ImGui_BeginTabItem("Input", NULL, ImGuiTabItemFlags_None))
+        {
+            RebindGui_Loop(&mgui->CurRebind, mcfg);
+            ImGui_EndTabItem();
+        }
+        else mgui->CurRebind = -1;
+
         if (ImGui_BeginTabItem("Logging", NULL, ImGuiTabItemFlags_None))
         {
             if (ImGui_Button("Disable All\n")) 

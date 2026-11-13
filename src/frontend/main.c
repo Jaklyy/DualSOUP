@@ -156,11 +156,17 @@ int SDLCALL Core_Init(void* pass)
         if (pollchk && Console_TestIfPollingNeeded(sys, sys->NewSync))
         {
             TouchCoords tc = mailbox->TouchCoords;
+
+            SDL_LockMutex(mailbox->CfgMutex);
+            u32 newInput = Core_PollInputs(mailbox->Pad, (Core_Input*)mailbox->Mappings);
+            SDL_UnlockMutex(mailbox->CfgMutex);
+            sys->InputMain = newInput & 0xFFFF;
+            sys->InputExtra = ((newInput >> 16) & 0xFFFF);
+            sys->InputExtra &= ~((u32)tc.Touched << 6);
+
             sys->TSC.State.X = tc.X;
             sys->TSC.State.Y = tc.Y;
             sys->TSC.State.Touched = tc.Touched;
-            sys->InputMain = Input_PollMain(mailbox->Pad);
-            sys->InputExtra = Input_PollExtra(tc.Touched, mailbox->Pad);
             sys->LastPoll = sys->NewSync;
         }
 
@@ -279,15 +285,15 @@ int main()
 
     u32 sdlevent_base = SDL_RegisterEvents(UserEvent_MAX);
     mgui.UserEventBase = sdlevent_base;
-    MailBox mailbox = {.Sys = sys, .Pad = pad, .Aud = aud, .InitFlag = Init_Busy, .Cfg = &mcfg.CoreCfg, .CfgMutex = mcfg.Mutex, .BaseEvent_ID = sdlevent_base};
+    MailBox mailbox = {.Sys = sys, .Pad = pad, .Aud = aud, .InitFlag = Init_Busy, .Cfg = &mcfg.CoreCfg, .CfgMutex = mcfg.Mutex, .BaseEvent_ID = sdlevent_base, .Mappings = mcfg.InputCfg};
 
-    SDL_Event evts;
+    SDL_Event evt;
     while(true)
     {
-        while (SDL_PollEvent(&evts))
+        while (SDL_PollEvent(&evt))
         {
-            cImGui_ImplSDL3_ProcessEvent(&evts);
-            switch(evts.type)
+            cImGui_ImplSDL3_ProcessEvent(&evt);
+            switch(evt.type)
             {
             case SDL_EVENT_QUIT:
                 CoreThread_Shutdown(&mailbox, &cthrd);
@@ -352,15 +358,67 @@ int main()
                 mcfg.Dirty = true;
                 break;
             }
+            case SDL_EVENT_GAMEPAD_AXIS_MOTION:
+            {
+                if (mgui.CurRebind != -1)
+                {
+                    SDL_GamepadAxisEvent* evtT = (SDL_GamepadAxisEvent*)&evt;
+                    if (evtT->value <= s16_min*3/4)
+                    {
+                        SDL_LockMutex(mcfg.Mutex);
+                        mcfg.InputCfg[mgui.CurRebind].Type = InputType_Axis;
+                        mcfg.InputCfg[mgui.CurRebind].PadAxis.Id = evtT->axis;
+                        mcfg.InputCfg[mgui.CurRebind].PadAxis.Threshold = s16_min*3/4;
+                        mgui.CurRebind = -1;
+                        mcfg.Dirty = true;
+                        SDL_UnlockMutex(mcfg.Mutex);
+                    }
+                    else if (evtT->value >= (s16_max*3/4))
+                    {
+                        SDL_LockMutex(mcfg.Mutex);
+                        mcfg.InputCfg[mgui.CurRebind].Type = InputType_Axis;
+                        mcfg.InputCfg[mgui.CurRebind].PadAxis.Id = evtT->axis;
+                        mcfg.InputCfg[mgui.CurRebind].PadAxis.Threshold = s16_max*3/4;
+                        mgui.CurRebind = -1;
+                        mcfg.Dirty = true;
+                        SDL_UnlockMutex(mcfg.Mutex);
+                    }
+                }
+                break;
+            }
+            case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+            {
+                if (mgui.CurRebind != -1)
+                {
+                    SDL_LockMutex(mcfg.Mutex);
+                    SDL_GamepadButtonEvent* evtT = (SDL_GamepadButtonEvent*)&evt;
+                    mcfg.InputCfg[mgui.CurRebind].Type = InputType_Button;
+                    mcfg.InputCfg[mgui.CurRebind].PadAxis.Id = evtT->button;
+                    mcfg.InputCfg[mgui.CurRebind].PadAxis.Threshold = 0;
+                    mgui.CurRebind = -1;
+                    mcfg.Dirty = true;
+                    SDL_UnlockMutex(mcfg.Mutex);
+                }
+                break;
+            }
             case SDL_EVENT_KEY_DOWN:
             {
-                if (((SDL_KeyboardEvent*)&evts)->scancode == SDL_SCANCODE_F6) // idk
-                    mailbox.Pause = !mailbox.Pause;
+                if (mgui.CurRebind != -1)
+                {
+                    SDL_LockMutex(mcfg.Mutex);
+                    SDL_KeyboardEvent* evtT = (SDL_KeyboardEvent*)&evt;
+                    mcfg.InputCfg[mgui.CurRebind].Type = InputType_Keyboard;
+                    mcfg.InputCfg[mgui.CurRebind].Scancode = evtT->scancode;
+                    mcfg.InputCfg[mgui.CurRebind].PadAxis.Threshold = 0;
+                    mgui.CurRebind = -1;
+                    mcfg.Dirty = true;
+                    SDL_UnlockMutex(mcfg.Mutex);
+                }
                 break;
             }
             default:
             {
-                switch(evts.type-sdlevent_base)
+                switch(evt.type-sdlevent_base)
                 {
                 case UserEvent_CorePowerOff:
                 {

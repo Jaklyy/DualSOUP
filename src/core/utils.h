@@ -6,8 +6,6 @@
 #include <limits.h>
 #include <inttypes.h>
 
-#include <SDL3/SDL_mutex.h>
-
 
 
 
@@ -384,8 +382,3 @@ extern u64 LogMask;
 void LogPrint(const u64 logtype, const char* str, ...) __attribute__ ((format (printf, 2, 3)));
 // logprint but with more crashing to desktop
 [[noreturn]] void CrashSpectacularly(const char* str, ...) __attribute__ ((format (printf, 1, 2)));
-
-// input handlers
-
-u16 Input_PollExtra(const bool touched, void* pad);
-u16 Input_PollMain(void* pad);

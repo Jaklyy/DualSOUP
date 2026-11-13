@@ -5,6 +5,7 @@
 
 #include "core/utils.h"
 #include "core/console.h"
+#include "input.h"
 
 typedef enum : u8
 {
@@ -21,17 +22,6 @@ typedef enum : u32
     UserEvent_MAX,
 } UserEvent_Offsets;
 
-typedef union
-{
-    struct
-    {
-        bool Touched;
-        u16 X;
-        u16 Y;
-    };
-    u64 Copy;
-} TouchCoords;
-
 typedef struct MailBox
 {
     volatile Console* Sys;
@@ -41,9 +31,11 @@ typedef struct MailBox
     CoreCfg* Cfg;
     SDL_Mutex* CfgMutex;
     u32 BaseEvent_ID;
+    volatile Core_Input* Mappings;
     volatile TouchCoords TouchCoords;
     volatile bool UncapFPS;
     volatile bool Pause;
+    volatile bool CfgDisplay;
     volatile bool CoreKill;
     volatile bool CoreDead;
     volatile bool PauseConfirm;

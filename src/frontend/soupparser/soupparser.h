@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include "frontend/gui/maingui.h"
 #include "core/utils.h"
+#include "frontend/input.h"
 
 
 
@@ -70,6 +71,7 @@ typedef struct MainCfg
     CoreCfg CoreCfg;
     GuiCfg GuiCfg;
     u64 LoggingMask;
+    Core_Input InputCfg[Input_Max*MaxBindingsPerInput];
 } MainCfg;
 
 #include "core/carts/gamecard.h"
@@ -453,6 +455,131 @@ static_assert(GUI_MaxDisplaysPerWindow <= 4);
 
 constexpr int menubarheight = 19; // todo: un-hardcode
 
+#define KEYBIND(enum, type0, input0, thresh0, type1, input1, thresh1) \
+{ \
+    .Name =     #enum "_0_Type", \
+    .Offset=    offsetof(MainCfg, InputCfg[(enum * MaxBindingsPerInput) + 0].Type), \
+    .EnumNames= (const char*[]){ \
+        [InputType_None]="None", \
+        [InputType_Keyboard]="Keyboard_Key", \
+        [InputType_Button]="GamePad_Button", \
+        [InputType_Axis]="GamePad_Axis" \
+    }, \
+    .SDefVal=   type0, \
+    .SMinVal=   0, \
+    .SMaxVal=   InputType_Max, \
+    .Type=      SEARCH_ENUMINT, \
+}, \
+{ \
+    .Name =     #enum "_0_Input", \
+    .Offset=    offsetof(MainCfg, InputCfg[(enum * MaxBindingsPerInput) + 0].Typeless), \
+    .SDefVal=   input0, \
+    .SMinVal=   0, \
+    .SMaxVal=   INT_MAX, /* idk */ \
+    .Type=      SEARCH_INT, \
+}, \
+{ \
+    .Name =     #enum "_0_Threshold", \
+    .Offset=    offsetof(MainCfg, InputCfg[(enum * MaxBindingsPerInput) + 0].PadAxis.Threshold), \
+    .SDefVal=   thresh0, \
+    .SMinVal=   s16_min, \
+    .SMaxVal=   s16_max, \
+    .Type=      SEARCH_S16DEC, \
+}, \
+ \
+{ \
+    .Name =     #enum "_1_Type", \
+    .Offset=    offsetof(MainCfg, InputCfg[(enum * MaxBindingsPerInput) + 1].Type), \
+    .EnumNames= (const char*[]){ \
+        [InputType_None]="None", \
+        [InputType_Keyboard]="Keyboard_Key", \
+        [InputType_Button]="GamePad_Button", \
+        [InputType_Axis]="GamePad_Axis" \
+    }, \
+    .SDefVal=   type1, \
+    .SMinVal=   0, \
+    .SMaxVal=   InputType_Max, \
+    .Type=      SEARCH_ENUMINT, \
+}, \
+{ \
+    .Name =     #enum "_1_Input", \
+    .Offset=    offsetof(MainCfg, InputCfg[(enum * MaxBindingsPerInput) + 1].Typeless), \
+    .SDefVal=   input1, \
+    .SMinVal=   0, \
+    .SMaxVal=   INT_MAX, /* idk */ \
+    .Type=      SEARCH_INT, \
+}, \
+{ \
+    .Name =     #enum "_1_Threshold", \
+    .Offset=    offsetof(MainCfg, InputCfg[(enum * MaxBindingsPerInput) + 1].PadAxis.Threshold), \
+    .SDefVal=   thresh1, \
+    .SMinVal=   s16_min, \
+    .SMaxVal=   s16_max, \
+    .Type=      SEARCH_S16DEC, \
+}, \
+ \
+{ \
+    .Name =     #enum "_2_Type", \
+    .Offset=    offsetof(MainCfg, InputCfg[(enum * MaxBindingsPerInput) + 2].Type), \
+    .EnumNames= (const char*[]){ \
+        [InputType_None]="None", \
+        [InputType_Keyboard]="Keyboard_Key", \
+        [InputType_Button]="GamePad_Button", \
+        [InputType_Axis]="GamePad_Axis" \
+    }, \
+    .SDefVal=   InputType_None, \
+    .SMinVal=   0, \
+    .SMaxVal=   InputType_Max, \
+    .Type=      SEARCH_ENUMINT, \
+}, \
+{ \
+    .Name =     #enum "_2_Input", \
+    .Offset=    offsetof(MainCfg, InputCfg[(enum * MaxBindingsPerInput) + 2].Typeless), \
+    .SDefVal=   0, \
+    .SMinVal=   0, \
+    .SMaxVal=   INT_MAX, /* idk */ \
+    .Type=      SEARCH_INT, \
+}, \
+{ \
+    .Name =     #enum "_2_Threshold", \
+    .Offset=    offsetof(MainCfg, InputCfg[(enum * MaxBindingsPerInput) + 2].PadAxis.Threshold), \
+    .SDefVal=   0, \
+    .SMinVal=   s16_min, \
+    .SMaxVal=   s16_max, \
+    .Type=      SEARCH_S16DEC, \
+}, \
+ \
+{ \
+    .Name =     #enum "_3_Type", \
+    .Offset=    offsetof(MainCfg, InputCfg[(enum * MaxBindingsPerInput) + 3].Type), \
+    .EnumNames= (const char*[]){ \
+        [InputType_None]="None", \
+        [InputType_Keyboard]="Keyboard_Key", \
+        [InputType_Button]="GamePad_Button", \
+        [InputType_Axis]="GamePad_Axis" \
+    }, \
+    .SDefVal=   InputType_None, \
+    .SMinVal=   0, \
+    .SMaxVal=   InputType_Max, \
+    .Type=      SEARCH_ENUMINT, \
+}, \
+{ \
+    .Name =     #enum "_3_Input", \
+    .Offset=    offsetof(MainCfg, InputCfg[(enum * MaxBindingsPerInput) + 3].Typeless), \
+    .SDefVal=   0, \
+    .SMinVal=   0, \
+    .SMaxVal=   INT_MAX, /* idk */ \
+    .Type=      SEARCH_INT, \
+}, \
+{ \
+    .Name =     #enum "_3_Threshold", \
+    .Offset=    offsetof(MainCfg, InputCfg[(enum * MaxBindingsPerInput) + 3].PadAxis.Threshold), \
+    .SDefVal=   0, \
+    .SMinVal=   s16_min, \
+    .SMaxVal=   s16_max, \
+    .Type=      SEARCH_S16DEC, \
+},
+
 static const ConfigEntry MainCfgData[] =
 {
     {
@@ -528,6 +655,21 @@ static const ConfigEntry MainCfgData[] =
     PERDISPLAYWINDOWSETTINGS(1)
     PERDISPLAYWINDOWSETTINGS(2)
     PERDISPLAYWINDOWSETTINGS(3)
+
+    KEYBIND(Input_A,        InputType_Keyboard, SDL_SCANCODE_APOSTROPHE, 0,     InputType_Button, SDL_GAMEPAD_BUTTON_EAST, 0)
+    KEYBIND(Input_B,        InputType_Keyboard, SDL_SCANCODE_SEMICOLON, 0,      InputType_Button, SDL_GAMEPAD_BUTTON_SOUTH, 0)
+    KEYBIND(Input_X,        InputType_Keyboard, SDL_SCANCODE_P, 0,              InputType_Button, SDL_GAMEPAD_BUTTON_NORTH, 0)
+    KEYBIND(Input_Y,        InputType_Keyboard, SDL_SCANCODE_L, 0,              InputType_Button, SDL_GAMEPAD_BUTTON_WEST, 0)
+
+    KEYBIND(Input_Up,       InputType_Keyboard, SDL_SCANCODE_W, 0,              InputType_Button, SDL_GAMEPAD_BUTTON_DPAD_UP, 0)
+    KEYBIND(Input_Down,     InputType_Keyboard, SDL_SCANCODE_S, 0,              InputType_Button, SDL_GAMEPAD_BUTTON_DPAD_DOWN, 0)
+    KEYBIND(Input_Left,     InputType_Keyboard, SDL_SCANCODE_A, 0,              InputType_Button, SDL_GAMEPAD_BUTTON_DPAD_LEFT, 0)
+    KEYBIND(Input_Right,    InputType_Keyboard, SDL_SCANCODE_D, 0,              InputType_Button, SDL_GAMEPAD_BUTTON_DPAD_RIGHT, 0)
+
+    KEYBIND(Input_Select,   InputType_Keyboard, SDL_SCANCODE_O, 0,              InputType_Button, SDL_GAMEPAD_BUTTON_BACK, 0)
+    KEYBIND(Input_Start,    InputType_Keyboard, SDL_SCANCODE_LEFTBRACKET, 0,    InputType_Button, SDL_GAMEPAD_BUTTON_START, 0)
+    KEYBIND(Input_L,        InputType_Keyboard, SDL_SCANCODE_LSHIFT, 0,         InputType_Button, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, 0)
+    KEYBIND(Input_R,        InputType_Keyboard, SDL_SCANCODE_RSHIFT, 0,         InputType_Button, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, 0)
 };
 
 #undef PERDISPLAYWINDOWSETTINGS

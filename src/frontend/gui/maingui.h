@@ -5,7 +5,7 @@
 
 #include "core/console.h"
 #include "core/utils.h"
-
+#include "frontend/input.h"
 
 
 
@@ -207,13 +207,11 @@ typedef struct
     bool DemoDisplay;
     bool ShowList;
 
-    bool Paused;
-    bool FrameLimit;
-
     LibraryDat Libs[LibType_MAX];
     SDL_Texture* NDSLibIcons[GUI_LibMax];
     char* LibrarySelName[3];
     bool NDSOpen;
+    s64 CurRebind;
 } MainGUI;
 
 typedef struct MainCfg MainCfg;
@@ -227,3 +225,5 @@ void DebugGUI_Loop(MailBox* mail, MainGUI* mgui, Console* sys);
 
 void LibraryGui_InitList(MainGUI* mgui, MainCfg* mcfg);
 void LibraryGui_Loop(MainGUI* mgui, MainCfg* mcfg, const bool active);
+
+void RebindGui_Loop(s64* curRebind, MainCfg* mcfg);
