@@ -186,6 +186,8 @@ typedef struct Console Console;
 
 void AGBMixer_Run(Console* sys);
 
+void CGBSnd_KillChannel(Console* sys, const u8 id);
+
 void AGBPulse_Run(Console* sys, const timestamp now, const u8 id);
 void AGBWave_Run(Console* sys, const timestamp now);
 void AGBNoise_Run(Console* sys, const timestamp now);

@@ -52,7 +52,9 @@ void CGBSnd_StartChannel(Console* sys, const timestamp now, const timestamp coun
 void CGBSnd_KillChannel(Console* sys, const u8 id)
 {
     sys->AGBSndEn.Raw &= ~(1<<id);
-    sys->AGBSamples[id] = 0;
+
+    sys->AGBSamples[id] = (id == 2) ? -8 : 0;
+
     Sched_RemoveEvent(&sys->Sched, Evt_CGBSnd1+id);
 }
 
@@ -93,18 +95,21 @@ bool AGBEnvelope_Step(const CGBSndEnvelope* e, CGBSndEnvelopeLatch* l, const tim
 }
 
 constexpr u8 Duty[4] = {1, 2, 4, 6};
-void AGBPulse_Run(Console* sys, const timestamp now, const u8 id)
+void AGBPulse_UpdateSample(Console* sys, const u8 id)
 {
     CGBSndPulse* p = &sys->CGBPulseChannel[id];
 
     if (p->Latched.DutyTick < (Duty[p->Regs.DutyPattern]))
-    {
-        sys->AGBSamples[id] = p->Latched.Envelope.Vol;
-    }
+        sys->AGBSamples[id] = (p->Latched.Envelope.Vol)>>1;
     else
-    {
-        sys->AGBSamples[id] = 0;
-    }
+        sys->AGBSamples[id] = (-p->Latched.Envelope.Vol)>>1;
+}
+
+void AGBPulse_Run(Console* sys, const timestamp now, const u8 id)
+{
+    CGBSndPulse* p = &sys->CGBPulseChannel[id];
+
+    AGBPulse_UpdateSample(sys, id);
     p->Latched.DutyTick++;
     p->Latched.DutyTick &= 0x7;
 
@@ -141,10 +146,7 @@ void AGBPulse_Tick(Console* sys, const timestamp now, const bool id)
     }
 
     if (AGBEnvelope_Step(&p->Regs.Envelope, &p->Latched.Envelope, now))
-    {
-        if (p->Latched.DutyTick < (Duty[p->Regs.DutyPattern]))
-            sys->AGBSamples[id] = p->Latched.Envelope.Vol;
-    }
+        AGBPulse_UpdateSample(sys, id);
 }
 void AGBWave_Run(Console* sys, const timestamp now)
 {
@@ -152,20 +154,19 @@ void AGBWave_Run(Console* sys, const timestamp now)
     const bool bank = w->Latched.BankCur;
 
     u8 sample;
-    if (w->Regs.Vol == 0) sample = 0;
+    if (w->Regs.Vol == 0) sample = 0; // 0% vol;
     else
     {
         sample = (sys->CGBWaveRAM[bank].Shift & 0xF);
-        if (w->Regs.Vol > 0x3)
-        {
+        if (w->Regs.Vol > 0x3) // 75% vol; (CHECKME: not 100% sure if this is correct?)
             sample = (sample >> 1) + (sample >> 2);
-        }
         else
-        {
             sample = (sys->CGBWaveRAM[bank].Shift & 0xF) >> (w->Regs.Vol-1);
-        }
     }
-    sys->AGBSamples[2] = sample;
+
+    // channel seems to have a range of -8 through +8, with 0 being skipped
+    sys->AGBSamples[2] = sample - 8;
+    if (sample >= 0) sys->AGBSamples[2]+=1;
 
     sys->CGBWaveRAM[bank].Shift = (sys->CGBWaveRAM[bank].Shift >> 4) | (sys->CGBWaveRAM[bank].Shift << 124);
 
@@ -204,9 +205,9 @@ timestamp AGBNoise_CalcTimer(CGBSndNoise* n)
 void AGBNoise_UpdateSample(Console* sys)
 {
     if (!(sys->CGBNoiseChannel.Latched.LFSR & 1))
-        sys->AGBSamples[3] = sys->CGBNoiseChannel.Latched.Envelope.Vol;
+        sys->AGBSamples[3] = (sys->CGBNoiseChannel.Latched.Envelope.Vol)>>1;
     else
-        sys->AGBSamples[3] = 0;
+        sys->AGBSamples[3] = (-sys->CGBNoiseChannel.Latched.Envelope.Vol)>>1;
 }
 
 void AGBNoise_Run(Console* sys, const timestamp now)

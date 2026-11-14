@@ -566,6 +566,9 @@ void Console_ResetAGB(Console* sys, timestamp now)
 
     Sched_AddEvent(sys, (now + GB_DIVAPUTICK(1)) & ~(GB_DIVAPUTICK(1)-1), Evt_CGBSndAPUDIV);
 
+    for (int i = 0; i < 4; i++)
+        CGBSnd_KillChannel(sys, i);
+
     sys->PPUStart = false;
     sys->PPUTarget = timestamp_max; // pretend this is a good solution.
 
