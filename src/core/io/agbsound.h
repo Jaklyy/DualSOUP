@@ -138,30 +138,30 @@ typedef union
 {
     u32 Raw;
     struct {
-        u32 RightVolume : 3;
+        u32 PsgRVol : 3;
         u32 : 1;
-        u32 LeftVolume : 3;
+        u32 PsgLVol : 3;
         u32 : 1;
-        bool Chan1REn : 1;
-        bool Chan2REn : 1;
-        bool Chan3REn : 1;
-        bool Chan4REn : 1;
-        bool Chan1LEn : 1;
-        bool Chan2LEn : 1;
-        bool Chan3LEn : 1;
-        bool Chan4LEn : 1;
-        u32 CGBVol : 2;
-        bool AVol : 1;
-        bool BVol : 1;
+        bool Psg1REn : 1;
+        bool Psg2REn : 1;
+        bool Psg3REn : 1;
+        bool Psg4REn : 1;
+        bool Psg1LEn : 1;
+        bool Psg2LEn : 1;
+        bool Psg3LEn : 1;
+        bool Psg4LEn : 1;
+        u32 PsgVol : 2;
+        bool PcmAVol : 1;
+        bool PcmBVol : 1;
         u32 : 4;
-        bool AREn : 1;
-        bool ALEn : 1;
-        bool ATimerSel : 1;
-        bool AFIFOReset : 1;
-        bool BREn : 1;;
-        bool BLEn : 1;
-        bool BTimerSel : 1;
-        bool BFIFOReset : 1;
+        bool PcmAREn : 1;
+        bool PcmALEn : 1;
+        bool PcmATimerSel : 1;
+        bool PcmAFIFOReset : 1;
+        bool PcmBREn : 1;;
+        bool PcmBLEn : 1;
+        bool PcmBTimerSel : 1;
+        bool PcmBFIFOReset : 1;
     };
 } AGBSndCR;
 
@@ -169,10 +169,10 @@ typedef union
 {
     u8 Raw;
     struct {
-    bool Snd1Running : 1;
-    bool Snd2Running : 1;
-    bool Snd3Running : 1;
-    bool Snd4Running : 1;
+    bool Psg1Running : 1;
+    bool Psg2Running : 1;
+    bool Psg3Running : 1;
+    bool Psg4Running : 1;
     u8 : 3;
     bool MasterEnable : 1;
     };

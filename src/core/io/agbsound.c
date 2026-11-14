@@ -4,34 +4,44 @@
 
 
 
-
 void AGBMixer_Run(Console* sys)
 {
     sys->MixerOut[0] = 0;
     sys->MixerOut[1] = 0;
     if (sys->AGBSndEn.MasterEnable)
     {
-        const u8 CGBPan[2] = {sys->AGBSndCR.LeftVolume, sys->AGBSndCR.RightVolume};
-        const bool En1[2] = {sys->AGBSndCR.Chan1LEn, sys->AGBSndCR.Chan1REn};
-        const bool En2[2] = {sys->AGBSndCR.Chan2LEn, sys->AGBSndCR.Chan2REn};
-        const bool En3[2] = {sys->AGBSndCR.Chan3LEn, sys->AGBSndCR.Chan3REn};
-        const bool En4[2] = {sys->AGBSndCR.Chan4LEn, sys->AGBSndCR.Chan4REn};
-        const bool EnA[2] = {sys->AGBSndCR.ALEn, sys->AGBSndCR.AREn};
-        const bool EnB[2] = {sys->AGBSndCR.BLEn, sys->AGBSndCR.BREn};
+        const u8 PsgPan[2] = {sys->AGBSndCR.PsgLVol, sys->AGBSndCR.PsgRVol};
+        const bool Enable[6][2] = {
+            {sys->AGBSndCR.Psg1LEn, sys->AGBSndCR.Psg1REn},
+            {sys->AGBSndCR.Psg2LEn, sys->AGBSndCR.Psg2REn},
+            {sys->AGBSndCR.Psg3LEn, sys->AGBSndCR.Psg3REn},
+            {sys->AGBSndCR.Psg4LEn, sys->AGBSndCR.Psg4REn},
+            {sys->AGBSndCR.PcmALEn, sys->AGBSndCR.PcmAREn},
+            {sys->AGBSndCR.PcmBLEn, sys->AGBSndCR.PcmBREn}};
+
         for (int i = 0; i < 2; i++)
         {
-            if (sys->AGBSndCR.CGBVol != 3)
+            // mix psg
+            if (sys->AGBSndCR.PsgVol != 3) // checkme: prohibited?
             {
-                if (En1[i]) sys->MixerOut[i] += sys->AGBSamples[0];
-                if (En2[i]) sys->MixerOut[i] += sys->AGBSamples[1];
-                if (En3[i]) sys->MixerOut[i] += sys->AGBSamples[2];
-                if (En4[i]) sys->MixerOut[i] += sys->AGBSamples[3];
+                for (int c = 0; c < 4; c++)
+                    if (Enable[c][i]) sys->MixerOut[i] += sys->AGBSamples[c];
 
-                sys->MixerOut[i] <<= sys->AGBSndCR.CGBVol + 5;
-                sys->MixerOut[i] *= (CGBPan[i] + 1);
+                // this is close, but not quite correct
+                // it seems to use some slightly incorrect math for this?
+                // TODO: supposedly the output gets even weirder with multiple channels mixed together?
+                sys->MixerOut[i] *= PsgPan[i]+1;
+                sys->MixerOut[i] >>= 3;
+
+                // checkme: exact math here is not verified
+                sys->MixerOut[i] <<= sys->AGBSndCR.PsgVol + 1;
             }
-            if (EnA[i]) sys->MixerOut[i] += sys->AGBSamples[4] << (sys->AGBSndCR.AVol+7);
-            if (EnB[i]) sys->MixerOut[i] += sys->AGBSamples[5] << (sys->AGBSndCR.BVol+7);
+
+            // mix pcm
+            if (Enable[4]) sys->MixerOut[i] += sys->AGBSamples[4] << (sys->AGBSndCR.PcmAVol);
+            if (Enable[5]) sys->MixerOut[i] += sys->AGBSamples[5] << (sys->AGBSndCR.PcmBVol);
+            // convert to 16 bit, since im feeding this into the same function as the nds sampler
+            sys->MixerOut[i] <<= (1+6);
         }
     }
 }
@@ -99,10 +109,12 @@ void AGBPulse_UpdateSample(Console* sys, const u8 id)
 {
     CGBSndPulse* p = &sys->CGBPulseChannel[id];
 
+    // this gives a range of +8 to -7
+    // checkme: i'm not 100% confident about the range here
     if (p->Latched.DutyTick < (Duty[p->Regs.DutyPattern]))
-        sys->AGBSamples[id] = (p->Latched.Envelope.Vol)>>1;
+        sys->AGBSamples[id] = ((p->Latched.Envelope.Vol)+1)>>1;
     else
-        sys->AGBSamples[id] = (-p->Latched.Envelope.Vol)>>1;
+        sys->AGBSamples[id] = ((-p->Latched.Envelope.Vol)+1)>>1;
 }
 
 void AGBPulse_Run(Console* sys, const timestamp now, const u8 id)
@@ -204,10 +216,12 @@ timestamp AGBNoise_CalcTimer(CGBSndNoise* n)
 
 void AGBNoise_UpdateSample(Console* sys)
 {
+    // this gives a range of +8 to -7
+    // checkme: i'm not 100% confident about the range here
     if (!(sys->CGBNoiseChannel.Latched.LFSR & 1))
-        sys->AGBSamples[3] = (sys->CGBNoiseChannel.Latched.Envelope.Vol)>>1;
+        sys->AGBSamples[3] = ((sys->CGBNoiseChannel.Latched.Envelope.Vol)+1)>>1;
     else
-        sys->AGBSamples[3] = (-sys->CGBNoiseChannel.Latched.Envelope.Vol)>>1;
+        sys->AGBSamples[3] = ((-sys->CGBNoiseChannel.Latched.Envelope.Vol)+1)>>1;
 }
 
 void AGBNoise_Run(Console* sys, const timestamp now)
@@ -256,7 +270,7 @@ void AGBSnd_APUDivTick(Console* sys, const timestamp now)
 
 void AGBSndDMA_Sample(Console* sys, const u8 id, const timestamp now, const bool b)
 {
-    if (id == (b ? sys->AGBSndCR.BTimerSel : sys->AGBSndCR.ATimerSel))
+    if (id == (b ? sys->AGBSndCR.PcmBTimerSel : sys->AGBSndCR.PcmATimerSel))
     {
         if (((sys->AGBSndFIFOFillPtr[b] - sys->AGBSndFIFODrainPtr[b]) % countof(sys->AGBSndFIFO[b].b8)) > 0) // yes, that is correct
         {
