@@ -348,6 +348,8 @@ typedef struct
     u8 SprMosaicYCur;
     u8 SprMosaicYFrac;
 
+    u16 SprYLatch;
+
     BGData BGDat[4];
     timestamp ScanlineStart;
     s8 CompBGs[2];

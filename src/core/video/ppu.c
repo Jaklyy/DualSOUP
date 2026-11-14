@@ -976,12 +976,15 @@ void PPU_StepSprites(Console* sys, const u16 h, const u16 v, const PPU_Type type
         ppu->SprBufBack = !ppu->SprBufBack;
         ppu->SprDat[0] = (SprData){};
         ppu->SprDatCur = 0;
+        ppu->SprYLatch = ((v == LCD_VMax) ? 0 : v+1); // CHECKME: how does sprite rendering behave when vcount is written?
 
         for (int x = 0; x < 256; x++) // clear back sprite buffer
             ppu->CompositeBuffer[4+ppu->SprBufBack][x] = (CompositeBuffer){0, 0, true, false, false, false, false, false};
 
         memset(ppu->SpriteWindow[ppu->SprBufBack], 0, sizeof(ppu->SpriteWindow[ppu->SprBufBack])); // clear back sprite window bitfield
     }
+
+    if (ppu->SprYLatch >= LCD_Height) return; // sprite rendering inactive
 
     // sprites can be disabled entirely in the ppu's control reg
     if (!PPU_CheckBGEnable(ppu, 4)) return;
@@ -990,7 +993,6 @@ void PPU_StepSprites(Console* sys, const u16 h, const u16 v, const PPU_Type type
      && ((h < (10*PPU_IterLen)) || (h >= LCD_HBlankStart))) // sprite hblank range
         return;
 
-    u32 y = ((v == LCD_VMax) ? 0 : (v+1));
 
     // note: sprites are rendered from lowest slot to highest slot
     // this does mean that their oam slot priority resolves as a result of each sprite overwriting the other
@@ -998,7 +1000,7 @@ void PPU_StepSprites(Console* sys, const u16 h, const u16 v, const PPU_Type type
     // but doing it the way hardware does it will allow for implementing sprite timings
     SprData* dat = &ppu->SprDat[ppu->SprDatCur];
 
-    if (dat->Cycle <= 2) PPU_SpriteFetchOAM(dat, oambase, y);
+    if (dat->Cycle <= 2) PPU_SpriteFetchOAM(dat, oambase, ppu->SprYLatch);
     else if (dat->Cycle == 3)
     {
         ppu->SprDat[!ppu->SprDatCur] = (SprData){.SprID = dat->SprID+1};
@@ -1028,7 +1030,7 @@ void PPU_StepSprites(Console* sys, const u16 h, const u16 v, const PPU_Type type
 
                 // get the y progress through the sprite
                 // note: sprites can wrap the screen if they overflow the 8 bit range (checkme?)
-                u8 sy = PPU_GetSprRelY(ppu, dat, y);
+                u8 sy = PPU_GetSprRelY(ppu, dat, ppu->SprYLatch);
 
                 s16* params = dat->AffineParams;
 
@@ -1039,7 +1041,7 @@ void PPU_StepSprites(Console* sys, const u16 h, const u16 v, const PPU_Type type
                 dat->AffineCur[1] = ((((s32)0-(widthreal/2)) * params[2]) + (((s32)sy-(heightreal/2)) * params[3]) + (dat->Height*256/2));
                 [[fallthrough]];
             }
-            case 15: PPU_SpriteFetchOAM(&ppu->SprDat[!ppu->SprDatCur], oambase, y); dat->Cycle++; break; // run next sprites's first two cycles
+            case 15: PPU_SpriteFetchOAM(&ppu->SprDat[!ppu->SprDatCur], oambase, ppu->SprYLatch); dat->Cycle++; break; // run next sprites's first two cycles
             default: dat->Cycle++; break;
         }
     }
@@ -1051,7 +1053,7 @@ void PPU_StepSprites(Console* sys, const u16 h, const u16 v, const PPU_Type type
 
         if (dat->Cycle <= 5)
         {
-            PPU_SpriteFetchOAM(&ppu->SprDat[!ppu->SprDatCur], oambase, y); // run next sprites's first two cycles
+            PPU_SpriteFetchOAM(&ppu->SprDat[!ppu->SprDatCur], oambase, ppu->SprYLatch); // run next sprites's first two cycles
         }
 
         if (dat->OAM01.Affine)
@@ -1067,7 +1069,7 @@ void PPU_StepSprites(Console* sys, const u16 h, const u16 v, const PPU_Type type
 
         // get the y progress through the sprite
         // note: sprites can wrap the screen if they overflow the 8 bit range (checkme?)
-        u8 sy = PPU_GetSprRelY(ppu, dat, y);
+        u8 sy = PPU_GetSprRelY(ppu, dat, ppu->SprYLatch);
         if (dat->OAM01.Affine) PPU_SpriteAffine(sys, xoffs/2, type);
         else                   PPU_SpriteNormal(sys, xoffs, sy, type);
 
@@ -1075,7 +1077,7 @@ void PPU_StepSprites(Console* sys, const u16 h, const u16 v, const PPU_Type type
 
         if (xoffs == (max))//-1))
         {
-            PPU_SpriteFetchOAM(&ppu->SprDat[!ppu->SprDatCur], oambase, y); // run next sprites's third cycle
+            PPU_SpriteFetchOAM(&ppu->SprDat[!ppu->SprDatCur], oambase, ppu->SprYLatch); // run next sprites's third cycle
             ppu->SprDatCur = !ppu->SprDatCur;
         }
     }
@@ -1518,7 +1520,6 @@ void PPU_Step(Console* sys, u16 h, u16 v, const PPU_Type type)
     if ((type == PPUType_B) ? !sys->PowerCR9.PPUBPower : !sys->PowerCR9.PPUAPower) goto skipppu;
 
     const u16 bgmaxv = LCD_GetHeight(type == PPUType_AGB);
-    const u16 sprmaxv = LCD_GetHeight(type == PPUType_AGB) - 1;
 
     PPU_StepEnableFlags(ppu, h);
     PPU_StepSprMosaic(sys, h, v, type);
@@ -1530,7 +1531,7 @@ void PPU_Step(Console* sys, u16 h, u16 v, const PPU_Type type)
         PPU_StepComposite(sys, h, type);
     }
 
-    if ((v == LCD_VMax) || (v < sprmaxv)) // render next sprite scanline
+    if ((v == LCD_VMax) || (v < bgmaxv)) // render next sprite scanline
     {
         PPU_StepSprites(sys, h, v, type);
     }
