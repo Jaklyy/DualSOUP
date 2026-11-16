@@ -540,16 +540,14 @@ void AGBSound_IOWrite(Console* sys, const u32 addr, u32 wrdata, const u32 mask, 
     }
 
     case 0x90 ... 0x9C: { // chan 3: wave ram
-        if (sys->AGBSndEn.MasterEnable) {
-            u8 idx = (addr & 0xC)/ 4;
-            // nibbles are swapped within a byte??
-            u32 nibblefuckery = 0;
-            for (int i = 0; i < 4; i++)
-            {
-                nibblefuckery |= (u32)ROR8((wrdata >> ((u32)8*i)) & 0xFF, 4) << ((u32)8*i);
-            }
-            MaskedWrite(sys->CGBWaveRAM[!sys->CGBWaveChannel.Regs.BankSelect].Word[idx], nibblefuckery, mask);
+        u8 idx = (addr & 0xC)/ 4;
+        // nibbles are swapped within a byte??
+        u32 nibblefuckery = 0;
+        for (int i = 0; i < 4; i++)
+        {
+            nibblefuckery |= (u32)ROR8((wrdata >> ((u32)8*i)) & 0xFF, 4) << ((u32)8*i);
         }
+        MaskedWrite(sys->CGBWaveRAM[!sys->CGBWaveChannel.Regs.BankSelect].Word[idx], nibblefuckery, mask);
         break;
     }
 
