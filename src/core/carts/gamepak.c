@@ -335,7 +335,7 @@ void GamePak_FlashCmdSubmit(GamePak* pak, const u16 addr, const u8 val)
             {
                 pak->FlashCmdProg = GPFCmdProg_Begin;
                 // TODO: timings
-                memset(&pak->SRAM[addr & 0xF000], 0xFF, KiB(4));
+                memset(&pak->SRAM[actualaddr & ~(KiB(4)-1)], 0xFF, KiB(4));
 
                 GamePakSRAM_SetDirty(pak);
                 return;
@@ -363,8 +363,9 @@ void GamePak_FlashCmdSubmit(GamePak* pak, const u16 addr, const u8 val)
             if (pak->FlashType == GamePakFlash_Atmel) // erase and write 128 bytes
             {
                 // misalignment handling is a guess
-                pak->SRAM[(actualaddr & 0xFF80) + (pak->FlashCmdProg-GPFCmdProg_WriteDataBase)] = val;
-                if (pak->FlashCmdProg == GPFCmdProg_WriteDataBase+127)
+                pak->SRAM[(actualaddr & ~(128-1)) + (pak->FlashCmdProg-GPFCmdProg_WriteDataBase)] = val;
+
+                if (pak->FlashCmdProg == (GPFCmdProg_WriteDataBase+127))
                 {
                     pak->FlashCmdProg = GPFCmdProg_Begin;
                 }
@@ -375,7 +376,7 @@ void GamePak_FlashCmdSubmit(GamePak* pak, const u16 addr, const u8 val)
             }
             else
             {
-                pak->SRAM[addr] &= val; // functions as a bitwise AND...?
+                pak->SRAM[actualaddr] &= val; // functions as a bitwise AND...?
                 pak->FlashCmdProg = GPFCmdProg_Begin;
 
                 GamePakSRAM_SetDirty(pak);
