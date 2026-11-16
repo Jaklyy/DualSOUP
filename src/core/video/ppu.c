@@ -1353,23 +1353,26 @@ void PPU_StepWindows(Console* sys, const u16 h, const u16 v, const PPU_Type type
 
         // X WINDOW CHECK:
 
-        // checkme: idk when this is actually checked
-        // TODO: DSi with PPU rev enabled special cases the ((left == 0) && (right == 0)) case
-        if      (x == ppu->Window.W0Right) ppu->Window0XActive = false;
-        else if (x == ppu->Window.W0Left ) ppu->Window0XActive = true;
+        if (x < 256)
+        {
+            // checkme: idk when this is actually checked
+            // TODO: DSi with PPU rev enabled special cases the ((left == 0) && (right == 0)) case
+            if      (x == ppu->Window.W0Right) ppu->Window0XActive = false;
+            else if (x == ppu->Window.W0Left ) ppu->Window0XActive = true;
 
-        if      (x == ppu->Window.W1Right) ppu->Window1XActive = false;
-        else if (x == ppu->Window.W1Left ) ppu->Window1XActive = true;
+            if      (x == ppu->Window.W1Right) ppu->Window1XActive = false;
+            else if (x == ppu->Window.W1Left ) ppu->Window1XActive = true;
 
-        // calc window
-        if (ppu->DisplayCR.Win0Enable && ppu->Window0YActive && ppu->Window0XActive) // win 0 active
-            ppu->WinEnMask = ppu->Window.W0Cr;
-        else if (ppu->DisplayCR.Win1Enable && ppu->Window1YActive && ppu->Window1XActive) // win 1 active
-            ppu->WinEnMask = ppu->Window.W1Cr;
-        else if (ppu->DisplayCR.OBJWinEnable && (ppu->SpriteWindow[!ppu->SprBufBack][x/64] & ((u64)1<<(x%64)))) // win 2 active
-            ppu->WinEnMask = ppu->Window.WObjCr;
-        else // no window active
-            ppu->WinEnMask = ppu->Window.WNoneCr;
+            // calc window
+            if (ppu->DisplayCR.Win0Enable && ppu->Window0YActive && ppu->Window0XActive) // win 0 active
+                ppu->WinEnMask = ppu->Window.W0Cr;
+            else if (ppu->DisplayCR.Win1Enable && ppu->Window1YActive && ppu->Window1XActive) // win 1 active
+                ppu->WinEnMask = ppu->Window.W1Cr;
+            else if (ppu->DisplayCR.OBJWinEnable && (ppu->SpriteWindow[!ppu->SprBufBack][x/64] & ((u64)1<<(x%64)))) // win 2 active
+                ppu->WinEnMask = ppu->Window.WObjCr;
+            else // no window active
+                ppu->WinEnMask = ppu->Window.WNoneCr;
+        }
     }
     else // windowing disabled
         ppu->WinEnMask.Raw = 0x3F;

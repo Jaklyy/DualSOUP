@@ -42,6 +42,15 @@ typedef enum : u8
     GPFCmdProg_WriteDataBase,
 } GamePakFlashCmdProg;
 
+typedef enum : u8
+{
+    GamePakEepMapping_None,
+    GamePakEepMapping_Lo,
+    GamePakEepMapping_Hi,
+
+    GamePakEepMapping_Max [[maybe_unused]],
+} GamePakEEPROMMapping;
+
 constexpr timestamp GamePak_WaitStates[6][4] =
 {
     {9, 7, 5, 17}, // ntr nseq
@@ -59,13 +68,15 @@ typedef struct
     u8 ROMChipSize;
     u8 ROMPaddingByte;
 
+    GamePakEEPROMMapping EEPROMMapping;
+    u8 EEPROMChipSize;
+
     GamePakSRAMType SRAMType;
     GamePakFlashType GamePakFlashType;
     u8 SRAMChipSize;
-    union
-    {
-    u16 FlashChipID;
-    int FlashChipID_Int;
+    union {
+        u16 FlashChipID;
+        int FlashChipID_Int;
     };
     char* FolderPath;
 
@@ -88,6 +99,12 @@ typedef struct
     bool RAM_CSel;
     bool IRQ_Out;
 
+    bool EEPROM_CSel;
+    alignas(16)
+    u128 EEPROM_CmdInBuf;
+    u128 EEPROM_CmdOutBuf;
+    u8 EEPROM_CmdInLen;
+
     // rom
     bool Inserted;
     struct {
@@ -95,14 +112,17 @@ typedef struct
         bool ReadEnable;
         bool Present;
     } GPIO;
-    bool EEPROMDirty;
-    u64 EEPROMDirtyCycle;
-    u32 EEPROMBegin;
     size_t ROMSize;
-    size_t EEPROMSize;
-    u64* EEPROM;
     u16* ROM;
     char* SavFolder;
+
+    // eeprom
+    u64 EEPROMDirtyCycle;
+    bool EEPROMDirty;
+    size_t EEPROMSize;
+    u64* EEPROM;
+    u32 EEPROMBegin;
+
     // sram
 
     // flash
@@ -170,6 +190,7 @@ typedef struct Console Console;
 bool GamePak_Init(GamePak* pak, GamePakCfg* cfg);
 void GamePak_Cleanup(GamePak* pak);
 bool GamePakSRAM_FlushToDisk(GamePak* pak, u8** outbuf, u64* size, bool force);
+bool GamePakEEPROM_FlushToDisk(GamePak* pak, u64** outbuf, u64* size, bool force);
 
 void GamePak_Step(BusGamePak* bus, GamePak* pak);
 

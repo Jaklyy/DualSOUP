@@ -71,6 +71,7 @@ MainGUI MainGUI_Init(MainCfg* mcfg)
     cImGui_ImplSDLRenderer3_Init(mgui.Ren);
 
     mgui.GBAImportGui.SRAMPath = calloc(1, 1);
+    mgui.GBAImportGui.EepPath = calloc(1, 1);
     mgui.GBAImportGui.Mutex = SDL_CreateMutex();
 
     mgui.NDSImportGui.SRAMPath = calloc(1, 1);

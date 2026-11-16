@@ -5,7 +5,6 @@
 
 #include "core/console.h"
 #include "core/utils.h"
-#include "frontend/input.h"
 
 
 
@@ -157,16 +156,21 @@ typedef struct
 {
     SDL_Mutex* Mutex;
     char* SRAMPath;
+    char* EepPath;
     bool Show;
     char* EditFolder;
     GamePakCfg Cfg;
     bool InitSav;
+    bool InitEep;
 
     bool ROMDirty;
     bool ROMDirtyB;
     bool SRAMDirty;
     bool SRAMDirtyB;
+    bool EepDirty;
+    bool EepDirtyB;
     bool SavFromFile;
+    bool EepFromFile;
 } GBAImportGui;
 
 typedef enum : u8

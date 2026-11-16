@@ -129,48 +129,62 @@ bool Console_ReadFile(u8* buf, const char* path, const size_t num, const char* n
 
 void Console_SaveFiles(Console* sys, bool force)
 {
-    char* const cardsram = sys->GameCard.SavFolder;
-    char* const paksram = sys->GamePak.SavFolder;
-    char* const wifinvram = sys->WiFiNVRAMFolder;
-    if (cardsram && cardsram[0] != '\0')
+    char* const cardSram = sys->GameCard.SavFolder;
+    char* const pakSram = sys->GamePak.SavFolder;
+    char* const wifiNvram = sys->WiFiNVRAMFolder;
+    if (cardSram && cardSram[0] != '\0')
     {
         u8* buf;
         u64 size;
         if (GameCardSPI_FlushToDisk(&sys->GameCard, &buf, &size, force))
         {
+            char path[strlen(cardSram)+sizeof(DSSavFile)];
+            strcpy(path, cardSram);
+            strcat(path, DSSavFile);
+            SDL_SaveFile(path, buf, size);
             printf("Card SRAM Flushed\n");
-            char path[strlen(cardsram)+sizeof(DSSavFile)];
-            strcpy(path, cardsram);
-            strcat(path, DSSavFile);
-            SDL_SaveFile(path, buf, size);
         }
     }
 
-    if (paksram && paksram[0] != '\0')
+    if (pakSram && pakSram[0] != '\0')
     {
-        u8* buf;
-        u64 size;
-        if (GamePakSRAM_FlushToDisk(&sys->GamePak, &buf, &size, force))
         {
-            printf("Pak SRAM Flushed\n");
-            char path[strlen(paksram)+sizeof(DSSavFile)];
-            strcpy(path, paksram);
-            strcat(path, DSSavFile);
-            SDL_SaveFile(path, buf, size);
+            u8* buf;
+            u64 size;
+            if (GamePakSRAM_FlushToDisk(&sys->GamePak, &buf, &size, force))
+            {
+                char path[strlen(pakSram)+sizeof(DSSavFile)];
+                strcpy(path, pakSram);
+                strcat(path, DSSavFile);
+                SDL_SaveFile(path, buf, size);
+                printf("Pak SRAM Flushed\n");
+            }
+        }
+        {
+            u64* buf;
+            u64 size;
+            if (GamePakEEPROM_FlushToDisk(&sys->GamePak, &buf, &size, force))
+            {
+                char path[strlen(pakSram)+sizeof(DSEepromFile)];
+                strcpy(path, pakSram);
+                strcat(path, DSEepromFile);
+                SDL_SaveFile(path, buf, size);
+                printf("Pak EEPROM Flushed\n");
+            }
         }
     }
 
-    if (wifinvram && wifinvram[0] != '\0')
+    if (wifiNvram && wifiNvram[0] != '\0')
     {
         u8* buf;
         u64 size;
         if (Flash_FlushToDisk(&sys->Firmware, &buf, &size, force))
         {
-            printf("Firmware Flushed\n");
-            char path[strlen(wifinvram)+sizeof(ConsoleWiFiNvram)];
-            strcpy(path, wifinvram);
+            char path[strlen(wifiNvram)+sizeof(ConsoleWiFiNvram)];
+            strcpy(path, wifiNvram);
             strcat(path, ConsoleWiFiNvram);
             SDL_SaveFile(path, buf, size);
+            printf("Firmware Flushed\n");
         }
     }
 }

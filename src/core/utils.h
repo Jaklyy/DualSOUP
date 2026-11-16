@@ -374,6 +374,7 @@ constexpr char LibraryFolderFmt[] = "%03i/";
 constexpr char DSCfgName[] = "cfg.soup";
 constexpr char DSSavFolder[] = "sav/";
 constexpr char DSSavFile[] = "sav.sav";
+constexpr char DSEepromFile[] = "sav.eeprom";
 constexpr char DSIconFile[] = "icon.bin";
 
 // TODO: should this be per thread?

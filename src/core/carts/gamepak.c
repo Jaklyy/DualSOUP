@@ -17,15 +17,15 @@ bool GamePak_Init(GamePak* pak, GamePakCfg* cfg)
     if (!pak->Inserted) return true;
 
     // INIT ROM
-    size_t romsize = (size_t)1<<cfg->ROMChipSize;
-    pak->ROMSize = romsize >> 1;
+    size_t romSize = (size_t)1<<cfg->ROMChipSize;
+    pak->ROMSize = romSize >> 1;
 
-    if ((pak->ROM = malloc(romsize)) == NULL)
+    if ((pak->ROM = malloc(romSize)) == NULL)
     {
         LogPrint(LOG_ALWAYS, "Malloc failure in pak init\n");
         return false;
     }
-    memset(pak->ROM, cfg->ROMPaddingByte, romsize);
+    memset(pak->ROM, cfg->ROMPaddingByte, romSize);
 
     SDL_IOStream* rom;
     if ((rom = SDL_IOFromFile(cfg->ROMPath, "rb")) == NULL)
@@ -36,65 +36,125 @@ bool GamePak_Init(GamePak* pak, GamePakCfg* cfg)
         return false;
     }
 
-    size_t rombytes = SDL_ReadIO(rom, pak->ROM, romsize);
-    if ((rombytes != romsize) && (SDL_GetIOStatus(rom) != SDL_IO_STATUS_EOF))
+    size_t romBytes = SDL_ReadIO(rom, pak->ROM, romSize);
+    if ((romBytes != romSize) && (SDL_GetIOStatus(rom) != SDL_IO_STATUS_EOF))
         LogPrint(LOG_ALWAYS, "ROM File read error: %s\n", SDL_GetError());
 
-    LogPrint(LOG_ALWAYS, "Read %zu bytes of ROM\n", rombytes);
+    LogPrint(LOG_ALWAYS, "Read %zu bytes of ROM\n", romBytes);
 
     if (!SDL_CloseIO(rom))
         LogPrint(LOG_ALWAYS, "ROM File close error: %s\n", SDL_GetError());
 
     // INIT RAM
 
-    // TODO: EEPROM
-    pak->EEPROMBegin = u32_max;
-
-    // SRAM BUS
-    pak->SRAMType = cfg->SRAMType;
-
-    size_t sramsize = (size_t)1<<cfg->SRAMChipSize;
-    pak->SRAMSize = sramsize;
-    if (cfg->SRAMType != GamePakSRAM_None)
+    switch (cfg->EEPROMMapping)
     {
-        if ((pak->SRAM = malloc(sramsize)) == NULL)
-        {
-            LogPrint(LOG_ALWAYS, "Could not allocate RAM for Game Card SRAM\n");
-            goto fail;
-        }
-        memset(pak->SRAM, 0xFF, sramsize);
+    case GamePakEepMapping_None:
+        pak->EEPROMBegin = u32_max;
+        goto skipEEP;
+    case GamePakEepMapping_Lo:
+        pak->EEPROMBegin = 0x800000; // upper half of addr space
+        break;
+    case GamePakEepMapping_Hi:
+        pak->EEPROMBegin = 0xFFFF80; // upper 256 bytes
+        break;
+    }
 
-        SDL_IOStream* sram;
+    {
+        size_t eepSize = (size_t)1<<cfg->EEPROMChipSize;
+        pak->EEPROMSize = eepSize/8;
+        if ((pak->EEPROM = malloc(eepSize)) == NULL)
+        {
+            LogPrint(LOG_ALWAYS, "Could not allocate RAM for Game Card EEPROM\n");
+            goto eepFail;
+        }
+        memset(pak->EEPROM, 0xFF, eepSize); // citation needed?
+
+        SDL_IOStream* eep;
         {
             pak->SavFolder = malloc(strlen(cfg->FolderPath)+sizeof(DSSavFolder));
             strcpy(pak->SavFolder, cfg->FolderPath);
             strcat(pak->SavFolder, DSSavFolder);
 
-            char savpath[strlen(pak->SavFolder)+sizeof(DSSavFile)];
-            strcpy(savpath, pak->SavFolder);
-            strcat(savpath, DSSavFile);
+            char savPath[strlen(pak->SavFolder)+sizeof(DSEepromFile)];
+            strcpy(savPath, pak->SavFolder);
+            strcat(savPath, DSEepromFile);
 
-            if ((sram = SDL_IOFromFile(savpath, "rb")) == NULL)
+            if ((eep = SDL_IOFromFile(savPath, "rb")) == NULL)
             {
-                LogPrint(LOG_ALWAYS, "Could not open SRAM: %s\n%s", savpath, SDL_GetError());
+                LogPrint(LOG_ALWAYS, "Could not open EEPROM: %s\n%s", savPath, SDL_GetError());
 
-                free(pak->SRAM);
-                goto fail;
+                free(pak->EEPROM);
+                goto eepFail;
             }
         }
 
-        size_t srambytes = SDL_ReadIO(sram, pak->SRAM, sramsize);
-        if ((srambytes != sramsize) && (SDL_GetIOStatus(sram) != SDL_IO_STATUS_EOF))
+        size_t eepBytes = SDL_ReadIO(eep, pak->EEPROM, eepSize);
+        if ((eepBytes != eepSize) && (SDL_GetIOStatus(eep) != SDL_IO_STATUS_EOF))
+            LogPrint(LOG_ALWAYS, "EEPROM File read error: %s\n", SDL_GetError());
+
+        LogPrint(LOG_ALWAYS, "Read %zu bytes of EEPROM\n", eepBytes);
+
+        if (!SDL_CloseIO(eep))
+            LogPrint(LOG_ALWAYS, "EEPROM File close error: %s\n", SDL_GetError());
+
+        if (false)
+        {
+            eepFail:
+            free(pak->ROM);
+            return false;
+        }
+    }
+    skipEEP:
+
+    // SRAM BUS
+    pak->SRAMType = cfg->SRAMType;
+
+    size_t sramSize = (size_t)1<<cfg->SRAMChipSize;
+    pak->SRAMSize = sramSize;
+    if (cfg->SRAMType != GamePakSRAM_None)
+    {
+        if ((pak->SRAM = malloc(sramSize)) == NULL)
+        {
+            LogPrint(LOG_ALWAYS, "Could not allocate RAM for Game Card SRAM\n");
+            goto sramFail;
+        }
+        memset(pak->SRAM, 0xFF, sramSize);
+
+        SDL_IOStream* sram;
+        {
+            if (pak->SavFolder == NULL)
+            {
+                pak->SavFolder = malloc(strlen(cfg->FolderPath)+sizeof(DSSavFolder));
+                strcpy(pak->SavFolder, cfg->FolderPath);
+                strcat(pak->SavFolder, DSSavFolder);
+            }
+
+            char savPath[strlen(pak->SavFolder)+sizeof(DSSavFile)];
+            strcpy(savPath, pak->SavFolder);
+            strcat(savPath, DSSavFile);
+
+            if ((sram = SDL_IOFromFile(savPath, "rb")) == NULL)
+            {
+                LogPrint(LOG_ALWAYS, "Could not open SRAM: %s\n%s", savPath, SDL_GetError());
+
+                free(pak->SRAM);
+                goto sramFail;
+            }
+        }
+
+        size_t sramBytes = SDL_ReadIO(sram, pak->SRAM, sramSize);
+        if ((sramBytes != sramSize) && (SDL_GetIOStatus(sram) != SDL_IO_STATUS_EOF))
             LogPrint(LOG_ALWAYS, "SRAM File read error: %s\n", SDL_GetError());
 
-        LogPrint(LOG_ALWAYS, "Read %zu bytes of SRAM\n", srambytes);
+        LogPrint(LOG_ALWAYS, "Read %zu bytes of SRAM\n", sramBytes);
 
         if (!SDL_CloseIO(sram))
             LogPrint(LOG_ALWAYS, "SRAM File close error: %s\n", SDL_GetError());
 
         if (false)
         {
-            fail:
+            sramFail:
             free(pak->ROM);
             return false;
         }
@@ -113,42 +173,6 @@ bool GamePak_Init(GamePak* pak, GamePakCfg* cfg)
     }
     }
     return true;
-}
-
-u16 GamePak_ROMRead(GamePak* pak, u32 addr)
-{
-    // check if access is to GPIO ports
-    if (((addr <= 0x64) && (addr >= 0x62)) // address range check
-        && (pak->GPIO.Present && pak->GPIO.ReadEnable))
-    {
-        LogPrint(LOG_PAK|LOG_UNIMP, "UNIMP: Game Pak GPIO Read. %06"PRIX32"\n", addr);
-        return 0;// TODO: GPIO
-    }
-
-    // check if we're in the eeprom range
-    if (addr >= pak->EEPROMBegin)
-    {
-        LogPrint(LOG_PAK|LOG_UNIMP, "UNIMP: Game Pak EEPROM Read. Addr: %06"PRIX32" EEPBeg: %06"PRIX32"\n", addr, pak->EEPROMBegin);
-        return 0xFFFF; // TODO EEPROM
-    }
-
-    // actual rom access
-
-    // TODO: ROM banking?
-    if (addr >= pak->ROMSize)
-    {
-        if (pak->ROMSize == 0) // rom absent
-        {
-            return addr & 0xFFFF; // TODO: improve open bus
-        }
-        else // rom present
-        {
-            LogPrint(LOG_PAK|LOG_UNIMP, "Reading past end of Game Pak ROM? Addr: %06"PRIX32" Size: %06zX\n", addr, pak->ROMSize);
-            return addr & 0xFFFF; // seems to return garbage? TODO: improve
-        }
-    }
-
-    return pak->ROM[addr];
 }
 
 void GamePakSRAM_SetDirty(GamePak* pak)
@@ -172,6 +196,27 @@ bool GamePakSRAM_FlushToDisk(GamePak* pak, u8** outbuf, u64* size, bool force)
     return false;
 }
 
+void GamePakEEPROM_SetDirty(GamePak* pak)
+{
+    if (!pak->EEPROMDirty)
+    {
+        pak->EEPROMDirty = true;
+        pak->EEPROMDirtyCycle = SDL_GetPerformanceCounter() + (SDL_GetPerformanceFrequency() * 10);
+    }
+}
+
+bool GamePakEEPROM_FlushToDisk(GamePak* pak, u64** outbuf, u64* size, bool force)
+{
+    if (pak->EEPROMDirty && (force || (SDL_GetPerformanceCounter() >= pak->EEPROMDirtyCycle)))
+    {
+        *outbuf = pak->EEPROM;
+        *size = pak->EEPROMSize*8;
+        pak->EEPROMDirty = false;
+        return true;
+    }
+    return false;
+}
+
 void GamePak_Cleanup(GamePak* pak)
 {
     switch(pak->SRAMType)
@@ -184,6 +229,101 @@ void GamePak_Cleanup(GamePak* pak)
     }
     free(pak->SavFolder);
     free(pak->ROM);
+}
+
+void GamePak_EEPROMCmdFinalize(GamePak* pak)
+{
+    const u8 len = pak->EEPROM_CmdInLen;
+    alignas(16) const u128 cmdlist = pak->EEPROM_CmdInBuf;
+
+    // reset command buffers
+    pak->EEPROM_CmdInLen = 0;
+    pak->EEPROM_CmdOutBuf = (u128)1<<127;
+    pak->EEPROM_CmdInBuf = 0;
+
+    if (len == 0) return; // no cmd submitted
+
+    if (len > 127 || (len < 2)) goto garbage; // prevent ub
+
+    u8 cmd = cmdlist >> (len-1) & 0x3;
+
+    switch(cmd)
+    {
+    case 0b00: case 0b01: goto garbage;
+
+    case 0b10: // write command
+    {
+        u32 addr = (cmdlist & (((u128)1<<(len-1))-1)) >> (2+64);
+        u64 data = ((cmdlist & (((u128)1<<(64+2))-1)) >> 2);
+        if (addr >= pak->EEPROMSize)
+        {
+            LogPrint(LOG_PAK, "Garbage eeprom write addr: %08"PRIX32" %08zX\n", addr, pak->EEPROMSize);
+            goto garbage;
+        }
+
+        pak->EEPROM[addr] = data;
+        GamePakEEPROM_SetDirty(pak);
+        break;
+    }
+    case 0b11: // read command
+    {
+        u32 addr = (cmdlist & (((u128)1<<(len-1))-1)) >> 2;
+        if (addr >= pak->EEPROMSize)
+        {
+            LogPrint(LOG_PAK, "Garbage eeprom read addr: %08"PRIX32" %08zX\n", addr, pak->EEPROMSize);
+            goto garbage;
+        }
+
+        pak->EEPROM_CmdOutBuf = (u128)pak->EEPROM[addr] << 60;
+        break;
+    }
+    }
+
+    return;
+    garbage:
+    return LogPrint(LOG_PAK, "Garbage eeprom cmd submission: len: %"PRIu8" buffer: %08"PRIX64"%08"PRIX64"\n", len, (u64)(cmdlist >> 64), (u64)cmdlist);
+}
+
+u16 GamePak_EEPROMRead(GamePak* pak)
+{
+    u16 out = (pak->EEPROM_CmdOutBuf >> 127) & 1;
+    pak->EEPROM_CmdOutBuf <<= 1;
+    return out;
+}
+
+void GamePak_EEPROMWrite(GamePak* pak, u16 val)
+{
+    pak->EEPROM_CmdInBuf |= val & 1;
+    pak->EEPROM_CmdInBuf <<= 1;
+
+    pak->EEPROM_CmdInLen++;
+}
+
+u16 GamePak_ROMRead(GamePak* pak, u32 addr)
+{
+    // check if access is to GPIO ports
+    if (((addr <= 0x64) && (addr >= 0x62)) // address range check
+        && (pak->GPIO.Present && pak->GPIO.ReadEnable))
+    {
+        LogPrint(LOG_PAK|LOG_UNIMP, "UNIMP: Game Pak GPIO Read. %06"PRIX32"\n", addr);
+        return 0;// TODO: GPIO
+    }
+
+    // TODO: ROM banking?
+    if (addr >= pak->ROMSize)
+    {
+        if (pak->ROMSize == 0) // rom absent
+        {
+            return addr & 0xFFFF; // TODO: improve open bus
+        }
+        else // rom present
+        {
+            LogPrint(LOG_PAK|LOG_UNIMP, "Reading past end of Game Pak ROM? Addr: %06"PRIX32" Size: %06zX\n", addr, pak->ROMSize);
+            return addr & 0xFFFF; // seems to return garbage? TODO: improve
+        }
+    }
+
+    return pak->ROM[addr];
 }
 
 void GamePak_ROMWrite(GamePak* pak, u32 addr, u16 val)
@@ -199,13 +339,6 @@ void GamePak_ROMWrite(GamePak* pak, u32 addr, u16 val)
     {
         LogPrint(LOG_PAK|LOG_UNIMP, "UNIMP: Game Pak GPIO Write. Addr:%06"PRIX32", Val:%04"PRIX16"\n", addr, val);
         return; // TODO: GPIO
-    }
-
-    // check if we're in the eeprom range
-    if (addr >= pak->EEPROMBegin)
-    {
-        LogPrint(LOG_PAK|LOG_UNIMP, "UNIMP: Game Pak EEPROM Write. Addr:%06"PRIX32" EEPBeg:%06"PRIX32", Val:%04"PRIX16"\n", addr, pak->EEPROMBegin, val);
-        return; // TODO EEPROM
     }
 
     // its *read only* memory, dingus
@@ -422,13 +555,15 @@ void GamePak_SRAMWrite(GamePak* pak, const u16 addr, const u8 val)
 }
 
 #define romsel (pak->ROM_CSel)
+#define eepsel (pak->EEPROM_CSel)
 #define ramsel (pak->RAM_CSel)
 #define readsel (pak->Read_Sel)
 #define writesel (pak->Write_Sel)
 void GamePak_Step(BusGamePak* bus, GamePak* pak)
 {
     if (!pak->Inserted) return;
-    // toggle rom chipselect
+
+    // toggle rom chip select
     if (pak->ROM_CSel != bus->ROM_CSel)
     {
         pak->ROM_CSel = bus->ROM_CSel;
@@ -437,7 +572,15 @@ void GamePak_Step(BusGamePak* bus, GamePak* pak)
             pak->LatchedAddr_Full = bus->Addr_Full;
     }
 
-    // toggle ram chipselect
+    // toggle eeprom chip select
+    if (pak->EEPROM_CSel != (romsel && (pak->LatchedAddr_Full >= pak->EEPROMBegin)))
+    {
+        pak->EEPROM_CSel = (romsel && (pak->LatchedAddr_Full >= pak->EEPROMBegin));
+
+        if (!eepsel) GamePak_EEPROMCmdFinalize(pak); // cmd complete
+    }
+
+    // toggle ram chip select
     if (pak->RAM_CSel != bus->RAM_CSel)
     {
         pak->RAM_CSel = bus->RAM_CSel;
@@ -453,7 +596,11 @@ void GamePak_Step(BusGamePak* bus, GamePak* pak)
 
         if (readsel)
         {
-            if (romsel)      bus->ROM_Data = GamePak_ROMRead(pak, pak->LatchedAddr_Full);
+            if (romsel)
+            {
+                if (eepsel)  bus->ROM_Data = GamePak_EEPROMRead(pak);
+                else         bus->ROM_Data = GamePak_ROMRead(pak, pak->LatchedAddr_Full);
+            }
             else if (ramsel) bus->RAM_Data = GamePak_SRAMRead(pak, bus->Addr_Lo);
             else             LogPrint(LOG_PAK|LOG_UNIMP, "GAMEPAK: READ SIGNALED BUT NO CHIP SELECT HELD.\n");
         }
@@ -466,7 +613,11 @@ void GamePak_Step(BusGamePak* bus, GamePak* pak)
 
         if (writesel)
         {
-            if (romsel)      GamePak_ROMWrite(pak, pak->LatchedAddr_Full, bus->ROM_Data);
+            if (romsel)
+            {
+                if (eepsel)  GamePak_EEPROMWrite(pak, bus->ROM_Data);
+                else         GamePak_ROMWrite(pak, pak->LatchedAddr_Full, bus->ROM_Data);
+            }
             else if (ramsel) GamePak_SRAMWrite(pak, bus->Addr_Lo, bus->RAM_Data);
             else             LogPrint(LOG_PAK|LOG_UNIMP, "GAMEPAK: WRITE SIGNALED BUT NO CHIP SELECT HELD.\n");
         }

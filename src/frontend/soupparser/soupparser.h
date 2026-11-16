@@ -191,9 +191,9 @@ static const ConfigEntry GamePakCfgData[] =
     {
         .Name=      "ROMChipSize",
         .Offset=    offsetof(GamePakCfg, ROMChipSize),
-        .SDefVal=   20,
-        .SMinVal=   20,
-        .SMaxVal=   25, // TODO: 64 MiB carts
+        .UDefVal=   20,
+        .UMinVal=   20,
+        .UMaxVal=   25, // TODO: 64 MiB carts
         .Type=      SEARCH_U8DEC,
     },
     {
@@ -203,6 +203,27 @@ static const ConfigEntry GamePakCfgData[] =
         .UMinVal=   0,
         .UMaxVal=   0xFF,
         .Type=      SEARCH_U8HEX,
+    },
+    {
+        .Name=      "EEPROMMapping",
+        .EnumNames= (const char*[]){
+            [GamePakEepMapping_None]="None",
+            [GamePakEepMapping_Lo]="Lo",
+            [GamePakEepMapping_Hi]="Hi",
+        },
+        .Offset=    offsetof(GamePakCfg, EEPROMMapping),
+        .UDefVal=   GamePakEepMapping_None,
+        .UMinVal=   0,
+        .UMaxVal=   GamePakEepMapping_Max,
+        .Type=      SEARCH_ENUMU8,
+    },
+    {
+        .Name=      "EEPROMChipSize",
+        .Offset=    offsetof(GamePakCfg, EEPROMChipSize),
+        .UDefVal=   9,
+        .UMinVal=   9,
+        .UMaxVal=   17, // idk
+        .Type=      SEARCH_U8DEC,
     },
     {
         .Name=      "SRAMType",
