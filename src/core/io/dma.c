@@ -134,7 +134,7 @@ void DMA7_Enable(Console* sys, DMA_Channel* channel, u8 id [[maybe_unused]], tim
                 case 0: break;
                 case 1 ... 2:
                 {
-                    channel->CurrentMode = DMAStart_AGBAudio;
+                    channel->CurrentMode = (id==1) ? DMAStart_AGBAudioA : DMAStart_AGBAudioB;
 
                     // dest/src inc is overriden by mode
                     switch(channel->CR.SourceCR)
@@ -373,7 +373,8 @@ void DMA_Step(Console* sys, const u8 id, timestamp now, const bool a9)
                 // CHECKME: idk, where and when things are latched needs testing.
                 if (channel->CR.SourceCR == 3) channel->Latched_SrcAddr = channel->SrcAddr;
 
-                if (channel->CurrentMode == DMAStart_AGBAudio)
+                if ((channel->CurrentMode == DMAStart_AGBAudioA)
+                 || (channel->CurrentMode == DMAStart_AGBAudioB))
                 {
                     // mode overrides settings
                     channel->Latched_SrcAddr &= ~3;

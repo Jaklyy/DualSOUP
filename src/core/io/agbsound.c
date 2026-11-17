@@ -272,15 +272,18 @@ void AGBSndDMA_Sample(Console* sys, const u8 id, const timestamp now, const bool
 {
     if (id == (b ? sys->AGBSndCR.PcmBTimerSel : sys->AGBSndCR.PcmATimerSel))
     {
-        if (((sys->AGBSndFIFOFillPtr[b] - sys->AGBSndFIFODrainPtr[b]) % countof(sys->AGBSndFIFO[b].b8)) > 0) // yes, that is correct
+        if (((sys->AGBSndFIFOFillPtr[b] - sys->AGBSndFIFODrainPtr[b]) % countof(sys->AGBSndFIFO[b].b8)) > 0)
         {
             sys->AGBSamples[4+b] = sys->AGBSndFIFO[b].b8[sys->AGBSndFIFODrainPtr[b]];
             sys->AGBSndFIFODrainPtr[b] += 1;
             sys->AGBSndFIFODrainPtr[b] %= countof(sys->AGBSndFIFO[b].b8);
         }
 
-        if (((sys->AGBSndFIFOFillPtr[b] - sys->AGBSndFIFODrainPtr[b]) % countof(sys->AGBSndFIFO[b].b8)) <= (4*3))
-            StartDMA(sys, now, DMAStart_AGBAudio, false);
+        // if bit 2 is clear then it needs to be filled
+        if (!((sys->AGBSndFIFOFillPtr[b] - sys->AGBSndFIFODrainPtr[b]) & (0b100*4)))
+        {
+            StartDMA(sys, now, b ? DMAStart_AGBAudioB : DMAStart_AGBAudioA, false);
+        }
     }
 }
 

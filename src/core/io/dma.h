@@ -18,7 +18,10 @@ typedef enum : u8
     DMAStart_WiFiIRQ,
     DMAStart_Audio,
     DMAStart_AudioCap,
-    DMAStart_AGBAudio,
+    DMAStart_AGBAudioA,
+    DMAStart_AGBAudioB,
+
+    DMAStart_MAX [[maybe_unused]],
 } DMA_StartModes;
 
 union DMA_CR

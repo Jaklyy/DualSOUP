@@ -482,6 +482,120 @@ void DebugGui_Sched(DebugGui* dgui, Console* sys)
     ImGui_End();
 }
 
+typedef enum : u8 {
+    DEBUGGER_DMAMODE_AGB,
+    DEBUGGER_DMAMODE_NTR7,
+    DEBUGGER_DMAMODE_NTR9,
+} DEBUGGER_DMAMODE;
+
+void DebugGui_DMA(DMA_Channel dma[4], const char* const name, DEBUGGER_DMAMODE mode)
+{
+    ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+    if (ImGui_TreeNodeEx(name, ImGuiTreeNodeFlags_DefaultOpen|ImGuiTreeNodeFlags_DrawLinesFull))
+    {
+        for (int i = 0; i < 4; i++)
+        {
+            constexpr char ChannelNames[][10] = {"Channel 0", "Channel 1", "Channel 2", "Channel 3"};
+            if (ImGui_TreeNodeEx(ChannelNames[i], ImGuiTreeNodeFlags_DefaultOpen|ImGuiTreeNodeFlags_DrawLinesFull))
+            {
+                ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                    ImGui_Text("Src: %08"PRIX32, dma[i].SrcAddr);
+                ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                    ImGui_Text("Dst: %08"PRIX32, dma[i].DstAddr);
+                if (ImGui_TreeNodeEx("Control", ImGuiTreeNodeFlags_DefaultOpen|ImGuiTreeNodeFlags_DrawLinesFull))
+                {
+                    ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                        ImGui_Text("Num Words: %"PRIu32, dma[i].CR.NumWords);
+                    ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                        constexpr char DstModes[][11] = {"Inc", "Dec", "Fixed", "Inc+Reload"};
+                        ImGui_Text("Dst Mode: %s", DstModes[dma[i].CR.DestCR]);
+                    ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                        constexpr char SrcModes[][11] = {"Inc", "Dec", "Fixed", "Prohibited"};
+                        ImGui_Text("Dst Mode: %s", SrcModes[dma[i].CR.SourceCR]);
+                    ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                        ImGui_Text("Repeat: %s", dma[i].CR.Repeat ? "Enabled" : "Disabled");
+                    ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                        ImGui_Text("Width: %s", dma[i].CR.Width32 ? "32 Bit" : "16 Bit");
+
+                    const char* str;
+                    switch(mode)
+                    {
+                    case DEBUGGER_DMAMODE_AGB:
+                    {
+                        if (i == 3)
+                        {
+                            ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                                ImGui_Text("Game Pak DRQ: %s", dma[i].CR.AGBPakIRQ ? "32 Bit" : "16 Bit");
+                        }
+                        switch(dma[i].CR.StartMode7)
+                        {
+                        case 0: str = "Immediate"; break;
+                        case 1: str = "VBlank"; break;
+                        case 2: str = "HBlank"; break;
+                        case 3: 
+                            switch(i)
+                            {
+                            case 0: str = "Prohibited"; break;
+                            case 1 ... 2: str = "Sound FIFO"; break;
+                            case 3: str = "Video"; break;
+                            }
+                            break;
+                        }
+                        break;
+                    }
+                    case DEBUGGER_DMAMODE_NTR7:
+                    {
+                        switch(dma[i].CR.StartMode7)
+                        {
+                        case 0: str = "Immediate"; break;
+                        case 1: str = "VBlank"; break;
+                        case 2: str = "Game Card Transfer"; break;
+                        case 3: 
+                            switch(i)
+                            {
+                            case 0 ... 1: str = "WiFi IRQ?"; break;
+                            case 2 ... 3: str = "Game Pak DRQ"; break;
+                            }
+                            break;
+                        }
+                        break;
+                    }
+                    case DEBUGGER_DMAMODE_NTR9:
+                    {
+                        switch(dma[i].CR.StartMode9)
+                        {
+                        case 0: str = "Immediate"; break;
+                        case 1: str = "VBlank"; break;
+                        case 2: str = "HBlank"; break;
+                        case 3: str = "Video"; break;
+                        case 4: str = "Display FIFO"; break;
+                        case 5: str = "Game Card Transfer"; break;
+                        case 6: str = "Game Pak DRQ"; break;
+                        case 7: str = "GX Command FIFO"; break;
+                        }
+                        break;
+                    }
+                    }
+                    ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                        ImGui_TextUnformatted(str);
+
+                    ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                        ImGui_Text("IRQ: %s", dma[i].CR.IRQ ? "Enabled" : "Disabled");
+
+                    ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                        ImGui_Text("Enable: %s", dma[i].CR.IRQ ? "Enabled" : "Disabled");
+
+                    ImGui_TreePop();
+                }
+
+                ImGui_TreePop();
+            }
+        }
+
+        ImGui_TreePop();
+    }
+}
+
 void DebugGui_IO9(DebugGui* dgui, Console* sys)
 {
     if (dgui->IO9 && ImGui_Begin("IO9 Viewer", &dgui->IO9, 0))
@@ -726,6 +840,8 @@ void DebugGui_IOAGB(DebugGui* dgui, Console* sys)
     {
         if (sys && ImGui_BeginTable("IOAGB Debugger", 1, ImGuiTableFlags_RowBg|ImGuiTableFlags_BordersInnerV|ImGuiTableFlags_BordersOuter))
         {
+            DebugGui_DMA(&sys->DMA7[DMA7_NormalBase], "DMA", DEBUGGER_DMAMODE_AGB);
+
             ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
             if (ImGui_TreeNodeEx("Sound Channels", ImGuiTreeNodeFlags_DefaultOpen|ImGuiTreeNodeFlags_DrawLinesFull))
             {
