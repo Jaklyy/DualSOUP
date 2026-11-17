@@ -113,8 +113,8 @@ bool Sched_CheckEventScheduled(Console* sys, Scheduler_Events id)
 }
 
 #ifdef SANITYCHECK
-timestamp DEBUG_Sched_LastTime;
-Scheduler_Events DEBUG_Sched_LastEvent;
+thread_local timestamp DEBUG_Sched_LastTime = 0;
+thread_local Scheduler_Events DEBUG_Sched_LastEvent = 0;
 #endif
 
 void Sched_AddEvent(Console* sys, timestamp time, Scheduler_Events id)
