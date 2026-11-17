@@ -482,9 +482,274 @@ void DebugGui_Sched(DebugGui* dgui, Console* sys)
     ImGui_End();
 }
 
+void DebugGui_IO9(DebugGui* dgui, Console* sys)
+{
+    if (dgui->IO9 && ImGui_Begin("IO9 Viewer", &dgui->IO9, 0))
+    {
+        if (sys && ImGui_BeginTable("IO9 Debugger", 2, ImGuiTableFlags_RowBg|ImGuiTableFlags_Borders))
+        {
+            ImGui_TableNextRow();
+            ImGui_TableNextColumn();
+            if (ImGui_TreeNode("PPU A"))
+            {
+                ImGui_TableNextRow();
+                ImGui_TableNextColumn();
+                if (ImGui_TreeNode("DispCnt"))
+                {
+                    ImGui_TableNextRow();
+                    ImGui_TableNextColumn();
+                    ImGui_Text("0:2");
+                    ImGui_TableNextColumn();
+                    ImGui_Text("Background Mode: %i", sys->PPU_A.DisplayCR.BGMode);
+                    ImGui_TableNextColumn();
+                    ImGui_Text("3");
+                    ImGui_TableNextColumn();
+                    ImGui_Text("Background 0 3D/2D: %s", sys->PPU_A.DisplayCR.BG03D ? "3D" : "2D");
+                    ImGui_TableNextColumn();
+                    ImGui_Text("4");
+                    ImGui_TableNextColumn();
+                    ImGui_Text("Sprite Tile Mapping: %s", sys->PPU_A.DisplayCR.TileOBJ1D ? "1D" : "2D");
+                    ImGui_TableNextColumn();
+                    ImGui_Text("5");
+                    ImGui_TableNextColumn();
+                    ImGui_Text("Sprite Bitmap 2D Dim: %s", sys->PPU_A.DisplayCR.BitmapOBJ2DDims ? "128x512" : "256x256");
+                    ImGui_TableNextColumn();
+                    ImGui_Text("6");
+                    ImGui_TableNextColumn();
+                    ImGui_Text("Sprite Bitmap Mapping: %s", sys->PPU_A.DisplayCR.BitmapOBJ1D ? "1D" : "2D");
+                    ImGui_TableNextColumn();
+                    ImGui_Text("7");
+                    ImGui_TableNextColumn();
+                    ImGui_Text("Force Blank: %s", sys->PPU_A.DisplayCR.ForceBlank ? "Enabled" : "Disabled");
+                    ImGui_TableNextColumn();
+                    ImGui_Text("8");
+                    ImGui_TableNextColumn();
+                    ImGui_Text("Background 0 %s", sys->PPU_A.DisplayCR.BG0Enable ? "Enabled" : "Disabled");
+                    ImGui_TableNextColumn();
+                    ImGui_Text("9");
+                    ImGui_TableNextColumn();
+                    ImGui_Text("Background 1: %s", sys->PPU_A.DisplayCR.BG1Enable ? "Enabled" : "Disabled");
+                    ImGui_TableNextColumn();
+                    ImGui_Text("10");
+                    ImGui_TableNextColumn();
+                    ImGui_Text("Background 2: %s", sys->PPU_A.DisplayCR.BG2Enable ? "Enabled" : "Disabled");
+                    ImGui_TableNextColumn();
+                    ImGui_Text("11");
+                    ImGui_TableNextColumn();
+                    ImGui_Text("Background 3: %s", sys->PPU_A.DisplayCR.BG3Enable ? "Enabled" : "Disabled");
+                    ImGui_TableNextColumn();
+                    ImGui_Text("12");
+                    ImGui_TableNextColumn();
+                    ImGui_Text("Sprites: %s", sys->PPU_A.DisplayCR.SprEnable ? "Enabled" : "Disabled");
+                    ImGui_TableNextColumn();
+                    ImGui_Text("13");
+                    ImGui_TableNextColumn();
+                    ImGui_Text("Window 0: %s", sys->PPU_A.DisplayCR.Win0Enable ? "Enabled" : "Disabled");
+                    ImGui_TableNextColumn();
+                    ImGui_Text("14");
+                    ImGui_TableNextColumn();
+                    ImGui_Text("Window 1: %s", sys->PPU_A.DisplayCR.Win1Enable ? "Enabled" : "Disabled");
+                    ImGui_TableNextColumn();
+                    ImGui_Text("15");
+                    ImGui_TableNextColumn();
+                    ImGui_Text("Sprite Window: %s", sys->PPU_A.DisplayCR.OBJWinEnable ? "Enabled" : "Disabled");
+                    ImGui_TableNextColumn();
+                    ImGui_Text("16:17");
+                    ImGui_TableNextColumn();
+                    constexpr char LCDModes[4][20] = {"Display Off", "PPU Output", "VRAM Bitmap Display", "FIFO Bitmap Display"};
+                    ImGui_Text("LCD Mode: %s", LCDModes[sys->PPU_A.DisplayCR.DisplayMode]);
+                    ImGui_TableNextColumn();
+                    ImGui_Text("18:19");
+                    ImGui_TableNextColumn();
+                    ImGui_Text("VRAM Bank Select: %c", 'A'+sys->PPU_A.DisplayCR.VRAMSel);
+                    ImGui_TableNextColumn();
+                    ImGui_Text("20:21");
+                    ImGui_TableNextColumn();
+                    ImGui_Text("Sprite Tile 1D-Boundary: %i", 32<<sys->PPU_A.DisplayCR.TileOBJ1DBound);
+                    ImGui_TableNextColumn();
+                    ImGui_Text("22");
+                    ImGui_TableNextColumn();
+                    ImGui_Text("Sprite Bitmap 1D-Boundary: %i", 128<<sys->PPU_A.DisplayCR.BitmapOBJ1DBound);
+                    ImGui_TableNextColumn();
+                    ImGui_Text("23");
+                    ImGui_TableNextColumn();
+                    ImGui_Text("HBlank Sprite Processing: %s", sys->PPU_A.DisplayCR.OBJHBlankDisable ? "Disable" : "Enable");
+                    ImGui_TableNextColumn();
+                    ImGui_Text("24:26");
+                    ImGui_TableNextColumn();
+                    ImGui_Text("Background Char Base: %iK", 64*sys->PPU_A.DisplayCR.CharBase);
+                    ImGui_TableNextColumn();
+                    ImGui_Text("27:29");
+                    ImGui_TableNextColumn();
+                    ImGui_Text("Background Screen Base: %iK", 64*sys->PPU_A.DisplayCR.ScreenBase);
+                    ImGui_TableNextColumn();
+                    ImGui_Text("30");
+                    ImGui_TableNextColumn();
+                    ImGui_Text("Background Extended Palette: %s", sys->PPU_A.DisplayCR.BGExtPalEn ? "Enabled" : "Disabled");
+                    ImGui_TableNextColumn();
+                    ImGui_Text("31");
+                    ImGui_TableNextColumn();
+                    ImGui_Text("Sprite Extended Palette: %s", sys->PPU_A.DisplayCR.SprExtPalEn ? "Enabled" : "Disabled");
+                    ImGui_TreePop();
+                }
+                ImGui_TreePop();
+            }
+            ImGui_EndTable();
+        }
+        ImGui_End();
+    }
+}
+
+void DebugGui_PSGEnvelope(CGBSndEnvelope* env, CGBSndEnvelopeLatch* lat, const char* const name)
+{
+    ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+    if (ImGui_TreeNodeEx(name, ImGuiTreeNodeFlags_DefaultOpen|ImGuiTreeNodeFlags_DrawLinesFull))
+    {
+        ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+            ImGui_Text("Pace: %u", env->Pace);
+        ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+            ImGui_Text("Direction: %s", env->Inc ? "Increasing" : "Decreasing");
+        ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+            ImGui_Text("Start Volume: %u", env->StartVol);
+
+        ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+            ImGui_Text("Cur Timer: %u", lat->Tick);
+        ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+            ImGui_Text("Cur Volume: %u", lat->Vol);
+        ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+            ImGui_Text("DAC Enable: %u", env->DACEnable != 0);
+
+        ImGui_TreePop();
+    }
+}
+
+void DebugGui_PSGSquare(Console* sys, u8 id)
+{
+    ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+    if (ImGui_TreeNodeEx((id==0) ? "PSG 1" : "PSG 2", ImGuiTreeNodeFlags_DrawLinesFull))
+    {
+        if (id==0)
+        {
+            ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+            if (ImGui_TreeNodeEx("Sweep (NR10)", ImGuiTreeNodeFlags_DefaultOpen|ImGuiTreeNodeFlags_DrawLinesFull))
+            {
+                ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                    ImGui_Text("Shift: %u", sys->CGBPulseChannel[id].Regs.Sweep.Shift);
+                ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                    ImGui_Text("Direction: %s", sys->CGBPulseChannel[id].Regs.Sweep.Dec ? "Decreasing" : "Increasing");
+                ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                    ImGui_Text("Pace: %u", sys->CGBPulseChannel[id].Regs.Sweep.Pace);
+
+                ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                    ImGui_Text("Cur Timer: %u", sys->CGBPulseChannel[id].Latched.Sweep.Tick);
+                ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                    ImGui_Text("Latched Frequency: %u", sys->CGBPulseChannel[id].Latched.Sweep.Freq);
+                ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                    ImGui_Text("Enable: %s", sys->CGBPulseChannel[id].Latched.Sweep.On ? "Enabled" : "Disabled");
+
+
+                ImGui_TreePop();
+            }
+        }
+
+        ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+        if (ImGui_TreeNodeEx((id==0) ? "Length + Duty (NR11)" : "Length + Duty (NR21)", ImGuiTreeNodeFlags_DefaultOpen|ImGuiTreeNodeFlags_DrawLinesFull))
+        {
+            ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                ImGui_Text("Length: %u", sys->CGBPulseChannel[id].Regs.Length);
+            ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                constexpr char DutyNames[][4] = {"1/8", "1/4", "1/2", "3/4"};
+                ImGui_Text("Duty: %u (%s)", sys->CGBPulseChannel[id].Regs.DutyPattern, DutyNames[sys->CGBPulseChannel[id].Regs.DutyPattern]);
+
+            ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                ImGui_Text("Cur Length Timer: %u", sys->CGBPulseChannel[id].Latched.LenTick);
+            ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                ImGui_Text("Cur Duty Tick: %u", sys->CGBPulseChannel[id].Latched.DutyTick);
+
+            ImGui_TreePop();
+        }
+
+        DebugGui_PSGEnvelope(&sys->CGBPulseChannel[id].Regs.Envelope, &sys->CGBPulseChannel[id].Latched.Envelope, (id==0) ? "Envelope (NR12)" : "Envelope (NR22)");
+
+        ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+        if (ImGui_TreeNodeEx((id==0) ? "Control (NR13 & NR14)" : "Control (NR23 & NR24)", ImGuiTreeNodeFlags_DefaultOpen|ImGuiTreeNodeFlags_DrawLinesFull))
+        {
+            ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                ImGui_Text("Frequency: %u", sys->CGBPulseChannel[id].Regs.Freq);
+            ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                ImGui_Text("Use Length: %s", sys->CGBPulseChannel[id].Regs.UseLength ? "Enabled" : "Disabled");
+
+            ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                ImGui_Text("Running: %s", ((id==0) ? sys->AGBSndEn.Psg1Running : sys->AGBSndEn.Psg2Running) ? "Enabled" : "Disabled");
+            ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                ImGui_Text("Cur Sample: %"PRIi8"", sys->AGBSamples[id]);
+
+            ImGui_TreePop();
+        }
+
+        ImGui_TreePop();
+    }
+}
+
+void DebugGui_PCMAudio(Console* sys, u8 id)
+{
+    ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+    if (ImGui_TreeNodeEx((id==0) ? "PCM A" : "PCM B", ImGuiTreeNodeFlags_DrawLinesFull))
+    {
+        ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+            ImGui_Text("FIFO Fill Pointer:  %u", sys->AGBSndFIFOFillPtr[id]);
+        ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+            ImGui_Text("FIFO Drain Pointer: %u", sys->AGBSndFIFODrainPtr[id]);
+
+        ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+        if (ImGui_TreeNodeEx("FIFO Data", ImGuiTreeNodeFlags_DefaultOpen|ImGuiTreeNodeFlags_DrawLinesFull))
+        {
+            for (int i = 0; i < 8; i++)
+            {
+                ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                ImGui_Text("%08X", sys->AGBSndFIFO[id].b32[i]);
+            }
+
+            ImGui_TreePop();
+        }
+
+        ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+            ImGui_Text("Cur Sample: %u", sys->AGBSamples[id+4]);
+
+        ImGui_TreePop();
+    }
+}
+
+void DebugGui_IOAGB(DebugGui* dgui, Console* sys)
+{
+    if (dgui->IOAGB && ImGui_Begin("IOAGB Viewer", &dgui->IOAGB, 0))
+    {
+        if (sys && ImGui_BeginTable("IOAGB Debugger", 1, ImGuiTableFlags_RowBg|ImGuiTableFlags_BordersInnerV|ImGuiTableFlags_BordersOuter))
+        {
+            ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+            if (ImGui_TreeNodeEx("Sound Channels", ImGuiTreeNodeFlags_DefaultOpen|ImGuiTreeNodeFlags_DrawLinesFull))
+            {
+                DebugGui_PSGSquare(sys, 0);
+                DebugGui_PSGSquare(sys, 1);
+
+                DebugGui_PCMAudio(sys, 0);
+                DebugGui_PCMAudio(sys, 1);
+
+                ImGui_TreePop();
+            }
+
+            ImGui_EndTable();
+        }
+
+        ImGui_End();
+    }
+}
+
 void DebugGUI_Loop(MailBox* mail, MainGUI* mgui, Console* sys)
 {
     if (mgui->dbg.A9DbgDisplay) DebugGui_A9(mail, &mgui->dbg, sys);
     if (mgui->dbg.A7DbgDisplay) DebugGui_A7(mail, &mgui->dbg, sys);
     if (mgui->dbg.Sched) DebugGui_Sched(&mgui->dbg, sys);
+    DebugGui_IO9(&mgui->dbg, sys);
+    DebugGui_IOAGB(&mgui->dbg, sys);
 }

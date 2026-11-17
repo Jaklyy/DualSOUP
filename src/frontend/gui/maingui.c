@@ -141,9 +141,12 @@ void MainGUI_Loop(Console* sys, MailBox* mailbox, MainGUI* mgui, MainCfg* mcfg, 
         ImGui_MenuItemBoolPtr("Pause", NULL, (bool*)&mailbox->Pause, true);
         if (ImGui_BeginMenu("Debugger"))
         {
-            if (ImGui_MenuItemBoolPtr("ARM9", NULL, &mgui->dbg.A9DbgDisplay, true)) {}
-            if (ImGui_MenuItemBoolPtr("ARM7", NULL, &mgui->dbg.A7DbgDisplay, true)) {}
-            if (ImGui_MenuItemBoolPtr("Sched", NULL, &mgui->dbg.Sched, true)) {}
+            ImGui_MenuItemBoolPtr("ARM9", NULL, &mgui->dbg.A9DbgDisplay, true);
+            ImGui_MenuItemBoolPtr("ARM7", NULL, &mgui->dbg.A7DbgDisplay, true);
+            ImGui_MenuItemBoolPtr("Sched", NULL, &mgui->dbg.Sched, true);
+            ImGui_MenuItemBoolPtr("IO9", NULL, &mgui->dbg.IO9, true);
+            ImGui_MenuItemBoolPtr("IO7", NULL, &mgui->dbg.IO7, true);
+            ImGui_MenuItemBoolPtr("IOAGB", NULL, &mgui->dbg.IOAGB, true);
             ImGui_BeginDisabled(sys == nullptr);
             if (ImGui_Button("Dump Memory\n"))
             {

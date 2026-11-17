@@ -94,6 +94,9 @@ typedef struct
     bool A7ExecBreak;
     bool A7DbgDisplay;
     bool Sched;
+    bool IO9;
+    bool IO7;
+    bool IOAGB;
 } DebugGui;
 
 typedef struct
