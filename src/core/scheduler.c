@@ -112,6 +112,11 @@ bool Sched_CheckEventScheduled(Console* sys, Scheduler_Events id)
     return sys->Sched.Prev[id] != Evt_Invalid;
 }
 
+#ifdef SANITYCHECK
+timestamp DEBUG_Sched_LastTime;
+Scheduler_Events DEBUG_Sched_LastEvent;
+#endif
+
 void Sched_AddEvent(Console* sys, timestamp time, Scheduler_Events id)
 {
     Sched* sched = &sys->Sched;
@@ -119,6 +124,12 @@ void Sched_AddEvent(Console* sys, timestamp time, Scheduler_Events id)
     Scheduler_Events next = Evt_Null;
 
     Sched_RemoveEvent(sched, id);
+
+#ifdef SANITYCHECK
+    if (DEBUG_Sched_LastTime > time) LogPrint(LOG_EMUBUG, "ERROR: Scheduling event before last ran: Prev Event: %s %"PRIu64" New Event: %s %"PRIu64"\n",
+                                                Scheduler_Events_Names[DEBUG_Sched_LastEvent], DEBUG_Sched_LastTime,
+                                                Scheduler_Events_Names[id], time);
+#endif
 
     do
     {
@@ -149,6 +160,14 @@ Core_Ret Sched_RunEvent(Console* sys)
     timestamp now = sched->Times[evt];
 
     Sched_RemoveEvent(sched, evt);
+
+#ifdef SANITYCHECK
+    if (DEBUG_Sched_LastTime > now) LogPrint(LOG_EMUBUG, "ERROR: Next event is in the past: Prev Event: %s %"PRIu64" Next Event: %s %"PRIu64"\n",
+                                                Scheduler_Events_Names[DEBUG_Sched_LastEvent], DEBUG_Sched_LastTime,
+                                                Scheduler_Events_Names[evt], now);
+    DEBUG_Sched_LastEvent = evt;
+    DEBUG_Sched_LastTime = now;
+#endif
 
     switch(evt)
     {

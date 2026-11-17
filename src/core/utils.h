@@ -255,31 +255,32 @@ typedef enum : u8
 
 typedef enum : u64
 {
-    LOG_ALWAYS  = (0    ), // Always logged; used for emulator error logging.
-    LOG_ARM7    = (1<<0 ), // Things under ownership of the ARM7TDMI.
-    LOG_ARM9    = (1<<1 ), // Things under ownership of the ARM946E-S.
-    LOG_ARM11   = (1<<2 ), // Things under ownership of the ARM11MPCore.
-    LOG_UNIMP   = (1<<3 ), // For anything currently known to be unimplemented in the emulator.
-    LOG_ODD     = (1<<4 ), // Program doing something weird that isn't inherently bad...?
-    LOG_EXCEP   = (1<<5 ), // Hardware error handler has been triggered. Probably means the software has crashed.
-    LOG_BUG     = (1<<6 ), // Program is triggering hardware bugs.
-    LOG_VRAM    = (1<<7 ), // VRAM.
-    LOG_PPU     = (1<<8 ), // PPU.
-    LOG_FLASH   = (1<<9 ), // Flash.
-    LOG_IO      = (1<<10), // Memory mapped IO.
-    LOG_CARD    = (1<<11), // Game Card.
-    LOG_GX      = (1<<12), // 3D Geometry Engine.
-    LOG_RTC     = (1<<13), // Real Time Clock.
-    LOG_DMA     = (1<<14), // Direct Memory Access.
-    LOG_WIFI    = (1<<15), // WiFi.
-    LOG_TSC     = (1<<16), // Touch Screen Controller.
-    LOG_SOUND   = (1<<17), // Sound Processing.
-    LOG_PAK     = (1<<18), // Game Pak.
-    LOG_FCRAM   = (1<<19), // FCRAM (aka Main RAM).
-    LOG_IOALL   = (1<<20), // Always Log Memory mapped IO Accesses.
-    LOG_OOB     = (1<<21), // Out of bounds accesses
+    LOG_ALWAYS  = ((u64)0    ), // Always logged; used for emulator error logging.
+    LOG_ARM7    = ((u64)1<<0 ), // Things under ownership of the ARM7TDMI.
+    LOG_ARM9    = ((u64)1<<1 ), // Things under ownership of the ARM946E-S.
+    LOG_ARM11   = ((u64)1<<2 ), // Things under ownership of the ARM11MPCore.
+    LOG_UNIMP   = ((u64)1<<3 ), // For anything currently known to be unimplemented in the emulator.
+    LOG_ODD     = ((u64)1<<4 ), // Program doing something weird that isn't inherently bad...?
+    LOG_EXCEP   = ((u64)1<<5 ), // Hardware error handler has been triggered. Probably means the software has crashed.
+    LOG_BUG     = ((u64)1<<6 ), // Program is triggering hardware bugs.
+    LOG_VRAM    = ((u64)1<<7 ), // VRAM.
+    LOG_PPU     = ((u64)1<<8 ), // PPU.
+    LOG_FLASH   = ((u64)1<<9 ), // Flash.
+    LOG_IO      = ((u64)1<<10), // Memory mapped IO.
+    LOG_CARD    = ((u64)1<<11), // Game Card.
+    LOG_GX      = ((u64)1<<12), // 3D Geometry Engine.
+    LOG_RTC     = ((u64)1<<13), // Real Time Clock.
+    LOG_DMA     = ((u64)1<<14), // Direct Memory Access.
+    LOG_WIFI    = ((u64)1<<15), // WiFi.
+    LOG_TSC     = ((u64)1<<16), // Touch Screen Controller.
+    LOG_SOUND   = ((u64)1<<17), // Sound Processing.
+    LOG_PAK     = ((u64)1<<18), // Game Pak.
+    LOG_FCRAM   = ((u64)1<<19), // FCRAM (aka Main RAM).
+    LOG_IOALL   = ((u64)1<<20), // Always Log Memory mapped IO Accesses.
+    LOG_OOB     = ((u64)1<<21), // Out of bounds accesses
+    LOG_EMUBUG  = ((u64)1<<22), // Emulator is bugging out
 
-    LOG_MAX     = (1<<21),
+    LOG_MAX     = (u64)(1<<23),
 } LoggingLevels;
 
 static constexpr char LoggingLevelsNames[][24] =
@@ -306,6 +307,7 @@ static constexpr char LoggingLevelsNames[][24] =
     "Main RAM",
     "Log All IO",
     "Out of Bounds Accesses",
+    "Emulator Error",
 };
 
 #define LOG_CPUID (1 << cpu->CPUID)

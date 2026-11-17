@@ -45,7 +45,7 @@ void GX_UpdateIRQ(Console* sys, const timestamp time)
 
 void GX_RunFIFO(Console* sys, const timestamp until);
 
-bool GXFIFO_Fill(Console* sys, const u8 cmd, const u32 param)
+bool GXFIFO_Fill(Console* sys, const u8 cmd, const u32 param, const timestamp now)
 {
     GX3D* gx = &sys->GX3D;
 
@@ -59,12 +59,12 @@ bool GXFIFO_Fill(Console* sys, const u8 cmd, const u32 param)
     if (gx->FIFOFullness == 0)
     {
         gx->Status.FIFOEmpty = false;
-        GX_UpdateIRQ(sys, gx->Timestamp);
+        GX_UpdateIRQ(sys, now);
     }
     else if (gx->FIFOFullness == 127)
     {
         gx->Status.FIFOHalfEmpty = false;
-        GX_UpdateIRQ(sys, gx->Timestamp);
+        GX_UpdateIRQ(sys, now);
         //StartDMA9(sys, timestamp_max, DMAStart_3DFIFO); // TODO: everything involvind when and how this dma type triggers?
     }
     gx->FIFOFullness++;
@@ -102,13 +102,13 @@ bool GXPipe_Fill(Console* sys, timestamp now)
     if (gx->FIFOFullness == 0)
     {
         gx->Status.FIFOEmpty = true;
-        GX_UpdateIRQ(sys, gx->Timestamp);
+        GX_UpdateIRQ(sys, now);
     }
     else if (gx->FIFOFullness == 127)
     {
         gx->Status.FIFOHalfEmpty = true;
-        GX_UpdateIRQ(sys, gx->Timestamp);
-        StartDMA(sys, gx->Timestamp, DMAStart_3DFIFO, true); // TODO: everything involving when and how this dma type triggers?
+        GX_UpdateIRQ(sys, now);
+        StartDMA(sys, now, DMAStart_3DFIFO, true); // TODO: everything involving when and how this dma type triggers?
         // checkme:?
     }
 
@@ -170,7 +170,7 @@ bool GXFIFO_Unpack(Console* sys, timestamp now)
         {
             if (gx->FreshBuffer)
             {
-                bool suc = GXFIFO_Fill(sys, gx->PackBuffer.CurCmd, 0);
+                bool suc = GXFIFO_Fill(sys, gx->PackBuffer.CurCmd, 0, now);
                 gx->FreshBuffer = !suc;
                 return false;
             }
@@ -197,7 +197,7 @@ bool GXFIFO_Unpack(Console* sys, timestamp now)
     // if cmd has no params we submit it immediately
     if (gx->ParamRem <= 0)
     {
-        bool suc = GXFIFO_Fill(sys, gx->PackBuffer.CurCmd, 0);
+        bool suc = GXFIFO_Fill(sys, gx->PackBuffer.CurCmd, 0, now);
         if (suc)
         {
             gx->PackBuffer.All >>= 8;
@@ -241,7 +241,7 @@ bool GXFIFO_PackedSubmit(Console* sys, const u32 val, const timestamp now)
     // loop until we can submit a new command.
     if (gx->ParamRem > 0) // submit a new parameter if needed.
     {
-        if (GXFIFO_Fill(sys, gx->PackBuffer.CurCmd, val))
+        if (GXFIFO_Fill(sys, gx->PackBuffer.CurCmd, val, now))
         {
             gx->ParamRem -= 1;
             if (gx->ParamRem <= 0)
@@ -270,7 +270,7 @@ bool GXFIFO_PortSubmit(Console* sys, const u32 addr, const u32 val, const timest
 {
     GX3D* gx = &sys->GX3D;
 
-    if (GXFIFO_Fill(sys, addr/4, val))
+    if (GXFIFO_Fill(sys, addr/4, val, now))
     {
         Sched_AddEvent(sys, now+DSClk33(1), Evt_GX);
         gx->Timestamp = now;

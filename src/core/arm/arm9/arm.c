@@ -308,8 +308,10 @@ void A946_Run(ARM946ES* a946, timestamp now)
             {
                 if (a946->BusFlags.InstrLate)
                 {
-                    now = a946->DataTS - 1;
                     a946->BusFlags.InstrGo = true;
+                    a946->BusFlags.InstrLate = false;
+                    Sched_AddEvent(cpu->Sys, DS_MAX(a946->DataTS - 1, now+1), Evt_ARM9);
+                    return;
                 }
                 else if (!a946->PostMem.Write) a946->ITCMMultiplexData = false;
             }

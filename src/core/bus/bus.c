@@ -38,16 +38,10 @@ bool Bus_DebugBreak(Console* sys, timestamp now, Bus_Breakpoint bkptlist[const B
 void Bus9_Init(BusImpl* bus)
 {
     bus->PipeCycles = DSClk33(1);
-    bus->HLockGeneric = MAN_NONE; // todo: put in a reset handler
-    bus->ComplMan = MAN_NONE;
-    bus->GrantMan = MAN_NONE;
-    bus->NoPrev = true;
-    bus->FIFOEmpty = true;
 }
 
 void Bus7_Init(BusImpl* bus)
 {
-    // TODO: RE-ENABLE
     bus->PipeCycles = DSClk33(0);
 }
 
@@ -182,21 +176,19 @@ void MainRAM_Run(Console* sys, timestamp now)
     bool nseq = r->Type == HTRANS_NONSEQ;
     bool write = r->Write;
     bool lock = r->Lock;
-    u8 man = r->Man;
-    u32 wrdata; if (write) wrdata = r->WrData;
+    u32 wrdata;
+    if (write) wrdata = ROR32(r->WrData, (addr & 2)*8);
 
-    if (write && (addr & 2)) wrdata >>= 16;
-
-    if (!mr->BurstActive) nseq = true;
-    if (write != mr->PrevWrite) nseq = true; // split burst if switching from read to write
-    if (addr <= mr->PrevAddr) nseq = true; // this is part of a really stupid theory i have on how dma bursts work
-    if (grant != mr->CurReq) nseq = true; // split burst if switching which bus has grant
-    if (now > mr->BurstLimitTs) nseq = true; // TODO: this should probably be regardless of an access occuring
+    nseq |= (!mr->BurstActive);
+    nseq |= (write != mr->PrevWrite); // split burst if switching from read to write
+    nseq |= (addr <= mr->PrevAddr); // this is part of a really stupid theory i have on how dma bursts work
+    nseq |= (grant != mr->CurReq); // split burst if switching which bus has grant
+    nseq |= (now > mr->BurstLimitTs); // TODO: this should probably be regardless of an access occuring
 
     // this is presumably enforced by the SoC main ram interface?
     // so im not sure if it actually uses the address signaled on the bus, or if it latches it internally somehow?
     // this may or may not actually matter?
-    if (mr->WeirdStart && !nseq && !(addr & 0x1E)) nseq = true;
+    nseq |= (mr->WeirdStart && !nseq && !(addr & 0x1E));
 
     if (nseq && MainRAM_KillBurst(sys, now)) return;
     mr->PrevWrite = write;
@@ -205,12 +197,10 @@ void MainRAM_Run(Console* sys, timestamp now)
 
     mr->BurstActive = true;
 
-    if (lock) mr->Locked = grant;
-    else mr->Locked = false;
+    mr->Locked = (lock ? grant : MainRAM_None);
 
 #define MRStepAddr mr->AddrLatch = (mr->AddrLatch + 1) & mr->AddrLatchMask;
 
-    u32 fauxaddr = (addr & mr->AddrSubmMask) >> 1;
     if (nseq)
     {
         mr->AddrLatch = (addr & mr->AddrSubmMask) >> 1;
@@ -219,13 +209,13 @@ void MainRAM_Run(Console* sys, timestamp now)
     }
     else MRStepAddr
 
-    //mr->AddrLatch = (addr & mr->AddrSubmMask) >> 1;
-
+#ifdef SANITYCHECK
+    u32 fauxaddr = (addr & mr->AddrSubmMask) >> 1;
     if ((addr & 0xFF000000) != 0x02000000) printf("BAD ADDRESS????\n");
     if ((r->Type < HTRANS_NONSEQ)) printf("BAD TRANSFER TYPE??\n");
     if ((mr->AddrLatch != fauxaddr) || ((addr & 0xFF000000) != 0x02000000))
     {
-        LogPrint(LOG_FCRAM, "MR ADDR MISMATCH: %08X %08X %i %i %i %i\n", mr->AddrLatch << 1, addr, grant == MainRAM_A9, man, r->CB, r->Type);
+        LogPrint(LOG_FCRAM, "MR ADDR MISMATCH: %08X %08X %i %i %i %i\n", mr->AddrLatch << 1, addr, grant == MainRAM_A9, r->Man, r->CB, r->Type);
 #ifdef MRTURBOLOG
         BusReq* l;
         for (size_t i = 0; i < countof(mr->REQLOG); i++)
@@ -237,13 +227,17 @@ void MainRAM_Run(Console* sys, timestamp now)
         printf("%02zu: a: %08"PRIX32" d: %08"PRIX32" w:%i l:%i m:%"PRIu8" p:%01"PRIX8" s:%01"PRIX8" t:%01"PRIX8" c:%02"PRIu8"\n", (size_t)32, l->Addr, l->WrData, l->Write, l->Lock, l->Man, *(u8*)&l->Prot, l->Size, l->Type, l->CB);
 #endif
     }
+#endif
+
     u32 rdata;
     if (write)
     {
         rdata = 0;
         if (size == HSIZE_8)
         {
+#ifdef SANITYCHECK
             if (!nseq) CrashSpectacularly("SEQUENTIAL 8 BIT MAIN RAM WRITE????????????\n");
+#endif
             MaskedWrite(sys->MainRAM.b16[mr->AddrLatch], wrdata, 0xFF << ((addr & 1)*8));
             now += DSClk33(3); // takes longer for some reason
             //MainRAM_KillBurst(sys, now - DSClk33(1)); // CHECKME: it takes less time for it to cooldown, so i assume it does it early somehow??
@@ -382,9 +376,6 @@ void Bus_VRAM(Console* sys, u32* rdata, timestamp* now, u32 addr, const BusReq* 
         {sys->VRAM_H.b16, VRAM_H_Size},
         {sys->VRAM_I.b16, VRAM_I_Size}
     };
-
-    if (((addr & 0xFFFFFF00) == 0x06800000) && !req->Prot.Data)
-        printf("VRAM: %08X %lX\n", addr, *now);
 
     u16 list;
     if (a9)

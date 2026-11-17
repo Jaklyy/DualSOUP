@@ -54,8 +54,8 @@ endif
 
 ifeq ($(DEB), 1) # debug build
 	BUILDDIR := $(DEBDIR)
-	CFLAGS += -march=x86-64-v3 -g -Og
-	CPPFLAGS += -march=x86-64-v3 -g -Og
+	CFLAGS += -march=x86-64-v3 -g -O0
+	CPPFLAGS += -march=x86-64-v3 -g -O0
 else
 ifeq ($(SAN), 1) # debug w/ sanitizers
 	BUILDDIR := $(SANDIR)
@@ -64,7 +64,7 @@ ifeq ($(SAN), 1) # debug w/ sanitizers
 else
 ifeq ($(REL), 1) # release build
 	BUILDDIR := $(RELDIR)
-	CFLAGS += -march=x86-64-v3 -O3 -flto=auto
+	CFLAGS += -march=x86-64-v3 -O3 -flto=auto -DSANITYCHECK
 	CPPFLAGS += -march=x86-64-v3 -O3 -flto=auto
 else # standard build
 	BUILDDIR := $(MISCDIR)
