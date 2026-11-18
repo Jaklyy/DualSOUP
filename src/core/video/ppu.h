@@ -274,7 +274,7 @@ typedef struct
         struct
         {
             u16 BGPriority : 2;
-            u16 CharBase : 4;
+            u16 NTRCharBase : 4;
             bool Mosaic : 1;
             bool Pal256 : 1;
             u16 ScreenBase : 5;
@@ -283,7 +283,10 @@ typedef struct
         };
         struct
         {
-            u16 : 14;
+            u16 : 2;
+            u16 AGBCharBase : 2;
+            u16 AGBStereoSomething : 2;
+            u16 : 8;
             bool Wide : 1;
             bool Tall : 1;
         };

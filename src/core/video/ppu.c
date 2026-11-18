@@ -157,7 +157,7 @@ void PPU_StepTextBG(Console* sys, const u16 h, const u16 v, const u8 bg, const P
     {
         TextTileData* tile = &ppu->BGDat[bg].Tile;
 
-        u32 tilebase = ppu->BGCR[bg].CharBase * KiB(16);
+        u32 tilebase = ((type == PPUType_AGB) ? ppu->BGCR[bg].AGBCharBase : ppu->BGCR[bg].NTRCharBase) * KiB(16);
         if (type == PPUType_A) // ntr mode ppu a only
             tilebase += ppu->DisplayCR.CharBase * KiB(64);
 
@@ -281,7 +281,7 @@ void PPU_StepAffineTextBG(Console* sys, const u16 h, const u16 v, const bool ext
             tile->Raw &= 0xFF;
         }
 
-        u32 tilebase = ppu->BGCR[bg].CharBase * KiB(16);
+        u32 tilebase = ((type == PPUType_AGB) ? ppu->BGCR[bg].AGBCharBase : ppu->BGCR[bg].NTRCharBase) * KiB(16);
         if (type == PPUType_A) // ntr mode ppu a only
             tilebase += ppu->DisplayCR.CharBase * KiB(64);
 
@@ -395,7 +395,7 @@ void PPU_StepExtAffineBG(Console* sys, const u16 h, const u16 v, const u8 bg, co
 
     if (ppu->BGCR[bg].Pal256)
     {
-        PPU_StepAffineBitmapBG(sys, h, v, ppu->BGCR[bg].CharBase & 1, bg, type);
+        PPU_StepAffineBitmapBG(sys, h, v, ppu->BGCR[bg].NTRCharBase & 1, bg, type);
     }
     else
     {
