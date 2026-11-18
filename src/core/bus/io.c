@@ -735,6 +735,7 @@ void IO7_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
                     //       pmic - sound amplifier enable
                     //       pmic - lcd backlight enables
                     //       a9 powcr - lcd swap
+                    //       dispcnt A - display mode (confirmed to allow for only displaying vram A)
                     //     dont seem to matter:
                     //       vram banks A/B enable (not sure about border, but it doesn't seem to prevent the game from displaying at least?)
                     //       a9 powcr - 2d engine A enable

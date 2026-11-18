@@ -108,6 +108,7 @@ constexpr u8 Duty[4] = {1, 2, 4, 6};
 void AGBPulse_UpdateSample(Console* sys, const u8 id)
 {
     CGBSndPulse* p = &sys->CGBPulseChannel[id];
+    if (!((id == 0) ? sys->AGBSndEn.Psg1Running : sys->AGBSndEn.Psg2Running)) return;
 
     // this gives a range of +8 to -7
     // checkme: i'm not 100% confident about the range here
@@ -216,6 +217,7 @@ timestamp AGBNoise_CalcTimer(CGBSndNoise* n)
 
 void AGBNoise_UpdateSample(Console* sys)
 {
+    if (!sys->AGBSndEn.Psg4Running) return;
     // this gives a range of +8 to -7
     // checkme: i'm not 100% confident about the range here
     if (!(sys->CGBNoiseChannel.Latched.LFSR & 1))
@@ -464,7 +466,7 @@ void AGBSound_IOWrite(Console* sys, const u32 addr, u32 wrdata, const u32 mask, 
             if (mask & 0x00'00'00'FF) // write to length regs; update latched length value
                 n->Latched.LenTick = (64 - n->Regs.Length);
 
-            if ((mask & 0x00'00'FF'00) && n->Regs.Envelope.DACEnable) // DAC disabled; kill channel
+            if ((mask & 0x00'00'FF'00) && !n->Regs.Envelope.DACEnable) // DAC disabled; kill channel
                 CGBSnd_KillChannel(sys, 3);
         }
         break;

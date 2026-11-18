@@ -491,12 +491,12 @@ typedef enum : u8 {
 void DebugGui_DMA(DMA_Channel dma[4], const char* const name, DEBUGGER_DMAMODE mode)
 {
     ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
-    if (ImGui_TreeNodeEx(name, ImGuiTreeNodeFlags_DefaultOpen|ImGuiTreeNodeFlags_DrawLinesFull))
+    if (ImGui_TreeNodeEx(name, ImGuiTreeNodeFlags_DrawLinesFull))
     {
         for (int i = 0; i < 4; i++)
         {
             constexpr char ChannelNames[][10] = {"Channel 0", "Channel 1", "Channel 2", "Channel 3"};
-            if (ImGui_TreeNodeEx(ChannelNames[i], ImGuiTreeNodeFlags_DefaultOpen|ImGuiTreeNodeFlags_DrawLinesFull))
+            if (ImGui_TreeNodeEx(ChannelNames[i], ImGuiTreeNodeFlags_DrawLinesFull))
             {
                 ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
                     ImGui_Text("Src: %08"PRIX32, dma[i].SrcAddr);
@@ -720,18 +720,18 @@ void DebugGui_PSGEnvelope(CGBSndEnvelope* env, CGBSndEnvelopeLatch* lat, const c
     if (ImGui_TreeNodeEx(name, ImGuiTreeNodeFlags_DefaultOpen|ImGuiTreeNodeFlags_DrawLinesFull))
     {
         ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
-            ImGui_Text("Pace: %u", env->Pace);
+            ImGui_Text("Pace: %"PRIu8, env->Pace);
         ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
             ImGui_Text("Direction: %s", env->Inc ? "Increasing" : "Decreasing");
         ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
-            ImGui_Text("Start Volume: %u", env->StartVol);
+            ImGui_Text("Start Volume: %"PRIu8, env->StartVol);
 
         ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
-            ImGui_Text("Cur Timer: %u", lat->Tick);
+            ImGui_Text("Cur Timer: %"PRIu8, lat->Tick);
         ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
-            ImGui_Text("Cur Volume: %u", lat->Vol);
+            ImGui_Text("Cur Volume: %"PRIu8, lat->Vol);
         ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
-            ImGui_Text("DAC Enable: %u", env->DACEnable != 0);
+            ImGui_Text("DAC Enabled: %s", (env->DACEnable != 0) ? "Enabled" : "Disabled");
 
         ImGui_TreePop();
     }
@@ -748,16 +748,16 @@ void DebugGui_PSGSquare(Console* sys, u8 id)
             if (ImGui_TreeNodeEx("Sweep (NR10)", ImGuiTreeNodeFlags_DefaultOpen|ImGuiTreeNodeFlags_DrawLinesFull))
             {
                 ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
-                    ImGui_Text("Shift: %u", sys->CGBPulseChannel[id].Regs.Sweep.Shift);
+                    ImGui_Text("Shift: %"PRIu8, sys->CGBPulseChannel[id].Regs.Sweep.Shift);
                 ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
                     ImGui_Text("Direction: %s", sys->CGBPulseChannel[id].Regs.Sweep.Dec ? "Decreasing" : "Increasing");
                 ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
-                    ImGui_Text("Pace: %u", sys->CGBPulseChannel[id].Regs.Sweep.Pace);
+                    ImGui_Text("Pace: %"PRIu8, sys->CGBPulseChannel[id].Regs.Sweep.Pace);
 
                 ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
-                    ImGui_Text("Cur Timer: %u", sys->CGBPulseChannel[id].Latched.Sweep.Tick);
+                    ImGui_Text("Cur Timer: %"PRIu8, sys->CGBPulseChannel[id].Latched.Sweep.Tick);
                 ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
-                    ImGui_Text("Latched Frequency: %u", sys->CGBPulseChannel[id].Latched.Sweep.Freq);
+                    ImGui_Text("Latched Frequency: %"PRIu16, sys->CGBPulseChannel[id].Latched.Sweep.Freq);
                 ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
                     ImGui_Text("Enable: %s", sys->CGBPulseChannel[id].Latched.Sweep.On ? "Enabled" : "Disabled");
 
@@ -770,15 +770,15 @@ void DebugGui_PSGSquare(Console* sys, u8 id)
         if (ImGui_TreeNodeEx((id==0) ? "Length + Duty (NR11)" : "Length + Duty (NR21)", ImGuiTreeNodeFlags_DefaultOpen|ImGuiTreeNodeFlags_DrawLinesFull))
         {
             ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
-                ImGui_Text("Length: %u", sys->CGBPulseChannel[id].Regs.Length);
+                ImGui_Text("Length: %"PRIu8, sys->CGBPulseChannel[id].Regs.Length);
             ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
                 constexpr char DutyNames[][4] = {"1/8", "1/4", "1/2", "3/4"};
-                ImGui_Text("Duty: %u (%s)", sys->CGBPulseChannel[id].Regs.DutyPattern, DutyNames[sys->CGBPulseChannel[id].Regs.DutyPattern]);
+                ImGui_Text("Duty: %"PRIu8" (%s)", sys->CGBPulseChannel[id].Regs.DutyPattern, DutyNames[sys->CGBPulseChannel[id].Regs.DutyPattern]);
 
             ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
-                ImGui_Text("Cur Length Timer: %u", sys->CGBPulseChannel[id].Latched.LenTick);
+                ImGui_Text("Cur Length Timer: %"PRIu8, sys->CGBPulseChannel[id].Latched.LenTick);
             ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
-                ImGui_Text("Cur Duty Tick: %u", sys->CGBPulseChannel[id].Latched.DutyTick);
+                ImGui_Text("Cur Duty Tick: %"PRIu8, sys->CGBPulseChannel[id].Latched.DutyTick);
 
             ImGui_TreePop();
         }
@@ -789,14 +789,132 @@ void DebugGui_PSGSquare(Console* sys, u8 id)
         if (ImGui_TreeNodeEx((id==0) ? "Control (NR13 & NR14)" : "Control (NR23 & NR24)", ImGuiTreeNodeFlags_DefaultOpen|ImGuiTreeNodeFlags_DrawLinesFull))
         {
             ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
-                ImGui_Text("Frequency: %u", sys->CGBPulseChannel[id].Regs.Freq);
+                ImGui_Text("Frequency: %"PRIu16, sys->CGBPulseChannel[id].Regs.Freq);
             ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
                 ImGui_Text("Use Length: %s", sys->CGBPulseChannel[id].Regs.UseLength ? "Enabled" : "Disabled");
 
             ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
                 ImGui_Text("Running: %s", ((id==0) ? sys->AGBSndEn.Psg1Running : sys->AGBSndEn.Psg2Running) ? "Enabled" : "Disabled");
             ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
-                ImGui_Text("Cur Sample: %"PRIi8"", sys->AGBSamples[id]);
+                ImGui_Text("Cur Sample: %"PRIi8, sys->AGBSamples[id]);
+
+            ImGui_TreePop();
+        }
+
+        ImGui_TreePop();
+    }
+}
+
+void DebugGui_PSGWave(Console* sys)
+{
+    ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+    if (ImGui_TreeNodeEx("PSG 3", ImGuiTreeNodeFlags_DrawLinesFull))
+    {
+        ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+        if (ImGui_TreeNodeEx("Bank Select (NR30)", ImGuiTreeNodeFlags_DefaultOpen|ImGuiTreeNodeFlags_DrawLinesFull))
+        {
+            ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                ImGui_Text("Bank Dimension: %s", sys->CGBWaveChannel.Regs.UseTwoBanks ? "Dual Bank" : "Single Bank");
+            ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                ImGui_Text("Bank #: %i", sys->CGBWaveChannel.Regs.BankSelect);
+            ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                ImGui_Text("DAC Enable: %s", sys->CGBWaveChannel.Regs.DACEnable ? "Enabled" : "Disabled");
+
+            ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                ImGui_Text("Internal Cur Bank #: %i", sys->CGBWaveChannel.Latched.BankCur);
+            ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                ImGui_Text("Internal Cur Bank Prog : %"PRIu8, sys->CGBWaveChannel.Latched.BankProg);
+
+            ImGui_TreePop();
+        }
+
+        ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+            ImGui_Text("Length (NR31): %"PRIu32, sys->CGBWaveChannel.Regs.Length);
+
+        ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+            ImGui_Text("Cur Length Tick: %"PRIu16, sys->CGBWaveChannel.Latched.LenTick);
+
+        ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+        if (sys->CGBWaveChannel.Regs.Vol > 0x3)
+            ImGui_Text("Volume (NR32): 75%%");
+        else
+        {
+            constexpr char name[][6] = {"0%%", "100%%", "50%%", "25%%"};
+            ImGui_Text("Volume (NR32): %s", name[sys->CGBWaveChannel.Regs.Vol]);
+        }
+
+        ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+        if (ImGui_TreeNodeEx("Control (NR33 & NR34)", ImGuiTreeNodeFlags_DefaultOpen|ImGuiTreeNodeFlags_DrawLinesFull))
+        {
+            ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                ImGui_Text("Frequency: %u", sys->CGBWaveChannel.Regs.Freq);
+            ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                ImGui_Text("Use Length: %s", sys->CGBWaveChannel.Regs.UseLength ? "Enabled" : "Disabled");
+
+            ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                ImGui_Text("Running: %s", sys->AGBSndEn.Psg3Running ? "Enabled" : "Disabled");
+            ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                ImGui_Text("Cur Sample: %"PRIi8, sys->AGBSamples[2]);
+
+            ImGui_TreePop();
+        }
+
+        ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+        if (ImGui_TreeNodeEx("Wave RAM", ImGuiTreeNodeFlags_DefaultOpen|ImGuiTreeNodeFlags_DrawLinesFull))
+        {
+            ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+            ImGui_Text("Bank 0: %016"PRIX64"%016"PRIX64, (u64)sys->CGBWaveRAM[0].Shift>>16, (u64)sys->CGBWaveRAM[0].Shift);
+            ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+            ImGui_Text("Bank 1: %016"PRIX64"%016"PRIX64, (u64)sys->CGBWaveRAM[1].Shift>>16, (u64)sys->CGBWaveRAM[1].Shift);
+
+            ImGui_TreePop();
+        }
+
+        ImGui_TreePop();
+    }
+}
+
+void DebugGui_PSGNoise(Console* sys)
+{
+    ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+    if (ImGui_TreeNodeEx("PSG 4", ImGuiTreeNodeFlags_DrawLinesFull))
+    {
+
+        ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+            ImGui_Text("Length (NR41): %"PRIu8, sys->CGBNoiseChannel.Regs.Length);
+
+        ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+            ImGui_Text("Cur Length Tick: %"PRIu8, sys->CGBNoiseChannel.Latched.LenTick);
+
+        DebugGui_PSGEnvelope(&sys->CGBNoiseChannel.Regs.Envelope, &sys->CGBNoiseChannel.Latched.Envelope, "Envelope (NR42)");
+
+        ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+        if (ImGui_TreeNodeEx("Frequency (NR43)", ImGuiTreeNodeFlags_DefaultOpen|ImGuiTreeNodeFlags_DrawLinesFull))
+        {
+            ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                ImGui_Text("Clock Divider: %"PRIu16, sys->CGBNoiseChannel.Regs.ClkDivider);
+            ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                ImGui_Text("LSFR Length: %s", sys->CGBNoiseChannel.Regs.ShortLSFR ? "Short" : "Full");
+            ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                ImGui_Text("Clock Shift: %"PRIu16, sys->CGBNoiseChannel.Regs.ClkShift);
+
+            ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                ImGui_Text("Cur LFSR: %"PRIu16, sys->CGBNoiseChannel.Latched.LFSR);
+
+            ImGui_TreePop();
+        }
+
+        ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+        if (ImGui_TreeNodeEx("Control (NR44)", ImGuiTreeNodeFlags_DefaultOpen|ImGuiTreeNodeFlags_DrawLinesFull))
+        {
+            ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                ImGui_Text("Use Length: %s", sys->CGBNoiseChannel.Regs.UseLength ? "Enabled" : "Disabled");
+
+            ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                ImGui_Text("Running: %s", sys->AGBSndEn.Psg4Running ? "Enabled" : "Disabled");
+
+            ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
+                ImGui_Text("Cur Sample: %"PRIi8, sys->AGBSamples[3]);
 
             ImGui_TreePop();
         }
@@ -811,9 +929,9 @@ void DebugGui_PCMAudio(Console* sys, u8 id)
     if (ImGui_TreeNodeEx((id==0) ? "PCM A" : "PCM B", ImGuiTreeNodeFlags_DrawLinesFull))
     {
         ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
-            ImGui_Text("FIFO Fill Pointer:  %u", sys->AGBSndFIFOFillPtr[id]);
+            ImGui_Text("FIFO Fill Pointer:  %"PRIu8, sys->AGBSndFIFOFillPtr[id]);
         ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
-            ImGui_Text("FIFO Drain Pointer: %u", sys->AGBSndFIFODrainPtr[id]);
+            ImGui_Text("FIFO Drain Pointer: %"PRIu8, sys->AGBSndFIFODrainPtr[id]);
 
         ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
         if (ImGui_TreeNodeEx("FIFO Data", ImGuiTreeNodeFlags_DefaultOpen|ImGuiTreeNodeFlags_DrawLinesFull))
@@ -821,14 +939,14 @@ void DebugGui_PCMAudio(Console* sys, u8 id)
             for (int i = 0; i < 8; i++)
             {
                 ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
-                ImGui_Text("%08X", sys->AGBSndFIFO[id].b32[i]);
+                ImGui_Text("%08"PRIX32, sys->AGBSndFIFO[id].b32[i]);
             }
 
             ImGui_TreePop();
         }
 
         ImGui_TableNextRow(); ImGui_TableSetColumnIndex(0);
-            ImGui_Text("Cur Sample: %u", sys->AGBSamples[id+4]);
+            ImGui_Text("Cur Sample: %"PRIi8, sys->AGBSamples[id+4]);
 
         ImGui_TreePop();
     }
@@ -847,6 +965,8 @@ void DebugGui_IOAGB(DebugGui* dgui, Console* sys)
             {
                 DebugGui_PSGSquare(sys, 0);
                 DebugGui_PSGSquare(sys, 1);
+                DebugGui_PSGWave(sys);
+                DebugGui_PSGNoise(sys);
 
                 DebugGui_PCMAudio(sys, 0);
                 DebugGui_PCMAudio(sys, 1);
