@@ -12,6 +12,8 @@ ENUMPH(Null) \
 ENUMPH(DebugBreak) \
 ENUMPH(PollInput) \
  \
+ENUMPH(PPUSync) \
+ \
 ENUMPH(UpdateIRQ9) \
 ENUMPH(UpdateIRQ7) \
  \

@@ -177,6 +177,8 @@ Core_Ret Sched_RunEvent(Console* sys)
     default:
         CrashSpectacularly("FATAL: INVALID SCHEDULER EVENT: %"PRIu8"\n", evt);
 
+    case Evt_PPUSync:       sys->PPUTarget = now; Sched_AddEvent(sys, now+DSClk33(213), Evt_PPUSync); break;
+
     case Evt_IRQ9_VBlank
      ... Evt_IRQ9_Time3:    IF9_Set(sys, (evt - Evt_IRQ9_VBlank + IRQ_VBlank), now); break;
     case Evt_IRQ9_DMA0

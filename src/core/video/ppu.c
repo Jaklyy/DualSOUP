@@ -188,8 +188,18 @@ void PPU_StepTextBG(Console* sys, const u16 h, const u16 v, const u8 bg, const P
     }
 }
 
-void PPU_StepAffineX(PPU* ppu, const u8 bg)
+void PPU_StepAffineX(PPU* ppu, u16 h, const u8 bg, const PPU_Type type)
 {
+    if (type == PPUType_AGB)
+    {
+        if (h < (9*PPU_IterLen)) return; // not time yet
+        if ((h % PPU_IterLen) != ((1-(bg-2))*2)) return; // bg3 runs on cycles 0-1; bg2 runs on cycles 2-3
+    }
+    else // ntr
+    {
+        if (h < (9*PPU_IterLen)) return; // not time yet
+        if ((h % PPU_IterLen) != ((bg-1)*2)) return; // bg2 runs on cycles 2-3; bg3 runs on cycles 4-5
+    }
     ppu->AffineCur[bg-2][0] += ppu->AffineRotParams[bg-2][0];
     ppu->AffineCur[bg-2][1] += ppu->AffineRotParams[bg-2][2];
 }
@@ -219,7 +229,7 @@ void PPU_ReloadAffineCoords(PPU* ppu, const u16 h, const u16 v, const u8 bg, con
     }
 }
 
-void PPU_StepAffineTextBG(Console* sys, const u16 h, const u16 v, const bool ext, const u8 bg, const PPU_Type type)
+void PPU_StepAffineTextBG(Console* sys, const u16 h, const bool ext, const u8 bg, const PPU_Type type)
 {
     PPU* ppu = ((type == PPUType_B) ? &sys->PPU_B : &sys->PPU_A);
     CompositeBuffer* buffer = ppu->CompositeBuffer[bg];
@@ -227,9 +237,6 @@ void PPU_StepAffineTextBG(Console* sys, const u16 h, const u16 v, const bool ext
     s32 cycle = h;
     s32 step;
     s32 xscr;
-
-    // checkme: when is this done?
-    PPU_ReloadAffineCoords(ppu, h, v, bg, type);
 
     if (type == PPUType_AGB)
     {
@@ -304,12 +311,10 @@ void PPU_StepAffineTextBG(Console* sys, const u16 h, const u16 v, const bool ext
             bool empty = ((x >= screensize) || (y >= screensize)) || (idx == 0);
             buffer[xscr] = (CompositeBuffer){idx+(tile->Palette*(1<<bpp)), 0, empty, false, ext&&ppu->DisplayCR.BGExtPalEn, false, false, false};
         }
-
-        PPU_StepAffineX(ppu, bg); // checkme: does it still keep stepping affine coords?
     }
 }
 
-void PPU_StepAffineBitmapBG(Console* sys, const u16 h, const u16 v, const bool dircolor, const u8 bg, const PPU_Type type)
+void PPU_StepAffineBitmapBG(Console* sys, const u16 h, const bool dircolor, const u8 bg, const PPU_Type type)
 {
     PPU* ppu = ((type == PPUType_B) ? &sys->PPU_B : &sys->PPU_A);
     CompositeBuffer* buffer = ppu->CompositeBuffer[bg];
@@ -318,9 +323,6 @@ void PPU_StepAffineBitmapBG(Console* sys, const u16 h, const u16 v, const bool d
     u32 screenbase;
     u32 width;
     u32 height;
-
-    // checkme: when is this done?
-    PPU_ReloadAffineCoords(ppu, h, v, bg, type);
     u16 xscr;
 
     if (type == PPUType_AGB)
@@ -386,20 +388,19 @@ void PPU_StepAffineBitmapBG(Console* sys, const u16 h, const u16 v, const bool d
             buffer[xscr] = (CompositeBuffer){idx, 0, empty, false, false, false, false, false};
         }
     }
-    PPU_StepAffineX(ppu, bg);
 }
 
-void PPU_StepExtAffineBG(Console* sys, const u16 h, const u16 v, const u8 bg, const PPU_Type type)
+void PPU_StepExtAffineBG(Console* sys, const u16 h, const u8 bg, const PPU_Type type)
 {
     PPU* ppu = ((type == PPUType_B) ? &sys->PPU_B : &sys->PPU_A);
 
     if (ppu->BGCR[bg].Pal256)
     {
-        PPU_StepAffineBitmapBG(sys, h, v, ppu->BGCR[bg].NTRCharBase & 1, bg, type);
+        PPU_StepAffineBitmapBG(sys, h, ppu->BGCR[bg].NTRCharBase & 1, bg, type);
     }
     else
     {
-        return PPU_StepAffineTextBG(sys, h, v, true, bg, type);
+        return PPU_StepAffineTextBG(sys, h, true, bg, type);
     }
 }
 
@@ -460,6 +461,9 @@ void AGBPPU_BG1Mode(Console* sys, const u16 h, const u16 v)
 void AGBPPU_BG2Mode(Console* sys, const u16 h, const u16 v)
 {
     PPU* ppu = &sys->PPU_A;
+
+    PPU_StepAffineX(ppu, h, 2, PPUType_AGB); // checkme: does it still keep stepping affine coords?
+    PPU_ReloadAffineCoords(ppu, h, v, 2, PPUType_AGB); // checkme: when is this done?
     if (!PPU_CheckBGEnable(ppu, 2)) return PPU_StepNone(sys, h, 2, PPUType_AGB);
     switch(ppu->DisplayCR.BGMode)
     {
@@ -467,14 +471,14 @@ void AGBPPU_BG2Mode(Console* sys, const u16 h, const u16 v)
             return PPU_StepTextBG(sys, h, v, 2, PPUType_AGB);
 
         case 1 ... 2:
-            return PPU_StepAffineTextBG(sys, h, v, false, 2, PPUType_AGB);
+            return PPU_StepAffineTextBG(sys, h, false, 2, PPUType_AGB);
 
         case 3:
-            return PPU_StepAffineBitmapBG(sys, h, v, true, 2, PPUType_AGB);
+            return PPU_StepAffineBitmapBG(sys, h, true, 2, PPUType_AGB);
         case 4:
-            return PPU_StepAffineBitmapBG(sys, h, v, false, 2, PPUType_AGB);
+            return PPU_StepAffineBitmapBG(sys, h, false, 2, PPUType_AGB);
         case 5:
-            return PPU_StepAffineBitmapBG(sys, h, v, true, 2, PPUType_AGB);
+            return PPU_StepAffineBitmapBG(sys, h, true, 2, PPUType_AGB);
 
         case 6 ... 7:
             return PPU_StepNone(sys, h, 2, PPUType_AGB);
@@ -485,6 +489,9 @@ void AGBPPU_BG2Mode(Console* sys, const u16 h, const u16 v)
 void AGBPPU_BG3Mode(Console* sys, const u16 h, const u16 v)
 {
     PPU* ppu = &sys->PPU_A;
+
+    PPU_StepAffineX(ppu, h, 3, PPUType_AGB); // checkme: does it still keep stepping affine coords?
+    PPU_ReloadAffineCoords(ppu, h, v, 3, PPUType_AGB); // checkme: when is this done?
     if (!PPU_CheckBGEnable(ppu, 3)) return PPU_StepNone(sys, h, 3, PPUType_AGB);
     switch(ppu->DisplayCR.BGMode)
     {
@@ -492,7 +499,7 @@ void AGBPPU_BG3Mode(Console* sys, const u16 h, const u16 v)
             return PPU_StepTextBG(sys, h, v, 3, PPUType_AGB);
 
         case 2:
-            return PPU_StepAffineTextBG(sys, h, v, false, 3, PPUType_AGB);
+            return PPU_StepAffineTextBG(sys, h, false, 3, PPUType_AGB);
 
         case 1:
         case 3 ... 7:
@@ -543,6 +550,8 @@ void NTRPPU_BG1Mode(Console* sys, const u16 h, const u16 v, const PPU_Type type)
 void NTRPPU_BG2Mode(Console* sys, const u16 h, const u16 v, const PPU_Type type)
 {
     PPU* ppu = ((type == PPUType_B) ? &sys->PPU_B : &sys->PPU_A);
+    PPU_StepAffineX(ppu, h, 2, type); // checkme: does it still keep stepping affine coords?
+    PPU_ReloadAffineCoords(ppu, h, v, 2, type);
     if (!PPU_CheckBGEnable(ppu, 2)) return PPU_StepNone(sys, h, 2, type);
     switch(ppu->DisplayCR.BGMode)
     {
@@ -552,10 +561,10 @@ void NTRPPU_BG2Mode(Console* sys, const u16 h, const u16 v, const PPU_Type type)
 
         case 2:
         case 4:
-            return PPU_StepAffineTextBG(sys, h, v, false, 2, type);
+            return PPU_StepAffineTextBG(sys, h, false, 2, type);
 
         case 5:
-            return PPU_StepExtAffineBG(sys, h, v, 2, type);
+            return PPU_StepExtAffineBG(sys, h, 2, type);
 
         case 6:
             printf("LORGE\n"); break;
@@ -569,6 +578,8 @@ void NTRPPU_BG2Mode(Console* sys, const u16 h, const u16 v, const PPU_Type type)
 void NTRPPU_BG3Mode(Console* sys, const u16 h, const u16 v, const PPU_Type type)
 {
     PPU* ppu = ((type == PPUType_B) ? &sys->PPU_B : &sys->PPU_A);
+    PPU_StepAffineX(ppu, h, 3, type); // checkme: does it still keep stepping affine coords?
+    PPU_ReloadAffineCoords(ppu, h, v, 3, type);
     if (!PPU_CheckBGEnable(ppu, 3)) return PPU_StepNone(sys, h, 3, type);
     switch(ppu->DisplayCR.BGMode)
     {
@@ -576,10 +587,10 @@ void NTRPPU_BG3Mode(Console* sys, const u16 h, const u16 v, const PPU_Type type)
             return PPU_StepTextBG(sys, h, v, 3, type);
 
         case 1 ... 2:
-            return PPU_StepAffineTextBG(sys, h, v, false, 3, type);
+            return PPU_StepAffineTextBG(sys, h, false, 3, type);
 
         case 3 ... 5:
-            return PPU_StepExtAffineBG(sys, h, v, 3, type);
+            return PPU_StepExtAffineBG(sys, h, 3, type);
 
         case 6 ... 7:
             return PPU_StepNone(sys, h, 3, type);
@@ -615,8 +626,6 @@ void PPU_SpriteAffine(Console* sys, u8 sx, const PPU_Type type)
     const u8 width = dat->Width;
     const u8 height = dat->Height;
     s16* params = dat->AffineParams;
-
-    // todo: mosaic
 
     u32 scrx = attr1.X + sx;
 
@@ -1562,7 +1571,7 @@ int SDLCALL PPUA_MainLoop(void* ptr)
             PPU_Wait(sys, sys->PPUATimestamp);
 
             PPU_Step(sys, (sys->PPUATimestamp-sys->PPU_A.ScanlineStart) / DSClk16(1), sys->VCountAGB, PPUType_AGB);
-            if (sys->VCountAGB == LCD_GetVCountMax(true) || sys->VCountAGB < LCD_GetHeight(true))
+            if (true)//sys->VCountAGB == LCD_GetVCountMax(true) || sys->VCountAGB < LCD_GetHeight(true))
                 sys->PPUATimestamp += DSClk16(1);
             else
                 sys->PPUATimestamp = sys->PPU_A.ScanlineStart + DSClk16(AGBScanline_Cycles);
@@ -1576,7 +1585,7 @@ int SDLCALL PPUA_MainLoop(void* ptr)
 
             PPU_Step(sys, (sys->PPUATimestamp-sys->PPU_A.ScanlineStart) / DSClk33(1), sys->VCount, PPUType_A);
 
-            if (sys->VCount == LCD_GetVCountMax(false) || sys->VCount < LCD_GetHeight(false))
+            if (true)//sys->VCount == LCD_GetVCountMax(false) || sys->VCount < LCD_GetHeight(false))
                 sys->PPUATimestamp += DSClk33(1);
             else
                 sys->PPUATimestamp = sys->PPU_A.ScanlineStart + DSClk33(NTRScanline_Cycles);
@@ -1599,7 +1608,7 @@ int SDLCALL PPUB_MainLoop(void* ptr)
 
         PPU_Step(sys, (sys->PPUBTimestamp-sys->PPU_B.ScanlineStart) / DSClk33(1), sys->VCount, PPUType_B);
 
-        if (sys->VCount == LCD_GetVCountMax(false) || sys->VCount < LCD_GetHeight(false))
+        if (true)//sys->VCount == LCD_GetVCountMax(false) || sys->VCount < LCD_GetHeight(false))
             sys->PPUBTimestamp += DSClk33(1);
         else
             sys->PPUBTimestamp = sys->PPU_B.ScanlineStart + DSClk33(NTRScanline_Cycles);

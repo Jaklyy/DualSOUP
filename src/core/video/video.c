@@ -43,6 +43,7 @@ void PPU_Init(Console* sys, const timestamp now)
 {
 #ifndef SINGLETHREADRASTER
     if (sys->PPUStart) return;
+    Sched_AddEvent(sys, now+DSClk33(213), Evt_PPUSync);
     sys->PPUTarget = now;
     sys->PPUATimestamp = now;
     sys->PPUBTimestamp = now;
