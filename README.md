@@ -49,3 +49,19 @@ Configs and imports may be required to be manually rebuilt from scratch.
 # Special Thanks
 * melonDS team members: Largely responsible for me getting off my feet with regards to understanding how to do emudev and coding.
 * The many folks who've worked on NDS/GBA homebrew and emudev: Could not have done any of this without the amount of research people before me had done on this/related consoles.
+
+# Build Instructions
+## Linux:
+1. Install reqs: clang, clang++, SDL3, make
+3. type make in the directory with the makefile
+4. ????
+5. Profit
+## MacOS:
+1. Please see Linux steps
+2. Pray
+3. Idk i dont use MacOS i just know it works
+## Windows:
+1. use msys2 or some other unix compatible terminal
+2. Please see MacOS steps 1 and 2
+3. Pray++
+4. It doesn't statically link anything so you will probably need to run it from the terminal you built it in. im sorry, i dont know how to fix that.
