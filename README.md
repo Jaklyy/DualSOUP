@@ -1,5 +1,5 @@
 # Welcome to DualSOUP
-## WIP Cycle Accurate NDS Emulator
+**WIP Cycle Accurate NDS Emulator**
 
 # Mission Statement
 Improve preservation of the NDS/DSi/3DS library and their hardware via accurate emulation at ANY cost to usability and performance.
@@ -18,7 +18,7 @@ This is probably the lowest priority (for now) but it would be kinda sick if thi
 
 ~~It currently runs at full speed *decently often* on my cpu (12700kf), but frequently suffers frametime spikes, or just straight up runs at 30fps in more intensive titles.~~
 
-It currently runs extremely poorly in NDS mode, but should run at or close to full speed with a decently high end cpu in GBA mode.
+It currently runs extremely poorly (15 ~ 30 fps most of the time) in NDS mode, but should run at or close to full speed with a decently high end cpu in GBA mode.
 
 I think this can be improved greatly, but its a low priority for now.
 
