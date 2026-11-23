@@ -627,7 +627,7 @@ void IO7_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
     {
     case 0x00'00'04:
         MaskedWrite(sys->DispStatRW7.Raw, wrdata, mask & 0xFFB8);
-        sys->TargetVCount7 = (sys->DispStatRW7.VCountMSB << 8) | sys->DispStatRW7.VCountLSB;\
+        sys->TargetVCount7 = (sys->DispStatRW7.VCountMSB << 8) | sys->DispStatRW7.VCountLSB;
 
         if (mask & 0xFFFF0000)
         {

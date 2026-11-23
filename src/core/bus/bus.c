@@ -556,6 +556,7 @@ void Bus_AGBVRAM(Console* sys, u32* rdata, timestamp* now, u32 addr, const BusRe
     addr >>= 1;
     if (req->Write)
     {
+        PPU_Sync(sys, *now);
         if ((req->Size == HSIZE_8) && (addr >= 0x8000))
             return LogPrint(LOG_ODD|LOG_ARM7|LOG_VRAM, "AGB Bus: 8 bit writes to OBJ VRAM are ignored. Addr: %08"PRIX32" WData: %08"PRIX32"\n", addr, req->WrData);
         u32 wrdata = req->WrData;
@@ -1029,6 +1030,7 @@ void Bus7_AGBDecodeWrite(Console* sys, BusReq* req, const u32 addr, const u32 ma
         return Sched_AddEvent(sys, now, Evt_IOAGB); // io is in a separate event for simplicity's sake
 
     case 0x05: // Palette RAM
+        PPU_Sync(sys, now);
         if (size == HSIZE_32) now += DSClk16(1);
         if (mask & 0x0000FFFF) sys->Palette.b16[((addr & (PaletteAGB_Size-4))/2)+0] = (wrdata>> 0)&0xFFFF;
         if (mask & 0xFFFF0000) sys->Palette.b16[((addr & (PaletteAGB_Size-4))/2)+1] = (wrdata>>16)&0xFFFF;
@@ -1043,6 +1045,7 @@ void Bus7_AGBDecodeWrite(Console* sys, BusReq* req, const u32 addr, const u32 ma
             LogPrint(LOG_ODD|LOG_ARM7, "AGB Bus: 8 bit writes to OAM are ignored. Addr: %08"PRIX32" WData: %08"PRIX32"\n", addr, req->WrData);
             break;
         }
+        PPU_Sync(sys, now);
         MemoryWrite(32, sys->OAM, addr, OAMAGB_Size, wrdata, mask);
         break;
 

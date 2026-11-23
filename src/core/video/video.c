@@ -15,6 +15,7 @@
 void PPU_SetTarget(Console* sys, const timestamp now)
 {
 #ifndef SINGLETHREADRASTER
+    if (!sys->PPUStart) return;
     if (sys->PPUTarget < now)
         sys->PPUTarget = now;
 #else
