@@ -735,7 +735,14 @@ void IO7_Write(Console* sys, const u32 addr, timestamp now, const u32 wrdata, co
                     //       pmic - sound amplifier enable
                     //       pmic - lcd backlight enables
                     //       a9 powcr - lcd swap
-                    //       dispcnt A - display mode (confirmed to allow for only displaying vram A)
+                    //       dispcnt A - display mode
+                    //          modes 0 & 1 seem to just switch to normal gba display mode
+                    //          mode 2 seems to break the switch to gba display mode? and results in it displaying:
+                    //              bank a: every other frame + border of bank A
+                    //              bank b: untested (similar to b?)
+                    //              bank c: nothing
+                    //              bank d: untested (nothing?)
+                    //          mode 3 seems to display the fifo contents for a couple frames before switching over? might be worth testing more
                     //     dont seem to matter:
                     //       vram banks A/B enable (not sure about border, but it doesn't seem to prevent the game from displaying at least?)
                     //       a9 powcr - 2d engine A enable
